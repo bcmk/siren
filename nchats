@@ -1,0 +1,2 @@
+#!/bin/bash
+sqlite3 bonga.db "select count(distinct chat_id) from signals;"

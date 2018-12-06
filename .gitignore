@@ -1,0 +1,14 @@
+*
+!*/
+!*.*
+*.dll
+*.so
+*.dylib
+*.exe
+*.exe~
+*.test
+*.out
+server.key
+server.pem
+bonga.db
+conf.json
