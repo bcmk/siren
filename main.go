@@ -39,10 +39,13 @@ func newWorker() *worker {
 	db, err := sql.Open("sqlite3", "./bonga.db")
 	checkErr(err)
 	return &worker{
-		bot:    bot,
-		client: &http.Client{CheckRedirect: noRedirect},
-		db:     db,
-		cfg:    cfg,
+		bot: bot,
+		db:  db,
+		cfg: cfg,
+		client: &http.Client{
+			CheckRedirect: noRedirect,
+			Timeout:       time.Second * time.Duration(cfg.TimeoutSeconds),
+		},
 	}
 }
 
