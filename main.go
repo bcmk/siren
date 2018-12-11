@@ -27,6 +27,11 @@ type worker struct {
 	cfg    *config
 }
 
+type statusUpdate struct {
+	modelID string
+	status  statusKind
+}
+
 func checkErr(err error) {
 	if err != nil {
 		panic(err)
@@ -93,20 +98,23 @@ func (w *worker) createDatabase() {
 	checkErr(err)
 }
 
-func (w *worker) updateStatus(modelID string, status statusKind) {
+func (w *worker) updateStatus(modelID string, newStatus statusKind) bool {
+	oldStatusQuery, err := w.db.Query("select status from statuses where model_id=?", modelID)
+	checkErr(err)
+	if !oldStatusQuery.Next() {
+		stmt, err := w.db.Prepare("insert into statuses (model_id, status) values (?,?)")
+		checkErr(err)
+		_, err = stmt.Exec(modelID, newStatus)
+		checkErr(err)
+		return true
+	}
+	var oldStatus statusKind
+	checkErr(oldStatusQuery.Scan(&oldStatus))
 	stmt, err := w.db.Prepare("update statuses set status=? where model_id=?")
 	checkErr(err)
-	res, err := stmt.Exec(status, modelID)
+	_, err = stmt.Exec(newStatus, modelID)
 	checkErr(err)
-	n, err := res.RowsAffected()
-	checkErr(err)
-	if n != 0 {
-		return
-	}
-	stmt, err = w.db.Prepare("insert into statuses (model_id, status) values (?,?)")
-	checkErr(err)
-	res, err = stmt.Exec(modelID, status)
-	checkErr(err)
+	return oldStatus != newStatus
 }
 
 func (w *worker) statusMap() map[string]statusKind {
@@ -122,17 +130,26 @@ func (w *worker) statusMap() map[string]statusKind {
 	return statusMap
 }
 
-func (w *worker) chatsMap() map[string][]int64 {
-	signals, err := w.db.Query("select chat_id, model_id from signals")
+func (w *worker) models() (models []string) {
+	modelsQuery, err := w.db.Query("select distinct(model_id) from signals")
 	checkErr(err)
-	chatsMap := make(map[string][]int64)
-	for signals.Next() {
-		var chatID int64
+	for modelsQuery.Next() {
 		var modelID string
-		checkErr(signals.Scan(&chatID, &modelID))
-		chatsMap[modelID] = append(chatsMap[modelID], chatID)
+		checkErr(modelsQuery.Scan(&modelID))
+		models = append(models, modelID)
 	}
-	return chatsMap
+	return
+}
+
+func (w *worker) chats(modelID string) (chats []int64) {
+	chatsQuery, err := w.db.Query("select chat_id from signals where model_id=?", modelID)
+	checkErr(err)
+	for chatsQuery.Next() {
+		var chatID int64
+		checkErr(chatsQuery.Scan(&chatID))
+		chats = append(chats, chatID)
+	}
+	return
 }
 
 func (w *worker) reportStatus(chatID int64, modelID string, status statusKind) {
@@ -144,26 +161,21 @@ func (w *worker) reportStatus(chatID int64, modelID string, status statusKind) {
 	}
 }
 
-func (w *worker) check() {
-	statusMap := w.statusMap()
-	chatsMap := w.chatsMap()
-
-	for modelID, chats := range chatsMap {
-		update := false
-		newStatus := w.checkModel(modelID)
-		if newStatus == statusUnknown {
-			continue
-		}
-		if oldStatus, ok := statusMap[modelID]; (ok && oldStatus != newStatus) || !ok {
-			w.updateStatus(modelID, newStatus)
-			update = true
-		}
-		if update {
-			for _, chatID := range chats {
-				w.reportStatus(chatID, modelID, newStatus)
+func (w *worker) startChecker() (input chan []string, output chan statusUpdate) {
+	input = make(chan []string)
+	output = make(chan statusUpdate)
+	go func() {
+		for models := range input {
+			for _, modelID := range models {
+				newStatus := w.checkModel(modelID)
+				if newStatus == statusUnknown {
+					continue
+				}
+				output <- statusUpdate{modelID: modelID, status: newStatus}
 			}
 		}
-	}
+	}()
+	return
 }
 
 func singleInt(row *sql.Row) (result int) {
@@ -301,11 +313,18 @@ func main() {
 	}()
 
 	var periodicTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
-	w.check()
+	statusRequests, statusUpdates := w.startChecker()
+	statusRequests <- w.models()
 	for {
 		select {
 		case <-periodicTimer.C:
-			w.check()
+			statusRequests <- w.models()
+		case statusUpdate := <-statusUpdates:
+			if w.updateStatus(statusUpdate.modelID, statusUpdate.status) {
+				for _, chatID := range w.chats(statusUpdate.modelID) {
+					w.reportStatus(chatID, statusUpdate.modelID, statusUpdate.status)
+				}
+			}
 		case u := <-updates:
 			if u.Message != nil && u.Message.Chat != nil {
 				switch u.Message.Command() {
