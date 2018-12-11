@@ -259,7 +259,15 @@ func (w *worker) removeModel(chatID int64, modelID string) {
 	checkErr(err)
 	_, err = stmt.Exec(chatID, modelID)
 	checkErr(err)
+	w.cleanStatuses()
 	w.send(chatID, fmt.Sprintf("Модель %s удалена", modelID), true)
+}
+
+func (w *worker) cleanStatuses() {
+	stmt, err := w.db.Prepare("delete from statuses s where not exists(select * from signals where model_id=s.model_id)")
+	checkErr(err)
+	_, err = stmt.Exec()
+	checkErr(err)
 }
 
 func (w *worker) listModels(chatID int64) {
