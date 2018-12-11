@@ -349,6 +349,8 @@ func main() {
 					w.feedback(u.Message.Chat.ID, u.Message.CommandArguments())
 				case "stat":
 					w.stat(u.Message.Chat.ID)
+				case "source":
+					w.send(u.Message.Chat.ID, "Исходный код: https://github.com/bcmk/bcb", true)
 				default:
 					w.send(u.Message.Chat.ID, "Такой команде не обучен", true)
 				}
