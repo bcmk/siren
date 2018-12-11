@@ -34,18 +34,19 @@ func checkErr(err error) {
 
 func newWorker() *worker {
 	cfg := readConfig()
-	bot, err := tgbotapi.NewBotAPI(cfg.BotToken)
+	client := &http.Client{
+		CheckRedirect: noRedirect,
+		Timeout:       time.Second * time.Duration(cfg.TimeoutSeconds),
+	}
+	bot, err := tgbotapi.NewBotAPIWithClient(cfg.BotToken, client)
 	checkErr(err)
 	db, err := sql.Open("sqlite3", "./bonga.db")
 	checkErr(err)
 	return &worker{
-		bot: bot,
-		db:  db,
-		cfg: cfg,
-		client: &http.Client{
-			CheckRedirect: noRedirect,
-			Timeout:       time.Second * time.Duration(cfg.TimeoutSeconds),
-		},
+		bot:    bot,
+		db:     db,
+		cfg:    cfg,
+		client: client,
 	}
 }
 
