@@ -275,6 +275,12 @@ func (w *worker) feedback(chatID int64, text string) {
 	w.send(chatID, "Спасибо за обратную связь!", true)
 }
 
+func (w *worker) stat(chatID int64) {
+	chats := w.db.QueryRow("select count(distinct chat_id) from signals;")
+	count := singleInt(chats)
+	w.send(chatID, fmt.Sprintf("Пользователей %v", count), true)
+}
+
 func main() {
 	w := newWorker()
 	w.createDatabase()
@@ -304,6 +310,8 @@ func main() {
 					w.donate(u.Message.Chat.ID)
 				case "feedback":
 					w.feedback(u.Message.Chat.ID, u.Message.CommandArguments())
+				case "stat":
+					w.stat(u.Message.Chat.ID)
 				default:
 					w.send(u.Message.Chat.ID, "Такой команде не обучен.", true)
 				}
