@@ -56,7 +56,7 @@ func noRedirect(req *http.Request, via []*http.Request) error { return http.ErrU
 func (w *worker) send(chatID int64, text string, notify bool) {
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.DisableNotification = !notify
-	msg.ParseMode = "markdown"
+	msg.ParseMode = "html"
 	if _, err := w.bot.Send(msg); err != nil {
 		lerr("cannot send a message, %v", err)
 	}
@@ -186,7 +186,7 @@ func (w *worker) checkMaximum(chatID int64) int {
 
 func (w *worker) addModel(chatID int64, modelID string) {
 	if modelID == "" {
-		w.send(chatID, "Формат команды: /add __идентификатор модели__", true)
+		w.send(chatID, "Формат команды: /add <i>идентификатор модели</i>", true)
 		w.send(chatID, "Идентификатор модели можно посмотреть в адресной строке браузера", true)
 		return
 	}
@@ -211,7 +211,7 @@ func (w *worker) addModel(chatID int64, modelID string) {
 	if status == statusUnknown {
 		w.send(chatID, fmt.Sprintf("Не получилось добавить модель %s", modelID), true)
 		w.send(chatID, "Проверьте ID модели или попробуйте позже", true)
-		w.send(chatID, "Формат команды: /add __идентификатор модели__", true)
+		w.send(chatID, "Формат команды: /add <i>идентификатор модели</i>", true)
 		w.send(chatID, "Идентификатор модели можно посмотреть в адресной строке браузера", true)
 		return
 	}
@@ -226,7 +226,7 @@ func (w *worker) addModel(chatID int64, modelID string) {
 
 func (w *worker) removeModel(chatID int64, modelID string) {
 	if modelID == "" {
-		w.send(chatID, "Формат команды: /remove __идентификатор модели__", true)
+		w.send(chatID, "Формат команды: /remove <i>идентификатор модели</i>", true)
 		w.send(chatID, "Идентификатор модели можно посмотреть в адресной строке браузера", true)
 		return
 	}
@@ -270,7 +270,7 @@ Ethereum кошелёк 0x95af5ca0c64f3415431409926629a546a1bf99fc
 
 func (w *worker) feedback(chatID int64, text string) {
 	if text == "" {
-		w.send(chatID, "Формат команды: /feedback __сообщение__", true)
+		w.send(chatID, "Формат команды: /feedback <i>сообщение</i>", true)
 		return
 	}
 
