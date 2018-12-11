@@ -284,8 +284,8 @@ func (w *worker) listModels(chatID int64) {
 func (w *worker) donate(chatID int64) {
 	w.send(chatID,
 		`Хотите поддержать проект?
-Bitcoin кошелёк 1PG5Th1vUQN1DkcHHAd21KA7CzwkMZwchE
-Ethereum кошелёк 0x95af5ca0c64f3415431409926629a546a1bf99fc
+Bitcoin: 1PG5Th1vUQN1DkcHHAd21KA7CzwkMZwchE
+Ethereum: 0x95af5ca0c64f3415431409926629a546a1bf99fc
 Если вы не знаете, что это такое, просто подарите моей любимой модели BBWebb 77тк`, true)
 }
 
