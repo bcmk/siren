@@ -181,8 +181,8 @@ func (w *worker) checkMaximum(chatID int64) int {
 
 func (w *worker) addModel(chatID int64, modelID string) {
 	if modelID == "" {
-		w.send(chatID, "Формат команды `/add идентификатор модели`.", true)
-		w.send(chatID, "Идентификатор модели можно посмотреть в адресной строке браузера.", true)
+		w.send(chatID, "Формат команды: /add __идентификатор модели__", true)
+		w.send(chatID, "Идентификатор модели можно посмотреть в адресной строке браузера", true)
 		return
 	}
 
@@ -204,9 +204,10 @@ func (w *worker) addModel(chatID int64, modelID string) {
 	}
 	status := w.checkModel(modelID)
 	if status == statusUnknown {
-		w.send(chatID, fmt.Sprintf("Не получилось добавить модель %s. Проверьте ID модели или попробуйте позже.", modelID), true)
-		w.send(chatID, "Формат команды `/add идентификатор модели`.", true)
-		w.send(chatID, "Идентификатор модели можно посмотреть в адресной строке браузера.", true)
+		w.send(chatID, fmt.Sprintf("Не получилось добавить модель %s", modelID), true)
+		w.send(chatID, "Проверьте ID модели или попробуйте позже", true)
+		w.send(chatID, "Формат команды: /add __идентификатор модели__", true)
+		w.send(chatID, "Идентификатор модели можно посмотреть в адресной строке браузера", true)
 		return
 	}
 	w.updateStatus(modelID, status)
@@ -220,8 +221,8 @@ func (w *worker) addModel(chatID int64, modelID string) {
 
 func (w *worker) removeModel(chatID int64, modelID string) {
 	if modelID == "" {
-		w.send(chatID, "Формат команды `/remove идентификатор модели`.", true)
-		w.send(chatID, "Идентификатор модели можно посмотреть в адресной строке браузера.", true)
+		w.send(chatID, "Формат команды: /remove __идентификатор модели__", true)
+		w.send(chatID, "Идентификатор модели можно посмотреть в адресной строке браузера", true)
 		return
 	}
 
@@ -257,14 +258,14 @@ func (w *worker) listModels(chatID int64) {
 func (w *worker) donate(chatID int64) {
 	w.send(chatID,
 		`Хотите поддержать проект?
-Bitcoin кошелёк 1PG5Th1vUQN1DkcHHAd21KA7CzwkMZwchE.
-Ethereum кошелёк 0x95af5ca0c64f3415431409926629a546a1bf99fc.
-Если вы не знаете, что это такое, просто подарите моей любимой модели BBWebb 77тк.`, true)
+Bitcoin кошелёк 1PG5Th1vUQN1DkcHHAd21KA7CzwkMZwchE
+Ethereum кошелёк 0x95af5ca0c64f3415431409926629a546a1bf99fc
+Если вы не знаете, что это такое, просто подарите моей любимой модели BBWebb 77тк`, true)
 }
 
 func (w *worker) feedback(chatID int64, text string) {
 	if text == "" {
-		w.send(chatID, "Формат команды `/feedback сообщение`.", true)
+		w.send(chatID, "Формат команды: /feedback __сообщение__", true)
 		return
 	}
 
@@ -313,7 +314,7 @@ func main() {
 				case "stat":
 					w.stat(u.Message.Chat.ID)
 				default:
-					w.send(u.Message.Chat.ID, "Такой команде не обучен.", true)
+					w.send(u.Message.Chat.ID, "Такой команде не обучен", true)
 				}
 			}
 		}
