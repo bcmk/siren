@@ -264,7 +264,7 @@ func (w *worker) removeModel(chatID int64, modelID string) {
 }
 
 func (w *worker) cleanStatuses() {
-	stmt, err := w.db.Prepare("delete from statuses s where not exists(select * from signals where model_id=s.model_id)")
+	stmt, err := w.db.Prepare("delete from statuses where not exists(select * from signals where signals.model_id=statuses.model_id);")
 	checkErr(err)
 	_, err = stmt.Exec()
 	checkErr(err)
