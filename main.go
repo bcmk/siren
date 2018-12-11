@@ -110,6 +110,7 @@ func (w *worker) updateStatus(modelID string, newStatus statusKind) bool {
 	}
 	var oldStatus statusKind
 	checkErr(oldStatusQuery.Scan(&oldStatus))
+	oldStatusQuery.Close()
 	stmt, err := w.db.Prepare("update statuses set status=? where model_id=?")
 	checkErr(err)
 	_, err = stmt.Exec(newStatus, modelID)
