@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -288,6 +289,9 @@ func (w *worker) stat(chatID int64) {
 
 func main() {
 	w := newWorker()
+	scfg, err := json.MarshalIndent(w.cfg, "", "    ")
+	checkErr(err)
+	linf("config: " + string(scfg))
 	w.createDatabase()
 
 	updates := w.bot.ListenForWebhook("/" + w.bot.Token)
