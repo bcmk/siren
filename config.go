@@ -15,7 +15,7 @@ type config struct {
 func readConfig() *config {
 	file, err := os.Open("conf.json")
 	checkErr(err)
-	defer checkErr(file.Close())
+	defer func() { checkErr(file.Close()) }()
 	decoder := json.NewDecoder(file)
 	cfg := &config{}
 	err = decoder.Decode(cfg)
