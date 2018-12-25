@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"time"
 
-	tgbotapi "github.com/bcmk/telegram-bot-api"
+	"github.com/bcmk/telegram-bot-api"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -56,7 +56,7 @@ func newWorker() *worker {
 	}
 }
 
-func noRedirect(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse }
+func noRedirect(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 
 func (w *worker) send(chatID int64, text string, notify bool) {
 	msg := tgbotapi.NewMessage(chatID, text)

@@ -12,3 +12,4 @@ server.key
 server.pem
 bonga.db
 conf.json
+.idea/
