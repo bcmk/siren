@@ -250,8 +250,7 @@ func (w *worker) removeModel(chatID int64, modelID string) {
 		return
 	}
 
-	exists := w.checkExists(chatID, modelID)
-	if !exists {
+	if !w.checkExists(chatID, modelID) {
 		w.send(chatID, fmt.Sprintf("Модель %s не в вашем списке", modelID), true)
 		return
 	}
