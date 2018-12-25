@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/bcmk/telegram-bot-api"
+	tgbotapi "github.com/bcmk/telegram-bot-api"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -58,7 +58,7 @@ func newWorker() *worker {
 
 func noRedirect(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 
-func (w *worker) send(chatID int64, text string, notify bool) {
+func (w *worker) send(chatID int64, text string, notify bool, html bool) {
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.DisableNotification = !notify
 	msg.ParseMode = "html"
@@ -157,9 +157,9 @@ func (w *worker) chats(modelID string) (chats []int64) {
 func (w *worker) reportStatus(chatID int64, modelID string, status statusKind) {
 	switch status {
 	case statusOnline:
-		w.send(chatID, fmt.Sprintf("%s в сети", modelID), true)
+		w.send(chatID, fmt.Sprintf("%s в сети", modelID), true, false)
 	case statusOffline:
-		w.send(chatID, fmt.Sprintf("%s не в сети", modelID), false)
+		w.send(chatID, fmt.Sprintf("%s не в сети", modelID), false, false)
 	}
 }
 
@@ -200,33 +200,33 @@ func (w *worker) checkMaximum(chatID int64) int {
 
 func (w *worker) addModel(chatID int64, modelID string) {
 	if modelID == "" {
-		w.send(chatID, "Формат команды: /add <i>идентификатор модели</i>", true)
-		w.send(chatID, "Идентификатор модели можно посмотреть в адресной строке браузера", true)
+		w.send(chatID, "Формат команды: /add <i>идентификатор модели</i>", true, true)
+		w.send(chatID, "Идентификатор модели можно посмотреть в адресной строке браузера", true, false)
 		return
 	}
 
 	re := regexp.MustCompile(`^[A-Za-z0-9\-_]+$`)
 	if !re.MatchString(modelID) {
-		w.send(chatID, fmt.Sprintf("Идентификатор модели %s содержит неподдерживаемые символы", modelID), true)
+		w.send(chatID, fmt.Sprintf("Идентификатор модели %s содержит неподдерживаемые символы", modelID), true, false)
 		return
 	}
 
 	exists := w.checkExists(chatID, modelID)
 	if exists {
-		w.send(chatID, fmt.Sprintf("Модель %s уже в вашем списке", modelID), true)
+		w.send(chatID, fmt.Sprintf("Модель %s уже в вашем списке", modelID), true, false)
 		return
 	}
 	count := w.checkMaximum(chatID)
 	if count > w.cfg.MaxModels-1 {
-		w.send(chatID, fmt.Sprintf("Можно добавить не более %d моделей", w.cfg.MaxModels), true)
+		w.send(chatID, fmt.Sprintf("Можно добавить не более %d моделей", w.cfg.MaxModels), true, false)
 		return
 	}
 	status := w.checkModel(modelID)
 	if status == statusUnknown {
-		w.send(chatID, fmt.Sprintf("Не получилось добавить модель %s", modelID), true)
-		w.send(chatID, "Проверьте ID модели или попробуйте позже", true)
-		w.send(chatID, "Формат команды: /add <i>идентификатор модели</i>", true)
-		w.send(chatID, "Идентификатор модели можно посмотреть в адресной строке браузера", true)
+		w.send(chatID, fmt.Sprintf("Не получилось добавить модель %s", modelID), true, false)
+		w.send(chatID, "Проверьте ID модели или попробуйте позже", true, false)
+		w.send(chatID, "Формат команды: /add <i>идентификатор модели</i>", true, true)
+		w.send(chatID, "Идентификатор модели можно посмотреть в адресной строке браузера", true, false)
 		return
 	}
 	w.updateStatus(modelID, status)
@@ -234,25 +234,25 @@ func (w *worker) addModel(chatID int64, modelID string) {
 	checkErr(err)
 	_, err = stmt.Exec(chatID, modelID)
 	checkErr(err)
-	w.send(chatID, fmt.Sprintf("Модель %s добавлена", modelID), true)
+	w.send(chatID, fmt.Sprintf("Модель %s добавлена", modelID), true, false)
 	w.reportStatus(chatID, modelID, status)
 }
 
 func (w *worker) removeModel(chatID int64, modelID string) {
 	if modelID == "" {
-		w.send(chatID, "Формат команды: /remove <i>идентификатор модели</i>", true)
-		w.send(chatID, "Идентификатор модели можно посмотреть в адресной строке браузера", true)
+		w.send(chatID, "Формат команды: /remove <i>идентификатор модели</i>", true, true)
+		w.send(chatID, "Идентификатор модели можно посмотреть в адресной строке браузера", true, false)
 		return
 	}
 
 	re := regexp.MustCompile(`^[A-Za-z0-9\-_]+$`)
 	if !re.MatchString(modelID) {
-		w.send(chatID, fmt.Sprintf("Идентификатор модели %s содержит неподдерживаемые символы", modelID), true)
+		w.send(chatID, fmt.Sprintf("Идентификатор модели %s содержит неподдерживаемые символы", modelID), true, false)
 		return
 	}
 
 	if !w.checkExists(chatID, modelID) {
-		w.send(chatID, fmt.Sprintf("Модель %s не в вашем списке", modelID), true)
+		w.send(chatID, fmt.Sprintf("Модель %s не в вашем списке", modelID), true, false)
 		return
 	}
 	stmt, err := w.db.Prepare("delete from signals where chat_id=? and model_id=?")
@@ -260,7 +260,7 @@ func (w *worker) removeModel(chatID int64, modelID string) {
 	_, err = stmt.Exec(chatID, modelID)
 	checkErr(err)
 	w.cleanStatuses()
-	w.send(chatID, fmt.Sprintf("Модель %s удалена", modelID), true)
+	w.send(chatID, fmt.Sprintf("Модель %s удалена", modelID), true, false)
 }
 
 func (w *worker) cleanStatuses() {
@@ -286,12 +286,12 @@ func (w *worker) donate(chatID int64) {
 		`Хотите поддержать проект?
 Bitcoin: 1PG5Th1vUQN1DkcHHAd21KA7CzwkMZwchE
 Ethereum: 0x95af5ca0c64f3415431409926629a546a1bf99fc
-Если вы не знаете, что это такое, просто подарите моей любимой модели BBWebb 77тк`, true)
+Если вы не знаете, что это такое, просто подарите моей любимой модели BBWebb 77тк`, true, false)
 }
 
 func (w *worker) feedback(chatID int64, text string) {
 	if text == "" {
-		w.send(chatID, "Формат команды: /feedback <i>сообщение</i>", true)
+		w.send(chatID, "Формат команды: /feedback <i>сообщение</i>", true, true)
 		return
 	}
 
@@ -299,13 +299,14 @@ func (w *worker) feedback(chatID int64, text string) {
 	checkErr(err)
 	_, err = stmt.Exec(chatID, text)
 	checkErr(err)
-	w.send(chatID, "Спасибо за обратную связь!", true)
+	w.send(chatID, "Спасибо за отклик!", true, false)
+	w.send(w.cfg.AdminID, fmt.Sprintf("Отклик: %s", text), true, false)
 }
 
 func (w *worker) stat(chatID int64) {
 	chats := w.db.QueryRow("select count(distinct chat_id) from signals;")
 	count := singleInt(chats)
-	w.send(chatID, fmt.Sprintf("Пользователей %v", count), true)
+	w.send(chatID, fmt.Sprintf("Пользователей: %v", count), true, false)
 }
 
 // nolint: gocyclo
@@ -352,9 +353,9 @@ func main() {
 				case "stat":
 					w.stat(u.Message.Chat.ID)
 				case "source":
-					w.send(u.Message.Chat.ID, "Исходный код: https://github.com/bcmk/bcb", true)
+					w.send(u.Message.Chat.ID, "Исходный код: https://github.com/bcmk/bcb", true, false)
 				default:
-					w.send(u.Message.Chat.ID, "Такой команде не обучен", true)
+					w.send(u.Message.Chat.ID, "Такой команде не обучен", true, false)
 				}
 			}
 		}
