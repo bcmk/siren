@@ -73,7 +73,7 @@ func (w *worker) checkModel(modelID string) statusKind {
 		lerr("cannot send a query, %v", err)
 		return statusUnknown
 	}
-	defer resp.Body.Close()
+	checkErr(resp.Body.Close())
 	switch resp.StatusCode {
 	case 200:
 		return statusOnline
@@ -102,7 +102,8 @@ func (w *worker) updateStatus(modelID string, newStatus statusKind) bool {
 	oldStatusQuery, err := w.db.Query("select status from statuses where model_id=?", modelID)
 	checkErr(err)
 	if !oldStatusQuery.Next() {
-		stmt, err := w.db.Prepare("insert into statuses (model_id, status) values (?,?)")
+		var stmt *sql.Stmt
+		stmt, err = w.db.Prepare("insert into statuses (model_id, status) values (?,?)")
 		checkErr(err)
 		_, err = stmt.Exec(modelID, newStatus)
 		checkErr(err)
@@ -110,7 +111,7 @@ func (w *worker) updateStatus(modelID string, newStatus statusKind) bool {
 	}
 	var oldStatus statusKind
 	checkErr(oldStatusQuery.Scan(&oldStatus))
-	oldStatusQuery.Close()
+	checkErr(oldStatusQuery.Close())
 	stmt, err := w.db.Prepare("update statuses set status=? where model_id=?")
 	checkErr(err)
 	_, err = stmt.Exec(newStatus, modelID)
@@ -307,6 +308,7 @@ func (w *worker) stat(chatID int64) {
 	w.send(chatID, fmt.Sprintf("Пользователей %v", count), true)
 }
 
+// nolint: gocyclo
 func main() {
 	w := newWorker()
 	scfg, err := json.MarshalIndent(w.cfg, "", "    ")
