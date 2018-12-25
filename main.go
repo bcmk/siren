@@ -335,6 +335,7 @@ func main() {
 			}
 		case u := <-updates:
 			if u.Message != nil && u.Message.Chat != nil {
+				linf("command: %s", u.Message.Command())
 				switch u.Message.Command() {
 				case "add":
 					w.addModel(u.Message.Chat.ID, u.Message.CommandArguments())
