@@ -1,6 +1,8 @@
 BongacamsSirenBot
 =================
 
+[English](README.en.md)
+
 Это бот для Telegram, он сообщит, когда твоя любимая модель появится в сети BongaCams.
 
 Хотите поддержать проект?
