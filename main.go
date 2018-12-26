@@ -61,7 +61,9 @@ func noRedirect(_ *http.Request, _ []*http.Request) error { return http.ErrUseLa
 func (w *worker) send(chatID int64, text string, notify bool, html bool) {
 	msg := tg.NewMessage(chatID, text)
 	msg.DisableNotification = !notify
-	msg.ParseMode = "html"
+	if html {
+		msg.ParseMode = "html"
+	}
 	if _, err := w.bot.Send(msg); err != nil {
 		lerr("cannot send a message, %v", err)
 	}
