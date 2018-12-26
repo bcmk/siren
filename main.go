@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"time"
 
-	tgbotapi "github.com/bcmk/telegram-bot-api"
+	tg "github.com/bcmk/telegram-bot-api"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -22,7 +22,7 @@ const (
 
 type worker struct {
 	client *http.Client
-	bot    *tgbotapi.BotAPI
+	bot    *tg.BotAPI
 	db     *sql.DB
 	cfg    *config
 }
@@ -44,7 +44,7 @@ func newWorker() *worker {
 		CheckRedirect: noRedirect,
 		Timeout:       time.Second * time.Duration(cfg.TimeoutSeconds),
 	}
-	bot, err := tgbotapi.NewBotAPIWithClient(cfg.BotToken, client)
+	bot, err := tg.NewBotAPIWithClient(cfg.BotToken, client)
 	checkErr(err)
 	db, err := sql.Open("sqlite3", "./bonga.db")
 	checkErr(err)
@@ -59,7 +59,7 @@ func newWorker() *worker {
 func noRedirect(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 
 func (w *worker) send(chatID int64, text string, notify bool, html bool) {
-	msg := tgbotapi.NewMessage(chatID, text)
+	msg := tg.NewMessage(chatID, text)
 	msg.DisableNotification = !notify
 	msg.ParseMode = "html"
 	if _, err := w.bot.Send(msg); err != nil {
