@@ -331,7 +331,11 @@ func main() {
 	for {
 		select {
 		case <-periodicTimer.C:
-			statusRequests <- w.models()
+			select {
+			case statusRequests <- w.models():
+			default:
+				lerr("queue is full")
+			}
 		case statusUpdate := <-statusUpdates:
 			if w.updateStatus(statusUpdate.modelID, statusUpdate.status) {
 				for _, chatID := range w.chats(statusUpdate.modelID) {
