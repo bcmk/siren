@@ -15,7 +15,7 @@ import (
 type statusKind int
 
 const (
-	statusUnknown = iota
+	statusUnknown statusKind = iota
 	statusOffline
 	statusOnline
 )
