@@ -121,19 +121,6 @@ func (w *worker) updateStatus(modelID string, newStatus statusKind) bool {
 	return oldStatus != newStatus
 }
 
-func (w *worker) statusMap() map[string]statusKind {
-	statuses, err := w.db.Query("select model_id, status from statuses")
-	checkErr(err)
-	statusMap := make(map[string]statusKind)
-	for statuses.Next() {
-		var modelID string
-		var status statusKind
-		checkErr(statuses.Scan(&modelID, &status))
-		statusMap[modelID] = status
-	}
-	return statusMap
-}
-
 func (w *worker) models() (models []string) {
 	modelsQuery, err := w.db.Query("select distinct(model_id) from signals")
 	checkErr(err)
@@ -273,13 +260,15 @@ func (w *worker) cleanStatuses() {
 }
 
 func (w *worker) listModels(chatID int64) {
-	models, err := w.db.Query("select model_id from signals where chat_id=?", chatID)
+	models, err := w.db.Query(`select statuses.model_id, statuses.status
+		from statuses inner join signals
+		where statuses.model_id=signals.model_id and signals.chat_id=?`, chatID)
 	checkErr(err)
-	statusMap := w.statusMap()
 	for models.Next() {
 		var modelID string
-		checkErr(models.Scan(&modelID))
-		w.reportStatus(chatID, modelID, statusMap[modelID])
+		var status statusKind
+		checkErr(models.Scan(&modelID, &status))
+		w.reportStatus(chatID, modelID, status)
 	}
 }
 
