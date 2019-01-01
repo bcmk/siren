@@ -56,6 +56,7 @@ func newWorker() *worker {
 		db:     db,
 		cfg:    cfg,
 		client: client,
+		mu:     &sync.Mutex{},
 	}
 }
 
