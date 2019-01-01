@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"sync"
 	"time"
 
 	tg "github.com/bcmk/telegram-bot-api"
@@ -21,10 +22,12 @@ const (
 )
 
 type worker struct {
-	client *http.Client
-	bot    *tg.BotAPI
-	db     *sql.DB
-	cfg    *config
+	client  *http.Client
+	bot     *tg.BotAPI
+	db      *sql.DB
+	cfg     *config
+	mu      *sync.Mutex
+	elapsed time.Duration
 }
 
 type statusUpdate struct {
@@ -157,6 +160,7 @@ func (w *worker) startChecker() (input chan []string, output chan statusUpdate) 
 	output = make(chan statusUpdate)
 	go func() {
 		for models := range input {
+			start := time.Now()
 			for _, modelID := range models {
 				newStatus := w.checkModel(modelID)
 				if newStatus == statusUnknown {
@@ -164,6 +168,10 @@ func (w *worker) startChecker() (input chan []string, output chan statusUpdate) 
 				}
 				output <- statusUpdate{modelID: modelID, status: newStatus}
 			}
+			elapsed := time.Since(start)
+			w.mu.Lock()
+			w.elapsed = elapsed
+			w.mu.Unlock()
 		}
 	}()
 	return
@@ -295,9 +303,16 @@ func (w *worker) feedback(chatID int64, text string) {
 }
 
 func (w *worker) stat(chatID int64) {
-	chats := w.db.QueryRow("select count(distinct chat_id) from signals;")
-	count := singleInt(chats)
-	w.send(chatID, fmt.Sprintf("Пользователей: %v", count), true, false)
+	query := w.db.QueryRow("select count(distinct chat_id) from signals")
+	count := singleInt(query)
+	w.send(chatID, fmt.Sprintf("Пользователей: %d", count), true, false)
+	query = w.db.QueryRow("select count(distinct model_id) from signals")
+	count = singleInt(query)
+	w.send(chatID, fmt.Sprintf("Моделей: %d", count), true, false)
+	w.mu.Lock()
+	elapsed := w.elapsed
+	w.mu.Unlock()
+	w.send(chatID, fmt.Sprintf("Время запросов: %v", elapsed), true, false)
 }
 
 // nolint: gocyclo
