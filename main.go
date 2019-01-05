@@ -327,7 +327,12 @@ func main() {
 
 	updates := w.bot.ListenForWebhook("/" + w.bot.Token)
 	go func() {
-		err := http.ListenAndServeTLS(":443", "server.pem", "server.key", nil)
+		var err error
+		if w.cfg.Certificate != "" && w.cfg.Key != "" {
+			err = http.ListenAndServeTLS(w.cfg.ListenAddress, w.cfg.Certificate, w.cfg.Key, nil)
+		} else {
+			err = http.ListenAndServe(w.cfg.ListenAddress, nil)
+		}
 		checkErr(err)
 	}()
 
