@@ -1,2 +1,0 @@
-#!/bin/bash
-sqlite3 bonga.db "select * from feedback;"
