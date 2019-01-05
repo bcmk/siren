@@ -1,0 +1,6 @@
+add - Add model
+remove - Remove model
+list - Subscriptions list
+donate - Donation instructions
+feedback - Send feedback
+source - Show source code
