@@ -19,6 +19,7 @@ const (
 	feedbackThankYou
 	sourceCode
 	unknownCommand
+	languages
 )
 
 var (
@@ -39,6 +40,7 @@ var (
 		feedbackThankYou: "Спасибо за отклик!",
 		sourceCode:       "Исходный код: https://github.com/bcmk/bcb",
 		unknownCommand:   "Такой команде не обучен",
+		languages:        "English bot: t.me/BongacamsOnlineBot",
 	}
 	langEn = []string{
 		online:           "%s online",
@@ -57,5 +59,6 @@ var (
 		feedbackThankYou: "Thank you for your feedback!",
 		sourceCode:       "Source code: https://github.com/bcmk/bcb",
 		unknownCommand:   "Unknown command",
+		languages:        "Русский бот: t.me/BongacamsSirenBot",
 	}
 )

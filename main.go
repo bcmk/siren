@@ -367,15 +367,17 @@ func main() {
 				case "list":
 					w.listModels(u.Message.Chat.ID)
 				case "donate", "start":
-					w.send(u.Message.Chat.ID, w.tr(donation), true, false)
+					w.send(u.Message.Chat.ID, w.tr(donation), false, false)
 				case "feedback":
 					w.feedback(u.Message.Chat.ID, u.Message.CommandArguments())
 				case "stat":
 					w.stat(u.Message.Chat.ID)
 				case "source":
-					w.send(u.Message.Chat.ID, w.tr(sourceCode), true, false)
+					w.send(u.Message.Chat.ID, w.tr(sourceCode), false, false)
+				case "language":
+					w.send(u.Message.Chat.ID, w.tr(languages), false, false)
 				default:
-					w.send(u.Message.Chat.ID, w.tr(unknownCommand), true, false)
+					w.send(u.Message.Chat.ID, w.tr(unknownCommand), false, false)
 				}
 			}
 		}
