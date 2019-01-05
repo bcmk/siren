@@ -307,14 +307,17 @@ func (w *worker) stat(chatID int64) {
 	w.send(chatID, fmt.Sprintf("Queries duration: %v", elapsed), true, false)
 }
 
-func (w *worker) tr(str translationKey, args ...interface{}) string {
+func (w *worker) tr(key translationKey, args ...interface{}) string {
+	var str string
 	switch w.cfg.LanguageCode {
 	case "ru":
-		return langRu[str]
+		str = langRu[key]
 	case "en":
-		return langEn[str]
+		str = langEn[key]
+	default:
+		panic("wrong language code")
 	}
-	panic("wrong language code")
+	return fmt.Sprintf(str, args...)
 }
 
 // nolint: gocyclo
