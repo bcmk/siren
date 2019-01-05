@@ -325,7 +325,7 @@ func main() {
 	linf("config: " + string(scfg))
 	w.createDatabase()
 
-	updates := w.bot.ListenForWebhook("/" + w.bot.Token)
+	updates := w.bot.ListenForWebhook(w.cfg.ListenPath)
 	go func() {
 		var err error
 		if w.cfg.Certificate != "" && w.cfg.Key != "" {
