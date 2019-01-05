@@ -8,8 +8,8 @@
 *.exe~
 *.test
 *.out
-server.key
-server.pem
+*.key
+*.pem
 bonga.db
 conf.json
 .idea/
