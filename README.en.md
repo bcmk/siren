@@ -4,6 +4,7 @@ BongacamsSirenBot
 [Русский](README.md)
 
 This is a Telegram bot. It reports when your favorite BongaCams model appears online.
+Set it up by visiting https://t.me/BongacamsOnlineBot.
 
 Donations
 
