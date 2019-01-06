@@ -319,6 +319,9 @@ func (w *worker) stat(chatID int64) {
 }
 
 func (w *worker) broadcast(text string) {
+	if text == "" {
+		return
+	}
 	chats := w.chats()
 	for _, chatID := range chats {
 		w.send(chatID, text, true, false)
