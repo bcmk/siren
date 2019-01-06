@@ -17,13 +17,13 @@ import (
 
 type statusKind int
 
-var modelIDRegexp = regexp.MustCompile(`^[a-z0-9\-_]+$`)
-
 const (
 	statusUnknown statusKind = iota
 	statusOffline
 	statusOnline
 )
+
+var modelIDRegexp = regexp.MustCompile(`^[a-z0-9\-_]+$`)
 
 type worker struct {
 	client  *http.Client
