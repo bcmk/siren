@@ -1,12 +1,26 @@
-BongacamsSirenBot
-=================
+Telegram bot for reporting statuses of BongaCams models
+=======================================================
 
 [Русский](README.md)
 
 This is a Telegram bot. It reports when your favorite BongaCams model appears online.
 Install it by visiting https://t.me/BongacamsOnlineBot.
+This is English speaking bot. Russian version available here https://t.me/BongacamsSirenBot.
+The bot queries models statuses every minute.
+
+Commands
+--------
+
+* __add__ _model id_ — Add model
+* __remove__ _model id_ — Remove model
+* __list__ — Subscriptions list
+* __donate__ — Donation instructions
+* __feedback__ _text_ — Send feedback
+* __source__ — Show source code
+* __language__ — This bot in other languages
 
 Donations
+---------
 
 * Bitcoin: 1PG5Th1vUQN1DkcHHAd21KA7CzwkMZwchE
 * Ethereum: 0x95af5ca0c64f3415431409926629a546a1bf99fc
