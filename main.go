@@ -140,8 +140,19 @@ func (w *worker) models() (models []string) {
 	return
 }
 
-func (w *worker) chats(modelID string) (chats []int64) {
+func (w *worker) chatsForModel(modelID string) (chats []int64) {
 	chatsQuery, err := w.db.Query("select chat_id from signals where model_id=?", modelID)
+	checkErr(err)
+	for chatsQuery.Next() {
+		var chatID int64
+		checkErr(chatsQuery.Scan(&chatID))
+		chats = append(chats, chatID)
+	}
+	return
+}
+
+func (w *worker) chats() (chats []int64) {
+	chatsQuery, err := w.db.Query("select distinct chat_id from signals")
 	checkErr(err)
 	for chatsQuery.Next() {
 		var chatID int64
@@ -307,6 +318,13 @@ func (w *worker) stat(chatID int64) {
 	w.send(chatID, fmt.Sprintf("Queries duration: %v", elapsed), true, false)
 }
 
+func (w *worker) broadcast(text string) {
+	chats := w.chats()
+	for _, chatID := range chats {
+		w.send(chatID, text, true, false)
+	}
+}
+
 func (w *worker) tr(key translationKey, args ...interface{}) string {
 	var str string
 	switch w.cfg.LanguageCode {
@@ -352,7 +370,7 @@ func main() {
 			}
 		case statusUpdate := <-statusUpdates:
 			if w.updateStatus(statusUpdate.modelID, statusUpdate.status) {
-				for _, chatID := range w.chats(statusUpdate.modelID) {
+				for _, chatID := range w.chatsForModel(statusUpdate.modelID) {
 					w.reportStatus(chatID, statusUpdate.modelID, statusUpdate.status)
 				}
 			}
@@ -371,11 +389,21 @@ func main() {
 				case "feedback":
 					w.feedback(u.Message.Chat.ID, u.Message.CommandArguments())
 				case "stat":
+					if u.Message.Chat.ID != w.cfg.AdminID {
+						w.send(u.Message.Chat.ID, w.tr(unknownCommand), false, false)
+						break
+					}
 					w.stat(u.Message.Chat.ID)
 				case "source":
 					w.send(u.Message.Chat.ID, w.tr(sourceCode), false, false)
 				case "language":
 					w.send(u.Message.Chat.ID, w.tr(languages), false, false)
+				case "broadcast":
+					if u.Message.Chat.ID != w.cfg.AdminID {
+						w.send(u.Message.Chat.ID, w.tr(unknownCommand), false, false)
+						break
+					}
+					w.broadcast(u.Message.CommandArguments())
 				default:
 					w.send(u.Message.Chat.ID, w.tr(unknownCommand), false, false)
 				}
