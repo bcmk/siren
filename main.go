@@ -219,15 +219,12 @@ func (w *worker) addModel(chatID int64, modelID string) {
 		w.send(chatID, w.tr(syntaxAdd), true, true)
 		return
 	}
-
 	modelID = strings.ToLower(modelID)
 	if !modelIDRegexp.MatchString(modelID) {
 		w.send(chatID, w.tr(invalidSymbols, modelID), true, false)
 		return
 	}
-
-	exists := w.checkExists(chatID, modelID)
-	if exists {
+	if w.checkExists(chatID, modelID) {
 		w.send(chatID, w.tr(alreadyAdded, modelID), true, false)
 		return
 	}
@@ -255,13 +252,11 @@ func (w *worker) removeModel(chatID int64, modelID string) {
 		w.send(chatID, w.tr(syntaxRemove), true, true)
 		return
 	}
-
 	modelID = strings.ToLower(modelID)
 	if !modelIDRegexp.MatchString(modelID) {
 		w.send(chatID, w.tr(invalidSymbols, modelID), true, false)
 		return
 	}
-
 	if !w.checkExists(chatID, modelID) {
 		w.send(chatID, w.tr(modelNotInList, modelID), true, false)
 		return
