@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +16,8 @@ import (
 )
 
 type statusKind int
+
+var modelIDRegexp = regexp.MustCompile(`^[a-z0-9\-_]+$`)
 
 const (
 	statusUnknown statusKind = iota
@@ -217,8 +220,8 @@ func (w *worker) addModel(chatID int64, modelID string) {
 		return
 	}
 
-	re := regexp.MustCompile(`^[A-Za-z0-9\-_]+$`)
-	if !re.MatchString(modelID) {
+	modelID = strings.ToLower(modelID)
+	if !modelIDRegexp.MatchString(modelID) {
 		w.send(chatID, w.tr(invalidSymbols, modelID), true, false)
 		return
 	}
@@ -253,8 +256,8 @@ func (w *worker) removeModel(chatID int64, modelID string) {
 		return
 	}
 
-	re := regexp.MustCompile(`^[A-Za-z0-9\-_]+$`)
-	if !re.MatchString(modelID) {
+	modelID = strings.ToLower(modelID)
+	if !modelIDRegexp.MatchString(modelID) {
 		w.send(chatID, w.tr(invalidSymbols, modelID), true, false)
 		return
 	}
