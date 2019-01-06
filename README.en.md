@@ -11,13 +11,15 @@ The bot queries models statuses every minute.
 Commands
 --------
 
-* __add__ _model id_ — Add model
-* __remove__ _model id_ — Remove model
+* __add__ _model ID_ — Add model
+* __remove__ _model ID_ — Remove model
 * __list__ — Subscriptions list
 * __donate__ — Donation instructions
 * __feedback__ _text_ — Send feedback
 * __source__ — Show source code
 * __language__ — This bot in other languages
+
+You can find a model ID in an address line of your browser.
 
 Donations
 ---------
