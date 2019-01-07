@@ -3,6 +3,8 @@ Telegram bot notifying you when BongaCams models are online
 
 [Русский](README.md)
 
+[![Build Status](https://travis-ci.org/bcmk/bcb.png)](https://travis-ci.org/bcmk/bcb)
+
 Telegram bot notifies you when your favorite BongaCams models are online.
 Install it by visiting https://t.me/BongacamsOnlineBot.
 This is English speaking bot. Russian version available here https://t.me/BongacamsSirenBot.
