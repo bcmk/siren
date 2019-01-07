@@ -1,0 +1,6 @@
+language: go
+go:
+  - go1.10.4
+  - go1.11.2
+script:
+  - go build
