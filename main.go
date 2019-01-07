@@ -351,9 +351,9 @@ func (w *worker) tr(key translationKey, args ...interface{}) string {
 // nolint: gocyclo
 func main() {
 	w := newWorker()
-	scfg, err := json.MarshalIndent(w.cfg, "", "    ")
+	cfgString, err := json.MarshalIndent(w.cfg, "", "    ")
 	checkErr(err)
-	linf("config: " + string(scfg))
+	linf("config: " + string(cfgString))
 	w.createDatabase()
 
 	updates := w.bot.ListenForWebhook(w.cfg.ListenPath)
