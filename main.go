@@ -394,8 +394,8 @@ func main() {
 					w.removeModel(u.Message.Chat.ID, u.Message.CommandArguments())
 				case "list":
 					w.listModels(u.Message.Chat.ID)
-				case "start":
-					w.send(u.Message.Chat.ID, w.tr(start), false, html)
+				case "start", "help":
+					w.send(u.Message.Chat.ID, w.tr(help), false, html)
 				case "donate":
 					w.send(u.Message.Chat.ID, w.tr(donation), false, raw)
 				case "feedback":

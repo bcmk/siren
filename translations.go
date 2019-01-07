@@ -3,7 +3,7 @@ package main
 type translationKey int
 
 const (
-	start translationKey = iota
+	help translationKey = iota
 	online
 	offline
 	syntaxAdd
@@ -42,7 +42,7 @@ var (
 		sourceCode:       "Исходный код: https://github.com/bcmk/bcb",
 		unknownCommand:   "Такой команде не обучен",
 		languages:        "English bot: t.me/BongacamsOnlineBot",
-		start: `Команды
+		help: `Команды
 
 <b>add</b> <i>идентификатор модели</i> — Добавить модель
 <b>remove</b> <i>идентификатор модели</i> — Удалить модель
@@ -70,7 +70,7 @@ var (
 		sourceCode:       "Source code: https://github.com/bcmk/bcb",
 		unknownCommand:   "Unknown command",
 		languages:        "Русский бот: t.me/BongacamsSirenBot",
-		start: `Commands
+		help: `Commands
 
 <b>add</b> <i>model ID</i> — Add model
 <b>remove</b> <i>model ID</i> — Remove model
