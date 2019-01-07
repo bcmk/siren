@@ -23,6 +23,14 @@ const (
 	statusOnline
 )
 
+type parseKind int
+
+const (
+	raw parseKind = iota
+	html
+	markdown
+)
+
 var modelIDRegexp = regexp.MustCompile(`^[a-z0-9\-_]+$`)
 
 type worker struct {
@@ -69,11 +77,14 @@ func newWorker() *worker {
 
 func noRedirect(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 
-func (w *worker) send(chatID int64, text string, notify bool, html bool) {
+func (w *worker) send(chatID int64, text string, notify bool, parse parseKind) {
 	msg := tg.NewMessage(chatID, text)
 	msg.DisableNotification = !notify
-	if html {
+	switch parse {
+	case html:
 		msg.ParseMode = "html"
+	case markdown:
+		msg.ParseMode = "markdown"
 	}
 	if _, err := w.bot.Send(msg); err != nil {
 		lerr("cannot send a message, %v", err)
@@ -168,9 +179,9 @@ func (w *worker) chats() (chats []int64) {
 func (w *worker) reportStatus(chatID int64, modelID string, status statusKind) {
 	switch status {
 	case statusOnline:
-		w.send(chatID, w.tr(online, modelID), true, false)
+		w.send(chatID, w.tr(online, modelID), true, raw)
 	case statusOffline:
-		w.send(chatID, w.tr(offline, modelID), false, false)
+		w.send(chatID, w.tr(offline, modelID), false, raw)
 	}
 }
 
@@ -216,26 +227,26 @@ func (w *worker) checkMaximum(chatID int64) int {
 
 func (w *worker) addModel(chatID int64, modelID string) {
 	if modelID == "" {
-		w.send(chatID, w.tr(syntaxAdd), true, true)
+		w.send(chatID, w.tr(syntaxAdd), true, html)
 		return
 	}
 	modelID = strings.ToLower(modelID)
 	if !modelIDRegexp.MatchString(modelID) {
-		w.send(chatID, w.tr(invalidSymbols, modelID), true, false)
+		w.send(chatID, w.tr(invalidSymbols, modelID), true, raw)
 		return
 	}
 	if w.checkExists(chatID, modelID) {
-		w.send(chatID, w.tr(alreadyAdded, modelID), true, false)
+		w.send(chatID, w.tr(alreadyAdded, modelID), true, raw)
 		return
 	}
 	count := w.checkMaximum(chatID)
 	if count > w.cfg.MaxModels-1 {
-		w.send(chatID, w.tr(maxModels, w.cfg.MaxModels), true, false)
+		w.send(chatID, w.tr(maxModels, w.cfg.MaxModels), true, raw)
 		return
 	}
 	status := w.checkModel(modelID)
 	if status == statusUnknown {
-		w.send(chatID, w.tr(addError, modelID), true, true)
+		w.send(chatID, w.tr(addError, modelID), true, html)
 		return
 	}
 	w.updateStatus(modelID, status)
@@ -243,22 +254,22 @@ func (w *worker) addModel(chatID int64, modelID string) {
 	checkErr(err)
 	_, err = stmt.Exec(chatID, modelID)
 	checkErr(err)
-	w.send(chatID, w.tr(modelAdded, modelID), true, false)
+	w.send(chatID, w.tr(modelAdded, modelID), true, raw)
 	w.reportStatus(chatID, modelID, status)
 }
 
 func (w *worker) removeModel(chatID int64, modelID string) {
 	if modelID == "" {
-		w.send(chatID, w.tr(syntaxRemove), true, true)
+		w.send(chatID, w.tr(syntaxRemove), true, html)
 		return
 	}
 	modelID = strings.ToLower(modelID)
 	if !modelIDRegexp.MatchString(modelID) {
-		w.send(chatID, w.tr(invalidSymbols, modelID), true, false)
+		w.send(chatID, w.tr(invalidSymbols, modelID), true, raw)
 		return
 	}
 	if !w.checkExists(chatID, modelID) {
-		w.send(chatID, w.tr(modelNotInList, modelID), true, false)
+		w.send(chatID, w.tr(modelNotInList, modelID), true, raw)
 		return
 	}
 	stmt, err := w.db.Prepare("delete from signals where chat_id=? and model_id=?")
@@ -266,7 +277,7 @@ func (w *worker) removeModel(chatID int64, modelID string) {
 	_, err = stmt.Exec(chatID, modelID)
 	checkErr(err)
 	w.cleanStatuses()
-	w.send(chatID, w.tr(modelRemoved, modelID), true, false)
+	w.send(chatID, w.tr(modelRemoved, modelID), true, raw)
 }
 
 func (w *worker) cleanStatuses() {
@@ -291,7 +302,7 @@ func (w *worker) listModels(chatID int64) {
 
 func (w *worker) feedback(chatID int64, text string) {
 	if text == "" {
-		w.send(chatID, w.tr(syntaxFeedback), true, true)
+		w.send(chatID, w.tr(syntaxFeedback), true, html)
 		return
 	}
 
@@ -299,21 +310,21 @@ func (w *worker) feedback(chatID int64, text string) {
 	checkErr(err)
 	_, err = stmt.Exec(chatID, text)
 	checkErr(err)
-	w.send(chatID, w.tr(feedbackThankYou), true, false)
-	w.send(w.cfg.AdminID, fmt.Sprintf("Feedback: %s", text), true, false)
+	w.send(chatID, w.tr(feedbackThankYou), true, raw)
+	w.send(w.cfg.AdminID, fmt.Sprintf("Feedback: %s", text), true, raw)
 }
 
 func (w *worker) stat(chatID int64) {
 	query := w.db.QueryRow("select count(distinct chat_id) from signals")
 	count := singleInt(query)
-	w.send(chatID, fmt.Sprintf("Users: %d", count), true, false)
+	w.send(chatID, fmt.Sprintf("Users: %d", count), true, raw)
 	query = w.db.QueryRow("select count(distinct model_id) from signals")
 	count = singleInt(query)
-	w.send(chatID, fmt.Sprintf("Models: %d", count), true, false)
+	w.send(chatID, fmt.Sprintf("Models: %d", count), true, raw)
 	w.mu.Lock()
 	elapsed := w.elapsed
 	w.mu.Unlock()
-	w.send(chatID, fmt.Sprintf("Queries duration: %v", elapsed), true, false)
+	w.send(chatID, fmt.Sprintf("Queries duration: %v", elapsed), true, raw)
 }
 
 func (w *worker) broadcast(text string) {
@@ -322,7 +333,7 @@ func (w *worker) broadcast(text string) {
 	}
 	chats := w.chats()
 	for _, chatID := range chats {
-		w.send(chatID, text, true, false)
+		w.send(chatID, text, true, raw)
 	}
 }
 
@@ -385,28 +396,30 @@ func main() {
 					w.removeModel(u.Message.Chat.ID, u.Message.CommandArguments())
 				case "list":
 					w.listModels(u.Message.Chat.ID)
-				case "donate", "start":
-					w.send(u.Message.Chat.ID, w.tr(donation), false, false)
+				case "start":
+					w.send(u.Message.Chat.ID, w.tr(start), false, markdown)
+				case "donate":
+					w.send(u.Message.Chat.ID, w.tr(donation), false, raw)
 				case "feedback":
 					w.feedback(u.Message.Chat.ID, u.Message.CommandArguments())
 				case "stat":
 					if u.Message.Chat.ID != w.cfg.AdminID {
-						w.send(u.Message.Chat.ID, w.tr(unknownCommand), false, false)
+						w.send(u.Message.Chat.ID, w.tr(unknownCommand), false, raw)
 						break
 					}
 					w.stat(u.Message.Chat.ID)
 				case "source":
-					w.send(u.Message.Chat.ID, w.tr(sourceCode), false, false)
+					w.send(u.Message.Chat.ID, w.tr(sourceCode), false, raw)
 				case "language":
-					w.send(u.Message.Chat.ID, w.tr(languages), false, false)
+					w.send(u.Message.Chat.ID, w.tr(languages), false, raw)
 				case "broadcast":
 					if u.Message.Chat.ID != w.cfg.AdminID {
-						w.send(u.Message.Chat.ID, w.tr(unknownCommand), false, false)
+						w.send(u.Message.Chat.ID, w.tr(unknownCommand), false, raw)
 						break
 					}
 					w.broadcast(u.Message.CommandArguments())
 				default:
-					w.send(u.Message.Chat.ID, w.tr(unknownCommand), false, false)
+					w.send(u.Message.Chat.ID, w.tr(unknownCommand), false, raw)
 				}
 			}
 		}

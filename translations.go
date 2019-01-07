@@ -3,7 +3,8 @@ package main
 type translationKey int
 
 const (
-	online translationKey = iota
+	start translationKey = iota
+	online
 	offline
 	syntaxAdd
 	syntaxRemove
@@ -41,6 +42,15 @@ var (
 		sourceCode:       "Исходный код: https://github.com/bcmk/bcb",
 		unknownCommand:   "Такой команде не обучен",
 		languages:        "English bot: t.me/BongacamsOnlineBot",
+		start: `Команды
+
+__add__ _идентификатор модели_ — Добавить модель
+__remove__ _идентификатор модели_ — Удалить модель
+__list__ — Список подписок
+__donate__ — Поддержать проект
+__feedback__ _текст_ — Обратная связь
+__source__ — Исходный код
+__language__ — Этот бот на других языках`,
 	}
 	langEn = []string{
 		online:           "%s online",
@@ -60,5 +70,14 @@ var (
 		sourceCode:       "Source code: https://github.com/bcmk/bcb",
 		unknownCommand:   "Unknown command",
 		languages:        "Русский бот: t.me/BongacamsSirenBot",
+		start: `Commands
+
+__add__ _model ID_ — Add model
+__remove__ _model ID_ — Remove model
+__list__ — Subscriptions list
+__donate__ — Donation instructions
+__feedback__ _text_ — Send feedback
+__source__ — Show source code
+__language__ — This bot in other languages`,
 	}
 )
