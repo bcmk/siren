@@ -5,3 +5,4 @@ donate - Donation instructions
 feedback - Send feedback
 source - Show source code
 language - This bot in other languages
+help - Command list
