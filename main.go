@@ -316,15 +316,13 @@ func (w *worker) feedback(chatID int64, text string) {
 
 func (w *worker) stat(chatID int64) {
 	query := w.db.QueryRow("select count(distinct chat_id) from signals")
-	count := singleInt(query)
-	w.send(chatID, fmt.Sprintf("Users: %d", count), true, raw)
+	usersCount := singleInt(query)
 	query = w.db.QueryRow("select count(distinct model_id) from signals")
-	count = singleInt(query)
-	w.send(chatID, fmt.Sprintf("Models: %d", count), true, raw)
+	modelsCount := singleInt(query)
 	w.mu.Lock()
 	elapsed := w.elapsed
 	w.mu.Unlock()
-	w.send(chatID, fmt.Sprintf("Queries duration: %v", elapsed), true, raw)
+	w.send(chatID, fmt.Sprintf("Users: %d\nModels: %d\nQueries duration: %v", usersCount, modelsCount, elapsed), true, raw)
 }
 
 func (w *worker) broadcast(text string) {
