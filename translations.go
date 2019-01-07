@@ -44,13 +44,13 @@ var (
 		languages:        "English bot: t.me/BongacamsOnlineBot",
 		start: `Команды
 
-__add__ _идентификатор модели_ — Добавить модель
-__remove__ _идентификатор модели_ — Удалить модель
-__list__ — Список подписок
-__donate__ — Поддержать проект
-__feedback__ _текст_ — Обратная связь
-__source__ — Исходный код
-__language__ — Этот бот на других языках`,
+<b>add</b> <i>идентификатор модели</i> — Добавить модель
+<b>remove</b> <i>идентификатор модели</i> — Удалить модель
+<b>list</b> — Список подписок
+<b>donate</b> — Поддержать проект
+<b>feedback</b> <i>текст</i> — Обратная связь
+<b>source</b> — Исходный код
+<b>language</b> — Этот бот на других языках`,
 	}
 	langEn = []string{
 		online:           "%s online",
@@ -72,12 +72,12 @@ __language__ — Этот бот на других языках`,
 		languages:        "Русский бот: t.me/BongacamsSirenBot",
 		start: `Commands
 
-__add__ _model ID_ — Add model
-__remove__ _model ID_ — Remove model
-__list__ — Subscriptions list
-__donate__ — Donation instructions
-__feedback__ _text_ — Send feedback
-__source__ — Show source code
-__language__ — This bot in other languages`,
+<b>add</b> <i>model ID</i> — Add model
+<b>remove</b> <i>model ID</i> — Remove model
+<b>list</b> — Subscriptions list
+<b>donate</b> — Donation instructions
+<b>feedback</b> <i>text</i> — Send feedback
+<b>source</b> — Show source code
+<b>language</b> — This bot in other languages`,
 	}
 )

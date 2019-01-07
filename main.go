@@ -397,7 +397,7 @@ func main() {
 				case "list":
 					w.listModels(u.Message.Chat.ID)
 				case "start":
-					w.send(u.Message.Chat.ID, w.tr(start), false, markdown)
+					w.send(u.Message.Chat.ID, w.tr(start), false, html)
 				case "donate":
 					w.send(u.Message.Chat.ID, w.tr(donation), false, raw)
 				case "feedback":
