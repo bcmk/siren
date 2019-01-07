@@ -52,7 +52,9 @@ var (
 <b>donate</b> — Поддержать проект
 <b>feedback</b> <i>текст</i> — Обратная связь
 <b>source</b> — Исходный код
-<b>language</b> — Этот бот на других языках`,
+<b>language</b> — Этот бот на других языках
+
+Идентификатор модели можно посмотреть в адресной строке браузера`,
 	}
 	langEn = []string{
 		online:           "%s online",
@@ -82,6 +84,8 @@ Commands
 <b>donate</b> — Donation instructions
 <b>feedback</b> <i>text</i> — Send feedback
 <b>source</b> — Show source code
-<b>language</b> — This bot in other languages`,
+<b>language</b> — This bot in other languages
+
+You can find a model ID in an address line of your browser.`,
 	}
 )
