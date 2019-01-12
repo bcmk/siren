@@ -21,6 +21,7 @@ Commands
 * __feedback__ _text_ — Send feedback
 * __source__ — Show source code
 * __language__ — This bot in other languages
+* __help__ — Command list
 
 You can find a model ID in an address line of your browser.
 
