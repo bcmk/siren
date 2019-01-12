@@ -1,2 +1,3 @@
 #!/bin/bash
-openssl req -newkey rsa:2048 -sha256 -nodes -keyout $1.key -x509 -days 10000 -out $1.pem -subj "/C=US/ST=New York/L=Brooklyn/O=Alice/CN=$1"
+domain=$1
+openssl req -newkey rsa:2048 -sha256 -nodes -keyout $domain.key -x509 -days 10000 -out $domain.pem -subj "/C=US/ST=New York/L=Brooklyn/O=Alice/CN=$domain"
