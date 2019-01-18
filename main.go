@@ -355,7 +355,7 @@ func main() {
 	linf("config: " + string(cfgString))
 	w.createDatabase()
 
-	updates := w.bot.ListenForWebhook(w.cfg.ListenPath)
+	incoming := w.bot.ListenForWebhook(w.cfg.ListenPath)
 	go func() {
 		var err error
 		if w.cfg.Certificate != "" && w.cfg.Key != "" {
@@ -383,7 +383,7 @@ func main() {
 					w.reportStatus(chatID, statusUpdate.modelID, statusUpdate.status)
 				}
 			}
-		case u := <-updates:
+		case u := <-incoming:
 			if u.Message != nil && u.Message.Chat != nil {
 				linf("command: %s", u.Message.Command())
 				switch u.Message.Command() {
