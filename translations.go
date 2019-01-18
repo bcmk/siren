@@ -53,6 +53,7 @@ var (
 <b>feedback</b> <i>текст</i> — Обратная связь
 <b>source</b> — Исходный код
 <b>language</b> — Этот бот на других языках
+<b>help</b> — Список команд
 
 Идентификатор модели можно посмотреть в адресной строке браузера`,
 	}
@@ -85,6 +86,7 @@ Commands
 <b>feedback</b> <i>text</i> — Send feedback
 <b>source</b> — Show source code
 <b>language</b> — This bot in other languages
+<b>help</b> — Command list
 
 You can find a model ID in an address line of your browser.`,
 	}
