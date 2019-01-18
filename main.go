@@ -193,10 +193,9 @@ func (w *worker) startChecker() (input chan []string, output chan statusUpdate) 
 			start := time.Now()
 			for _, modelID := range models {
 				newStatus := w.checkModel(modelID)
-				if newStatus == statusUnknown {
-					continue
+				if newStatus != statusUnknown {
+					output <- statusUpdate{modelID: modelID, status: newStatus}
 				}
-				output <- statusUpdate{modelID: modelID, status: newStatus}
 			}
 			elapsed := time.Since(start)
 			w.mu.Lock()
