@@ -123,6 +123,10 @@ func (w *worker) createDatabase() {
 }
 
 func (w *worker) updateStatus(modelID string, newStatus statusKind) bool {
+	signalsQuery := w.db.QueryRow("select count(*) from signals where model_id=?", modelID)
+	if singleInt(signalsQuery) == 0 {
+		return false
+	}
 	oldStatusQuery, err := w.db.Query("select status from statuses where model_id=?", modelID)
 	checkErr(err)
 	if !oldStatusQuery.Next() {
