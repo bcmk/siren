@@ -252,11 +252,11 @@ func (w *worker) addModel(chatID int64, modelID string) {
 		w.send(chatID, w.tr(addError, modelID), true, html)
 		return
 	}
-	w.updateStatus(modelID, status)
 	stmt, err := w.db.Prepare("insert into signals (chat_id, model_id) values (?,?)")
 	checkErr(err)
 	_, err = stmt.Exec(chatID, modelID)
 	checkErr(err)
+	w.updateStatus(modelID, status)
 	w.send(chatID, w.tr(modelAdded, modelID), true, raw)
 	w.reportStatus(chatID, modelID, status)
 }
