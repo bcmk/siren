@@ -20,6 +20,7 @@ const (
 	feedbackThankYou
 	sourceCode
 	unknownCommand
+	slash
 	languages
 )
 
@@ -41,6 +42,7 @@ var (
 		feedbackThankYou: "Спасибо за отклик!",
 		sourceCode:       "Исходный код: https://github.com/bcmk/bcb",
 		unknownCommand:   "Такой команде не обучен",
+		slash:            "Команда выглядит так: /<i>команда</i>",
 		languages:        "English bot: t.me/BongacamsOnlineBot",
 		help: `Бот сообщит, когда твоя любимая модель появится в сети BongaCams.
 
@@ -74,6 +76,7 @@ var (
 		feedbackThankYou: "Thank you for your feedback!",
 		sourceCode:       "Source code: https://github.com/bcmk/bcb",
 		unknownCommand:   "Unknown command",
+		slash:            "Command looks like this: /<i>command</i>",
 		languages:        "Русский бот: t.me/BongacamsSirenBot",
 		help: `The bot notifies you when your favorite BongaCams models are online.
 

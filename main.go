@@ -415,6 +415,8 @@ func main() {
 						break
 					}
 					w.broadcast(u.Message.CommandArguments())
+				case "":
+					w.send(u.Message.Chat.ID, w.tr(slash), false, html)
 				default:
 					w.send(u.Message.Chat.ID, w.tr(unknownCommand), false, raw)
 				}
