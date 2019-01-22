@@ -180,11 +180,11 @@ func (w *worker) notFound(modelID string) {
 		checkErr(err)
 		_, err = stmt.Exec(modelID)
 		checkErr(err)
+		w.cleanStatuses()
 		for _, chatID := range chats {
 			w.send(chatID, w.tr(trRemoved, modelID), false, raw)
 		}
 	}
-	w.cleanStatuses()
 }
 
 func (w *worker) models() (models []string) {
