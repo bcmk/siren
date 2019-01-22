@@ -42,6 +42,7 @@ type worker struct {
 	cfg     *config
 	mu      *sync.Mutex
 	elapsed time.Duration
+	lang    []translation
 }
 
 type statusUpdate struct {
@@ -68,12 +69,22 @@ func newWorker() *worker {
 	checkErr(err)
 	db, err := sql.Open("sqlite3", cfg.DBPath)
 	checkErr(err)
+	var lang []translation
+	switch cfg.LanguageCode {
+	case "ru":
+		lang = langRu
+	case "en":
+		lang = langEn
+	default:
+		panic("wrong language code")
+	}
 	return &worker{
 		bot:    bot,
 		db:     db,
 		cfg:    cfg,
 		client: client,
 		mu:     &sync.Mutex{},
+		lang:   lang,
 	}
 }
 
@@ -94,15 +105,7 @@ func (w *worker) send(chatID int64, notify bool, parse parseKind, text string) {
 }
 
 func (w *worker) sendTr(chatID int64, notify bool, key translationKey, args ...interface{}) {
-	var translation translation
-	switch w.cfg.LanguageCode {
-	case "ru":
-		translation = langRu[key]
-	case "en":
-		translation = langEn[key]
-	default:
-		panic("wrong language code")
-	}
+	translation := w.lang[key]
 
 	msg := tg.NewMessage(chatID, fmt.Sprintf(translation.str, args...))
 	msg.DisableNotification = !notify
@@ -246,6 +249,13 @@ func (w *worker) chats() (chats []int64) {
 	return
 }
 
+func statusKey(status statusKind) translationKey {
+	if status == statusOnline {
+		return trOnline
+	}
+	return trOffline
+}
+
 func (w *worker) reportStatus(chatID int64, modelID string, status statusKind) {
 	switch status {
 	case statusOnline:
@@ -361,17 +371,17 @@ func (w *worker) listModels(chatID int64) {
 		from statuses inner join signals
 		where statuses.model_id=signals.model_id and signals.chat_id=?`, chatID)
 	checkErr(err)
-	empty := true
+	var strs []string
 	for models.Next() {
 		var modelID string
 		var status statusKind
 		checkErr(models.Scan(&modelID, &status))
-		w.reportStatus(chatID, modelID, status)
-		empty = false
+		strs = append(strs, fmt.Sprintf(w.lang[statusKey(status)].str, modelID))
 	}
-	if empty {
-		w.sendTr(chatID, false, trNoModels)
+	if len(strs) == 0 {
+		strs = append(strs, w.lang[trNoModels].str)
 	}
+	w.send(chatID, false, raw, strings.Join(strs, "\n"))
 }
 
 func (w *worker) feedback(chatID int64, text string) {
