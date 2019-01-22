@@ -19,6 +19,7 @@ type config struct {
 	Certificate       string `json:"certificate"` // omit if under a proxy
 	Key               string `json:"key"`         // omit if under a proxy
 	NotFoundThreshold int    `json:"not_found_threshold"`
+	Debug             bool   `json:"debug"`
 }
 
 func readConfig(path string) *config {

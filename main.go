@@ -100,6 +100,9 @@ func (w *worker) checkModel(modelID string) statusKind {
 		return statusUnknown
 	}
 	checkErr(resp.Body.Close())
+	if w.cfg.Debug {
+		ldbg("query result for %s: %d", modelID, resp.StatusCode)
+	}
 	switch resp.StatusCode {
 	case 200:
 		return statusOnline
