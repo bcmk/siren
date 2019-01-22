@@ -79,7 +79,7 @@ func newWorker() *worker {
 
 func noRedirect(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 
-func (w *worker) send(chatID int64, text string, notify bool, parse parseKind) {
+func (w *worker) send(chatID int64, notify bool, parse parseKind, text string) {
 	msg := tg.NewMessage(chatID, text)
 	msg.DisableNotification = !notify
 	switch parse {
@@ -88,6 +88,32 @@ func (w *worker) send(chatID int64, text string, notify bool, parse parseKind) {
 	case markdown:
 		msg.ParseMode = "markdown"
 	}
+	if _, err := w.bot.Send(msg); err != nil {
+		lerr("cannot send a message, %v", err)
+	}
+}
+
+func (w *worker) sendTr(chatID int64, notify bool, key translationKey, args ...interface{}) {
+	var translation translation
+	switch w.cfg.LanguageCode {
+	case "ru":
+		translation = langRu[key]
+	case "en":
+		translation = langEn[key]
+	default:
+		panic("wrong language code")
+	}
+
+	msg := tg.NewMessage(chatID, fmt.Sprintf(translation.str, args...))
+	msg.DisableNotification = !notify
+
+	switch translation.parse {
+	case html:
+		msg.ParseMode = "html"
+	case markdown:
+		msg.ParseMode = "markdown"
+	}
+
 	if _, err := w.bot.Send(msg); err != nil {
 		lerr("cannot send a message, %v", err)
 	}
@@ -182,7 +208,7 @@ func (w *worker) notFound(modelID string) {
 		checkErr(err)
 		w.cleanStatuses()
 		for _, chatID := range chats {
-			w.send(chatID, w.tr(trRemoved, modelID), false, raw)
+			w.sendTr(chatID, false, trRemoved, modelID)
 		}
 	}
 }
@@ -223,9 +249,9 @@ func (w *worker) chats() (chats []int64) {
 func (w *worker) reportStatus(chatID int64, modelID string, status statusKind) {
 	switch status {
 	case statusOnline:
-		w.send(chatID, w.tr(trOnline, modelID), true, raw)
+		w.sendTr(chatID, true, trOnline, modelID)
 	case statusOffline:
-		w.send(chatID, w.tr(trOffline, modelID), false, raw)
+		w.sendTr(chatID, false, trOffline, modelID)
 	}
 }
 
@@ -270,26 +296,26 @@ func (w *worker) checkMaximum(chatID int64) int {
 
 func (w *worker) addModel(chatID int64, modelID string) {
 	if modelID == "" {
-		w.send(chatID, w.tr(trSyntaxAdd), true, html)
+		w.sendTr(chatID, false, trSyntaxAdd)
 		return
 	}
 	modelID = strings.ToLower(modelID)
 	if !modelIDRegexp.MatchString(modelID) {
-		w.send(chatID, w.tr(trInvalidSymbols, modelID), true, raw)
+		w.sendTr(chatID, false, trInvalidSymbols, modelID)
 		return
 	}
 	if w.checkExists(chatID, modelID) {
-		w.send(chatID, w.tr(trAlreadyAdded, modelID), true, raw)
+		w.sendTr(chatID, false, trAlreadyAdded, modelID)
 		return
 	}
 	count := w.checkMaximum(chatID)
 	if count > w.cfg.MaxModels-1 {
-		w.send(chatID, w.tr(trMaxModels, w.cfg.MaxModels), true, raw)
+		w.sendTr(chatID, false, trMaxModels, w.cfg.MaxModels)
 		return
 	}
 	status := w.checkModel(modelID)
 	if status == statusUnknown || status == statusNotFound {
-		w.send(chatID, w.tr(trAddError, modelID), true, html)
+		w.sendTr(chatID, false, trAddError, modelID)
 		return
 	}
 	stmt, err := w.db.Prepare("insert into signals (chat_id, model_id) values (?,?)")
@@ -297,22 +323,22 @@ func (w *worker) addModel(chatID int64, modelID string) {
 	_, err = stmt.Exec(chatID, modelID)
 	checkErr(err)
 	w.updateStatus(modelID, status)
-	w.send(chatID, w.tr(trModelAdded, modelID), true, raw)
+	w.sendTr(chatID, false, trModelAdded, modelID)
 	w.reportStatus(chatID, modelID, status)
 }
 
 func (w *worker) removeModel(chatID int64, modelID string) {
 	if modelID == "" {
-		w.send(chatID, w.tr(trSyntaxRemove), true, html)
+		w.sendTr(chatID, false, trSyntaxRemove)
 		return
 	}
 	modelID = strings.ToLower(modelID)
 	if !modelIDRegexp.MatchString(modelID) {
-		w.send(chatID, w.tr(trInvalidSymbols, modelID), true, raw)
+		w.sendTr(chatID, false, trInvalidSymbols, modelID)
 		return
 	}
 	if !w.checkExists(chatID, modelID) {
-		w.send(chatID, w.tr(trModelNotInList, modelID), true, raw)
+		w.sendTr(chatID, false, trModelNotInList, modelID)
 		return
 	}
 	stmt, err := w.db.Prepare("delete from signals where chat_id=? and model_id=?")
@@ -320,7 +346,7 @@ func (w *worker) removeModel(chatID int64, modelID string) {
 	_, err = stmt.Exec(chatID, modelID)
 	checkErr(err)
 	w.cleanStatuses()
-	w.send(chatID, w.tr(trModelRemoved, modelID), true, raw)
+	w.sendTr(chatID, false, trModelRemoved, modelID)
 }
 
 func (w *worker) cleanStatuses() {
@@ -345,7 +371,7 @@ func (w *worker) listModels(chatID int64) {
 
 func (w *worker) feedback(chatID int64, text string) {
 	if text == "" {
-		w.send(chatID, w.tr(trSyntaxFeedback), true, html)
+		w.sendTr(chatID, false, trSyntaxFeedback)
 		return
 	}
 
@@ -353,8 +379,8 @@ func (w *worker) feedback(chatID int64, text string) {
 	checkErr(err)
 	_, err = stmt.Exec(chatID, text)
 	checkErr(err)
-	w.send(chatID, w.tr(trFeedback), true, raw)
-	w.send(w.cfg.AdminID, fmt.Sprintf("Feedback: %s", text), true, raw)
+	w.sendTr(chatID, false, trFeedback)
+	w.send(w.cfg.AdminID, true, raw, fmt.Sprintf("Feedback: %s", text))
 }
 
 func (w *worker) stat(chatID int64) {
@@ -365,7 +391,7 @@ func (w *worker) stat(chatID int64) {
 	w.mu.Lock()
 	elapsed := w.elapsed
 	w.mu.Unlock()
-	w.send(chatID, fmt.Sprintf("Users: %d\nModels: %d\nQueries duration: %v", usersCount, modelsCount, elapsed), true, raw)
+	w.send(chatID, true, raw, fmt.Sprintf("Users: %d\nModels: %d\nQueries duration: %v", usersCount, modelsCount, elapsed))
 }
 
 func (w *worker) broadcast(text string) {
@@ -374,21 +400,8 @@ func (w *worker) broadcast(text string) {
 	}
 	chats := w.chats()
 	for _, chatID := range chats {
-		w.send(chatID, text, true, raw)
+		w.send(chatID, true, raw, text)
 	}
-}
-
-func (w *worker) tr(key translationKey, args ...interface{}) string {
-	var str string
-	switch w.cfg.LanguageCode {
-	case "ru":
-		str = langRu[key]
-	case "en":
-		str = langEn[key]
-	default:
-		panic("wrong language code")
-	}
-	return fmt.Sprintf(str, args...)
 }
 
 // nolint: gocyclo
@@ -441,33 +454,33 @@ func main() {
 				case "list":
 					w.listModels(u.Message.Chat.ID)
 				case "start", "help":
-					w.send(u.Message.Chat.ID, w.tr(trHelp), false, html)
+					w.sendTr(u.Message.Chat.ID, false, trHelp)
 				case "donate":
-					w.send(u.Message.Chat.ID, w.tr(trDonation), false, raw)
+					w.sendTr(u.Message.Chat.ID, false, trDonation)
 				case "feedback":
 					w.feedback(u.Message.Chat.ID, u.Message.CommandArguments())
 				case "stat":
 					if u.Message.Chat.ID != w.cfg.AdminID {
-						w.send(u.Message.Chat.ID, w.tr(trUnknownCommand), false, raw)
+						w.sendTr(u.Message.Chat.ID, false, trUnknownCommand)
 						break
 					}
 					w.stat(u.Message.Chat.ID)
 				case "source":
-					w.send(u.Message.Chat.ID, w.tr(trSourceCode), false, raw)
+					w.sendTr(u.Message.Chat.ID, false, trSourceCode)
 				case "language":
-					w.send(u.Message.Chat.ID, w.tr(trLanguages), false, raw)
+					w.sendTr(u.Message.Chat.ID, false, trLanguages)
 				case "broadcast":
 					if u.Message.Chat.ID != w.cfg.AdminID {
-						w.send(u.Message.Chat.ID, w.tr(trUnknownCommand), false, raw)
+						w.sendTr(u.Message.Chat.ID, false, trUnknownCommand)
 						break
 					}
 					w.broadcast(u.Message.CommandArguments())
 				case "version":
-					w.send(u.Message.Chat.ID, w.tr(trVersion, version), false, raw)
+					w.sendTr(u.Message.Chat.ID, false, trVersion, version)
 				case "":
-					w.send(u.Message.Chat.ID, w.tr(trSlash), false, html)
+					w.sendTr(u.Message.Chat.ID, false, trSlash)
 				default:
-					w.send(u.Message.Chat.ID, w.tr(trUnknownCommand), false, raw)
+					w.sendTr(u.Message.Chat.ID, false, trUnknownCommand)
 				}
 			}
 		}
