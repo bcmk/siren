@@ -361,11 +361,16 @@ func (w *worker) listModels(chatID int64) {
 		from statuses inner join signals
 		where statuses.model_id=signals.model_id and signals.chat_id=?`, chatID)
 	checkErr(err)
+	empty := true
 	for models.Next() {
 		var modelID string
 		var status statusKind
 		checkErr(models.Scan(&modelID, &status))
 		w.reportStatus(chatID, modelID, status)
+		empty = false
+	}
+	if empty {
+		w.sendTr(chatID, false, trNoModels)
 	}
 }
 

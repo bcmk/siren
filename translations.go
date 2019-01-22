@@ -24,6 +24,7 @@ const (
 	trLanguages
 	trVersion
 	trRemoved
+	trNoModels
 )
 
 type translation struct {
@@ -53,6 +54,7 @@ var (
 		trLanguages:      {str: "English bot: t.me/BongacamsOnlineBot", parse: raw},
 		trVersion:        {str: "Версия: %s", parse: raw},
 		trRemoved:        {str: "Модель %s удалена, её профиль не найден", parse: raw},
+		trNoModels:       {str: "Вы не подписаны ни на одну модель", parse: raw},
 		trHelp: {str: `Бот сообщит, когда твоя любимая модель появится в сети BongaCams.
 
 Команды
@@ -89,6 +91,7 @@ var (
 		trLanguages:      {str: "Русский бот: t.me/BongacamsSirenBot", parse: raw},
 		trVersion:        {str: "Version: %s", parse: raw},
 		trRemoved:        {str: "Profile of model %s has been removed", parse: raw},
+		trNoModels:       {str: "You are not subscribed to any model", parse: raw},
 		trHelp: {str: `The bot notifies you when your favorite BongaCams models are online.
 
 Commands
