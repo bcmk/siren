@@ -10,6 +10,6 @@
 *.out
 *.key
 *.pem
-bonga.db
-conf.json
+*.db
+*.json
 .idea/

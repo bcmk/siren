@@ -21,6 +21,7 @@ const (
 	statusUnknown statusKind = iota
 	statusOffline
 	statusOnline
+	statusNotFound
 )
 
 type parseKind int
@@ -32,6 +33,7 @@ const (
 )
 
 var modelIDRegexp = regexp.MustCompile(`^[a-z0-9\-_]+$`)
+var version = "1.0"
 
 type worker struct {
 	client  *http.Client
@@ -103,6 +105,8 @@ func (w *worker) checkModel(modelID string) statusKind {
 		return statusOnline
 	case 302:
 		return statusOffline
+	case 404:
+		return statusNotFound
 	}
 	return statusUnknown
 }
@@ -112,7 +116,7 @@ func (w *worker) createDatabase() {
 	checkErr(err)
 	_, err = stmt.Exec()
 	checkErr(err)
-	stmt, err = w.db.Prepare("create table if not exists statuses (model_id text, status integer);")
+	stmt, err = w.db.Prepare("create table if not exists statuses (model_id text, status integer, not_found integer not null default 0);")
 	checkErr(err)
 	_, err = stmt.Exec()
 	checkErr(err)
@@ -123,6 +127,15 @@ func (w *worker) createDatabase() {
 }
 
 func (w *worker) updateStatus(modelID string, newStatus statusKind) bool {
+	if newStatus != statusNotFound {
+		stmt, err := w.db.Prepare("update statuses set not_found=0 where model_id=?")
+		checkErr(err)
+		_, err = stmt.Exec(modelID)
+		checkErr(err)
+	} else {
+		newStatus = statusOffline
+	}
+
 	signalsQuery := w.db.QueryRow("select count(*) from signals where model_id=?", modelID)
 	if singleInt(signalsQuery) == 0 {
 		return false
@@ -145,6 +158,30 @@ func (w *worker) updateStatus(modelID string, newStatus statusKind) bool {
 	_, err = stmt.Exec(newStatus, modelID)
 	checkErr(err)
 	return oldStatus != newStatus
+}
+
+func (w *worker) notFound(modelID string) {
+	linf("model %s not found", modelID)
+	exists := w.db.QueryRow("select count(*) from statuses where model_id=?", modelID)
+	if singleInt(exists) == 0 {
+		return
+	}
+	stmt, err := w.db.Prepare("update statuses set not_found=not_found+1 where model_id=?")
+	checkErr(err)
+	_, err = stmt.Exec(modelID)
+	checkErr(err)
+	notFound := w.db.QueryRow("select not_found from statuses where model_id=?", modelID)
+	if singleInt(notFound) > w.cfg.NotFoundThreshold {
+		chats := w.chatsForModel(modelID)
+		stmt, err := w.db.Prepare("delete from signals where model_id=?")
+		checkErr(err)
+		_, err = stmt.Exec(modelID)
+		checkErr(err)
+		for _, chatID := range chats {
+			w.send(chatID, w.tr(trRemoved, modelID), false, raw)
+		}
+	}
+	w.cleanStatuses()
 }
 
 func (w *worker) models() (models []string) {
@@ -183,9 +220,9 @@ func (w *worker) chats() (chats []int64) {
 func (w *worker) reportStatus(chatID int64, modelID string, status statusKind) {
 	switch status {
 	case statusOnline:
-		w.send(chatID, w.tr(online, modelID), true, raw)
+		w.send(chatID, w.tr(trOnline, modelID), true, raw)
 	case statusOffline:
-		w.send(chatID, w.tr(offline, modelID), false, raw)
+		w.send(chatID, w.tr(trOffline, modelID), false, raw)
 	}
 }
 
@@ -230,26 +267,26 @@ func (w *worker) checkMaximum(chatID int64) int {
 
 func (w *worker) addModel(chatID int64, modelID string) {
 	if modelID == "" {
-		w.send(chatID, w.tr(syntaxAdd), true, html)
+		w.send(chatID, w.tr(trSyntaxAdd), true, html)
 		return
 	}
 	modelID = strings.ToLower(modelID)
 	if !modelIDRegexp.MatchString(modelID) {
-		w.send(chatID, w.tr(invalidSymbols, modelID), true, raw)
+		w.send(chatID, w.tr(trInvalidSymbols, modelID), true, raw)
 		return
 	}
 	if w.checkExists(chatID, modelID) {
-		w.send(chatID, w.tr(alreadyAdded, modelID), true, raw)
+		w.send(chatID, w.tr(trAlreadyAdded, modelID), true, raw)
 		return
 	}
 	count := w.checkMaximum(chatID)
 	if count > w.cfg.MaxModels-1 {
-		w.send(chatID, w.tr(maxModels, w.cfg.MaxModels), true, raw)
+		w.send(chatID, w.tr(trMaxModels, w.cfg.MaxModels), true, raw)
 		return
 	}
 	status := w.checkModel(modelID)
-	if status == statusUnknown {
-		w.send(chatID, w.tr(addError, modelID), true, html)
+	if status == statusUnknown || status == statusNotFound {
+		w.send(chatID, w.tr(trAddError, modelID), true, html)
 		return
 	}
 	stmt, err := w.db.Prepare("insert into signals (chat_id, model_id) values (?,?)")
@@ -257,22 +294,22 @@ func (w *worker) addModel(chatID int64, modelID string) {
 	_, err = stmt.Exec(chatID, modelID)
 	checkErr(err)
 	w.updateStatus(modelID, status)
-	w.send(chatID, w.tr(modelAdded, modelID), true, raw)
+	w.send(chatID, w.tr(trModelAdded, modelID), true, raw)
 	w.reportStatus(chatID, modelID, status)
 }
 
 func (w *worker) removeModel(chatID int64, modelID string) {
 	if modelID == "" {
-		w.send(chatID, w.tr(syntaxRemove), true, html)
+		w.send(chatID, w.tr(trSyntaxRemove), true, html)
 		return
 	}
 	modelID = strings.ToLower(modelID)
 	if !modelIDRegexp.MatchString(modelID) {
-		w.send(chatID, w.tr(invalidSymbols, modelID), true, raw)
+		w.send(chatID, w.tr(trInvalidSymbols, modelID), true, raw)
 		return
 	}
 	if !w.checkExists(chatID, modelID) {
-		w.send(chatID, w.tr(modelNotInList, modelID), true, raw)
+		w.send(chatID, w.tr(trModelNotInList, modelID), true, raw)
 		return
 	}
 	stmt, err := w.db.Prepare("delete from signals where chat_id=? and model_id=?")
@@ -280,7 +317,7 @@ func (w *worker) removeModel(chatID int64, modelID string) {
 	_, err = stmt.Exec(chatID, modelID)
 	checkErr(err)
 	w.cleanStatuses()
-	w.send(chatID, w.tr(modelRemoved, modelID), true, raw)
+	w.send(chatID, w.tr(trModelRemoved, modelID), true, raw)
 }
 
 func (w *worker) cleanStatuses() {
@@ -305,7 +342,7 @@ func (w *worker) listModels(chatID int64) {
 
 func (w *worker) feedback(chatID int64, text string) {
 	if text == "" {
-		w.send(chatID, w.tr(syntaxFeedback), true, html)
+		w.send(chatID, w.tr(trSyntaxFeedback), true, html)
 		return
 	}
 
@@ -313,7 +350,7 @@ func (w *worker) feedback(chatID int64, text string) {
 	checkErr(err)
 	_, err = stmt.Exec(chatID, text)
 	checkErr(err)
-	w.send(chatID, w.tr(feedbackThankYou), true, raw)
+	w.send(chatID, w.tr(trFeedback), true, raw)
 	w.send(w.cfg.AdminID, fmt.Sprintf("Feedback: %s", text), true, raw)
 }
 
@@ -382,6 +419,9 @@ func main() {
 				lerr("queue is full")
 			}
 		case statusUpdate := <-statusUpdates:
+			if statusUpdate.status == statusNotFound {
+				w.notFound(statusUpdate.modelID)
+			}
 			if w.updateStatus(statusUpdate.modelID, statusUpdate.status) {
 				for _, chatID := range w.chatsForModel(statusUpdate.modelID) {
 					w.reportStatus(chatID, statusUpdate.modelID, statusUpdate.status)
@@ -398,31 +438,33 @@ func main() {
 				case "list":
 					w.listModels(u.Message.Chat.ID)
 				case "start", "help":
-					w.send(u.Message.Chat.ID, w.tr(help), false, html)
+					w.send(u.Message.Chat.ID, w.tr(trHelp), false, html)
 				case "donate":
-					w.send(u.Message.Chat.ID, w.tr(donation), false, raw)
+					w.send(u.Message.Chat.ID, w.tr(trDonation), false, raw)
 				case "feedback":
 					w.feedback(u.Message.Chat.ID, u.Message.CommandArguments())
 				case "stat":
 					if u.Message.Chat.ID != w.cfg.AdminID {
-						w.send(u.Message.Chat.ID, w.tr(unknownCommand), false, raw)
+						w.send(u.Message.Chat.ID, w.tr(trUnknownCommand), false, raw)
 						break
 					}
 					w.stat(u.Message.Chat.ID)
 				case "source":
-					w.send(u.Message.Chat.ID, w.tr(sourceCode), false, raw)
+					w.send(u.Message.Chat.ID, w.tr(trSourceCode), false, raw)
 				case "language":
-					w.send(u.Message.Chat.ID, w.tr(languages), false, raw)
+					w.send(u.Message.Chat.ID, w.tr(trLanguages), false, raw)
 				case "broadcast":
 					if u.Message.Chat.ID != w.cfg.AdminID {
-						w.send(u.Message.Chat.ID, w.tr(unknownCommand), false, raw)
+						w.send(u.Message.Chat.ID, w.tr(trUnknownCommand), false, raw)
 						break
 					}
 					w.broadcast(u.Message.CommandArguments())
+				case "version":
+					w.send(u.Message.Chat.ID, w.tr(trVersion, version), false, raw)
 				case "":
-					w.send(u.Message.Chat.ID, w.tr(slash), false, html)
+					w.send(u.Message.Chat.ID, w.tr(trSlash), false, html)
 				default:
-					w.send(u.Message.Chat.ID, w.tr(unknownCommand), false, raw)
+					w.send(u.Message.Chat.ID, w.tr(trUnknownCommand), false, raw)
 				}
 			}
 		}
