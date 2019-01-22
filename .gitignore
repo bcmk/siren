@@ -12,4 +12,5 @@
 *.pem
 *.db
 *.json
+*.log
 .idea/
