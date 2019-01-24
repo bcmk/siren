@@ -3,8 +3,8 @@ Telegram bot notifying you when BongaCams models are online
 
 [Русский](README.md)
 
-[![Build Status](https://travis-ci.org/bcmk/bcb.png)](https://travis-ci.org/bcmk/bcb)
-[![GoReportCard](http://goreportcard.com/badge/bcmk/bcb)](http://goreportcard.com/report/bcmk/bcb)
+[![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
+[![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)
 
 Telegram bot notifies you when your favorite BongaCams models are online.
 Install it by visiting https://t.me/BongacamsOnlineBot.

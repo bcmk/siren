@@ -3,8 +3,8 @@
 
 [English](README.en.md)
 
-[![Build Status](https://travis-ci.org/bcmk/bcb.png)](https://travis-ci.org/bcmk/bcb)
-[![GoReportCard](http://goreportcard.com/badge/bcmk/bcb)](http://goreportcard.com/report/bcmk/bcb)
+[![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
+[![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)
 
 Это бот для Telegram, он сообщит, когда твоя любимая модель появится в сети BongaCams.
 Установите его в Telegram, пройдя по этой ссылке https://t.me/BongacamsSirenBot.
