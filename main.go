@@ -36,13 +36,14 @@ var modelIDRegexp = regexp.MustCompile(`^[a-z0-9\-_]+$`)
 var version = "1.0"
 
 type worker struct {
-	client  *http.Client
-	bot     *tg.BotAPI
-	db      *sql.DB
-	cfg     *config
-	mu      *sync.Mutex
-	elapsed time.Duration
-	lang    []translation
+	client     *http.Client
+	bot        *tg.BotAPI
+	db         *sql.DB
+	cfg        *config
+	mu         *sync.Mutex
+	elapsed    time.Duration
+	lang       []translation
+	checkModel func(modelID string) statusKind
 }
 
 type statusUpdate struct {
@@ -78,7 +79,7 @@ func newWorker() *worker {
 	default:
 		panic("wrong language code")
 	}
-	return &worker{
+	w := &worker{
 		bot:    bot,
 		db:     db,
 		cfg:    cfg,
@@ -86,6 +87,15 @@ func newWorker() *worker {
 		mu:     &sync.Mutex{},
 		lang:   lang,
 	}
+	switch cfg.Website {
+	case "bongacams":
+		w.checkModel = w.checkModelBongacams
+	case "chaturbate":
+		w.checkModel = w.checkModelChaturbate
+	default:
+		panic("wrong website")
+	}
+	return w
 }
 
 func noRedirect(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
@@ -120,27 +130,6 @@ func (w *worker) sendTr(chatID int64, notify bool, key translationKey, args ...i
 	if _, err := w.bot.Send(msg); err != nil {
 		lerr("cannot send a message, %v", err)
 	}
-}
-
-func (w *worker) checkModel(modelID string) statusKind {
-	resp, err := w.client.Get(fmt.Sprintf("https://bongacams.com/%s", modelID))
-	if err != nil {
-		lerr("cannot send a query, %v", err)
-		return statusUnknown
-	}
-	checkErr(resp.Body.Close())
-	if w.cfg.Debug {
-		ldbg("query result for %s: %d", modelID, resp.StatusCode)
-	}
-	switch resp.StatusCode {
-	case 200:
-		return statusOnline
-	case 302:
-		return statusOffline
-	case 404:
-		return statusNotFound
-	}
-	return statusUnknown
 }
 
 func (w *worker) createDatabase() {

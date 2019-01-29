@@ -7,6 +7,7 @@ import (
 )
 
 type config struct {
+	Website           string `json:"website"`
 	ListenPath        string `json:"listen_path"`
 	ListenAddress     string `json:"listen_address"`
 	BotToken          string `json:"bot_token"`
@@ -46,5 +47,6 @@ func checkConfig(cfg *config) bool {
 		cfg.AdminID != 0 &&
 		cfg.DBPath != "" &&
 		cfg.ListenAddress != "" &&
-		cfg.NotFoundThreshold != 0
+		cfg.NotFoundThreshold != 0 &&
+		cfg.Website != ""
 }
