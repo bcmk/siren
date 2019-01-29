@@ -58,7 +58,7 @@ func checkErr(err error) {
 
 func newWorker() *worker {
 	if len(os.Args) != 2 {
-		panic("usage: bonga <config>")
+		panic("usage: siren <config>")
 	}
 	cfg := readConfig(os.Args[1])
 	client := &http.Client{
