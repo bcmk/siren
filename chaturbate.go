@@ -10,7 +10,7 @@ type chaturbateResponse struct {
 }
 
 func (w *worker) checkModelChaturbate(modelID string) statusKind {
-	resp, err := w.client.Get(fmt.Sprintf("https://en.chaturbate.com/api/chatvideocontext/%s", modelID))
+	resp, err := w.client.Get(fmt.Sprintf("https://en.chaturbate.com/api/chatvideocontext/%s/", modelID))
 	if err != nil {
 		lerr("cannot send a query, %v", err)
 		return statusUnknown
