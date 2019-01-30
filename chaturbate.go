@@ -28,7 +28,7 @@ func (w *worker) checkModelChaturbate(modelID string) statusKind {
 	parsed := &chaturbateResponse{}
 	err = decoder.Decode(parsed)
 	if err != nil {
-		linf("cannot parse response for model %s", modelID)
+		linf("cannot parse response for model %s, %v", modelID, err)
 		return statusUnknown
 	}
 	switch parsed.RoomStatus {
