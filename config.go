@@ -28,6 +28,7 @@ func readConfig(path string) *config {
 	checkErr(err)
 	defer func() { checkErr(file.Close()) }()
 	decoder := json.NewDecoder(file)
+	decoder.DisallowUnknownFields()
 	cfg := &config{}
 	err = decoder.Decode(cfg)
 	checkErr(err)
