@@ -1,12 +1,12 @@
-Telegram bot notifying you when BongaCams models are online
-===========================================================
+Telegram bot notifying you when BongaCams and Chaturbate models are online
+==========================================================================
 
 [Русский](README.md)
 
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
 [![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)
 
-Telegram bot notifies you when your favorite BongaCams models are online.
+Telegram bot notifies you when your favorite BongaCams or Chaturbate models are online.
 The bot queries models statuses every minute.
 
 Installation
