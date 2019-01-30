@@ -1,5 +1,6 @@
 #!/bin/bash
 conf=$1
 domain=$2
-curl -F "url=https://$domain/$(jq -r '.bot_token' $conf)" -F "certificate=@$(jq -r '.certificate' $conf)" "https://api.telegram.org/bot$(jq -r '.bot_token' $conf)/setWebhook"
+certificate=$3
+curl -F "url=https://$domain/$(jq -r '.bot_token' $conf)" -F "certificate=@$certificate" "https://api.telegram.org/bot$(jq -r '.bot_token' $conf)/setWebhook"
 echo
