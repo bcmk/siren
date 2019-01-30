@@ -15,11 +15,11 @@ type config struct {
 	MaxModels         int    `json:"max_models"`
 	TimeoutSeconds    int    `json:"timeout_seconds"`
 	AdminID           int64  `json:"admin_id"`
-	LanguageCode      string `json:"language_code"`
 	DBPath            string `json:"db_path"`
 	Certificate       string `json:"certificate"` // omit if under a proxy
 	Key               string `json:"key"`         // omit if under a proxy
 	NotFoundThreshold int    `json:"not_found_threshold"`
+	Translations      string `json:"translations"`
 	Debug             bool   `json:"debug"`
 }
 
@@ -48,5 +48,6 @@ func checkConfig(cfg *config) bool {
 		cfg.DBPath != "" &&
 		cfg.ListenAddress != "" &&
 		cfg.NotFoundThreshold != 0 &&
-		cfg.Website != ""
+		cfg.Website != "" &&
+		cfg.Translations != ""
 }

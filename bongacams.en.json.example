@@ -1,0 +1,90 @@
+{
+    "help": {
+        "str": "The bot notifies you when your favorite BongaCams models are online.\n\nCommands\n\n<b>add</b> <i>model ID</i> — Add model\n<b>remove</b> <i>model ID</i> — Remove model\n<b>list</b> — Subscriptions list\n<b>donate</b> — Donation instructions\n<b>feedback</b> <i>text</i> — Send feedback\n<b>source</b> — Show source code\n<b>language</b> — This bot in other languages\n<b>help</b> — Command list\n\nYou can find a model ID in an address line of your browser.",
+        "parse": "html"
+    },
+    "online": {
+        "str": "%s online",
+        "parse": "raw"
+    },
+    "offline": {
+        "str": "%s offline",
+        "parse": "raw"
+    },
+    "syntax_add": {
+        "str": "Syntax: /add <i>model ID</i>\nYou can find a model ID in an address line of your browser",
+        "parse": "html"
+    },
+    "syntax_remove": {
+        "str": "Syntax: /remove <i>model ID</i>\nYou can find a model ID in an address line of your browser",
+        "parse": "html"
+    },
+    "syntax_feedback": {
+        "str": "Syntax: /feedback <i>message</i>",
+        "parse": "html"
+    },
+    "invalid_symbols": {
+        "str": "Model ID %s has invalid symbols",
+        "parse": "raw"
+    },
+    "already_added": {
+        "str": "Model %s is already in your list",
+        "parse": "raw"
+    },
+    "max_models": {
+        "str": "You can add no more than %d models",
+        "parse": "raw"
+    },
+    "add_error": {
+        "str": "Could not add a model %s\nCheck a model ID or try later\nSyntax: /add <i>model ID</i>\nYou can find a model ID in an address line of your browser",
+        "parse": "html"
+    },
+    "model_added": {
+        "str": "Model %s added successfully",
+        "parse": "raw"
+    },
+    "model_not_in_list": {
+        "str": "Model %s is not in your list",
+        "parse": "raw"
+    },
+    "model_removed": {
+        "str": "Model %s removed successfully",
+        "parse": "raw"
+    },
+    "donation": {
+        "str": "Donation instructions",
+        "parse": "raw"
+    },
+    "feedback": {
+        "str": "Thank you for your feedback!",
+        "parse": "raw"
+    },
+    "source_code": {
+        "str": "Source code: https://github.com/bcmk/siren",
+        "parse": "raw"
+    },
+    "unknown_command": {
+        "str": "Unknown command",
+        "parse": "raw"
+    },
+    "slash": {
+        "str": "Command looks like this: /<i>command</i>",
+        "parse": "html"
+    },
+    "languages": {
+        "str": "Русский бот: t.me/BongacamsSirenBot",
+        "parse": "raw"
+    },
+    "version": {
+        "str": "Version: %s",
+        "parse": "raw"
+    },
+    "removed": {
+        "str": "Profile of model %s has been removed",
+        "parse": "raw"
+    },
+    "no_models": {
+        "str": "You are not subscribed to any model",
+        "parse": "raw"
+    }
+}

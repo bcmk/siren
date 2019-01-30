@@ -24,6 +24,7 @@ const (
 	statusNotFound
 )
 
+//go:generate jsonenums -type=parseKind
 type parseKind int
 
 const (
@@ -70,22 +71,13 @@ func newWorker() *worker {
 	checkErr(err)
 	db, err := sql.Open("sqlite3", cfg.DBPath)
 	checkErr(err)
-	var tr translations
-	switch cfg.LanguageCode {
-	case "ru":
-		tr = trRu
-	case "en":
-		tr = trEn
-	default:
-		panic("wrong language code")
-	}
 	w := &worker{
 		bot:    bot,
 		db:     db,
 		cfg:    cfg,
 		client: client,
 		mu:     &sync.Mutex{},
-		tr:     tr,
+		tr:     loadTranslations(cfg.Translations),
 	}
 	switch cfg.Website {
 	case "bongacams":
