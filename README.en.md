@@ -7,9 +7,15 @@ Telegram bot notifying you when BongaCams models are online
 [![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)
 
 Telegram bot notifies you when your favorite BongaCams models are online.
-Install it by visiting https://t.me/BongacamsOnlineBot.
-This is English speaking bot. Russian version available here https://t.me/BongacamsSirenBot.
 The bot queries models statuses every minute.
+
+Installation
+------------
+
+* English bot for Bongacams: https://t.me/BongacamsOnlineBot
+* English bot for Chaturbate: https://t.me/ChaturbateAlarmBot
+* Russian bot for Bongacams: https://t.me/BongacamsSirenBot
+* Russian bot for Chaturbate: https://t.me/ChaturbateSirenBot
 
 Commands
 --------

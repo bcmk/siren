@@ -1,15 +1,21 @@
-Бот для оповещения о статусе моделей BongaCams в Telegram
-=========================================================
+Бот для оповещения о статусе моделей BongaCams и Chaturbate в Telegram
+======================================================================
 
 [English](README.en.md)
 
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
 [![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)
 
-Это бот для Telegram, он сообщит, когда твоя любимая модель появится в сети BongaCams.
-Установите его в Telegram, пройдя по этой ссылке https://t.me/BongacamsSirenBot.
-Бот говорит на русском языке, английскую версию можно установить по другой ссылке https://t.me/BongacamsOnlineBot.
+Это бот для Telegram, он сообщит, когда твоя любимая модель появится в сети BongaCams или Chaturbate.
 Опрос статуса моделей происходит раз в минуту.
+
+Установка
+---------
+
+* Русский бот для Bongacams: https://t.me/BongacamsSirenBot
+* Русский бот для Chaturbate: https://t.me/ChaturbateSirenBot
+* Английский бот для Bongacams: https://t.me/BongacamsOnlineBot
+* Английский бот для Chaturbate: https://t.me/ChaturbateAlarmBot
 
 Команды
 -------
