@@ -77,7 +77,7 @@ func newWorker() *worker {
 		cfg:    cfg,
 		client: client,
 		mu:     &sync.Mutex{},
-		tr:     loadTranslations(cfg.Translations),
+		tr:     loadTranslations(cfg.Translation),
 	}
 	switch cfg.Website {
 	case "bongacams":

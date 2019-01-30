@@ -19,7 +19,7 @@ type config struct {
 	Certificate       string `json:"certificate"` // omit if under a proxy
 	Key               string `json:"key"`         // omit if under a proxy
 	NotFoundThreshold int    `json:"not_found_threshold"`
-	Translations      string `json:"translations"`
+	Translation       string `json:"translation"`
 	Debug             bool   `json:"debug"`
 }
 
@@ -50,5 +50,5 @@ func checkConfig(cfg *config) bool {
 		cfg.ListenAddress != "" &&
 		cfg.NotFoundThreshold != 0 &&
 		cfg.Website != "" &&
-		cfg.Translations != ""
+		cfg.Translation != ""
 }
