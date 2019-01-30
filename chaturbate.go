@@ -36,6 +36,10 @@ func (w *worker) checkModelChaturbate(modelID string) statusKind {
 		return statusOnline
 	case "private":
 		return statusOnline
+	case "group":
+		return statusOnline
+	case "away":
+		return statusOffline
 	case "offline":
 		return statusOffline
 	}
