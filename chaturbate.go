@@ -34,6 +34,8 @@ func (w *worker) checkModelChaturbate(modelID string) statusKind {
 	switch parsed.RoomStatus {
 	case "public":
 		return statusOnline
+	case "private":
+		return statusOnline
 	case "offline":
 		return statusOffline
 	}
