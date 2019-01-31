@@ -49,6 +49,6 @@ func (w *worker) checkModelChaturbate(modelID string) statusKind {
 	case "offline":
 		return statusOffline
 	}
-	linf("cannot parse room status for model %s", modelID)
+	linf("cannot parse room status %s for model %s", parsed.RoomStatus, modelID)
 	return statusUnknown
 }
