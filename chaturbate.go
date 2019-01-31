@@ -31,7 +31,11 @@ func (w *worker) checkModelChaturbate(modelID string) statusKind {
 		linf("cannot parse response for model %s, %v", modelID, err)
 		return statusUnknown
 	}
-	switch parsed.RoomStatus {
+	return chaturbateStatus(parsed.RoomStatus)
+}
+
+func chaturbateStatus(roomStatus string) statusKind {
+	switch roomStatus {
 	case "public":
 		return statusOnline
 	case "private":
@@ -49,6 +53,6 @@ func (w *worker) checkModelChaturbate(modelID string) statusKind {
 	case "offline":
 		return statusOffline
 	}
-	linf("cannot parse room status \"%s\" for model %s", parsed.RoomStatus, modelID)
+	linf("cannot parse room status \"%s\"", roomStatus)
 	return statusUnknown
 }
