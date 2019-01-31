@@ -6,6 +6,15 @@ import (
 	"path/filepath"
 )
 
+//go:generate jsonenums -type=parseKind
+type parseKind int
+
+const (
+	raw parseKind = iota
+	html
+	markdown
+)
+
 type translation struct {
 	Str   string    `json:"str"`
 	Parse parseKind `json:"parse"`

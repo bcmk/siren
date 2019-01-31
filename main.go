@@ -24,15 +24,6 @@ const (
 	statusNotFound
 )
 
-//go:generate jsonenums -type=parseKind
-type parseKind int
-
-const (
-	raw parseKind = iota
-	html
-	markdown
-)
-
 var modelIDRegexp = regexp.MustCompile(`^[a-z0-9\-_]+$`)
 var version = "1.0"
 
