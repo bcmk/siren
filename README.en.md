@@ -1,7 +1,7 @@
+__[Русский](README.md)__
+
 Telegram bot notifying you whenever BongaCams and Chaturbate models are online
 ==============================================================================
-
-[Русский](README.md)
 
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
 [![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)

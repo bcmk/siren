@@ -1,7 +1,7 @@
+__[English](README.en.md)__
+
 Бот для оповещения о статусе моделей BongaCams и Chaturbate в Telegram
 ======================================================================
-
-[English](README.en.md)
 
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
 [![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)
