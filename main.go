@@ -389,25 +389,30 @@ func (w *worker) broadcast(text string) {
 	}
 }
 
-// nolint: gocyclo
-func main() {
-	w := newWorker()
+func (w *worker) serve() {
+	var err error
+	if w.cfg.Certificate != "" && w.cfg.Key != "" {
+		err = http.ListenAndServeTLS(w.cfg.ListenAddress, w.cfg.Certificate, w.cfg.Key, nil)
+	} else {
+		err = http.ListenAndServe(w.cfg.ListenAddress, nil)
+	}
+	checkErr(err)
+}
+
+func (w *worker) logConfig() {
 	cfgString, err := json.MarshalIndent(w.cfg, "", "    ")
 	checkErr(err)
 	linf("config: " + string(cfgString))
+}
+
+// nolint: gocyclo
+func main() {
+	w := newWorker()
+	w.logConfig()
 	w.createDatabase()
 
 	incoming := w.bot.ListenForWebhook(w.cfg.ListenPath)
-	go func() {
-		var err error
-		if w.cfg.Certificate != "" && w.cfg.Key != "" {
-			err = http.ListenAndServeTLS(w.cfg.ListenAddress, w.cfg.Certificate, w.cfg.Key, nil)
-		} else {
-			err = http.ListenAndServe(w.cfg.ListenAddress, nil)
-		}
-		checkErr(err)
-	}()
-
+	go w.serve()
 	var periodicTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
 	statusRequests, statusUpdates := w.startChecker()
 	statusRequests <- w.models()
