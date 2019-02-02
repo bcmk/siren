@@ -341,17 +341,17 @@ func (w *worker) listModels(chatID int64) {
 		from statuses inner join signals
 		where statuses.model_id=signals.model_id and signals.chat_id=?`, chatID)
 	checkErr(err)
-	var strs []string
+	var lines []string
 	for models.Next() {
 		var modelID string
 		var status statusKind
 		checkErr(models.Scan(&modelID, &status))
-		strs = append(strs, fmt.Sprintf(w.statusKey(status).Str, modelID))
+		lines = append(lines, fmt.Sprintf(w.statusKey(status).Str, modelID))
 	}
-	if len(strs) == 0 {
-		strs = append(strs, w.tr.NoModels.Str)
+	if len(lines) == 0 {
+		lines = append(lines, w.tr.NoModels.Str)
 	}
-	w.send(chatID, false, raw, strings.Join(strs, "\n"))
+	w.send(chatID, false, raw, strings.Join(lines, "\n"))
 }
 
 func (w *worker) feedback(chatID int64, text string) {
