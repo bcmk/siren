@@ -10,6 +10,7 @@ type chaturbateResponse struct {
 	RoomStatus string `json:"room_status"`
 }
 
+// CheckModelChaturbate checks Chaturbate model status
 func CheckModelChaturbate(client *http.Client, modelID string, dbg bool) StatusKind {
 	resp, err := client.Get(fmt.Sprintf("https://en.chaturbate.com/api/chatvideocontext/%s/", modelID))
 	if err != nil {

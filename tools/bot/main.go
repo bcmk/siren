@@ -23,7 +23,6 @@ var (
 	checkErr = siren.CheckErr
 	lerr     = siren.Lerr
 	linf     = siren.Linf
-	ldbg     = siren.Ldbg
 )
 
 type worker struct {
@@ -78,10 +77,8 @@ func (w *worker) send(chatID int64, notify bool, parse parseKind, text string) {
 	msg := tg.NewMessage(chatID, text)
 	msg.DisableNotification = !notify
 	switch parse {
-	case parseHTML:
-		msg.ParseMode = "html"
-	case parseMarkdown:
-		msg.ParseMode = "markdown"
+	case parseHTML, parseMarkdown:
+		msg.ParseMode = parse.String()
 	}
 	if _, err := w.bot.Send(msg); err != nil {
 		lerr("cannot send a message, %v", err)
@@ -89,19 +86,8 @@ func (w *worker) send(chatID int64, notify bool, parse parseKind, text string) {
 }
 
 func (w *worker) sendTr(chatID int64, notify bool, translation *translation, args ...interface{}) {
-	msg := tg.NewMessage(chatID, fmt.Sprintf(translation.Str, args...))
-	msg.DisableNotification = !notify
-
-	switch translation.Parse {
-	case parseHTML:
-		msg.ParseMode = "html"
-	case parseMarkdown:
-		msg.ParseMode = "markdown"
-	}
-
-	if _, err := w.bot.Send(msg); err != nil {
-		lerr("cannot send a message, %v", err)
-	}
+	text := fmt.Sprintf(translation.Str, args...)
+	w.send(chatID, notify, translation.Parse, text)
 }
 
 func (w *worker) createDatabase() {

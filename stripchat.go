@@ -8,6 +8,7 @@ import (
 	"golang.org/x/net/html"
 )
 
+// CheckModelStripchat checks Stripchat model status
 func CheckModelStripchat(client *http.Client, modelID string, dbg bool) StatusKind {
 	resp, err := client.Get(fmt.Sprintf("https://stripchat.com/%s", modelID))
 	if err != nil {
