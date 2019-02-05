@@ -1,24 +1,27 @@
-package main
+package siren
 
-import "fmt"
+import (
+	"fmt"
+	"net/http"
+)
 
-func (w *worker) checkModelBongacams(modelID string) statusKind {
-	resp, err := w.client.Get(fmt.Sprintf("https://bongacams.com/%s", modelID))
+func CheckModelBongacams(client *http.Client, modelID string, dbg bool) StatusKind {
+	resp, err := client.Get(fmt.Sprintf("https://bongacams.com/%s", modelID))
 	if err != nil {
-		lerr("cannot send a query, %v", err)
-		return statusUnknown
+		Lerr("cannot send a query, %v", err)
+		return StatusUnknown
 	}
-	checkErr(resp.Body.Close())
-	if w.cfg.Debug {
-		ldbg("query status for %s: %d", modelID, resp.StatusCode)
+	CheckErr(resp.Body.Close())
+	if dbg {
+		Ldbg("query status for %s: %d", modelID, resp.StatusCode)
 	}
 	switch resp.StatusCode {
 	case 200:
-		return statusOnline
+		return StatusOnline
 	case 302:
-		return statusOffline
+		return StatusOffline
 	case 404:
-		return statusNotFound
+		return StatusNotFound
 	}
-	return statusUnknown
+	return StatusUnknown
 }

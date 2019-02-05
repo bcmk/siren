@@ -1,58 +1,60 @@
-package main
+package siren
 
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 )
 
 type chaturbateResponse struct {
 	RoomStatus string `json:"room_status"`
 }
 
-func (w *worker) checkModelChaturbate(modelID string) statusKind {
-	resp, err := w.client.Get(fmt.Sprintf("https://en.chaturbate.com/api/chatvideocontext/%s/", modelID))
+func CheckModelChaturbate(client *http.Client, modelID string, dbg bool) StatusKind {
+	resp, err := client.Get(fmt.Sprintf("https://en.chaturbate.com/api/chatvideocontext/%s/", modelID))
 	if err != nil {
-		lerr("cannot send a query, %v", err)
-		return statusUnknown
+		Lerr("cannot send a query, %v", err)
+
+		return StatusUnknown
 	}
 	defer func() {
-		checkErr(resp.Body.Close())
+		CheckErr(resp.Body.Close())
 	}()
-	if w.cfg.Debug {
-		ldbg("query status for %s: %d", modelID, resp.StatusCode)
+	if dbg {
+		Ldbg("query status for %s: %d", modelID, resp.StatusCode)
 	}
 	if resp.StatusCode == 401 {
-		return statusNotFound
+		return StatusNotFound
 	}
 	decoder := json.NewDecoder(resp.Body)
 	parsed := &chaturbateResponse{}
 	err = decoder.Decode(parsed)
 	if err != nil {
-		linf("cannot parse response for model %s, %v", modelID, err)
-		return statusUnknown
+		Linf("cannot parse response for model %s, %v", modelID, err)
+		return StatusUnknown
 	}
 	return chaturbateStatus(parsed.RoomStatus)
 }
 
-func chaturbateStatus(roomStatus string) statusKind {
+func chaturbateStatus(roomStatus string) StatusKind {
 	switch roomStatus {
 	case "public":
-		return statusOnline
+		return StatusOnline
 	case "private":
-		return statusOnline
+		return StatusOnline
 	case "group":
-		return statusOnline
+		return StatusOnline
 	case "hidden":
-		return statusOnline
+		return StatusOnline
 	case "connecting":
-		return statusOnline
+		return StatusOnline
 	case "password protected":
-		return statusOnline
+		return StatusOnline
 	case "away":
-		return statusOffline
+		return StatusOffline
 	case "offline":
-		return statusOffline
+		return StatusOffline
 	}
-	linf("cannot parse room status \"%s\"", roomStatus)
-	return statusUnknown
+	Linf("cannot parse room status \"%s\"", roomStatus)
+	return StatusUnknown
 }

@@ -11,21 +11,20 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bcmk/siren"
 	tg "github.com/bcmk/telegram-bot-api"
 	_ "github.com/mattn/go-sqlite3"
 )
 
-type statusKind int
-
-const (
-	statusUnknown statusKind = iota
-	statusOffline
-	statusOnline
-	statusNotFound
-)
-
 var modelIDRegexp = regexp.MustCompile(`^[a-z0-9\-_]+$`)
 var version = "1.0"
+
+var (
+	checkErr = siren.CheckErr
+	lerr     = siren.Lerr
+	linf     = siren.Linf
+	ldbg     = siren.Ldbg
+)
 
 type worker struct {
 	client     *http.Client
@@ -35,18 +34,12 @@ type worker struct {
 	mu         *sync.Mutex
 	elapsed    time.Duration
 	tr         translations
-	checkModel func(modelID string) statusKind
+	checkModel func(clien *http.Client, modelID string, dbg bool) siren.StatusKind
 }
 
 type statusUpdate struct {
 	modelID string
-	status  statusKind
-}
-
-func checkErr(err error) {
-	if err != nil {
-		panic(err)
-	}
+	status  siren.StatusKind
 }
 
 func newWorker() *worker {
@@ -72,9 +65,9 @@ func newWorker() *worker {
 	}
 	switch cfg.Website {
 	case "bongacams":
-		w.checkModel = w.checkModelBongacams
+		w.checkModel = siren.CheckModelBongacams
 	case "chaturbate":
-		w.checkModel = w.checkModelChaturbate
+		w.checkModel = siren.CheckModelChaturbate
 	default:
 		panic("wrong website")
 	}
@@ -128,14 +121,14 @@ func (w *worker) createDatabase() {
 	checkErr(err)
 }
 
-func (w *worker) updateStatus(modelID string, newStatus statusKind) bool {
-	if newStatus != statusNotFound {
+func (w *worker) updateStatus(modelID string, newStatus siren.StatusKind) bool {
+	if newStatus != siren.StatusNotFound {
 		stmt, err := w.db.Prepare("update statuses set not_found=0 where model_id=?")
 		checkErr(err)
 		_, err = stmt.Exec(modelID)
 		checkErr(err)
 	} else {
-		newStatus = statusOffline
+		newStatus = siren.StatusOffline
 	}
 
 	signalsQuery := w.db.QueryRow("select count(*) from signals where model_id=?", modelID)
@@ -152,7 +145,7 @@ func (w *worker) updateStatus(modelID string, newStatus statusKind) bool {
 		checkErr(err)
 		return true
 	}
-	var oldStatus statusKind
+	var oldStatus siren.StatusKind
 	checkErr(oldStatusQuery.Scan(&oldStatus))
 	checkErr(oldStatusQuery.Close())
 	stmt, err := w.db.Prepare("update statuses set status=? where model_id=?")
@@ -219,18 +212,18 @@ func (w *worker) chats() (chats []int64) {
 	return
 }
 
-func (w *worker) statusKey(status statusKind) *translation {
-	if status == statusOnline {
+func (w *worker) statusKey(status siren.StatusKind) *translation {
+	if status == siren.StatusOnline {
 		return w.tr.Online
 	}
 	return w.tr.Offline
 }
 
-func (w *worker) reportStatus(chatID int64, modelID string, status statusKind) {
+func (w *worker) reportStatus(chatID int64, modelID string, status siren.StatusKind) {
 	switch status {
-	case statusOnline:
+	case siren.StatusOnline:
 		w.sendTr(chatID, true, w.tr.Online, modelID)
-	case statusOffline:
+	case siren.StatusOffline:
 		w.sendTr(chatID, false, w.tr.Offline, modelID)
 	}
 }
@@ -242,8 +235,8 @@ func (w *worker) startChecker() (input chan []string, output chan statusUpdate) 
 		for models := range input {
 			start := time.Now()
 			for _, modelID := range models {
-				newStatus := w.checkModel(modelID)
-				if newStatus != statusUnknown {
+				newStatus := w.checkModel(w.client, modelID, w.cfg.Debug)
+				if newStatus != siren.StatusUnknown {
 					output <- statusUpdate{modelID: modelID, status: newStatus}
 				}
 			}
@@ -293,8 +286,8 @@ func (w *worker) addModel(chatID int64, modelID string) {
 		w.sendTr(chatID, false, w.tr.MaxModels, w.cfg.MaxModels)
 		return
 	}
-	status := w.checkModel(modelID)
-	if status == statusUnknown || status == statusNotFound {
+	status := w.checkModel(w.client, modelID, w.cfg.Debug)
+	if status == siren.StatusUnknown || status == siren.StatusNotFound {
 		w.sendTr(chatID, false, w.tr.AddError, modelID)
 		return
 	}
@@ -344,7 +337,7 @@ func (w *worker) listModels(chatID int64) {
 	var lines []string
 	for models.Next() {
 		var modelID string
-		var status statusKind
+		var status siren.StatusKind
 		checkErr(models.Scan(&modelID, &status))
 		lines = append(lines, fmt.Sprintf(w.statusKey(status).Str, modelID))
 	}
@@ -425,7 +418,7 @@ func main() {
 				lerr("queue is full")
 			}
 		case statusUpdate := <-statusUpdates:
-			if statusUpdate.status == statusNotFound {
+			if statusUpdate.status == siren.StatusNotFound {
 				w.notFound(statusUpdate.modelID)
 			}
 			if w.updateStatus(statusUpdate.modelID, statusUpdate.status) {
