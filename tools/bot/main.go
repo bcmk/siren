@@ -17,7 +17,7 @@ import (
 )
 
 var modelIDRegexp = regexp.MustCompile(`^[a-z0-9\-_]+$`)
-var version = "1.0"
+var version = "2.0"
 
 var (
 	checkErr = siren.CheckErr
