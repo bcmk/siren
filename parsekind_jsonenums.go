@@ -9,15 +9,15 @@ import (
 
 var (
 	_parseKindNameToValue = map[string]parseKind{
-		"raw":      raw,
-		"html":     html,
-		"markdown": markdown,
+		"parseRaw":      parseRaw,
+		"parseHTML":     parseHTML,
+		"parseMarkdown": parseMarkdown,
 	}
 
 	_parseKindValueToName = map[parseKind]string{
-		raw:      "raw",
-		html:     "html",
-		markdown: "markdown",
+		parseRaw:      "parseRaw",
+		parseHTML:     "parseHTML",
+		parseMarkdown: "parseMarkdown",
 	}
 )
 
@@ -25,9 +25,9 @@ func init() {
 	var v parseKind
 	if _, ok := interface{}(v).(fmt.Stringer); ok {
 		_parseKindNameToValue = map[string]parseKind{
-			interface{}(raw).(fmt.Stringer).String():      raw,
-			interface{}(html).(fmt.Stringer).String():     html,
-			interface{}(markdown).(fmt.Stringer).String(): markdown,
+			interface{}(parseRaw).(fmt.Stringer).String():      parseRaw,
+			interface{}(parseHTML).(fmt.Stringer).String():     parseHTML,
+			interface{}(parseMarkdown).(fmt.Stringer).String(): parseMarkdown,
 		}
 	}
 }

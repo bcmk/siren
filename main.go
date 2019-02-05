@@ -87,9 +87,9 @@ func (w *worker) send(chatID int64, notify bool, parse parseKind, text string) {
 	msg := tg.NewMessage(chatID, text)
 	msg.DisableNotification = !notify
 	switch parse {
-	case html:
+	case parseHTML:
 		msg.ParseMode = "html"
-	case markdown:
+	case parseMarkdown:
 		msg.ParseMode = "markdown"
 	}
 	if _, err := w.bot.Send(msg); err != nil {
@@ -102,9 +102,9 @@ func (w *worker) sendTr(chatID int64, notify bool, translation *translation, arg
 	msg.DisableNotification = !notify
 
 	switch translation.Parse {
-	case html:
+	case parseHTML:
 		msg.ParseMode = "html"
-	case markdown:
+	case parseMarkdown:
 		msg.ParseMode = "markdown"
 	}
 
@@ -351,7 +351,7 @@ func (w *worker) listModels(chatID int64) {
 	if len(lines) == 0 {
 		lines = append(lines, w.tr.NoModels.Str)
 	}
-	w.send(chatID, false, raw, strings.Join(lines, "\n"))
+	w.send(chatID, false, parseRaw, strings.Join(lines, "\n"))
 }
 
 func (w *worker) feedback(chatID int64, text string) {
@@ -365,7 +365,7 @@ func (w *worker) feedback(chatID int64, text string) {
 	_, err = stmt.Exec(chatID, text)
 	checkErr(err)
 	w.sendTr(chatID, false, w.tr.Feedback)
-	w.send(w.cfg.AdminID, true, raw, fmt.Sprintf("Feedback: %s", text))
+	w.send(w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Feedback: %s", text))
 }
 
 func (w *worker) stat(chatID int64) {
@@ -376,7 +376,7 @@ func (w *worker) stat(chatID int64) {
 	w.mu.Lock()
 	elapsed := w.elapsed
 	w.mu.Unlock()
-	w.send(chatID, true, raw, fmt.Sprintf("Users: %d\nModels: %d\nQueries duration: %v", usersCount, modelsCount, elapsed))
+	w.send(chatID, true, parseRaw, fmt.Sprintf("Users: %d\nModels: %d\nQueries duration: %v", usersCount, modelsCount, elapsed))
 }
 
 func (w *worker) broadcast(text string) {
@@ -385,7 +385,7 @@ func (w *worker) broadcast(text string) {
 	}
 	chats := w.chats()
 	for _, chatID := range chats {
-		w.send(chatID, true, raw, text)
+		w.send(chatID, true, parseRaw, text)
 	}
 }
 

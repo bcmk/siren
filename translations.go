@@ -10,10 +10,22 @@ import (
 type parseKind int
 
 const (
-	raw parseKind = iota
-	html
-	markdown
+	parseRaw parseKind = iota
+	parseHTML
+	parseMarkdown
 )
+
+func (parse parseKind) String() string {
+	switch parse {
+	case parseRaw:
+		return "raw"
+	case parseHTML:
+		return "html"
+	case parseMarkdown:
+		return "markdown"
+	}
+	return "unknown"
+}
 
 type translation struct {
 	Str   string    `json:"str"`
