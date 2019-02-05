@@ -67,6 +67,8 @@ func newWorker() *worker {
 		w.checkModel = siren.CheckModelBongacams
 	case "chaturbate":
 		w.checkModel = siren.CheckModelChaturbate
+	case "stripchat":
+		w.checkModel = siren.CheckModelStripchat
 	default:
 		panic("wrong website")
 	}
