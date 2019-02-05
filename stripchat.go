@@ -38,7 +38,7 @@ func findOfflineDiv(doc *html.Node) *html.Node {
 	var b *html.Node
 	var find func(*html.Node)
 	find = func(n *html.Node) {
-		if /*n.Type == html.ElementNode &&*/ n.Data == "div" {
+		if n.Type == html.ElementNode && n.Data == "div" {
 			for _, a := range n.Attr {
 				if a.Key == "class" {
 					cs := strings.Split(a.Val, " ")
