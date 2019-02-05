@@ -1,6 +1,9 @@
 package siren
 
-import "log"
+import (
+	"log"
+	"net/http"
+)
 
 type StatusKind int
 
@@ -32,3 +35,5 @@ func CheckErr(err error) {
 		panic(err)
 	}
 }
+
+func NoRedirect(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }

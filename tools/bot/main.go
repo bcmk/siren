@@ -48,7 +48,7 @@ func newWorker() *worker {
 	}
 	cfg := readConfig(os.Args[1])
 	client := &http.Client{
-		CheckRedirect: noRedirect,
+		CheckRedirect: siren.NoRedirect,
 		Timeout:       time.Second * time.Duration(cfg.TimeoutSeconds),
 	}
 	bot, err := tg.NewBotAPIWithClient(cfg.BotToken, client)
@@ -73,8 +73,6 @@ func newWorker() *worker {
 	}
 	return w
 }
-
-func noRedirect(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 
 func (w *worker) send(chatID int64, notify bool, parse parseKind, text string) {
 	msg := tg.NewMessage(chatID, text)
