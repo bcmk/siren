@@ -5,8 +5,8 @@ import (
 	"net/http"
 )
 
-// CheckModelBongacams checks Bongacams model status
-func CheckModelBongacams(client *http.Client, modelID string, dbg bool) StatusKind {
+// CheckModelBongaCams checks Bongacams model status
+func CheckModelBongaCams(client *http.Client, modelID string, dbg bool) StatusKind {
 	resp, err := client.Get(fmt.Sprintf("https://bongacams.com/%s", modelID))
 	if err != nil {
 		Lerr("cannot send a query, %v", err)

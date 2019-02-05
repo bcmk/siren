@@ -64,7 +64,7 @@ func newWorker() *worker {
 	}
 	switch cfg.Website {
 	case "bongacams":
-		w.checkModel = siren.CheckModelBongacams
+		w.checkModel = siren.CheckModelBongaCams
 	case "chaturbate":
 		w.checkModel = siren.CheckModelChaturbate
 	case "stripchat":

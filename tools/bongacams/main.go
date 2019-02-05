@@ -11,5 +11,5 @@ import (
 func main() {
 	modelID := os.Args[1]
 	client := &http.Client{CheckRedirect: siren.NoRedirect}
-	fmt.Println(siren.CheckModelBongacams(client, modelID, false))
+	fmt.Println(siren.CheckModelBongaCams(client, modelID, false))
 }
