@@ -34,26 +34,23 @@ func CheckModelStripchat(client *http.Client, modelID string, dbg bool) StatusKi
 	return StatusOnline
 }
 
-func findOfflineDiv(doc *html.Node) *html.Node {
-	var b *html.Node
-	var find func(*html.Node)
-	find = func(n *html.Node) {
-		if n.Type == html.ElementNode && n.Data == "div" {
-			for _, a := range n.Attr {
-				if a.Key == "class" {
-					cs := strings.Split(a.Val, " ")
-					for _, c := range cs {
-						if c == "status-off" {
-							b = n
-						}
+func findOfflineDiv(node *html.Node) *html.Node {
+	if node.Type == html.ElementNode && node.Data == "div" {
+		for _, a := range node.Attr {
+			if a.Key == "class" {
+				cs := strings.Split(a.Val, " ")
+				for _, c := range cs {
+					if c == "status-off" {
+						return node
 					}
 				}
 			}
 		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			find(c)
+	}
+	for c := node.FirstChild; c != nil; c = c.NextSibling {
+		if n := findOfflineDiv(c); n != nil {
+			return n
 		}
 	}
-	find(doc)
-	return b
+	return nil
 }
