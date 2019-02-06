@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-// CheckModelBongaCams checks Bongacams model status
+// CheckModelBongaCams checks BongaCams model status
 func CheckModelBongaCams(client *http.Client, modelID string, dbg bool) StatusKind {
 	resp, err := client.Get(fmt.Sprintf("https://bongacams.com/%s", modelID))
 	if err != nil {

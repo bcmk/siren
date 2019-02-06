@@ -6,16 +6,18 @@ __[English](README.en.md)__
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
 [![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)
 
-Это бот для Telegram, он сообщит, когда твоя любимая модель появится в сети BongaCams или Chaturbate.
+Это бот для Telegram, он сообщит, когда твоя любимая модель появится в сети BongaCams, Chaturbate или Stripchat.
 Опрос статуса моделей происходит раз в минуту.
 
 Установка
 ---------
 
-* Русский бот для Bongacams: https://t.me/BongacamsSirenBot
+* Русский бот для BongaCams: https://t.me/BongacamsSirenBot
 * Русский бот для Chaturbate: https://t.me/ChaturbateSirenBot
-* Английский бот для Bongacams: https://t.me/BongacamsOnlineBot
+* Русский бот для Stripchat и xHamster Live: https://t.me/StripchatSirenBot
+* Английский бот для BongaCams: https://t.me/BongacamsOnlineBot
 * Английский бот для Chaturbate: https://t.me/ChaturbateAlarmBot
+* Английский бот для Stripchat и xHamster Live: https://t.me/StripchatOnlineBot
 
 Команды
 -------
