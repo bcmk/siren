@@ -15,7 +15,6 @@ func CheckModelChaturbate(client *http.Client, modelID string, dbg bool) StatusK
 	resp, err := client.Get(fmt.Sprintf("https://en.chaturbate.com/api/chatvideocontext/%s/", modelID))
 	if err != nil {
 		Lerr("cannot send a query, %v", err)
-
 		return StatusUnknown
 	}
 	defer func() {
