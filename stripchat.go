@@ -3,10 +3,12 @@ package siren
 import (
 	"fmt"
 	"net/http"
-	"strings"
 
+	"github.com/andybalholm/cascadia"
 	"golang.org/x/net/html"
 )
+
+var offlineDiv = cascadia.MustCompile("div.status-off")
 
 // CheckModelStripchat checks Stripchat model status
 func CheckModelStripchat(client *http.Client, modelID string, dbg bool) StatusKind {
@@ -27,30 +29,9 @@ func CheckModelStripchat(client *http.Client, modelID string, dbg bool) StatusKi
 		return StatusUnknown
 	}
 
-	if findOfflineDiv(doc) != nil {
+	if offlineDiv.MatchFirst(doc) != nil {
 		return StatusOffline
 	}
 
 	return StatusOnline
-}
-
-func findOfflineDiv(node *html.Node) *html.Node {
-	if node.Type == html.ElementNode && node.Data == "div" {
-		for _, a := range node.Attr {
-			if a.Key == "class" {
-				cs := strings.Split(a.Val, " ")
-				for _, c := range cs {
-					if c == "status-off" {
-						return node
-					}
-				}
-			}
-		}
-	}
-	for c := node.FirstChild; c != nil; c = c.NextSibling {
-		if n := findOfflineDiv(c); n != nil {
-			return n
-		}
-	}
-	return nil
 }
