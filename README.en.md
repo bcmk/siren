@@ -13,10 +13,10 @@ Installation
 ------------
 
 * English bot for Chaturbate: https://t.me/ChaturbateAlarmBot
-* English bot for Stripchat: https://t.me/StripchatOnlineBot
+* English bot for Stripchat and xHamster Live: https://t.me/StripchatOnlineBot
 * English bot for BongaCams: https://t.me/BongacamsOnlineBot
 * Russian bot for Chaturbate: https://t.me/ChaturbateSirenBot
-* Russian bot for Stripchat: https://t.me/StripchatSirenBot
+* Russian bot for Stripchat and xHamster Live: https://t.me/StripchatSirenBot
 * Russian bot for BongaCams: https://t.me/BongacamsSirenBot
 
 Commands
