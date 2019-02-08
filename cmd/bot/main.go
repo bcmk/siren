@@ -17,7 +17,7 @@ import (
 )
 
 var modelIDRegexp = regexp.MustCompile(`^[a-z0-9\-_]+$`)
-var version = "2.0"
+var version = "2.1"
 
 var (
 	checkErr = siren.CheckErr
@@ -384,7 +384,50 @@ func (w *worker) logConfig() {
 	linf("config: " + string(cfgString))
 }
 
-// nolint: gocyclo
+func (w *worker) processAdminMessage(chatID int64, command, arguments string) bool {
+	switch command {
+	case "stat":
+		w.stat(chatID)
+		return true
+	case "broadcast":
+		w.broadcast(arguments)
+		return true
+	}
+	return false
+}
+
+func (w *worker) processIncomingMessage(chatID int64, command, arguments string) {
+	linf("command: %s", command)
+	if chatID == w.cfg.AdminID && w.processAdminMessage(chatID, command, arguments) {
+		return
+	}
+
+	switch command {
+	case "add":
+		w.addModel(chatID, arguments)
+	case "remove":
+		w.removeModel(chatID, arguments)
+	case "list":
+		w.listModels(chatID)
+	case "start", "help":
+		w.sendTr(chatID, false, w.tr.Help)
+	case "donate":
+		w.sendTr(chatID, false, w.tr.Donation)
+	case "feedback":
+		w.feedback(chatID, arguments)
+	case "source":
+		w.sendTr(chatID, false, w.tr.SourceCode)
+	case "language":
+		w.sendTr(chatID, false, w.tr.Languages)
+	case "version":
+		w.sendTr(chatID, false, w.tr.Version, version)
+	case "":
+		w.sendTr(chatID, false, w.tr.Slash)
+	default:
+		w.sendTr(chatID, false, w.tr.UnknownCommand)
+	}
+}
+
 func main() {
 	w := newWorker()
 	w.logConfig()
@@ -414,43 +457,7 @@ func main() {
 			}
 		case u := <-incoming:
 			if u.Message != nil && u.Message.Chat != nil {
-				linf("command: %s", u.Message.Command())
-				switch u.Message.Command() {
-				case "add":
-					w.addModel(u.Message.Chat.ID, u.Message.CommandArguments())
-				case "remove":
-					w.removeModel(u.Message.Chat.ID, u.Message.CommandArguments())
-				case "list":
-					w.listModels(u.Message.Chat.ID)
-				case "start", "help":
-					w.sendTr(u.Message.Chat.ID, false, w.tr.Help)
-				case "donate":
-					w.sendTr(u.Message.Chat.ID, false, w.tr.Donation)
-				case "feedback":
-					w.feedback(u.Message.Chat.ID, u.Message.CommandArguments())
-				case "stat":
-					if u.Message.Chat.ID != w.cfg.AdminID {
-						w.sendTr(u.Message.Chat.ID, false, w.tr.UnknownCommand)
-						break
-					}
-					w.stat(u.Message.Chat.ID)
-				case "source":
-					w.sendTr(u.Message.Chat.ID, false, w.tr.SourceCode)
-				case "language":
-					w.sendTr(u.Message.Chat.ID, false, w.tr.Languages)
-				case "broadcast":
-					if u.Message.Chat.ID != w.cfg.AdminID {
-						w.sendTr(u.Message.Chat.ID, false, w.tr.UnknownCommand)
-						break
-					}
-					w.broadcast(u.Message.CommandArguments())
-				case "version":
-					w.sendTr(u.Message.Chat.ID, false, w.tr.Version, version)
-				case "":
-					w.sendTr(u.Message.Chat.ID, false, w.tr.Slash)
-				default:
-					w.sendTr(u.Message.Chat.ID, false, w.tr.UnknownCommand)
-				}
+				w.processIncomingMessage(u.Message.Chat.ID, u.Message.Command(), u.Message.CommandArguments())
 			}
 		}
 	}
