@@ -397,7 +397,7 @@ func (w *worker) processAdminMessage(chatID int64, command, arguments string) bo
 }
 
 func (w *worker) processIncomingMessage(chatID int64, command, arguments string) {
-	linf("command: %s", command)
+	linf("command: %s %s", command, arguments)
 	if chatID == w.cfg.AdminID && w.processAdminMessage(chatID, command, arguments) {
 		return
 	}
