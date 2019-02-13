@@ -1,4 +1,4 @@
-package siren
+package lib
 
 // StatusKind represents a status of a model
 type StatusKind int

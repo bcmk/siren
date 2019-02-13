@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"os"
 
-	lib "github.com/bcmk/siren/lib"
+	"github.com/bcmk/siren/lib"
 )
 
 func main() {

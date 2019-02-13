@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	lib "github.com/bcmk/siren/lib"
+	"github.com/bcmk/siren/lib"
 	tg "github.com/bcmk/telegram-bot-api"
 	_ "github.com/mattn/go-sqlite3"
 )

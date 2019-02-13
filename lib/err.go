@@ -1,4 +1,4 @@
-package siren
+package lib
 
 // CheckErr panics on an error
 func CheckErr(err error) {

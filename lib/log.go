@@ -1,4 +1,4 @@
-package siren
+package lib
 
 import "log"
 
