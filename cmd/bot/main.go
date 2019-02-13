@@ -33,7 +33,7 @@ type worker struct {
 	mu         *sync.Mutex
 	elapsed    time.Duration
 	tr         translations
-	checkModel func(clien *http.Client, modelID string, dbg bool) lib.StatusKind
+	checkModel func(client *http.Client, modelID string, dbg bool) lib.StatusKind
 }
 
 type statusUpdate struct {

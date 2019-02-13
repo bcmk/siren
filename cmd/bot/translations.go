@@ -15,8 +15,8 @@ const (
 	parseMarkdown
 )
 
-func (parse parseKind) String() string {
-	switch parse {
+func (r parseKind) String() string {
+	switch r {
 	case parseRaw:
 		return "raw"
 	case parseHTML:
