@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/bcmk/siren"
+	lib "github.com/bcmk/siren/lib"
 )
 
 func main() {
 	modelID := os.Args[1]
-	client := &http.Client{CheckRedirect: siren.NoRedirect}
-	fmt.Println(siren.CheckModelChaturbate(client, modelID, false))
+	client := &http.Client{CheckRedirect: lib.NoRedirect}
+	fmt.Println(lib.CheckModelChaturbate(client, modelID, false))
 }
