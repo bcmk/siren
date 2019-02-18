@@ -25,7 +25,7 @@ func CheckModelStripchat(client *http.Client, modelID string, dbg bool) StatusKi
 	}
 	doc, err := html.Parse(resp.Body)
 	if err != nil {
-		Linf("cannot parse body for model %s, %v", modelID, err)
+		Lerr("cannot parse body for model %s, %v", modelID, err)
 		return StatusUnknown
 	}
 

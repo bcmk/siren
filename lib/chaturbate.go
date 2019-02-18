@@ -30,7 +30,7 @@ func CheckModelChaturbate(client *http.Client, modelID string, dbg bool) StatusK
 	parsed := &chaturbateResponse{}
 	err = decoder.Decode(parsed)
 	if err != nil {
-		Linf("cannot parse response for model %s, %v", modelID, err)
+		Lerr("cannot parse response for model %s, %v", modelID, err)
 		return StatusUnknown
 	}
 	return chaturbateStatus(parsed.RoomStatus)
@@ -55,6 +55,6 @@ func chaturbateStatus(roomStatus string) StatusKind {
 	case "offline":
 		return StatusOffline
 	}
-	Linf("cannot parse room status \"%s\"", roomStatus)
+	Lerr("cannot parse room status \"%s\"", roomStatus)
 	return StatusUnknown
 }
