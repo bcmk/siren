@@ -38,7 +38,6 @@ func readConfig(path string) *config {
 	return cfg
 }
 
-// nolint: gocyclo
 func checkConfig(cfg *config) bool {
 	return true &&
 		cfg.ListenPath != "" &&
