@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -16,7 +15,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-var modelIDRegexp = regexp.MustCompile(`^[a-z0-9\-_]+$`)
 var version = "2.1"
 
 var (
@@ -259,7 +257,7 @@ func (w *worker) addModel(chatID int64, modelID string) {
 		return
 	}
 	modelID = strings.ToLower(modelID)
-	if !modelIDRegexp.MatchString(modelID) {
+	if !lib.ModelIDRegexp.MatchString(modelID) {
 		w.sendTr(chatID, false, w.tr.InvalidSymbols, modelID)
 		return
 	}
@@ -292,7 +290,7 @@ func (w *worker) removeModel(chatID int64, modelID string) {
 		return
 	}
 	modelID = strings.ToLower(modelID)
-	if !modelIDRegexp.MatchString(modelID) {
+	if !lib.ModelIDRegexp.MatchString(modelID) {
 		w.sendTr(chatID, false, w.tr.InvalidSymbols, modelID)
 		return
 	}
