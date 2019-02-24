@@ -53,7 +53,7 @@ type translations struct {
 	Slash          *translation `json:"slash"`
 	Languages      *translation `json:"languages"`
 	Version        *translation `json:"version"`
-	Removed        *translation `json:"removed"`
+	ProfileRemoved *translation `json:"profile_removed"`
 	NoModels       *translation `json:"no_models"`
 }
 

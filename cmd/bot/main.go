@@ -158,7 +158,7 @@ func (w *worker) notFound(modelID string) {
 		checkErr(err)
 		w.cleanStatuses()
 		for _, chatID := range chats {
-			w.sendTr(chatID, false, w.tr.Removed, modelID)
+			w.sendTr(chatID, false, w.tr.ProfileRemoved, modelID)
 		}
 	}
 }
