@@ -33,6 +33,14 @@ Commands
 
 You can find a model ID in an address line of your browser.
 
+Running your own bot
+--------------------
+
+You need JSON configuration and JSON translation files.
+A configuration is described in [config.go](cmd/bot/config.go).
+An example of translation is in [bongacams-translation.json.example](strings/bongacams-translation.json.example).
+Build cmd/bot. Run this executable with a path to config file as an argument.
+
 Donations
 ---------
 

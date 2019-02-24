@@ -7,20 +7,20 @@ import (
 )
 
 type config struct {
-	Website           string `json:"website"`
-	ListenPath        string `json:"listen_path"`
-	ListenAddress     string `json:"listen_address"`
-	BotToken          string `json:"bot_token"`
-	PeriodSeconds     int    `json:"period_seconds"`
-	MaxModels         int    `json:"max_models"`
-	TimeoutSeconds    int    `json:"timeout_seconds"`
-	AdminID           int64  `json:"admin_id"`
-	DBPath            string `json:"db_path"`
-	Certificate       string `json:"certificate"` // omit if under a proxy
-	Key               string `json:"key"`         // omit if under a proxy
-	NotFoundThreshold int    `json:"not_found_threshold"`
-	Translation       string `json:"translation"`
-	Debug             bool   `json:"debug"`
+	Website           string `json:"website"`             // one of the following: bongacams, stripchat, chaturbate
+	ListenPath        string `json:"listen_path"`         // the path excluding domain to listen to, the good choice is /your-telegram-bot-token
+	ListenAddress     string `json:"listen_address"`      // the address to listen to
+	BotToken          string `json:"bot_token"`           // your telegram bot token
+	PeriodSeconds     int    `json:"period_seconds"`      // the period of querying models statuses
+	MaxModels         int    `json:"max_models"`          // maximum models per user
+	TimeoutSeconds    int    `json:"timeout_seconds"`     // HTTP timeout
+	AdminID           int64  `json:"admin_id"`            // your telegram ID
+	DBPath            string `json:"db_path"`             // path to database
+	Certificate       string `json:"certificate"`         // your certificate, omit if under a proxy
+	Key               string `json:"key"`                 // your key, omit if under a proxy
+	NotFoundThreshold int    `json:"not_found_threshold"` // remove a model after a failure to find her this number of times
+	Translation       string `json:"translation"`         // translation strings
+	Debug             bool   `json:"debug"`               // debug mode
 }
 
 func readConfig(path string) *config {
