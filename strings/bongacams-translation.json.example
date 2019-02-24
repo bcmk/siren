@@ -79,8 +79,8 @@
         "str": "Version: %s",
         "parse": "raw"
     },
-    "removed": {
-        "str": "Profile of model %s has been removed",
+    "profile_removed": {
+        "str": "Model %s probably has removed her profile",
         "parse": "raw"
     },
     "no_models": {
