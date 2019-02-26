@@ -36,9 +36,18 @@ You can find a model ID in an address line of your browser.
 Running your own bot
 --------------------
 
+You need to setup your bot using [@BotFather](https://telegram.me/BotFather) bot.
+
+You need a certificate and a key for your bot.
+You can build them using the script [buildkeys](scripts/buildkeys).
+
+The bot uses [webhooks](https://core.telegram.org/bots/webhooks) to receive updates.
+You can find the script to setup a webhook for your bot at [setwebhook](scripts/setwebhook).
+
 You need JSON configuration and JSON translation files.
 A configuration is described in [config.go](cmd/bot/config.go).
 An example of translation is in [bongacams-translation.json.example](strings/bongacams-translation.json.example).
+
 Build cmd/bot. Run this executable with a path to config file as an argument.
 
 Donations
