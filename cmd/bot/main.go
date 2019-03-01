@@ -81,7 +81,16 @@ func (w *worker) send(chatID int64, notify bool, parse parseKind, text string) {
 		msg.ParseMode = parse.String()
 	}
 	if _, err := w.bot.Send(msg); err != nil {
-		lerr("cannot send a message, %v", err)
+		switch err := err.(type) {
+		case tg.Error:
+			if err.Code == 403 {
+				lerr("bot is blocked by user, %v", err)
+			} else {
+				lerr("cannot send a message, %v", err)
+			}
+		default:
+			lerr("cannot send a message, %v", err)
+		}
 	}
 }
 
