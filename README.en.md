@@ -36,7 +36,7 @@ You can find a model ID in an address line of your browser.
 Running your own bot
 --------------------
 
-Setup your bot using [@BotFather](https://telegram.me/BotFather) bot.
+Create and setup your bot using [@BotFather](https://telegram.me/BotFather) bot.
 
 You need a certificate and a key for your bot.
 You can build them using the script [buildkeys](scripts/buildkeys).
