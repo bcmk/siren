@@ -84,7 +84,7 @@ func (w *worker) send(chatID int64, notify bool, parse parseKind, text string) {
 		switch err := err.(type) {
 		case tg.Error:
 			if err.Code == 403 {
-				lerr("bot is blocked by user, %v", err)
+				lerr("bot is blocked by the user, %v", err)
 			} else {
 				lerr("cannot send a message, %v", err)
 			}
