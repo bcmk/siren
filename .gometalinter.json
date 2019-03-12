@@ -1,4 +1,4 @@
 {
     "Cyclo": 15,
-    "Enable": ["misspell", "safesql"]
+    "Enable": ["misspell"]
 }

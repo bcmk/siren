@@ -21,22 +21,24 @@ var (
 	checkErr = lib.CheckErr
 	lerr     = lib.Lerr
 	linf     = lib.Linf
+	ldbg     = lib.Ldbg
 )
-
-type worker struct {
-	client     *http.Client
-	bot        *tg.BotAPI
-	db         *sql.DB
-	cfg        *config
-	mu         *sync.Mutex
-	elapsed    time.Duration
-	tr         translations
-	checkModel func(client *http.Client, modelID string, dbg bool) lib.StatusKind
-}
 
 type statusUpdate struct {
 	modelID string
 	status  lib.StatusKind
+}
+
+type worker struct {
+	client        *http.Client
+	bot           *tg.BotAPI
+	db            *sql.DB
+	cfg           *config
+	mu            *sync.Mutex
+	elapsed       time.Duration
+	tr            translations
+	checkModel    func(client *http.Client, modelID string, dbg bool) lib.StatusKind
+	sendTGMessage func(msg tg.Chattable) (tg.Message, error)
 }
 
 func newWorker() *worker {
@@ -53,12 +55,13 @@ func newWorker() *worker {
 	db, err := sql.Open("sqlite3", cfg.DBPath)
 	checkErr(err)
 	w := &worker{
-		bot:    bot,
-		db:     db,
-		cfg:    cfg,
-		client: client,
-		mu:     &sync.Mutex{},
-		tr:     loadTranslations(cfg.Translation),
+		bot:           bot,
+		db:            db,
+		cfg:           cfg,
+		client:        client,
+		mu:            &sync.Mutex{},
+		tr:            loadTranslations(cfg.Translation),
+		sendTGMessage: bot.Send,
 	}
 	switch cfg.Website {
 	case "bongacams":
@@ -73,6 +76,21 @@ func newWorker() *worker {
 	return w
 }
 
+func (w *worker) mustExec(query string, args ...interface{}) {
+	stmt, err := w.db.Prepare(query)
+	checkErr(err)
+	_, err = stmt.Exec(args...)
+	checkErr(err)
+}
+
+func (w *worker) incrementBlock(chatID int64) {
+	w.mustExec("update users set block=block+1 where chat_id=?", chatID)
+}
+
+func (w *worker) resetBlock(chatID int64) {
+	w.mustExec("update users set block=0 where chat_id=?", chatID)
+}
+
 func (w *worker) send(chatID int64, notify bool, parse parseKind, text string) {
 	msg := tg.NewMessage(chatID, text)
 	msg.DisableNotification = !notify
@@ -80,17 +98,23 @@ func (w *worker) send(chatID int64, notify bool, parse parseKind, text string) {
 	case parseHTML, parseMarkdown:
 		msg.ParseMode = parse.String()
 	}
-	if _, err := w.bot.Send(msg); err != nil {
+	if _, err := w.sendTGMessage(msg); err != nil {
 		switch err := err.(type) {
 		case tg.Error:
 			if err.Code == 403 {
 				lerr("bot is blocked by the user %d, %v", chatID, err)
+				w.incrementBlock(chatID)
 			} else {
-				lerr("cannot send a message, %v", err)
+				lerr("cannot send a message to %d, code %d, %v", chatID, err.Code, err)
 			}
 		default:
-			lerr("cannot send a message, %v", err)
+			lerr("cannot send a message to %d, %v", chatID, err)
 		}
+	} else {
+		if w.cfg.Debug {
+			ldbg("message sent to %d", chatID)
+		}
+		w.resetBlock(chatID)
 	}
 }
 
@@ -100,26 +124,15 @@ func (w *worker) sendTr(chatID int64, notify bool, translation *translation, arg
 }
 
 func (w *worker) createDatabase() {
-	stmt, err := w.db.Prepare("create table if not exists signals (chat_id integer, model_id text);")
-	checkErr(err)
-	_, err = stmt.Exec()
-	checkErr(err)
-	stmt, err = w.db.Prepare("create table if not exists statuses (model_id text, status integer, not_found integer not null default 0);")
-	checkErr(err)
-	_, err = stmt.Exec()
-	checkErr(err)
-	stmt, err = w.db.Prepare("create table if not exists feedback (chat_id integer, text text);")
-	checkErr(err)
-	_, err = stmt.Exec()
-	checkErr(err)
+	w.mustExec("create table if not exists signals (chat_id integer, model_id text);")
+	w.mustExec("create table if not exists statuses (model_id text, status integer, not_found integer not null default 0);")
+	w.mustExec("create table if not exists feedback (chat_id integer, text text);")
+	w.mustExec("create table if not exists users (chat_id integer primary key, block integer not null default 0);")
 }
 
 func (w *worker) updateStatus(modelID string, newStatus lib.StatusKind) bool {
 	if newStatus != lib.StatusNotFound {
-		stmt, err := w.db.Prepare("update statuses set not_found=0 where model_id=?")
-		checkErr(err)
-		_, err = stmt.Exec(modelID)
-		checkErr(err)
+		w.mustExec("update statuses set not_found=0 where model_id=?", modelID)
 	} else {
 		newStatus = lib.StatusOffline
 	}
@@ -131,20 +144,13 @@ func (w *worker) updateStatus(modelID string, newStatus lib.StatusKind) bool {
 	oldStatusQuery, err := w.db.Query("select status from statuses where model_id=?", modelID)
 	checkErr(err)
 	if !oldStatusQuery.Next() {
-		var stmt *sql.Stmt
-		stmt, err = w.db.Prepare("insert into statuses (model_id, status) values (?,?)")
-		checkErr(err)
-		_, err = stmt.Exec(modelID, newStatus)
-		checkErr(err)
+		w.mustExec("insert into statuses (model_id, status) values (?,?)", modelID, newStatus)
 		return true
 	}
 	var oldStatus lib.StatusKind
 	checkErr(oldStatusQuery.Scan(&oldStatus))
 	checkErr(oldStatusQuery.Close())
-	stmt, err := w.db.Prepare("update statuses set status=? where model_id=?")
-	checkErr(err)
-	_, err = stmt.Exec(newStatus, modelID)
-	checkErr(err)
+	w.mustExec("update statuses set status=? where model_id=?", newStatus, modelID)
 	return oldStatus != newStatus
 }
 
@@ -154,17 +160,11 @@ func (w *worker) notFound(modelID string) {
 	if singleInt(exists) == 0 {
 		return
 	}
-	stmt, err := w.db.Prepare("update statuses set not_found=not_found+1 where model_id=?")
-	checkErr(err)
-	_, err = stmt.Exec(modelID)
-	checkErr(err)
+	w.mustExec("update statuses set not_found=not_found+1 where model_id=?", modelID)
 	notFound := w.db.QueryRow("select not_found from statuses where model_id=?", modelID)
 	if singleInt(notFound) > w.cfg.NotFoundThreshold {
 		chats := w.chatsForModel(modelID)
-		stmt, err := w.db.Prepare("delete from signals where model_id=?")
-		checkErr(err)
-		_, err = stmt.Exec(modelID)
-		checkErr(err)
+		w.mustExec("delete from signals where model_id=?", modelID)
 		w.cleanStatuses()
 		for _, chatID := range chats {
 			w.sendTr(chatID, false, w.tr.ProfileRemoved, modelID)
@@ -173,7 +173,9 @@ func (w *worker) notFound(modelID string) {
 }
 
 func (w *worker) models() (models []string) {
-	modelsQuery, err := w.db.Query("select distinct model_id from signals")
+	modelsQuery, err := w.db.Query(
+		"select distinct model_id from signals left join users on signals.chat_id=users.chat_id where users.block is null or users.block<?",
+		w.cfg.BlockThreshold)
 	checkErr(err)
 	for modelsQuery.Next() {
 		var modelID string
@@ -184,7 +186,10 @@ func (w *worker) models() (models []string) {
 }
 
 func (w *worker) chatsForModel(modelID string) (chats []int64) {
-	chatsQuery, err := w.db.Query("select chat_id from signals where model_id=?", modelID)
+	chatsQuery, err := w.db.Query(
+		"select signals.chat_id from signals left join users on signals.chat_id=users.chat_id where signals.model_id=? and (users.block is null or users.block<?)",
+		modelID,
+		w.cfg.BlockThreshold)
 	checkErr(err)
 	for chatsQuery.Next() {
 		var chatID int64
@@ -194,8 +199,10 @@ func (w *worker) chatsForModel(modelID string) (chats []int64) {
 	return
 }
 
-func (w *worker) chats() (chats []int64) {
-	chatsQuery, err := w.db.Query("select distinct chat_id from signals")
+func (w *worker) broadcastChats() (chats []int64) {
+	chatsQuery, err := w.db.Query(
+		"select distinct signals.chat_id from signals left join users on signals.chat_id=users.chat_id where users.block is null or users.block<?",
+		w.cfg.BlockThreshold)
 	checkErr(err)
 	for chatsQuery.Next() {
 		var chatID int64
@@ -284,10 +291,7 @@ func (w *worker) addModel(chatID int64, modelID string) {
 		w.sendTr(chatID, false, w.tr.AddError, modelID)
 		return
 	}
-	stmt, err := w.db.Prepare("insert into signals (chat_id, model_id) values (?,?)")
-	checkErr(err)
-	_, err = stmt.Exec(chatID, modelID)
-	checkErr(err)
+	w.mustExec("insert into signals (chat_id, model_id) values (?,?)", chatID, modelID)
 	w.updateStatus(modelID, status)
 	w.sendTr(chatID, false, w.tr.ModelAdded, modelID)
 	w.reportStatus(chatID, modelID, status)
@@ -307,19 +311,13 @@ func (w *worker) removeModel(chatID int64, modelID string) {
 		w.sendTr(chatID, false, w.tr.ModelNotInList, modelID)
 		return
 	}
-	stmt, err := w.db.Prepare("delete from signals where chat_id=? and model_id=?")
-	checkErr(err)
-	_, err = stmt.Exec(chatID, modelID)
-	checkErr(err)
+	w.mustExec("delete from signals where chat_id=? and model_id=?", chatID, modelID)
 	w.cleanStatuses()
 	w.sendTr(chatID, false, w.tr.ModelRemoved, modelID)
 }
 
 func (w *worker) cleanStatuses() {
-	stmt, err := w.db.Prepare("delete from statuses where not exists(select * from signals where signals.model_id=statuses.model_id);")
-	checkErr(err)
-	_, err = stmt.Exec()
-	checkErr(err)
+	w.mustExec("delete from statuses where not exists(select * from signals where signals.model_id=statuses.model_id);")
 }
 
 func (w *worker) listModels(chatID int64) {
@@ -346,10 +344,7 @@ func (w *worker) feedback(chatID int64, text string) {
 		return
 	}
 
-	stmt, err := w.db.Prepare("insert into feedback (chat_id, text) values (?, ?)")
-	checkErr(err)
-	_, err = stmt.Exec(chatID, text)
-	checkErr(err)
+	w.mustExec("insert into feedback (chat_id, text) values (?, ?)", chatID, text)
 	w.sendTr(chatID, false, w.tr.Feedback)
 	w.send(w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Feedback: %s", text))
 }
@@ -369,7 +364,10 @@ func (w *worker) broadcast(text string) {
 	if text == "" {
 		return
 	}
-	chats := w.chats()
+	if w.cfg.Debug {
+		ldbg("broadcasting")
+	}
+	chats := w.broadcastChats()
 	for _, chatID := range chats {
 		w.send(chatID, true, parseRaw, text)
 	}
@@ -404,6 +402,10 @@ func (w *worker) processAdminMessage(chatID int64, command, arguments string) bo
 }
 
 func (w *worker) processIncomingMessage(chatID int64, command, arguments string) {
+	if command != "" {
+		w.mustExec("insert or ignore into users (chat_id) values (?)", chatID)
+	}
+
 	linf("command: %s %s", command, arguments)
 	if chatID == w.cfg.AdminID && w.processAdminMessage(chatID, command, arguments) {
 		return
@@ -451,13 +453,16 @@ func main() {
 			select {
 			case statusRequests <- w.models():
 			default:
-				lerr("queue is full")
+				lerr("the queue is full")
 			}
 		case statusUpdate := <-statusUpdates:
 			if statusUpdate.status == lib.StatusNotFound {
 				w.notFound(statusUpdate.modelID)
 			}
 			if w.updateStatus(statusUpdate.modelID, statusUpdate.status) {
+				if w.cfg.Debug {
+					ldbg("reporting status of the model %s", statusUpdate.modelID)
+				}
 				for _, chatID := range w.chatsForModel(statusUpdate.modelID) {
 					w.reportStatus(chatID, statusUpdate.modelID, statusUpdate.status)
 				}
