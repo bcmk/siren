@@ -84,6 +84,7 @@ func (w *worker) mustExec(query string, args ...interface{}) {
 }
 
 func (w *worker) incrementBlock(chatID int64) {
+	w.mustExec("insert or ignore into users (chat_id, block) values (?,?)", chatID, 0)
 	w.mustExec("update users set block=block+1 where chat_id=?", chatID)
 }
 

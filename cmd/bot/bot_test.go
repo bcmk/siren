@@ -58,4 +58,10 @@ func TestSql(t *testing.T) {
 	if singleInt(block) != 0 {
 		t.Error("unexpected block for model result", chatsForModel)
 	}
+	w.incrementBlock(1)
+	w.incrementBlock(1)
+	block = w.db.QueryRow("select block from users where chat_id=?", 1)
+	if singleInt(block) != 2 {
+		t.Error("unexpected block for model result", chatsForModel)
+	}
 }
