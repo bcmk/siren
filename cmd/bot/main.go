@@ -403,9 +403,7 @@ func (w *worker) processAdminMessage(chatID int64, command, arguments string) bo
 }
 
 func (w *worker) processIncomingMessage(chatID int64, command, arguments string) {
-	if command != "" {
-		w.mustExec("insert or ignore into users (chat_id) values (?)", chatID)
-	}
+	w.resetBlock(chatID)
 
 	linf("command: %s %s", command, arguments)
 	if chatID == w.cfg.AdminID && w.processAdminMessage(chatID, command, arguments) {
