@@ -175,7 +175,10 @@ func (w *worker) notFound(modelID string) {
 
 func (w *worker) models() (models []string) {
 	modelsQuery, err := w.db.Query(
-		"select distinct model_id from signals left join users on signals.chat_id=users.chat_id where users.block is null or users.block<?",
+		`select distinct model_id from signals left join users
+		on signals.chat_id=users.chat_id
+		where users.block is null or users.block<?
+		order by model_id`,
 		w.cfg.BlockThreshold)
 	checkErr(err)
 	for modelsQuery.Next() {
@@ -188,7 +191,10 @@ func (w *worker) models() (models []string) {
 
 func (w *worker) chatsForModel(modelID string) (chats []int64) {
 	chatsQuery, err := w.db.Query(
-		"select signals.chat_id from signals left join users on signals.chat_id=users.chat_id where signals.model_id=? and (users.block is null or users.block<?)",
+		`select signals.chat_id from signals left join users
+		on signals.chat_id=users.chat_id
+		where signals.model_id=? and (users.block is null or users.block<?)
+		order by signals.chat_id`,
 		modelID,
 		w.cfg.BlockThreshold)
 	checkErr(err)
@@ -202,7 +208,10 @@ func (w *worker) chatsForModel(modelID string) (chats []int64) {
 
 func (w *worker) broadcastChats() (chats []int64) {
 	chatsQuery, err := w.db.Query(
-		"select distinct signals.chat_id from signals left join users on signals.chat_id=users.chat_id where users.block is null or users.block<?",
+		`select distinct signals.chat_id from signals left join users
+		on signals.chat_id=users.chat_id
+		where users.block is null or users.block<?
+		order by signals.chat_id`,
 		w.cfg.BlockThreshold)
 	checkErr(err)
 	for chatsQuery.Next() {
@@ -211,6 +220,23 @@ func (w *worker) broadcastChats() (chats []int64) {
 		chats = append(chats, chatID)
 	}
 	return
+}
+
+func (w *worker) statusesForChat(chatID int64) []statusUpdate {
+	models, err := w.db.Query(`select statuses.model_id, statuses.status
+		from statuses inner join signals
+		on statuses.model_id=signals.model_id
+		where signals.chat_id=?
+		order by statuses.model_id`, chatID)
+	checkErr(err)
+	var statuses []statusUpdate
+	for models.Next() {
+		var modelID string
+		var status lib.StatusKind
+		checkErr(models.Scan(&modelID, &status))
+		statuses = append(statuses, statusUpdate{modelID: modelID, status: status})
+	}
+	return statuses
 }
 
 func (w *worker) statusKey(status lib.StatusKind) *translation {
@@ -322,16 +348,10 @@ func (w *worker) cleanStatuses() {
 }
 
 func (w *worker) listModels(chatID int64) {
-	models, err := w.db.Query(`select statuses.model_id, statuses.status
-		from statuses inner join signals
-		where statuses.model_id=signals.model_id and signals.chat_id=?`, chatID)
-	checkErr(err)
+	statuses := w.statusesForChat(chatID)
 	var lines []string
-	for models.Next() {
-		var modelID string
-		var status lib.StatusKind
-		checkErr(models.Scan(&modelID, &status))
-		lines = append(lines, fmt.Sprintf(w.statusKey(status).Str, modelID))
+	for _, s := range statuses {
+		lines = append(lines, fmt.Sprintf(w.statusKey(s.status).Str, s.modelID))
 	}
 	if len(lines) == 0 {
 		lines = append(lines, w.tr.NoModels.Str)
