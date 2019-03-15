@@ -343,6 +343,12 @@ func (w *worker) removeModel(chatID int64, modelID string) {
 	w.sendTr(chatID, false, w.tr.ModelRemoved, modelID)
 }
 
+func (w *worker) sureRemoveAll(chatID int64) {
+	w.mustExec("delete from signals where chat_id=?", chatID)
+	w.cleanStatuses()
+	w.sendTr(chatID, false, w.tr.AllModelsRemoved)
+}
+
 func (w *worker) cleanStatuses() {
 	w.mustExec("delete from statuses where not exists(select * from signals where signals.model_id=statuses.model_id);")
 }
@@ -449,6 +455,10 @@ func (w *worker) processIncomingMessage(chatID int64, command, arguments string)
 		w.sendTr(chatID, false, w.tr.Languages)
 	case "version":
 		w.sendTr(chatID, false, w.tr.Version, version)
+	case "remove_all":
+		w.sendTr(chatID, false, w.tr.RemoveAll)
+	case "sure_remove_all":
+		w.sureRemoveAll(chatID)
 	case "":
 		w.sendTr(chatID, false, w.tr.Slash)
 	default:

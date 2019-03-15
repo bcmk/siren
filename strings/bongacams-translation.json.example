@@ -1,6 +1,6 @@
 {
     "help": {
-        "str": "The bot notifies you whenever your favorite BongaCams models are online.\n\nCommands\n\n<b>add</b> <i>model ID</i> — Add model\n<b>remove</b> <i>model ID</i> — Remove model\n<b>list</b> — Subscriptions list\n<b>donate</b> — Donation instructions\n<b>feedback</b> <i>text</i> — Send feedback\n<b>source</b> — Show source code\n<b>language</b> — This bot in other languages\n<b>help</b> — Command list\n\nYou can find a model ID in an address line of your browser.",
+        "str": "The bot notifies you whenever your favorite BongaCams models are online.\n\nCommands\n\n<b>add</b> <i>model ID</i> — Add model\n<b>remove</b> <i>model ID</i> — Remove model\n<b>remove_all</b> — Remove all models\n<b>list</b> — Subscriptions list\n<b>donate</b> — Donation instructions\n<b>feedback</b> <i>text</i> — Send feedback\n<b>source</b> — Show source code\n<b>language</b> — This bot in other languages\n<b>help</b> — Command list\n\nYou can find a model ID in an address line of your browser.",
         "parse": "html"
     },
     "online": {
@@ -85,6 +85,14 @@
     },
     "no_models": {
         "str": "You are not subscribed to any model",
+        "parse": "raw"
+    },
+    "remove_all": {
+        "str": "If you really want to remove all the subscriptions then enter\n\n/sure_remove_all",
+        "parse": "raw"
+    },
+    "all_models_removed": {
+        "str": "All subscriptions removed",
         "parse": "raw"
     }
 }
