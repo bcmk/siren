@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/bcmk/siren/lib"
@@ -476,6 +478,8 @@ func main() {
 	var periodicTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
 	statusRequests, statusUpdates := w.startChecker()
 	statusRequests <- w.models()
+	signals := make(chan os.Signal, 16)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT, syscall.SIGKILL)
 	for {
 		select {
 		case <-periodicTimer.C:
@@ -500,6 +504,9 @@ func main() {
 			if u.Message != nil && u.Message.Chat != nil {
 				w.processIncomingMessage(u.Message.Chat.ID, u.Message.Command(), u.Message.CommandArguments())
 			}
+		case s := <-signals:
+			linf("got signal %v", s)
+			return
 		}
 	}
 }
