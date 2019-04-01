@@ -146,6 +146,7 @@ func (w *worker) updateStatus(modelID string, newStatus lib.StatusKind) bool {
 	}
 	oldStatusQuery, err := w.db.Query("select status from statuses where model_id=?", modelID)
 	checkErr(err)
+	defer oldStatusQuery.Close()
 	if !oldStatusQuery.Next() {
 		w.mustExec("insert into statuses (model_id, status) values (?,?)", modelID, newStatus)
 		return true
@@ -183,6 +184,7 @@ func (w *worker) models() (models []string) {
 		order by model_id`,
 		w.cfg.BlockThreshold)
 	checkErr(err)
+	defer modelsQuery.Close()
 	for modelsQuery.Next() {
 		var modelID string
 		checkErr(modelsQuery.Scan(&modelID))
@@ -200,6 +202,7 @@ func (w *worker) chatsForModel(modelID string) (chats []int64) {
 		modelID,
 		w.cfg.BlockThreshold)
 	checkErr(err)
+	defer chatsQuery.Close()
 	for chatsQuery.Next() {
 		var chatID int64
 		checkErr(chatsQuery.Scan(&chatID))
@@ -216,6 +219,7 @@ func (w *worker) broadcastChats() (chats []int64) {
 		order by signals.chat_id`,
 		w.cfg.BlockThreshold)
 	checkErr(err)
+	defer chatsQuery.Close()
 	for chatsQuery.Next() {
 		var chatID int64
 		checkErr(chatsQuery.Scan(&chatID))
@@ -225,17 +229,18 @@ func (w *worker) broadcastChats() (chats []int64) {
 }
 
 func (w *worker) statusesForChat(chatID int64) []statusUpdate {
-	models, err := w.db.Query(`select statuses.model_id, statuses.status
+	statusesQuery, err := w.db.Query(`select statuses.model_id, statuses.status
 		from statuses inner join signals
 		on statuses.model_id=signals.model_id
 		where signals.chat_id=?
 		order by statuses.model_id`, chatID)
 	checkErr(err)
+	defer statusesQuery.Close()
 	var statuses []statusUpdate
-	for models.Next() {
+	for statusesQuery.Next() {
 		var modelID string
 		var status lib.StatusKind
-		checkErr(models.Scan(&modelID, &status))
+		checkErr(statusesQuery.Scan(&modelID, &status))
 		statuses = append(statuses, statusUpdate{modelID: modelID, status: status})
 	}
 	return statuses
