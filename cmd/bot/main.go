@@ -83,6 +83,7 @@ func (w *worker) mustExec(query string, args ...interface{}) {
 	checkErr(err)
 	_, err = stmt.Exec(args...)
 	checkErr(err)
+	stmt.Close()
 }
 
 func (w *worker) incrementBlock(chatID int64) {
