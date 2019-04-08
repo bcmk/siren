@@ -370,7 +370,7 @@ func (w *worker) listModels(chatID int64) {
 	if len(lines) == 0 {
 		lines = append(lines, w.tr.NoModels.Str)
 	}
-	w.send(chatID, false, parseRaw, strings.Join(lines, "\n"))
+	w.send(chatID, false, w.tr.NoModels.Parse, strings.Join(lines, "\n"))
 }
 
 func (w *worker) feedback(chatID int64, text string) {
