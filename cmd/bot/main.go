@@ -508,7 +508,15 @@ func main() {
 			}
 		case u := <-incoming:
 			if u.Message != nil && u.Message.Chat != nil {
-				w.processIncomingMessage(u.Message.Chat.ID, u.Message.Command(), u.Message.CommandArguments())
+				if u.Message.IsCommand() {
+					w.processIncomingMessage(u.Message.Chat.ID, u.Message.Command(), u.Message.CommandArguments())
+				} else {
+					parts := strings.SplitN(u.Message.Text, " ", 2)
+					for len(parts) < 2 {
+						parts = append(parts, "")
+					}
+					w.processIncomingMessage(u.Message.Chat.ID, parts[0], parts[1])
+				}
 			}
 		case s := <-signals:
 			linf("got signal %v", s)
