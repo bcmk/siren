@@ -25,7 +25,7 @@ Commands
 * __add__ _model ID_ — Add model
 * __remove__ _model ID_ — Remove model
 * __remove_all__ — Remove all models
-* __list__ — Subscriptions list
+* __list__ — Your subscriptions list
 * __donate__ — Donation instructions
 * __feedback__ _text_ — Send feedback
 * __source__ — Show source code
