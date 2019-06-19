@@ -457,6 +457,7 @@ func (w *worker) processAdminMessage(chatID int64, command, arguments string) bo
 func (w *worker) processIncomingMessage(chatID int64, command, arguments string) {
 	w.resetBlock(chatID)
 
+	arguments = strings.Replace(arguments, "—", "--", -1)
 	linf("chat: %d, command: %s %s", chatID, command, arguments)
 	if chatID == w.cfg.AdminID && w.processAdminMessage(chatID, command, arguments) {
 		return
