@@ -9,6 +9,7 @@ const (
 	StatusOffline
 	StatusOnline
 	StatusNotFound
+	StatusDenied
 )
 
 func (s StatusKind) String() string {

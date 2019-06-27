@@ -9,6 +9,7 @@ import (
 )
 
 var offlineDiv = cascadia.MustCompile("div.status-off")
+var bannedDiv = cascadia.MustCompile("div.banned")
 
 // CheckModelStripchat checks Stripchat model status
 func CheckModelStripchat(client *http.Client, modelID string, dbg bool) StatusKind {
@@ -31,6 +32,10 @@ func CheckModelStripchat(client *http.Client, modelID string, dbg bool) StatusKi
 
 	if offlineDiv.MatchFirst(doc) != nil {
 		return StatusOffline
+	}
+
+	if bannedDiv.MatchFirst(doc) != nil {
+		return StatusDenied
 	}
 
 	return StatusOnline

@@ -260,6 +260,8 @@ func (w *worker) reportStatus(chatID int64, modelID string, status lib.StatusKin
 		w.sendTr(chatID, true, w.tr.Online, modelID)
 	case lib.StatusOffline:
 		w.sendTr(chatID, false, w.tr.Offline, modelID)
+	case lib.StatusDenied:
+		w.sendTr(chatID, false, w.tr.Denied, modelID)
 	}
 }
 

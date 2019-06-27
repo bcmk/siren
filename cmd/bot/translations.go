@@ -36,6 +36,7 @@ type translations struct {
 	Help             *translation `json:"help"`
 	Online           *translation `json:"online"`
 	Offline          *translation `json:"offline"`
+	Denied           *translation `json:"denied"`
 	SyntaxAdd        *translation `json:"syntax_add"`
 	SyntaxRemove     *translation `json:"syntax_remove"`
 	SyntaxFeedback   *translation `json:"syntax_feedback"`

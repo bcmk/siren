@@ -11,6 +11,10 @@
         "str": "%s offline",
         "parse": "raw"
     },
+    "denied": {
+        "str": "%s blocked an access from the USA, the location of this bot",
+        "parse": "raw"
+    },
     "syntax_add": {
         "str": "Syntax: /add <i>model ID</i>\nYou can find a model ID in an address line of your browser",
         "parse": "html"
@@ -36,7 +40,7 @@
         "parse": "raw"
     },
     "add_error": {
-        "str": "Could not add a model %s\nCheck a model ID or try later\nSyntax: /add <i>model ID</i>\nYou can find a model ID in an address line of your browser",
+        "str": "Could not add the model %s\nCheck the model ID or try later\nSyntax: /add <i>model ID</i>\nYou can find a model ID in an address line of your browser",
         "parse": "html"
     },
     "model_added": {

@@ -23,7 +23,10 @@ func CheckModelChaturbate(client *http.Client, modelID string, dbg bool) StatusK
 	if dbg {
 		Ldbg("query status for %s: %d", modelID, resp.StatusCode)
 	}
-	if resp.StatusCode == 401 || resp.StatusCode == 404 {
+	if resp.StatusCode == 401 {
+		return StatusDenied
+	}
+	if resp.StatusCode == 404 {
 		return StatusNotFound
 	}
 	decoder := json.NewDecoder(resp.Body)
