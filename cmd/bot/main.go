@@ -330,7 +330,9 @@ func (w *worker) addModel(chatID int64, modelID string) {
 	}
 	w.mustExec("insert into signals (chat_id, model_id) values (?,?)", chatID, modelID)
 	w.updateStatus(modelID, status)
-	w.sendTr(chatID, false, w.tr.ModelAdded, modelID)
+	if status != lib.StatusDenied {
+		w.sendTr(chatID, false, w.tr.ModelAdded, modelID)
+	}
 	w.reportStatus(chatID, modelID, status)
 }
 
