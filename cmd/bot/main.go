@@ -470,6 +470,7 @@ func (w *worker) processIncomingMessage(chatID int64, command, arguments string)
 		return
 	}
 
+	command = strings.ToLower(command)
 	switch command {
 	case "add":
 		arguments = strings.Replace(arguments, "—", "--", -1)
