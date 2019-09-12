@@ -1,3 +1,0 @@
-#!/bin/bash
-conf=$1
-sqlite3 "$(jq -r '.db_path' $conf)" "alter table statuses add not_found integer not null default 0;"
