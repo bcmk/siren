@@ -431,7 +431,7 @@ func (w *worker) stat(chatID int64) {
 	w.mu.Unlock()
 
 	w.send(chatID, true, parseRaw, fmt.Sprintf(
-		"Users: %d\nActive users: %d\nModels: %d\nActive models: %d\nQueries duration: %v\nError rate: %d",
+		"Users: %d\nActive users: %d\nModels: %d\nActive models: %d\nQueries duration: %v\nError rate: %d%%",
 		usersCount,
 		activeUsersCount,
 		modelsCount,
