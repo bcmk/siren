@@ -1,8 +1,10 @@
 package lib
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 )
 
@@ -29,11 +31,16 @@ func CheckModelChaturbate(client *http.Client, modelID string, dbg bool) StatusK
 	if resp.StatusCode == 404 {
 		return StatusNotFound
 	}
-	decoder := json.NewDecoder(resp.Body)
+	buf := bytes.Buffer{}
+	buf.ReadFrom(resp.Body)
+	decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
 	parsed := &chaturbateResponse{}
 	err = decoder.Decode(parsed)
 	if err != nil {
 		Lerr("cannot parse response for model %s, %v", modelID, err)
+		if dbg {
+			Ldbg("response: %s", buf.String())
+		}
 		return StatusUnknown
 	}
 	return chaturbateStatus(parsed.RoomStatus)
