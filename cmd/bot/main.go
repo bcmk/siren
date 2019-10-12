@@ -280,6 +280,9 @@ func (w *worker) startChecker() (input chan []string, output chan statusUpdate) 
 				if newStatus != lib.StatusUnknown {
 					output <- statusUpdate{modelID: modelID, status: newStatus}
 				}
+				if w.cfg.IntervalMs != 0 {
+					time.Sleep(time.Duration(w.cfg.IntervalMs) * time.Millisecond)
+				}
 			}
 			elapsed := time.Since(start)
 			w.mu.Lock()

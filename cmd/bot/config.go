@@ -23,6 +23,7 @@ type config struct {
 	BlockThreshold    int    `json:"block_threshold"`     // do not send a message to the user if we fail to do it due to blocking this number of times
 	Translation       string `json:"translation"`         // translation strings
 	Debug             bool   `json:"debug"`               // debug mode
+	IntervalMs        int    `json:"interval_ms"`         // queries interval for rate limited access
 }
 
 func readConfig(path string) *config {
