@@ -12,9 +12,13 @@ import (
 var verbose = flag.Bool("v", false, "verbose output")
 
 func main() {
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "usage: %s [options] <model ID>\n", os.Args[0])
+		flag.PrintDefaults()
+	}
 	flag.Parse()
 	if flag.NArg() != 1 {
-		fmt.Printf("usage: %s <model ID>\n", os.Args[0])
+		flag.Usage()
 		return
 	}
 	modelID := flag.Arg(0)
