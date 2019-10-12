@@ -41,6 +41,7 @@ type worker struct {
 	tr            translations
 	checkModel    func(client *http.Client, modelID string, dbg bool) lib.StatusKind
 	sendTGMessage func(msg tg.Chattable) (tg.Message, error)
+	lastStatuses  []lib.StatusKind
 }
 
 func newWorker() *worker {
@@ -277,9 +278,7 @@ func (w *worker) startChecker() (input chan []string, output chan statusUpdate) 
 			start := time.Now()
 			for _, modelID := range models {
 				newStatus := w.checkModel(w.client, modelID, w.cfg.Debug)
-				if newStatus != lib.StatusUnknown {
-					output <- statusUpdate{modelID: modelID, status: newStatus}
-				}
+				output <- statusUpdate{modelID: modelID, status: newStatus}
 				if w.cfg.IntervalMs != 0 {
 					time.Sleep(time.Duration(w.cfg.IntervalMs) * time.Millisecond)
 				}
@@ -398,30 +397,47 @@ func (w *worker) feedback(chatID int64, text string) {
 func (w *worker) stat(chatID int64) {
 	query := w.db.QueryRow("select count(distinct chat_id) from signals")
 	usersCount := singleInt(query)
+
 	query = w.db.QueryRow(
 		`select count(distinct signals.chat_id) from signals
 		left join users on signals.chat_id=users.chat_id
 		where users.block is null or users.block<?`,
 		w.cfg.BlockThreshold)
 	activeUsersCount := singleInt(query)
+
 	query = w.db.QueryRow("select count(distinct model_id) from signals")
 	modelsCount := singleInt(query)
+
 	query = w.db.QueryRow(
 		`select count(distinct signals.model_id) from signals
 		left join users on signals.chat_id=users.chat_id
 		where users.block is null or users.block<?`,
 		w.cfg.BlockThreshold)
 	activeModelsCount := singleInt(query)
+
+	var errorRate = 0
+	if len(w.lastStatuses) > 0 {
+		var errors = 0
+		for _, s := range w.lastStatuses {
+			if s == lib.StatusUnknown {
+				errors += 1
+			}
+		}
+		errorRate = errors * 100 / len(w.lastStatuses)
+	}
+
 	w.mu.Lock()
 	elapsed := w.elapsed
 	w.mu.Unlock()
+
 	w.send(chatID, true, parseRaw, fmt.Sprintf(
-		"Users: %d\nActive users: %d\nModels: %d\nActive models: %d\nQueries duration: %v",
+		"Users: %d\nActive users: %d\nModels: %d\nActive models: %d\nQueries duration: %v\nError rate: %d",
 		usersCount,
 		activeUsersCount,
 		modelsCount,
 		activeModelsCount,
-		elapsed))
+		elapsed,
+		errorRate))
 }
 
 func (w *worker) broadcast(text string) {
@@ -530,13 +546,17 @@ func main() {
 			if statusUpdate.status == lib.StatusNotFound {
 				w.notFound(statusUpdate.modelID)
 			}
-			if w.updateStatus(statusUpdate.modelID, statusUpdate.status) {
+			if statusUpdate.status != lib.StatusUnknown && w.updateStatus(statusUpdate.modelID, statusUpdate.status) {
 				if w.cfg.Debug {
 					ldbg("reporting status of the model %s", statusUpdate.modelID)
 				}
 				for _, chatID := range w.chatsForModel(statusUpdate.modelID) {
 					w.reportStatus(chatID, statusUpdate.modelID, statusUpdate.status)
 				}
+			}
+			w.lastStatuses = append(w.lastStatuses, statusUpdate.status)
+			if len(w.lastStatuses) > 10000 {
+				w.lastStatuses = w.lastStatuses[len(w.lastStatuses)-10000:]
 			}
 		case u := <-incoming:
 			if u.Message != nil && u.Message.Chat != nil {
