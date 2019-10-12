@@ -32,7 +32,11 @@ func CheckModelChaturbate(client *http.Client, modelID string, dbg bool) StatusK
 		return StatusNotFound
 	}
 	buf := bytes.Buffer{}
-	buf.ReadFrom(resp.Body)
+	_, err = buf.ReadFrom(resp.Body)
+	if err != nil {
+		Lerr("cannot read response for model %s, %v", modelID, err)
+		return StatusUnknown
+	}
 	decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
 	parsed := &chaturbateResponse{}
 	err = decoder.Decode(parsed)
