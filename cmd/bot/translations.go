@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 )
@@ -60,6 +61,15 @@ type translations struct {
 	AllModelsRemoved *translation `json:"all_models_removed"`
 }
 
+func noNils(xs ...*translation) error {
+	for _, x := range xs {
+		if x == nil {
+			return errors.New("required translation is not set")
+		}
+	}
+	return nil
+}
+
 func loadTranslations(path string) translations {
 	file, err := os.Open(filepath.Clean(path))
 	checkErr(err)
@@ -69,5 +79,32 @@ func loadTranslations(path string) translations {
 	parsed := translations{}
 	err = decoder.Decode(&parsed)
 	checkErr(err)
+	checkErr(noNils(
+		parsed.Help,
+		parsed.Online,
+		parsed.Offline,
+		parsed.Denied,
+		parsed.SyntaxAdd,
+		parsed.SyntaxRemove,
+		parsed.SyntaxFeedback,
+		parsed.InvalidSymbols,
+		parsed.AlreadyAdded,
+		parsed.MaxModels,
+		parsed.AddError,
+		parsed.ModelAdded,
+		parsed.ModelNotInList,
+		parsed.ModelRemoved,
+		parsed.Donation,
+		parsed.Feedback,
+		parsed.SourceCode,
+		parsed.UnknownCommand,
+		parsed.Slash,
+		parsed.Languages,
+		parsed.Version,
+		parsed.ProfileRemoved,
+		parsed.NoModels,
+		parsed.RemoveAll,
+		parsed.AllModelsRemoved,
+	))
 	return parsed
 }
