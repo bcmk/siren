@@ -61,12 +61,12 @@ func newTestWorker() *testWorker {
 	checkErr(err)
 	w := &testWorker{
 		worker: worker{
-			bot:    nil,
-			db:     db,
-			cfg:    &testConfig,
-			client: nil,
-			mu:     &sync.Mutex{},
-			tr:     testTranslations,
+			bot:     nil,
+			db:      db,
+			cfg:     &testConfig,
+			clients: nil,
+			mu:      &sync.Mutex{},
+			tr:      testTranslations,
 		},
 	}
 	w.checkModel = w.testCheckModel

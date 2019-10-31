@@ -33,7 +33,7 @@ type statusUpdate struct {
 }
 
 type worker struct {
-	client        *http.Client
+	clients       []*http.Client
 	bot           *tg.BotAPI
 	db            *sql.DB
 	cfg           *config
@@ -50,28 +50,37 @@ func newWorker() *worker {
 		panic("usage: siren <config>")
 	}
 	cfg := readConfig(os.Args[1])
-	client := &http.Client{
-		CheckRedirect: lib.NoRedirect,
-		Timeout:       time.Second * time.Duration(cfg.TimeoutSeconds),
-	}
 
-	if cfg.SourceIPAddress != "" {
-		client.Transport = &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			DialContext: (&net.Dialer{
-				LocalAddr: &net.TCPAddr{IP: net.ParseIP(cfg.SourceIPAddress)},
-				Timeout:   time.Second * time.Duration(cfg.TimeoutSeconds),
-				KeepAlive: time.Second * time.Duration(cfg.TimeoutSeconds),
-				DualStack: true,
-			}).DialContext,
-			MaxIdleConns:          10,
-			IdleConnTimeout:       time.Second * time.Duration(cfg.TimeoutSeconds),
-			TLSHandshakeTimeout:   time.Second * time.Duration(cfg.TimeoutSeconds),
-			ExpectContinueTimeout: time.Second * time.Duration(cfg.TimeoutSeconds),
+	var client []*http.Client
+	if len(cfg.SourceIPAddresses) == 0 {
+		client = append(client, &http.Client{
+			CheckRedirect: lib.NoRedirect,
+			Timeout:       time.Second * time.Duration(cfg.TimeoutSeconds),
+		})
+	} else {
+		for _, address := range cfg.SourceIPAddresses {
+			client = append(client,
+				&http.Client{
+					CheckRedirect: lib.NoRedirect,
+					Timeout:       time.Second * time.Duration(cfg.TimeoutSeconds),
+					Transport: &http.Transport{
+						Proxy: http.ProxyFromEnvironment,
+						DialContext: (&net.Dialer{
+							LocalAddr: &net.TCPAddr{IP: net.ParseIP(address)},
+							Timeout:   time.Second * time.Duration(cfg.TimeoutSeconds),
+							KeepAlive: time.Second * time.Duration(cfg.TimeoutSeconds),
+							DualStack: true,
+						}).DialContext,
+						MaxIdleConns:          10,
+						IdleConnTimeout:       time.Second * time.Duration(cfg.TimeoutSeconds),
+						TLSHandshakeTimeout:   time.Second * time.Duration(cfg.TimeoutSeconds),
+						ExpectContinueTimeout: time.Second * time.Duration(cfg.TimeoutSeconds),
+					},
+				})
 		}
 	}
 
-	bot, err := tg.NewBotAPIWithClient(cfg.BotToken, client)
+	bot, err := tg.NewBotAPIWithClient(cfg.BotToken, client[0])
 	checkErr(err)
 	db, err := sql.Open("sqlite3", cfg.DBPath)
 	checkErr(err)
@@ -79,7 +88,7 @@ func newWorker() *worker {
 		bot:           bot,
 		db:            db,
 		cfg:           cfg,
-		client:        client,
+		clients:       client,
 		mu:            &sync.Mutex{},
 		tr:            loadTranslations(cfg.Translation),
 		sendTGMessage: bot.Send,
@@ -291,14 +300,20 @@ func (w *worker) reportStatus(chatID int64, modelID string, status lib.StatusKin
 func (w *worker) startChecker() (input chan []string, output chan statusUpdate) {
 	input = make(chan []string)
 	output = make(chan statusUpdate)
+	clientIdx := 0
+	clientsNum := len(w.clients)
 	go func() {
 		for models := range input {
 			start := time.Now()
 			for _, modelID := range models {
-				newStatus := w.checkModel(w.client, modelID, w.cfg.Debug)
+				newStatus := w.checkModel(w.clients[clientIdx], modelID, w.cfg.Debug)
 				output <- statusUpdate{modelID: modelID, status: newStatus}
 				if w.cfg.IntervalMs != 0 {
 					time.Sleep(time.Duration(w.cfg.IntervalMs) * time.Millisecond)
+				}
+				clientIdx++
+				if clientIdx == clientsNum {
+					clientIdx = 0
 				}
 			}
 			elapsed := time.Since(start)
@@ -347,7 +362,7 @@ func (w *worker) addModel(chatID int64, modelID string) {
 		w.sendTr(chatID, false, w.tr.MaxModels, w.cfg.MaxModels)
 		return
 	}
-	status := w.checkModel(w.client, modelID, w.cfg.Debug)
+	status := w.checkModel(w.clients[0], modelID, w.cfg.Debug)
 	if status == lib.StatusUnknown || status == lib.StatusNotFound {
 		w.sendTr(chatID, false, w.tr.AddError, modelID)
 		return
