@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -53,6 +54,23 @@ func newWorker() *worker {
 		CheckRedirect: lib.NoRedirect,
 		Timeout:       time.Second * time.Duration(cfg.TimeoutSeconds),
 	}
+
+	if cfg.IPAddress != "" {
+		client.Transport = &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				LocalAddr: &net.TCPAddr{IP: net.ParseIP(cfg.IPAddress)},
+				Timeout:   time.Second * time.Duration(cfg.TimeoutSeconds),
+				KeepAlive: time.Second * time.Duration(cfg.TimeoutSeconds),
+				DualStack: true,
+			}).DialContext,
+			MaxIdleConns:          10,
+			IdleConnTimeout:       time.Second * time.Duration(cfg.TimeoutSeconds),
+			TLSHandshakeTimeout:   time.Second * time.Duration(cfg.TimeoutSeconds),
+			ExpectContinueTimeout: time.Second * time.Duration(cfg.TimeoutSeconds),
+		}
+	}
+
 	bot, err := tg.NewBotAPIWithClient(cfg.BotToken, client)
 	checkErr(err)
 	db, err := sql.Open("sqlite3", cfg.DBPath)

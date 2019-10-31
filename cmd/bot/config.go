@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 )
@@ -24,6 +25,7 @@ type config struct {
 	Translation       string `json:"translation"`         // translation strings
 	Debug             bool   `json:"debug"`               // debug mode
 	IntervalMs        int    `json:"interval_ms"`         // queries interval for rate limited access
+	IPAddress         string `json:"ip_address"`          // source IP address to use in queries
 }
 
 func readConfig(path string) *config {
@@ -58,5 +60,6 @@ func checkConfig(cfg *config) bool {
 		cfg.NotFoundThreshold != 0 &&
 		cfg.BlockThreshold != 0 &&
 		cfg.Website != "" &&
-		cfg.Translation != ""
+		cfg.Translation != "" &&
+		(cfg.IPAddress == "" || net.ParseIP(cfg.IPAddress) != nil)
 }
