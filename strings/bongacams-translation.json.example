@@ -4,7 +4,7 @@
         "parse": "html"
     },
     "online": {
-        "str": "%s online",
+        "str": "%[1]s online\nwww.bongacams.com/%[1]s",
         "parse": "raw"
     },
     "offline": {
