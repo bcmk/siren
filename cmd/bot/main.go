@@ -412,6 +412,20 @@ func (w *worker) feedback(chatID int64, text string) {
 	w.send(w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Feedback: %s", text))
 }
 
+func (w *worker) errorRate() int {
+	var errorRate = 0
+	if len(w.lastStatuses) > 0 {
+		var errors = 0
+		for _, s := range w.lastStatuses {
+			if s == lib.StatusUnknown {
+				errors += 1
+			}
+		}
+		errorRate = errors * 100 / len(w.lastStatuses)
+	}
+	return errorRate
+}
+
 func (w *worker) stat(chatID int64) {
 	query := w.db.QueryRow("select count(distinct chat_id) from signals")
 	usersCount := singleInt(query)
@@ -433,17 +447,6 @@ func (w *worker) stat(chatID int64) {
 		w.cfg.BlockThreshold)
 	activeModelsCount := singleInt(query)
 
-	var errorRate = 0
-	if len(w.lastStatuses) > 0 {
-		var errors = 0
-		for _, s := range w.lastStatuses {
-			if s == lib.StatusUnknown {
-				errors += 1
-			}
-		}
-		errorRate = errors * 100 / len(w.lastStatuses)
-	}
-
 	w.mu.Lock()
 	elapsed := w.elapsed
 	w.mu.Unlock()
@@ -455,7 +458,7 @@ func (w *worker) stat(chatID int64) {
 		modelsCount,
 		activeModelsCount,
 		elapsed,
-		errorRate))
+		w.errorRate()))
 }
 
 func (w *worker) broadcast(text string) {
@@ -555,6 +558,11 @@ func main() {
 	for {
 		select {
 		case <-periodicTimer.C:
+			var errorRate = w.errorRate()
+			if errorRate > w.cfg.DangerousErrorRateInPercent {
+				w.send(w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Dangerous error rate reached: %d%%", errorRate))
+			}
+
 			select {
 			case statusRequests <- w.models():
 			default:
