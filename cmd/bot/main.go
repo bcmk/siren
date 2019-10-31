@@ -125,13 +125,13 @@ func (w *worker) send(chatID int64, notify bool, parse parseKind, text string) {
 		switch err := err.(type) {
 		case tg.Error:
 			if err.Code == 403 {
-				lerr("bot is blocked by the user %d, %v", chatID, err)
+				linf("bot is blocked by the user %d, %v", chatID, err)
 				w.incrementBlock(chatID)
 			} else {
 				lerr("cannot send a message to %d, code %d, %v", chatID, err.Code, err)
 			}
 		default:
-			lerr("cannot send a message to %d, %v", chatID, err)
+			lerr("unexpected error type while sending a message to %d, %v", chatID, err)
 		}
 	} else {
 		if w.cfg.Debug {
@@ -558,7 +558,7 @@ func main() {
 			select {
 			case statusRequests <- w.models():
 			default:
-				lerr("the queue is full")
+				linf("the queue is full")
 			}
 		case statusUpdate := <-statusUpdates:
 			if statusUpdate.status == lib.StatusNotFound {
