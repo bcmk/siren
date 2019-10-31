@@ -55,11 +55,11 @@ func newWorker() *worker {
 		Timeout:       time.Second * time.Duration(cfg.TimeoutSeconds),
 	}
 
-	if cfg.IPAddress != "" {
+	if cfg.SourceIPAddress != "" {
 		client.Transport = &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
-				LocalAddr: &net.TCPAddr{IP: net.ParseIP(cfg.IPAddress)},
+				LocalAddr: &net.TCPAddr{IP: net.ParseIP(cfg.SourceIPAddress)},
 				Timeout:   time.Second * time.Duration(cfg.TimeoutSeconds),
 				KeepAlive: time.Second * time.Duration(cfg.TimeoutSeconds),
 				DualStack: true,

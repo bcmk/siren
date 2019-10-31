@@ -25,7 +25,7 @@ type config struct {
 	Translation       string `json:"translation"`         // translation strings
 	Debug             bool   `json:"debug"`               // debug mode
 	IntervalMs        int    `json:"interval_ms"`         // queries interval for rate limited access
-	IPAddress         string `json:"ip_address"`          // source IP address to use in queries
+	SourceIPAddress   string `json:"source_ip_address"`   // source IP address to use in queries
 }
 
 func readConfig(path string) *config {
@@ -61,5 +61,5 @@ func checkConfig(cfg *config) bool {
 		cfg.BlockThreshold != 0 &&
 		cfg.Website != "" &&
 		cfg.Translation != "" &&
-		(cfg.IPAddress == "" || net.ParseIP(cfg.IPAddress) != nil)
+		(cfg.SourceIPAddress == "" || net.ParseIP(cfg.SourceIPAddress) != nil)
 }
