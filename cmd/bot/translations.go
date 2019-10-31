@@ -65,6 +65,7 @@ func loadTranslations(path string) translations {
 	checkErr(err)
 	defer func() { checkErr(file.Close()) }()
 	decoder := json.NewDecoder(file)
+	decoder.DisallowUnknownFields()
 	parsed := translations{}
 	err = decoder.Decode(&parsed)
 	checkErr(err)
