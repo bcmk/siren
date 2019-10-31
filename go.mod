@@ -7,3 +7,5 @@ require (
 	github.com/technoweenie/multipartstreamer v1.0.1 // indirect
 	golang.org/x/net v0.0.0-20190228165749-92fc7df08ae7
 )
+
+go 1.13
