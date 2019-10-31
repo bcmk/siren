@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -52,32 +51,8 @@ func newWorker() *worker {
 	cfg := readConfig(os.Args[1])
 
 	var client []*http.Client
-	if len(cfg.SourceIPAddresses) == 0 {
-		client = append(client, &http.Client{
-			CheckRedirect: lib.NoRedirect,
-			Timeout:       time.Second * time.Duration(cfg.TimeoutSeconds),
-		})
-	} else {
-		for _, address := range cfg.SourceIPAddresses {
-			client = append(client,
-				&http.Client{
-					CheckRedirect: lib.NoRedirect,
-					Timeout:       time.Second * time.Duration(cfg.TimeoutSeconds),
-					Transport: &http.Transport{
-						Proxy: http.ProxyFromEnvironment,
-						DialContext: (&net.Dialer{
-							LocalAddr: &net.TCPAddr{IP: net.ParseIP(address)},
-							Timeout:   time.Second * time.Duration(cfg.TimeoutSeconds),
-							KeepAlive: time.Second * time.Duration(cfg.TimeoutSeconds),
-							DualStack: true,
-						}).DialContext,
-						MaxIdleConns:          10,
-						IdleConnTimeout:       time.Second * time.Duration(cfg.TimeoutSeconds),
-						TLSHandshakeTimeout:   time.Second * time.Duration(cfg.TimeoutSeconds),
-						ExpectContinueTimeout: time.Second * time.Duration(cfg.TimeoutSeconds),
-					},
-				})
-		}
+	for _, address := range cfg.SourceIPAddresses {
+		client = append(client, lib.HttpClientWithTimeoutAndAddress(cfg.TimeoutSeconds, address))
 	}
 
 	bot, err := tg.NewBotAPIWithClient(cfg.BotToken, client[0])

@@ -3,13 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
-	"net/http"
 	"os"
 
 	"github.com/bcmk/siren/lib"
 )
 
 var verbose = flag.Bool("v", false, "verbose output")
+var timeout = flag.Int("t", 10, "timeout in seconds")
+var address = flag.String("a", "", "source IP address")
 
 func main() {
 	flag.Usage = func() {
@@ -26,6 +27,6 @@ func main() {
 		fmt.Println("invalid model ID")
 		return
 	}
-	client := &http.Client{CheckRedirect: lib.NoRedirect}
+	client := lib.HttpClientWithTimeoutAndAddress(*timeout, *address)
 	fmt.Println(lib.CheckModelBongaCams(client, modelID, *verbose))
 }

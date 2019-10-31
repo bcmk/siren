@@ -45,6 +45,9 @@ func parseConfig(r io.Reader) *config {
 	if !checkConfig(cfg) {
 		panic("config error")
 	}
+	if len(cfg.SourceIPAddresses) == 0 {
+		cfg.SourceIPAddresses = append(cfg.SourceIPAddresses, "")
+	}
 	return cfg
 }
 
