@@ -3,14 +3,15 @@ package lib
 import (
 	"net"
 	"net/http"
+	"net/http/cookiejar"
 	"time"
 )
 
 // NoRedirect tells HTTP client to not to redirect
 func NoRedirect(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 
-func HttpClientWithTimeoutAndAddress(timeoutSeconds int, address string) *http.Client {
-	return &http.Client{
+func HttpClientWithTimeoutAndAddress(timeoutSeconds int, address string, cookies bool) *http.Client {
+	var client = &http.Client{
 		CheckRedirect: NoRedirect,
 		Timeout:       time.Second * time.Duration(timeoutSeconds),
 		Transport: &http.Transport{
@@ -27,4 +28,9 @@ func HttpClientWithTimeoutAndAddress(timeoutSeconds int, address string) *http.C
 			ExpectContinueTimeout: time.Second * time.Duration(timeoutSeconds),
 		},
 	}
+	if cookies {
+		cookieJar, _ := cookiejar.New(nil)
+		client.Jar = cookieJar
+	}
+	return client
 }

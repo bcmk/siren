@@ -27,6 +27,7 @@ type config struct {
 	IntervalMs                  int      `json:"interval_ms"`                     // queries interval for rate limited access
 	SourceIPAddresses           []string `json:"source_ip_addresses"`             // source IP address to use in queries
 	DangerousErrorRateInPercent int      `json:"dangerous_error_rate_in_percent"` // dangerous error rate, warn admin if it is reached
+	EnableCookies               bool     `json:"enable_cookies"`                  // enable cookies, it can be useful to mitigate rate limits
 }
 
 func readConfig(path string) *config {

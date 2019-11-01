@@ -52,7 +52,7 @@ func newWorker() *worker {
 
 	var clients []*http.Client
 	for _, address := range cfg.SourceIPAddresses {
-		clients = append(clients, lib.HttpClientWithTimeoutAndAddress(cfg.TimeoutSeconds, address))
+		clients = append(clients, lib.HttpClientWithTimeoutAndAddress(cfg.TimeoutSeconds, address, cfg.EnableCookies))
 	}
 
 	bot, err := tg.NewBotAPIWithClient(cfg.BotToken, clients[0])
