@@ -50,12 +50,12 @@ func newWorker() *worker {
 	}
 	cfg := readConfig(os.Args[1])
 
-	var client []*http.Client
+	var clients []*http.Client
 	for _, address := range cfg.SourceIPAddresses {
-		client = append(client, lib.HttpClientWithTimeoutAndAddress(cfg.TimeoutSeconds, address))
+		clients = append(clients, lib.HttpClientWithTimeoutAndAddress(cfg.TimeoutSeconds, address))
 	}
 
-	bot, err := tg.NewBotAPIWithClient(cfg.BotToken, client[0])
+	bot, err := tg.NewBotAPIWithClient(cfg.BotToken, clients[0])
 	checkErr(err)
 	db, err := sql.Open("sqlite3", cfg.DBPath)
 	checkErr(err)
@@ -63,7 +63,7 @@ func newWorker() *worker {
 		bot:           bot,
 		db:            db,
 		cfg:           cfg,
-		clients:       client,
+		clients:       clients,
 		mu:            &sync.Mutex{},
 		tr:            loadTranslations(cfg.Translation),
 		sendTGMessage: bot.Send,
