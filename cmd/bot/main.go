@@ -39,7 +39,7 @@ type worker struct {
 	mu            *sync.Mutex
 	elapsed       time.Duration
 	tr            translations
-	checkModel    func(client *http.Client, modelID string, dbg bool) lib.StatusKind
+	checkModel    func(client *http.Client, modelID string, userAgent string, dbg bool) lib.StatusKind
 	sendTGMessage func(msg tg.Chattable) (tg.Message, error)
 	lastStatuses  []lib.StatusKind
 }
@@ -281,7 +281,7 @@ func (w *worker) startChecker() (input chan []string, output chan statusUpdate) 
 		for models := range input {
 			start := time.Now()
 			for _, modelID := range models {
-				newStatus := w.checkModel(w.clients[clientIdx], modelID, w.cfg.Debug)
+				newStatus := w.checkModel(w.clients[clientIdx], modelID, w.cfg.UserAgent, w.cfg.Debug)
 				output <- statusUpdate{modelID: modelID, status: newStatus}
 				if w.cfg.IntervalMs != 0 {
 					time.Sleep(time.Duration(w.cfg.IntervalMs) * time.Millisecond)
@@ -337,7 +337,7 @@ func (w *worker) addModel(chatID int64, modelID string) {
 		w.sendTr(chatID, false, w.tr.MaxModels, w.cfg.MaxModels)
 		return
 	}
-	status := w.checkModel(w.clients[0], modelID, w.cfg.Debug)
+	status := w.checkModel(w.clients[0], modelID, w.cfg.UserAgent, w.cfg.Debug)
 	if status == lib.StatusUnknown || status == lib.StatusNotFound {
 		w.sendTr(chatID, false, w.tr.AddError, modelID)
 		return

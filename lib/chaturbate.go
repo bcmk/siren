@@ -13,8 +13,13 @@ type chaturbateResponse struct {
 }
 
 // CheckModelChaturbate checks Chaturbate model status
-func CheckModelChaturbate(client *http.Client, modelID string, dbg bool) StatusKind {
-	resp, err := client.Get(fmt.Sprintf("https://en.chaturbate.com/api/chatvideocontext/%s/", modelID))
+func CheckModelChaturbate(client *http.Client, modelID string, userAgent string, dbg bool) StatusKind {
+	req, err := http.NewRequest("GET", fmt.Sprintf("https://en.chaturbate.com/api/chatvideocontext/%s/", modelID), nil)
+	CheckErr(err)
+	if userAgent != "" {
+		req.Header.Set("User-Agent", userAgent)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		Lerr("cannot send a query, %v", err)
 		return StatusUnknown

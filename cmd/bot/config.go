@@ -28,6 +28,7 @@ type config struct {
 	SourceIPAddresses           []string `json:"source_ip_addresses"`             // source IP address to use in queries
 	DangerousErrorRateInPercent int      `json:"dangerous_error_rate_in_percent"` // dangerous error rate, warn admin if it is reached
 	EnableCookies               bool     `json:"enable_cookies"`                  // enable cookies, it can be useful to mitigate rate limits
+	UserAgent                   string   `json:"user_agent"`                      // user agent to make queries with
 }
 
 func readConfig(path string) *config {
