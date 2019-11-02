@@ -12,6 +12,7 @@ type config struct {
 	Website                     string   `json:"website"`                         // one of the following: bongacams, stripchat, chaturbate
 	ListenPath                  string   `json:"listen_path"`                     // the path excluding domain to listen to, the good choice is /your-telegram-bot-token
 	ListenAddress               string   `json:"listen_address"`                  // the address to listen to
+	WebhookDomain               string   `json:"webhook_domain"`                  // domain listening webhook
 	BotToken                    string   `json:"bot_token"`                       // your telegram bot token
 	PeriodSeconds               int      `json:"period_seconds"`                  // the period of querying models statuses
 	MaxModels                   int      `json:"max_models"`                      // maximum models per user

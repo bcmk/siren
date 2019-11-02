@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path"
 	"strings"
 	"sync"
 	"syscall"
@@ -78,7 +79,23 @@ func newWorker() *worker {
 	default:
 		panic("wrong website")
 	}
+
+	if cfg.CertificatePath != "" && cfg.WebhookDomain != "" {
+		w.setWebhook()
+	}
+
 	return w
+}
+
+func (w *worker) setWebhook() {
+	linf("setting webhook...")
+	var _, err = w.bot.SetWebhook(tg.NewWebhookWithCert(path.Join(w.cfg.WebhookDomain, w.cfg.ListenPath), w.cfg.CertificatePath))
+	checkErr(err)
+	linf("OK")
+	info, err := w.bot.GetWebhookInfo()
+	checkErr(err)
+	linf("last webhook error time: %v", time.Unix(int64(info.LastErrorDate), 0))
+	linf("last webhook error message: %s", info.LastErrorMessage)
 }
 
 func (w *worker) mustExec(query string, args ...interface{}) {
