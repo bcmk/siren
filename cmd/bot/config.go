@@ -18,8 +18,8 @@ type config struct {
 	TimeoutSeconds              int      `json:"timeout_seconds"`                 // HTTP timeout
 	AdminID                     int64    `json:"admin_id"`                        // your telegram ID
 	DBPath                      string   `json:"db_path"`                         // path to database
-	Certificate                 string   `json:"certificate"`                     // your certificate, omit if under a proxy
-	Key                         string   `json:"key"`                             // your key, omit if under a proxy
+	CertificatePath             string   `json:"certificate_path"`                // a path to your certificate, omit if under a proxy
+	CertificateKeyPath          string   `json:"certificate_key_path"`            // your key, omit if under a proxy
 	NotFoundThreshold           int      `json:"not_found_threshold"`             // remove a model after a failure to find her this number of times
 	BlockThreshold              int      `json:"block_threshold"`                 // do not send a message to the user if we fail to do it due to blocking this number of times
 	Translation                 string   `json:"translation"`                     // translation strings

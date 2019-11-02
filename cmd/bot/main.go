@@ -466,8 +466,8 @@ func (w *worker) broadcast(text string) {
 
 func (w *worker) serve() {
 	var err error
-	if w.cfg.Certificate != "" && w.cfg.Key != "" {
-		err = http.ListenAndServeTLS(w.cfg.ListenAddress, w.cfg.Certificate, w.cfg.Key, nil)
+	if w.cfg.CertificatePath != "" && w.cfg.CertificateKeyPath != "" {
+		err = http.ListenAndServeTLS(w.cfg.ListenAddress, w.cfg.CertificatePath, w.cfg.CertificateKeyPath, nil)
 	} else {
 		err = http.ListenAndServe(w.cfg.ListenAddress, nil)
 	}
