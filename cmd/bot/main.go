@@ -93,8 +93,12 @@ func (w *worker) setWebhook() {
 	linf("OK")
 	info, err := w.bot.GetWebhookInfo()
 	checkErr(err)
-	linf("last webhook error time: %v", time.Unix(int64(info.LastErrorDate), 0))
-	linf("last webhook error message: %s", info.LastErrorMessage)
+	if info.LastErrorDate != 0 {
+		linf("last webhook error time: %v", time.Unix(int64(info.LastErrorDate), 0))
+	}
+	if info.LastErrorMessage != "" {
+		linf("last webhook error message: %s", info.LastErrorMessage)
+	}
 }
 
 func (w *worker) mustExec(query string, args ...interface{}) {
