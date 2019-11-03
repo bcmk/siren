@@ -301,10 +301,15 @@ func (w *worker) startChecker() (input chan []string, output chan statusUpdate) 
 		for models := range input {
 			start := time.Now()
 			for _, modelID := range models {
+				queryStart := time.Now()
 				newStatus := w.checkModel(w.clients[clientIdx], modelID, w.cfg.UserAgent, w.cfg.Debug)
+				queryElapsed := time.Since(queryStart) / time.Millisecond
 				output <- statusUpdate{modelID: modelID, status: newStatus}
 				if w.cfg.IntervalMs != 0 {
-					time.Sleep(time.Duration(w.cfg.IntervalMs) * time.Millisecond)
+					sleep := w.cfg.IntervalMs - int(queryElapsed)
+					if sleep > 0 {
+						time.Sleep(time.Duration(sleep) * time.Millisecond)
+					}
 				}
 				clientIdx++
 				if clientIdx == clientsNum {
