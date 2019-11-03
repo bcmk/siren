@@ -80,14 +80,13 @@ func newWorker() *worker {
 		panic("wrong website")
 	}
 
-	if cfg.CertificatePath != "" && cfg.WebhookDomain != "" {
-		w.setWebhook()
-	}
-
 	return w
 }
 
 func (w *worker) setWebhook() {
+	if w.cfg.CertificatePath == "" || w.cfg.WebhookDomain == "" {
+		return
+	}
 	linf("setting webhook...")
 	var _, err = w.bot.SetWebhook(tg.NewWebhookWithCert(path.Join(w.cfg.WebhookDomain, w.cfg.ListenPath), w.cfg.CertificatePath))
 	checkErr(err)
@@ -553,6 +552,7 @@ func (w *worker) processIncomingMessage(chatID int64, command, arguments string)
 func main() {
 	w := newWorker()
 	w.logConfig()
+	w.setWebhook()
 	w.createDatabase()
 
 	incoming := w.bot.ListenForWebhook(w.cfg.ListenPath)
