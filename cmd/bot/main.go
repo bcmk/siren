@@ -303,8 +303,8 @@ func (w *worker) startChecker() (input chan []string, output chan statusUpdate) 
 			for _, modelID := range models {
 				queryStart := time.Now()
 				newStatus := w.checkModel(w.clients[clientIdx], modelID, w.cfg.UserAgent, w.cfg.Debug)
-				queryElapsed := time.Since(queryStart) / time.Millisecond
 				output <- statusUpdate{modelID: modelID, status: newStatus}
+				queryElapsed := time.Since(queryStart) / time.Millisecond
 				if w.cfg.IntervalMs != 0 {
 					sleep := w.cfg.IntervalMs - int(queryElapsed)
 					if sleep > 0 {
