@@ -517,7 +517,7 @@ func (w *worker) processAdminMessage(chatID int64, command, arguments string) bo
 	return false
 }
 
-func (w *worker) processIncomingMessage(chatID int64, command, arguments string) {
+func (w *worker) processIncomingCommand(chatID int64, command, arguments string) {
 	w.resetBlock(chatID)
 
 	linf("chat: %d, command: %s %s", chatID, command, arguments)
@@ -558,6 +558,51 @@ func (w *worker) processIncomingMessage(chatID int64, command, arguments string)
 	}
 }
 
+func (w *worker) processPeriodic(statusRequests chan []string) {
+	var errorRate = w.errorRate()
+	if errorRate > w.cfg.DangerousErrorRateInPercent {
+		w.send(w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Dangerous error rate reached: %d%%", errorRate))
+	}
+
+	select {
+	case statusRequests <- w.models():
+	default:
+		linf("the queue is full")
+	}
+}
+
+func (w *worker) processStatusUpdate(statusUpdate statusUpdate) {
+	if statusUpdate.status == lib.StatusNotFound {
+		w.notFound(statusUpdate.modelID)
+	}
+	if statusUpdate.status != lib.StatusUnknown && w.updateStatus(statusUpdate.modelID, statusUpdate.status) {
+		if w.cfg.Debug {
+			ldbg("reporting status of the model %s", statusUpdate.modelID)
+		}
+		for _, chatID := range w.chatsForModel(statusUpdate.modelID) {
+			w.reportStatus(chatID, statusUpdate.modelID, statusUpdate.status)
+		}
+	}
+	w.lastStatuses = append(w.lastStatuses, statusUpdate.status)
+	if len(w.lastStatuses) > 10000 {
+		w.lastStatuses = w.lastStatuses[len(w.lastStatuses)-10000:]
+	}
+}
+
+func (w *worker) processIncomingUpdate(u tg.Update) {
+	if u.Message != nil && u.Message.Chat != nil {
+		if u.Message.IsCommand() {
+			w.processIncomingCommand(u.Message.Chat.ID, u.Message.Command(), u.Message.CommandArguments())
+		} else {
+			parts := strings.SplitN(u.Message.Text, " ", 2)
+			for len(parts) < 2 {
+				parts = append(parts, "")
+			}
+			w.processIncomingCommand(u.Message.Chat.ID, parts[0], parts[1])
+		}
+	}
+}
+
 func main() {
 	w := newWorker()
 	w.logConfig()
@@ -574,44 +619,11 @@ func main() {
 	for {
 		select {
 		case <-periodicTimer.C:
-			var errorRate = w.errorRate()
-			if errorRate > w.cfg.DangerousErrorRateInPercent {
-				w.send(w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Dangerous error rate reached: %d%%", errorRate))
-			}
-
-			select {
-			case statusRequests <- w.models():
-			default:
-				linf("the queue is full")
-			}
+			w.processPeriodic(statusRequests)
 		case statusUpdate := <-statusUpdates:
-			if statusUpdate.status == lib.StatusNotFound {
-				w.notFound(statusUpdate.modelID)
-			}
-			if statusUpdate.status != lib.StatusUnknown && w.updateStatus(statusUpdate.modelID, statusUpdate.status) {
-				if w.cfg.Debug {
-					ldbg("reporting status of the model %s", statusUpdate.modelID)
-				}
-				for _, chatID := range w.chatsForModel(statusUpdate.modelID) {
-					w.reportStatus(chatID, statusUpdate.modelID, statusUpdate.status)
-				}
-			}
-			w.lastStatuses = append(w.lastStatuses, statusUpdate.status)
-			if len(w.lastStatuses) > 10000 {
-				w.lastStatuses = w.lastStatuses[len(w.lastStatuses)-10000:]
-			}
+			w.processStatusUpdate(statusUpdate)
 		case u := <-incoming:
-			if u.Message != nil && u.Message.Chat != nil {
-				if u.Message.IsCommand() {
-					w.processIncomingMessage(u.Message.Chat.ID, u.Message.Command(), u.Message.CommandArguments())
-				} else {
-					parts := strings.SplitN(u.Message.Text, " ", 2)
-					for len(parts) < 2 {
-						parts = append(parts, "")
-					}
-					w.processIncomingMessage(u.Message.Chat.ID, parts[0], parts[1])
-				}
-			}
+			w.processIncomingUpdate(u)
 		case s := <-signals:
 			linf("got signal %v", s)
 			return
