@@ -10,7 +10,8 @@ import (
 // NoRedirect tells HTTP client to not to redirect
 func NoRedirect(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 
-func HttpClientWithTimeoutAndAddress(timeoutSeconds int, address string, cookies bool) *http.Client {
+// HTTPClientWithTimeoutAndAddress returns HTTP client bound to specific IP address
+func HTTPClientWithTimeoutAndAddress(timeoutSeconds int, address string, cookies bool) *http.Client {
 	var client = &http.Client{
 		CheckRedirect: NoRedirect,
 		Timeout:       time.Second * time.Duration(timeoutSeconds),

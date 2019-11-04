@@ -29,6 +29,6 @@ func main() {
 		fmt.Println("invalid model ID")
 		return
 	}
-	client := lib.HttpClientWithTimeoutAndAddress(*timeout, *address, *cookies)
+	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
 	fmt.Println(lib.CheckModelStripchat(client, modelID, *userAgent, *verbose))
 }
