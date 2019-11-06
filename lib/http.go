@@ -1,6 +1,7 @@
 package lib
 
 import (
+	"crypto/tls"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -27,6 +28,7 @@ func HTTPClientWithTimeoutAndAddress(timeoutSeconds int, address string, cookies
 			IdleConnTimeout:       time.Second * time.Duration(timeoutSeconds),
 			TLSHandshakeTimeout:   time.Second * time.Duration(timeoutSeconds),
 			ExpectContinueTimeout: time.Second * time.Duration(timeoutSeconds),
+			TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
 		},
 	}
 	if cookies {
