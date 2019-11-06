@@ -33,14 +33,14 @@ type statusUpdate struct {
 }
 
 type worker struct {
-	clients       []*http.Client
+	clients       []*lib.Client
 	bot           *tg.BotAPI
 	db            *sql.DB
 	cfg           *config
 	mu            *sync.Mutex
 	elapsed       time.Duration
 	tr            translations
-	checkModel    func(client *http.Client, modelID string, userAgent string, dbg bool) lib.StatusKind
+	checkModel    func(client *lib.Client, modelID string, userAgent string, dbg bool) lib.StatusKind
 	sendTGMessage func(msg tg.Chattable) (tg.Message, error)
 	lastStatuses  []lib.StatusKind
 }
@@ -51,12 +51,12 @@ func newWorker() *worker {
 	}
 	cfg := readConfig(os.Args[1])
 
-	var clients []*http.Client
+	var clients []*lib.Client
 	for _, address := range cfg.SourceIPAddresses {
 		clients = append(clients, lib.HTTPClientWithTimeoutAndAddress(cfg.TimeoutSeconds, address, cfg.EnableCookies))
 	}
 
-	bot, err := tg.NewBotAPIWithClient(cfg.BotToken, clients[0])
+	bot, err := tg.NewBotAPIWithClient(cfg.BotToken, clients[0].Client)
 	checkErr(err)
 	db, err := sql.Open("sqlite3", cfg.DBPath)
 	checkErr(err)

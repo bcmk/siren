@@ -8,18 +8,27 @@ import (
 	"time"
 )
 
+// Client wraps HTTP client and source IP address
+type Client struct {
+	// Client is HTTP client
+	Client *http.Client
+	// Addr is source IP address
+	Addr net.Addr
+}
+
 // NoRedirect tells HTTP client to not to redirect
 func NoRedirect(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 
 // HTTPClientWithTimeoutAndAddress returns HTTP client bound to specific IP address
-func HTTPClientWithTimeoutAndAddress(timeoutSeconds int, address string, cookies bool) *http.Client {
+func HTTPClientWithTimeoutAndAddress(timeoutSeconds int, address string, cookies bool) *Client {
+	addr := &net.TCPAddr{IP: net.ParseIP(address)}
 	var client = &http.Client{
 		CheckRedirect: NoRedirect,
 		Timeout:       time.Second * time.Duration(timeoutSeconds),
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
-				LocalAddr: &net.TCPAddr{IP: net.ParseIP(address)},
+				LocalAddr: addr,
 				Timeout:   time.Second * time.Duration(timeoutSeconds),
 				KeepAlive: time.Second * time.Duration(timeoutSeconds),
 				DualStack: true,
@@ -35,5 +44,5 @@ func HTTPClientWithTimeoutAndAddress(timeoutSeconds int, address string, cookies
 		cookieJar, _ := cookiejar.New(nil)
 		client.Jar = cookieJar
 	}
-	return client
+	return &Client{Client: client, Addr: addr}
 }

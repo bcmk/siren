@@ -13,15 +13,15 @@ type chaturbateResponse struct {
 }
 
 // CheckModelChaturbate checks Chaturbate model status
-func CheckModelChaturbate(client *http.Client, modelID string, userAgent string, dbg bool) StatusKind {
+func CheckModelChaturbate(client *Client, modelID string, userAgent string, dbg bool) StatusKind {
 	req, err := http.NewRequest("GET", fmt.Sprintf("https://en.chaturbate.com/api/chatvideocontext/%s/", modelID), nil)
 	CheckErr(err)
 	if userAgent != "" {
 		req.Header.Set("User-Agent", userAgent)
 	}
-	resp, err := client.Do(req)
+	resp, err := client.Client.Do(req)
 	if err != nil {
-		Lerr("cannot send a query, %v", err)
+		Lerr("[%v] cannot send a query, %v", client.Addr, err)
 		return StatusUnknown
 	}
 	defer func() {
@@ -39,14 +39,14 @@ func CheckModelChaturbate(client *http.Client, modelID string, userAgent string,
 	buf := bytes.Buffer{}
 	_, err = buf.ReadFrom(resp.Body)
 	if err != nil {
-		Lerr("cannot read response for model %s, %v", modelID, err)
+		Lerr("[%v] cannot read response for model %s, %v", client.Addr, modelID, err)
 		return StatusUnknown
 	}
 	decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
 	parsed := &chaturbateResponse{}
 	err = decoder.Decode(parsed)
 	if err != nil {
-		Lerr("cannot parse response for model %s, %v", modelID, err)
+		Lerr("[%v] cannot parse response for model %s, %v", client.Addr, modelID, err)
 		if dbg {
 			Ldbg("response: %s", buf.String())
 		}

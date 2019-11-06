@@ -6,15 +6,15 @@ import (
 )
 
 // CheckModelBongaCams checks BongaCams model status
-func CheckModelBongaCams(client *http.Client, modelID string, userAgent string, dbg bool) StatusKind {
+func CheckModelBongaCams(client *Client, modelID string, userAgent string, dbg bool) StatusKind {
 	req, err := http.NewRequest("GET", fmt.Sprintf("https://bongacams.com/%s", modelID), nil)
 	CheckErr(err)
 	if userAgent != "" {
 		req.Header.Set("User-Agent", userAgent)
 	}
-	resp, err := client.Do(req)
+	resp, err := client.Client.Do(req)
 	if err != nil {
-		Lerr("cannot send a query, %v", err)
+		Lerr("[%v] cannot send a query, %v", client.Addr, err)
 		return StatusUnknown
 	}
 	CheckErr(resp.Body.Close())
