@@ -1,7 +1,8 @@
 add - Add model
 remove - Remove model
 remove_all - Remove all models
-list - Your subscriptions list
+list - Your model subscriptions
+online - Your models online
 donate - Donation instructions
 feedback - Send feedback
 source - Show source code

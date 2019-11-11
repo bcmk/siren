@@ -416,6 +416,15 @@ func (w *worker) listModels(chatID int64) {
 	w.send(chatID, false, w.tr.NoModels.Parse, strings.Join(lines, "\n"))
 }
 
+func (w *worker) listOnlineModels(chatID int64) {
+	statuses := w.statusesForChat(chatID)
+	for _, s := range statuses {
+		if s.status == lib.StatusOnline {
+			w.sendTr(chatID, false, w.tr.Online, s.modelID)
+		}
+	}
+}
+
 func (w *worker) feedback(chatID int64, text string) {
 	if text == "" {
 		w.sendTr(chatID, false, w.tr.SyntaxFeedback)
@@ -535,6 +544,8 @@ func (w *worker) processIncomingCommand(chatID int64, command, arguments string)
 		w.removeModel(chatID, arguments)
 	case "list":
 		w.listModels(chatID)
+	case "online":
+		w.listOnlineModels(chatID)
 	case "start", "help":
 		w.sendTr(chatID, false, w.tr.Help)
 	case "donate":
