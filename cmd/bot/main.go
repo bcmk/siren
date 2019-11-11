@@ -589,7 +589,7 @@ func (w *worker) processStatusUpdate(statusUpdate statusUpdate) {
 	}
 }
 
-func (w *worker) processIncomingUpdate(u tg.Update) {
+func (w *worker) processTGUpdate(u tg.Update) {
 	if u.Message != nil && u.Message.Chat != nil {
 		if u.Message.IsCommand() {
 			w.processIncomingCommand(u.Message.Chat.ID, u.Message.Command(), u.Message.CommandArguments())
@@ -623,7 +623,7 @@ func main() {
 		case statusUpdate := <-statusUpdates:
 			w.processStatusUpdate(statusUpdate)
 		case u := <-incoming:
-			w.processIncomingUpdate(u)
+			w.processTGUpdate(u)
 		case s := <-signals:
 			linf("got signal %v", s)
 			return
