@@ -273,11 +273,11 @@ func (w *worker) statusesForChat(chatID int64) []statusUpdate {
 func (w *worker) statusKey(status lib.StatusKind) *translation {
 	switch status {
 	case lib.StatusOnline:
-		return w.tr.Online
+		return w.tr.OnlineList
 	case lib.StatusDenied:
-		return w.tr.Denied
+		return w.tr.DeniedList
 	default:
-		return w.tr.Offline
+		return w.tr.OfflineList
 	}
 }
 

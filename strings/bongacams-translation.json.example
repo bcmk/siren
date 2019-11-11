@@ -7,11 +7,23 @@
         "str": "%[1]s online\nwww.bongacams.com/%[1]s",
         "parse": "raw"
     },
+    "online_list": {
+        "str": "%[1]s online\nwww.bongacams.com/%[1]s",
+        "parse": "raw"
+    },
     "offline": {
         "str": "%s offline",
         "parse": "raw"
     },
+    "offline_list": {
+        "str": "%s offline",
+        "parse": "raw"
+    },
     "denied": {
+        "str": "%s blocked an access from the USA, the location of this bot",
+        "parse": "raw"
+    },
+    "denied_list": {
         "str": "%s blocked an access from the USA, the location of this bot",
         "parse": "raw"
     },

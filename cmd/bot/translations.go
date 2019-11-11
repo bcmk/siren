@@ -36,8 +36,11 @@ type translation struct {
 type translations struct {
 	Help             *translation `json:"help"`
 	Online           *translation `json:"online"`
+	OnlineList       *translation `json:"online_list"`
 	Offline          *translation `json:"offline"`
+	OfflineList      *translation `json:"offline_list"`
 	Denied           *translation `json:"denied"`
+	DeniedList       *translation `json:"denied_list"`
 	SyntaxAdd        *translation `json:"syntax_add"`
 	SyntaxRemove     *translation `json:"syntax_remove"`
 	SyntaxFeedback   *translation `json:"syntax_feedback"`
@@ -82,8 +85,11 @@ func loadTranslations(path string) translations {
 	checkErr(noNils(
 		parsed.Help,
 		parsed.Online,
+		parsed.OnlineList,
 		parsed.Offline,
+		parsed.OfflineList,
 		parsed.Denied,
+		parsed.DeniedList,
 		parsed.SyntaxAdd,
 		parsed.SyntaxRemove,
 		parsed.SyntaxFeedback,
