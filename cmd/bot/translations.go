@@ -60,6 +60,7 @@ type translations struct {
 	Version          *translation `json:"version"`
 	ProfileRemoved   *translation `json:"profile_removed"`
 	NoModels         *translation `json:"no_models"`
+	NoOnlineModels   *translation `json:"no_online_models"`
 	RemoveAll        *translation `json:"remove_all"`
 	AllModelsRemoved *translation `json:"all_models_removed"`
 }
@@ -109,6 +110,7 @@ func loadTranslations(path string) translations {
 		parsed.Version,
 		parsed.ProfileRemoved,
 		parsed.NoModels,
+		parsed.NoOnlineModels,
 		parsed.RemoveAll,
 		parsed.AllModelsRemoved,
 	))

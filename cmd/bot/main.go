@@ -418,10 +418,15 @@ func (w *worker) listModels(chatID int64) {
 
 func (w *worker) listOnlineModels(chatID int64) {
 	statuses := w.statusesForChat(chatID)
+	online := 0
 	for _, s := range statuses {
 		if s.status == lib.StatusOnline {
 			w.sendTr(chatID, false, w.tr.Online, s.modelID)
+			online++
 		}
+	}
+	if online == 0 {
+		w.sendTr(chatID, false, w.tr.NoOnlineModels)
 	}
 }
 
