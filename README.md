@@ -22,8 +22,8 @@ Installation
 Commands
 --------
 
-* __add__ _model ID_ — Add model
-* __remove__ _model ID_ — Remove model
+* __add__ _model_ID_ — Add model
+* __remove__ _model_ID_ — Remove model
 * __remove_all__ — Remove all models
 * __list__ — Your model subscriptions
 * __online__ — Your models online

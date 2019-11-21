@@ -1,6 +1,6 @@
 {
     "help": {
-        "str": "The bot notifies you whenever your favorite BongaCams models are online.\n\nCommands\n\n<b>add</b> <i>model ID</i> — Add model\n<b>remove</b> <i>model ID</i> — Remove model\n<b>remove_all</b> — Remove all models\n<b>list</b> — Your subscriptions list\n<b>donate</b> — Donation instructions\n<b>feedback</b> <i>text</i> — Send feedback\n<b>source</b> — Show source code\n<b>language</b> — This bot in other languages\n<b>help</b> — Command list\n\nYou can find a model ID in an address line of your browser",
+        "str": "The bot notifies you whenever your favorite BongaCams models are online.\n\nCommands\n\n<b>add</b> <i>model_ID</i> — Add model\n<b>remove</b> <i>model_ID</i> — Remove model\n<b>remove_all</b> — Remove all models\n<b>list</b> — Your subscriptions list\n<b>donate</b> — Donation instructions\n<b>feedback</b> <i>text</i> — Send feedback\n<b>source</b> — Show source code\n<b>language</b> — This bot in other languages\n<b>help</b> — Command list\n\nYou can find a model ID in an address line of your browser",
         "parse": "html"
     },
     "online": {
@@ -28,11 +28,11 @@
         "parse": "raw"
     },
     "syntax_add": {
-        "str": "Enter\n\n/add <i>model ID</i>\n\nYou can find a model ID in an address line of your browser\nThe bot treats lower- and uppercase letters as the same",
+        "str": "Enter\n\n/add <i>model_ID</i>\n\nYou can find a model ID in an address line of your browser\nThe bot treats lower- and uppercase letters as the same",
         "parse": "html"
     },
     "syntax_remove": {
-        "str": "Enter\n\n/remove <i>model ID</i>\nYou can find a model ID in an address line of your browser",
+        "str": "Enter\n\n/remove <i>model_ID</i>\nYou can find a model ID in an address line of your browser",
         "parse": "html"
     },
     "syntax_feedback": {
@@ -52,7 +52,7 @@
         "parse": "raw"
     },
     "add_error": {
-        "str": "Could not add the model %s\nCheck the model ID or try later\nSyntax: /add <i>model ID</i>\nYou can find a model ID in an address line of your browser",
+        "str": "Could not add the model %s\nCheck the model ID or try later\nSyntax: /add <i>model_ID</i>\nYou can find a model ID in an address line of your browser",
         "parse": "html"
     },
     "model_added": {
@@ -100,7 +100,7 @@
         "parse": "raw"
     },
     "no_models": {
-        "str": "You are not subscribed to any model\nTo subscribe enter\n\n/add <i>model ID</i>",
+        "str": "You are not subscribed to any model\nTo subscribe enter\n\n/add <i>model_ID</i>",
         "parse": "html"
     },
     "remove_all": {
