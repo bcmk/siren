@@ -33,17 +33,17 @@ type statusUpdate struct {
 }
 
 type worker struct {
-	clients          []*lib.Client
-	bot              *tg.BotAPI
-	db               *sql.DB
-	cfg              *config
-	mu               *sync.Mutex
-	elapsed          time.Duration
-	tr               translations
-	checkModel       func(client *lib.Client, modelID string, userAgent string, dbg bool) lib.StatusKind
-	sendTGMessage    func(msg tg.Chattable) (tg.Message, error)
-	lastStatuses     []lib.StatusKind
-	lastStatusNumber int
+	clients       []*lib.Client
+	bot           *tg.BotAPI
+	db            *sql.DB
+	cfg           *config
+	mu            *sync.Mutex
+	elapsed       time.Duration
+	tr            translations
+	checkModel    func(client *lib.Client, modelID string, userAgent string, dbg bool) lib.StatusKind
+	sendTGMessage func(msg tg.Chattable) (tg.Message, error)
+	unknowns      []bool
+	unknownsPos   int
 }
 
 func newWorker() *worker {
@@ -69,7 +69,7 @@ func newWorker() *worker {
 		mu:            &sync.Mutex{},
 		tr:            loadTranslations(cfg.Translation),
 		sendTGMessage: bot.Send,
-		lastStatuses:  make([]lib.StatusKind, cfg.errorInterval),
+		unknowns:      make([]bool, cfg.errorInterval),
 	}
 	switch cfg.Website {
 	case "bongacams":
@@ -443,10 +443,10 @@ func (w *worker) feedback(chatID int64, text string) {
 	w.send(w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Feedback: %s", text))
 }
 
-func (w *worker) unknowns() int {
+func (w *worker) unknownsNumber() int {
 	var errors = 0
-	for _, s := range w.lastStatuses {
-		if s == lib.StatusUnknown {
+	for _, s := range w.unknowns {
+		if s {
 			errors += 1
 		}
 	}
@@ -485,7 +485,7 @@ func (w *worker) stat(chatID int64) {
 		modelsCount,
 		activeModelsCount,
 		elapsed,
-		w.unknowns(),
+		w.unknownsNumber(),
 		w.cfg.errorInterval))
 }
 
@@ -574,9 +574,9 @@ func (w *worker) processIncomingCommand(chatID int64, command, arguments string)
 }
 
 func (w *worker) processPeriodic(statusRequests chan []string) {
-	var unknowns = w.unknowns()
-	if unknowns > w.cfg.errorThreshold {
-		w.send(w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Dangerous error rate reached: %d/%d", unknowns, w.cfg.errorInterval))
+	var unknownsNumber = w.unknownsNumber()
+	if unknownsNumber > w.cfg.errorThreshold {
+		w.send(w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Dangerous error rate reached: %d/%d", unknownsNumber, w.cfg.errorInterval))
 	}
 
 	select {
@@ -598,8 +598,8 @@ func (w *worker) processStatusUpdate(statusUpdate statusUpdate) {
 			w.reportStatus(chatID, statusUpdate.modelID, statusUpdate.status)
 		}
 	}
-	w.lastStatuses[w.lastStatusNumber] = statusUpdate.status
-	w.lastStatusNumber = (w.lastStatusNumber + 1) % w.cfg.errorInterval
+	w.unknowns[w.unknownsPos] = statusUpdate.status == lib.StatusUnknown
+	w.unknownsPos = (w.unknownsPos + 1) % w.cfg.errorInterval
 }
 
 func (w *worker) processTGUpdate(u tg.Update) {
