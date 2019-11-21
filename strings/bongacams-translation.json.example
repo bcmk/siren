@@ -103,6 +103,10 @@
         "str": "You are not subscribed to any model\nTo subscribe enter\n\n/add <i>model_ID</i>",
         "parse": "html"
     },
+    "no_online_models": {
+        "str": "There are no online models you subscribed to",
+        "parse": "raw"
+    },
     "remove_all": {
         "str": "If you really want to remove all the subscriptions then enter\n\n/sure_remove_all",
         "parse": "raw"
