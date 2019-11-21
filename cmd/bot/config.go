@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -45,34 +47,57 @@ func parseConfig(r io.Reader) *config {
 	cfg := &config{}
 	err := decoder.Decode(cfg)
 	checkErr(err)
-	if !checkConfig(cfg) {
-		panic("config error")
-	}
+	checkErr(checkConfig(cfg))
 	if len(cfg.SourceIPAddresses) == 0 {
 		cfg.SourceIPAddresses = append(cfg.SourceIPAddresses, "")
 	}
 	return cfg
 }
 
-func checkConfig(cfg *config) bool {
+func checkConfig(cfg *config) error {
 	for _, x := range cfg.SourceIPAddresses {
 		if net.ParseIP(x) == nil {
-			return false
+			return fmt.Errorf("cannot parse sourece IP address %s", x)
 		}
 	}
-
-	return true &&
-		cfg.ListenPath != "" &&
-		cfg.BotToken != "" &&
-		cfg.PeriodSeconds != 0 &&
-		cfg.MaxModels != 0 &&
-		cfg.TimeoutSeconds != 0 &&
-		cfg.AdminID != 0 &&
-		cfg.DBPath != "" &&
-		cfg.ListenAddress != "" &&
-		cfg.NotFoundThreshold != 0 &&
-		cfg.BlockThreshold != 0 &&
-		cfg.Website != "" &&
-		cfg.Translation != "" &&
-		cfg.DangerousErrorRateInPercent != 0
+	if cfg.ListenPath == "" {
+		return errors.New("configure listen_path")
+	}
+	if cfg.BotToken == "" {
+		return errors.New("configure bot_token")
+	}
+	if cfg.PeriodSeconds == 0 {
+		return errors.New("configure period_seconds")
+	}
+	if cfg.MaxModels == 0 {
+		return errors.New("configure max_models")
+	}
+	if cfg.TimeoutSeconds == 0 {
+		return errors.New("configure timeout_seconds")
+	}
+	if cfg.AdminID == 0 {
+		return errors.New("configure admin_id")
+	}
+	if cfg.DBPath == "" {
+		return errors.New("configure db_path")
+	}
+	if cfg.ListenAddress == "" {
+		return errors.New("configure listen_address")
+	}
+	if cfg.NotFoundThreshold == 0 {
+		return errors.New("configure not_found_threshold")
+	}
+	if cfg.BlockThreshold == 0 {
+		return errors.New("configure block_threshold")
+	}
+	if cfg.Website == "" {
+		return errors.New("configure website")
+	}
+	if cfg.Translation == "" {
+		return errors.New("configure translation")
+	}
+	if cfg.DangerousErrorRateInPercent == 0 {
+		return errors.New("configure dangerous_error_rate_in_percent")
+	}
+	return nil
 }
