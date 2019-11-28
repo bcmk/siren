@@ -12,7 +12,6 @@ var verbose = flag.Bool("v", false, "verbose output")
 var timeout = flag.Int("t", 10, "timeout in seconds")
 var address = flag.String("a", "", "source IP address")
 var cookies = flag.Bool("c", false, "use cookies")
-var userAgent = flag.String("u", "", "user agent")
 
 func main() {
 	flag.Usage = func() {
@@ -30,5 +29,5 @@ func main() {
 		return
 	}
 	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
-	fmt.Println(lib.CheckModelStripchat(client, modelID, *userAgent, *verbose))
+	fmt.Println(lib.CheckModelStripchat(client, modelID, nil, *verbose))
 }

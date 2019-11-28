@@ -40,7 +40,7 @@ type worker struct {
 	mu            *sync.Mutex
 	elapsed       time.Duration
 	tr            translations
-	checkModel    func(client *lib.Client, modelID string, userAgent string, dbg bool) lib.StatusKind
+	checkModel    func(client *lib.Client, modelID string, headers [][2]string, dbg bool) lib.StatusKind
 	sendTGMessage func(msg tg.Chattable) (tg.Message, error)
 	unknowns      []bool
 	unknownsPos   int
@@ -304,7 +304,7 @@ func (w *worker) startChecker() (input chan []string, output chan statusUpdate) 
 			start := time.Now()
 			for _, modelID := range models {
 				queryStart := time.Now()
-				newStatus := w.checkModel(w.clients[clientIdx], modelID, w.cfg.UserAgent, w.cfg.Debug)
+				newStatus := w.checkModel(w.clients[clientIdx], modelID, w.cfg.Headers, w.cfg.Debug)
 				output <- statusUpdate{modelID: modelID, status: newStatus}
 				queryElapsed := time.Since(queryStart) / time.Millisecond
 				if w.cfg.IntervalMs != 0 {
@@ -364,7 +364,7 @@ func (w *worker) addModel(chatID int64, modelID string) {
 		w.sendTr(chatID, false, w.tr.MaxModels, w.cfg.MaxModels)
 		return
 	}
-	status := w.checkModel(w.clients[0], modelID, w.cfg.UserAgent, w.cfg.Debug)
+	status := w.checkModel(w.clients[0], modelID, w.cfg.Headers, w.cfg.Debug)
 	if status == lib.StatusUnknown || status == lib.StatusNotFound {
 		w.sendTr(chatID, false, w.tr.AddError, modelID)
 		return
