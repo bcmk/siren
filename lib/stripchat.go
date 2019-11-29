@@ -8,9 +8,12 @@ import (
 	"golang.org/x/net/html"
 )
 
+var bodyTag = cascadia.MustCompile("#body")
 var offlineDiv = cascadia.MustCompile("div.status-off")
 var bannedDiv = cascadia.MustCompile("div.banned")
-var bodyTag = cascadia.MustCompile("#body")
+var playerDiv = cascadia.MustCompile("div.player")
+var privateDiv = cascadia.MustCompile("div.status-private")
+var idleDiv = cascadia.MustCompile("div.status-idle")
 
 // CheckModelStripchat checks Stripchat model status
 func CheckModelStripchat(client *Client, modelID string, headers [][2]string, dbg bool) StatusKind {
@@ -49,5 +52,10 @@ func CheckModelStripchat(client *Client, modelID string, headers [][2]string, db
 		return StatusDenied
 	}
 
-	return StatusOnline
+	if playerDiv.MatchFirst(doc) != nil || privateDiv.MatchFirst(doc) != nil || idleDiv.MatchFirst(doc) != nil {
+		return StatusOnline
+	}
+
+	Lerr("[%v] cannot determine status", client.Addr)
+	return StatusUnknown
 }
