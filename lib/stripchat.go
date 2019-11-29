@@ -10,6 +10,7 @@ import (
 
 var offlineDiv = cascadia.MustCompile("div.status-off")
 var bannedDiv = cascadia.MustCompile("div.banned")
+var bodyTag = cascadia.MustCompile("body")
 
 // CheckModelStripchat checks Stripchat model status
 func CheckModelStripchat(client *Client, modelID string, headers [][2]string, dbg bool) StatusKind {
@@ -32,6 +33,11 @@ func CheckModelStripchat(client *Client, modelID string, headers [][2]string, db
 	doc, err := html.Parse(resp.Body)
 	if err != nil {
 		Lerr("[%v] cannot parse body for model %s, %v", client.Addr, modelID, err)
+		return StatusUnknown
+	}
+
+	if bodyTag.MatchFirst(doc) == nil {
+		Lerr("[%v] cannot parse body for model %s", client.Addr, modelID)
 		return StatusUnknown
 	}
 
