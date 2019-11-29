@@ -11,7 +11,7 @@ import (
 var bodyTag = cascadia.MustCompile("#body")
 var offlineDiv = cascadia.MustCompile("div.status-off")
 var bannedDiv = cascadia.MustCompile("div.banned")
-var playerDiv = cascadia.MustCompile("div.player")
+var statusDiv = cascadia.MustCompile("div.vc-status")
 var privateDiv = cascadia.MustCompile("div.status-private")
 var idleDiv = cascadia.MustCompile("div.status-idle")
 
@@ -52,7 +52,7 @@ func CheckModelStripchat(client *Client, modelID string, headers [][2]string, db
 		return StatusDenied
 	}
 
-	if playerDiv.MatchFirst(doc) != nil || privateDiv.MatchFirst(doc) != nil || idleDiv.MatchFirst(doc) != nil {
+	if statusDiv.MatchFirst(doc) == nil || privateDiv.MatchFirst(doc) != nil || idleDiv.MatchFirst(doc) != nil {
 		return StatusOnline
 	}
 
