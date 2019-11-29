@@ -35,8 +35,8 @@ type config struct {
 	EnableCookies      bool        `json:"enable_cookies"`       // enable cookies, it can be useful to mitigate rate limits
 	Headers            [][2]string `json:"headers"`              // headers to make queries with
 
-	errorThreshold int `json:"error_threshold"`
-	errorInterval  int `json:"error_interval"`
+	errorThreshold int
+	errorInterval  int
 }
 
 var errorRateRegexp = regexp.MustCompile(`^(\d+)/(\d+)$`)
