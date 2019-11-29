@@ -10,7 +10,7 @@ import (
 
 var offlineDiv = cascadia.MustCompile("div.status-off")
 var bannedDiv = cascadia.MustCompile("div.banned")
-var bodyTag = cascadia.MustCompile("body")
+var bodyTag = cascadia.MustCompile("#body")
 
 // CheckModelStripchat checks Stripchat model status
 func CheckModelStripchat(client *Client, modelID string, headers [][2]string, dbg bool) StatusKind {
