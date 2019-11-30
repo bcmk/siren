@@ -453,37 +453,45 @@ func (w *worker) unknownsNumber() int {
 	return errors
 }
 
-func (w *worker) stat(chatID int64) {
+func (w *worker) usersCount() int {
 	query := w.db.QueryRow("select count(distinct chat_id) from signals")
-	usersCount := singleInt(query)
+	return singleInt(query)
+}
 
-	query = w.db.QueryRow(
+func (w *worker) activeUsersCount() int {
+	query := w.db.QueryRow(
 		`select count(distinct signals.chat_id) from signals
 		left join users on signals.chat_id=users.chat_id
 		where users.block is null or users.block<?`,
 		w.cfg.BlockThreshold)
-	activeUsersCount := singleInt(query)
+	return singleInt(query)
+}
 
-	query = w.db.QueryRow("select count(distinct model_id) from signals")
-	modelsCount := singleInt(query)
+func (w *worker) modelsCount() int {
+	query := w.db.QueryRow("select count(distinct model_id) from signals")
+	return singleInt(query)
+}
 
-	query = w.db.QueryRow(
+func (w *worker) activeModelsCount() int {
+	query := w.db.QueryRow(
 		`select count(distinct signals.model_id) from signals
 		left join users on signals.chat_id=users.chat_id
 		where users.block is null or users.block<?`,
 		w.cfg.BlockThreshold)
-	activeModelsCount := singleInt(query)
+	return singleInt(query)
+}
 
+func (w *worker) stat(chatID int64) {
 	w.mu.Lock()
 	elapsed := w.elapsed
 	w.mu.Unlock()
 
 	w.send(chatID, true, parseRaw, fmt.Sprintf(
 		"Users: %d\nActive users: %d\nModels: %d\nActive models: %d\nQueries duration: %v\nError rate: %d/%d",
-		usersCount,
-		activeUsersCount,
-		modelsCount,
-		activeModelsCount,
+		w.usersCount(),
+		w.activeUsersCount(),
+		w.modelsCount(),
+		w.activeModelsCount(),
 		elapsed,
 		w.unknownsNumber(),
 		w.cfg.errorInterval))
@@ -616,6 +624,27 @@ func (w *worker) processTGUpdate(u tg.Update) {
 	}
 }
 
+func (w *worker) handleStat(writer http.ResponseWriter, r *http.Request) {
+	passwords, ok := r.URL.Query()["password"]
+	if !ok || len(passwords[0]) < 1 {
+		return
+	}
+	password := passwords[0]
+	if password != w.cfg.StatPassword {
+		return
+	}
+	writer.WriteHeader(http.StatusOK)
+	writer.Header().Set("Content-Type", "application/json")
+	statString, err := json.MarshalIndent(statistics{
+		UsersCount:        w.usersCount(),
+		ActiveUsersCount:  w.activeUsersCount(),
+		ModelsCount:       w.modelsCount(),
+		ActiveModelsCount: w.activeModelsCount(),
+	}, "", "    ")
+	checkErr(err)
+	writer.Write([]byte(statString))
+}
+
 func main() {
 	w := newWorker()
 	w.logConfig()
@@ -623,6 +652,7 @@ func main() {
 	w.createDatabase()
 
 	incoming := w.bot.ListenForWebhook(w.cfg.ListenPath)
+	http.HandleFunc("/stat", w.handleStat)
 	go w.serve()
 	var periodicTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
 	statusRequests, statusUpdates := w.startChecker()

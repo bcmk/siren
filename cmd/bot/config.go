@@ -34,6 +34,7 @@ type config struct {
 	DangerousErrorRate string      `json:"dangerous_error_rate"` // dangerous error rate, warn admin if it is reached, format "1000/10000"
 	EnableCookies      bool        `json:"enable_cookies"`       // enable cookies, it can be useful to mitigate rate limits
 	Headers            [][2]string `json:"headers"`              // headers to make queries with
+	StatPassword       string      `json:"stat_password"`        // password for statistics
 
 	errorThreshold int
 	errorInterval  int
@@ -102,6 +103,9 @@ func checkConfig(cfg *config) error {
 	}
 	if cfg.Translation == "" {
 		return errors.New("configure translation")
+	}
+	if cfg.StatPassword == "" {
+		return errors.New("configure stat_password")
 	}
 	if m := errorRateRegexp.FindStringSubmatch(cfg.DangerousErrorRate); len(m) == 0 {
 		return errors.New("configure dangerous_error_rate")
