@@ -496,12 +496,25 @@ func (w *worker) onlineModelsCount() int {
 	return singleInt(query)
 }
 
+func (w *worker) heavyUsersCount() int {
+	query := w.db.QueryRow(`
+		select count(*) from (
+			select 1
+			from signals left join users
+			on signals.chat_id=users.chat_id
+			where users.block is null or users.block = 0
+			group by signals.chat_id
+			having count(*) >= 7);`)
+	return singleInt(query)
+}
+
 func (w *worker) stat(chatID int64) {
 	stat := w.getStat()
 	w.send(chatID, true, parseRaw, fmt.Sprintf(
-		"Users: %d\nActive users: %d\nModels: %d\nActive models: %d\nQueries duration: %d\nError rate: %d/%d\nMemory usage (MB): %d",
+		"Users: %d\nActive users: %d\nHeavy: %d\nModels: %d\nActive models: %d\nQueries duration: %d\nError rate: %d/%d\nMemory usage (MB): %d",
 		stat.UsersCount,
 		stat.ActiveUsersCount,
+		stat.HeavyUsersCount,
 		stat.ModelsCount,
 		stat.ActiveModelsCount,
 		stat.QueriesDurationSeconds,
@@ -648,6 +661,7 @@ func (w *worker) getStat() statistics {
 	return statistics{
 		UsersCount:             w.usersCount(),
 		ActiveUsersCount:       w.activeUsersCount(),
+		HeavyUsersCount:        w.heavyUsersCount(),
 		ModelsCount:            w.modelsCount(),
 		ActiveModelsCount:      w.activeModelsCount(),
 		OnlineModelsCount:      w.onlineModelsCount(),
