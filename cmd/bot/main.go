@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"path"
-	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -520,7 +519,7 @@ func (w *worker) stat(chatID int64) {
 		stat.QueriesDurationSeconds,
 		stat.ErrorRate[0],
 		stat.ErrorRate[1],
-		stat.MemoryUsage/1000000))
+		stat.MemoryUsage))
 }
 
 func (w *worker) broadcast(text string) {
@@ -655,8 +654,8 @@ func (w *worker) getStat() statistics {
 	elapsed := w.elapsed
 	w.mu.Unlock()
 
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
+	var mem syscall.Rusage
+	syscall.Getrusage(syscall.RUSAGE_SELF, &mem)
 
 	return statistics{
 		UsersCount:             w.usersCount(),
@@ -667,7 +666,7 @@ func (w *worker) getStat() statistics {
 		OnlineModelsCount:      w.onlineModelsCount(),
 		QueriesDurationSeconds: int(elapsed.Seconds()),
 		ErrorRate:              [2]int{w.unknownsNumber(), w.cfg.errorInterval},
-		MemoryUsage:            m.Alloc / 1000000}
+		MemoryUsage:            mem.Maxrss}
 }
 
 func (w *worker) handleStat(writer http.ResponseWriter, r *http.Request) {
