@@ -87,13 +87,20 @@ func newWorker() *worker {
 }
 
 func (w *worker) setWebhook() {
-	if w.cfg.CertificatePath == "" || w.cfg.WebhookDomain == "" {
+	if w.cfg.WebhookDomain == "" {
 		return
 	}
+
 	linf("setting webhook...")
-	var _, err = w.bot.SetWebhook(tg.NewWebhookWithCert(path.Join(w.cfg.WebhookDomain, w.cfg.ListenPath), w.cfg.CertificatePath))
-	checkErr(err)
+	if w.cfg.CertificatePath == "" {
+		var _, err = w.bot.SetWebhook(tg.NewWebhook(path.Join(w.cfg.WebhookDomain, w.cfg.ListenPath)))
+		checkErr(err)
+	} else {
+		var _, err = w.bot.SetWebhook(tg.NewWebhookWithCert(path.Join(w.cfg.WebhookDomain, w.cfg.ListenPath), w.cfg.CertificatePath))
+		checkErr(err)
+	}
 	linf("OK")
+
 	info, err := w.bot.GetWebhookInfo()
 	checkErr(err)
 	if info.LastErrorDate != 0 {
