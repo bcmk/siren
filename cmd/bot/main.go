@@ -470,8 +470,7 @@ func (w *worker) activeUsersCount() int {
 	query := w.db.QueryRow(
 		`select count(distinct signals.chat_id) from signals
 		left join users on signals.chat_id=users.chat_id
-		where users.block is null or users.block<?`,
-		w.cfg.BlockThreshold)
+		where users.block is null or users.block = 0`)
 	return singleInt(query)
 }
 
@@ -484,8 +483,7 @@ func (w *worker) activeModelsCount() int {
 	query := w.db.QueryRow(
 		`select count(distinct signals.model_id) from signals
 		left join users on signals.chat_id=users.chat_id
-		where users.block is null or users.block<?`,
-		w.cfg.BlockThreshold)
+		where users.block is null or users.block = 0`)
 	return singleInt(query)
 }
 
@@ -494,8 +492,7 @@ func (w *worker) onlineModelsCount() int {
 		select count(distinct signals.model_id) from signals
 		join statuses on signals.model_id=statuses.model_id
 		left join users on signals.chat_id=users.chat_id
-		where statuses.status=2 and (users.block is null or users.block < ?)`,
-		w.cfg.BlockThreshold)
+		where statuses.status=2 and (users.block is null or users.block = 0)`)
 	return singleInt(query)
 }
 
