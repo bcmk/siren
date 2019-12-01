@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -481,20 +482,28 @@ func (w *worker) activeModelsCount() int {
 	return singleInt(query)
 }
 
-func (w *worker) stat(chatID int64) {
-	w.mu.Lock()
-	elapsed := w.elapsed
-	w.mu.Unlock()
+func (w *worker) onlineModelsCount() int {
+	query := w.db.QueryRow(`
+		select count(distinct signals.model_id) from signals
+		join statuses on signals.model_id=statuses.model_id
+		left join users on signals.chat_id=users.chat_id
+		where statuses.status=2 and (users.block is null or users.block < ?)`,
+		w.cfg.BlockThreshold)
+	return singleInt(query)
+}
 
+func (w *worker) stat(chatID int64) {
+	stat := w.getStat()
 	w.send(chatID, true, parseRaw, fmt.Sprintf(
-		"Users: %d\nActive users: %d\nModels: %d\nActive models: %d\nQueries duration: %v\nError rate: %d/%d",
-		w.usersCount(),
-		w.activeUsersCount(),
-		w.modelsCount(),
-		w.activeModelsCount(),
-		elapsed,
-		w.unknownsNumber(),
-		w.cfg.errorInterval))
+		"Users: %d\nActive users: %d\nModels: %d\nActive models: %d\nQueries duration: %d\nError rate: %d/%d\nMemory usage (MB): %d",
+		stat.UsersCount,
+		stat.ActiveUsersCount,
+		stat.ModelsCount,
+		stat.ActiveModelsCount,
+		stat.QueriesDurationSeconds,
+		stat.ErrorRate[0],
+		stat.ErrorRate[1],
+		stat.MemoryUsage/1000000))
 }
 
 func (w *worker) broadcast(text string) {
@@ -624,6 +633,25 @@ func (w *worker) processTGUpdate(u tg.Update) {
 	}
 }
 
+func (w *worker) getStat() statistics {
+	w.mu.Lock()
+	elapsed := w.elapsed
+	w.mu.Unlock()
+
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
+	return statistics{
+		UsersCount:             w.usersCount(),
+		ActiveUsersCount:       w.activeUsersCount(),
+		ModelsCount:            w.modelsCount(),
+		ActiveModelsCount:      w.activeModelsCount(),
+		OnlineModelsCount:      w.onlineModelsCount(),
+		QueriesDurationSeconds: int(elapsed.Seconds()),
+		ErrorRate:              [2]int{w.unknownsNumber(), w.cfg.errorInterval},
+		MemoryUsage:            m.Alloc / 1000000}
+}
+
 func (w *worker) handleStat(writer http.ResponseWriter, r *http.Request) {
 	passwords, ok := r.URL.Query()["password"]
 	if !ok || len(passwords[0]) < 1 {
@@ -635,14 +663,9 @@ func (w *worker) handleStat(writer http.ResponseWriter, r *http.Request) {
 	}
 	writer.WriteHeader(http.StatusOK)
 	writer.Header().Set("Content-Type", "application/json")
-	statString, err := json.MarshalIndent(statistics{
-		UsersCount:        w.usersCount(),
-		ActiveUsersCount:  w.activeUsersCount(),
-		ModelsCount:       w.modelsCount(),
-		ActiveModelsCount: w.activeModelsCount(),
-	}, "", "    ")
+	statString, err := json.MarshalIndent(w.getStat(), "", "    ")
 	checkErr(err)
-	writer.Write([]byte(statString))
+	writer.Write(statString)
 }
 
 func main() {
