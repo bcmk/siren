@@ -655,7 +655,7 @@ func (w *worker) getStat() statistics {
 	w.mu.Unlock()
 
 	var mem syscall.Rusage
-	syscall.Getrusage(syscall.RUSAGE_SELF, &mem)
+	checkErr(syscall.Getrusage(syscall.RUSAGE_SELF, &mem))
 
 	return statistics{
 		UsersCount:             w.usersCount(),
