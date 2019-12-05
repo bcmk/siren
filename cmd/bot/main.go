@@ -508,10 +508,10 @@ func (w *worker) heavyUsersCount() int {
 	return singleInt(query)
 }
 
-func (w *worker) stat(chatID int64) {
+func (w *worker) statString() string {
 	stat := w.getStat()
-	w.send(chatID, true, parseRaw, fmt.Sprintf(
-		"Users: %d\nActive users: %d\nHeavy: %d\nModels: %d\nActive models: %d\nQueries duration: %d\nError rate: %d/%d\nMemory usage (MB): %d",
+	return fmt.Sprintf(
+		"Users: %d\nActive users: %d\nHeavy: %d\nModels: %d\nModels to query: %d\nQueries duration: %d\nError rate: %d/%d\nMemory usage (MB): %d",
 		stat.UsersCount,
 		stat.ActiveUsersCount,
 		stat.HeavyUsersCount,
@@ -520,7 +520,11 @@ func (w *worker) stat(chatID int64) {
 		stat.QueriesDurationSeconds,
 		stat.ErrorRate[0],
 		stat.ErrorRate[1],
-		stat.MemoryUsage))
+		stat.MemoryUsage)
+}
+
+func (w *worker) stat(chatID int64) {
+	w.send(chatID, true, parseRaw, w.statString())
 }
 
 func (w *worker) broadcast(text string) {
@@ -686,6 +690,10 @@ func (w *worker) handleStat(writer http.ResponseWriter, r *http.Request) {
 	writer.Write(statString)
 }
 
+func (w *worker) logStat() {
+	linf("stat\n%s", w.statString())
+}
+
 func main() {
 	w := newWorker()
 	w.logConfig()
@@ -696,6 +704,7 @@ func main() {
 	http.HandleFunc("/stat", w.handleStat)
 	go w.serve()
 	var periodicTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
+	var statTimer = time.NewTicker(time.Duration(w.cfg.StatLogPeriodSeconds) * time.Second)
 	statusRequests, statusUpdates := w.startChecker()
 	statusRequests <- w.models()
 	signals := make(chan os.Signal, 16)
@@ -704,6 +713,8 @@ func main() {
 		select {
 		case <-periodicTimer.C:
 			w.processPeriodic(statusRequests)
+		case <-statTimer.C:
+			w.logStat()
 		case statusUpdate := <-statusUpdates:
 			w.processStatusUpdate(statusUpdate)
 		case u := <-incoming:

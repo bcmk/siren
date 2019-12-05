@@ -13,28 +13,29 @@ import (
 )
 
 type config struct {
-	Website            string      `json:"website"`              // one of the following: bongacams, stripchat, chaturbate
-	ListenPath         string      `json:"listen_path"`          // the path excluding domain to listen to, the good choice is /your-telegram-bot-token
-	ListenAddress      string      `json:"listen_address"`       // the address to listen to
-	WebhookDomain      string      `json:"webhook_domain"`       // domain listening webhook
-	BotToken           string      `json:"bot_token"`            // your telegram bot token
-	PeriodSeconds      int         `json:"period_seconds"`       // the period of querying models statuses
-	MaxModels          int         `json:"max_models"`           // maximum models per user
-	TimeoutSeconds     int         `json:"timeout_seconds"`      // HTTP timeout
-	AdminID            int64       `json:"admin_id"`             // your telegram ID
-	DBPath             string      `json:"db_path"`              // path to database
-	CertificatePath    string      `json:"certificate_path"`     // a path to your certificate
-	CertificateKeyPath string      `json:"certificate_key_path"` // your key, omit if under a proxy
-	NotFoundThreshold  int         `json:"not_found_threshold"`  // remove a model after a failure to find her this number of times
-	BlockThreshold     int         `json:"block_threshold"`      // do not send a message to the user if we fail to do it due to blocking this number of times
-	Translation        string      `json:"translation"`          // translation strings
-	Debug              bool        `json:"debug"`                // debug mode
-	IntervalMs         int         `json:"interval_ms"`          // queries interval for rate limited access
-	SourceIPAddresses  []string    `json:"source_ip_addresses"`  // source IP address to use in queries
-	DangerousErrorRate string      `json:"dangerous_error_rate"` // dangerous error rate, warn admin if it is reached, format "1000/10000"
-	EnableCookies      bool        `json:"enable_cookies"`       // enable cookies, it can be useful to mitigate rate limits
-	Headers            [][2]string `json:"headers"`              // headers to make queries with
-	StatPassword       string      `json:"stat_password"`        // password for statistics
+	Website              string      `json:"website"`                 // one of the following: bongacams, stripchat, chaturbate
+	ListenPath           string      `json:"listen_path"`             // the path excluding domain to listen to, the good choice is /your-telegram-bot-token
+	ListenAddress        string      `json:"listen_address"`          // the address to listen to
+	WebhookDomain        string      `json:"webhook_domain"`          // domain listening webhook
+	BotToken             string      `json:"bot_token"`               // your telegram bot token
+	PeriodSeconds        int         `json:"period_seconds"`          // the period of querying models statuses
+	MaxModels            int         `json:"max_models"`              // maximum models per user
+	TimeoutSeconds       int         `json:"timeout_seconds"`         // HTTP timeout
+	AdminID              int64       `json:"admin_id"`                // your telegram ID
+	DBPath               string      `json:"db_path"`                 // path to database
+	CertificatePath      string      `json:"certificate_path"`        // a path to your certificate
+	CertificateKeyPath   string      `json:"certificate_key_path"`    // your key, omit if under a proxy
+	NotFoundThreshold    int         `json:"not_found_threshold"`     // remove a model after a failure to find her this number of times
+	BlockThreshold       int         `json:"block_threshold"`         // do not send a message to the user if we fail to do it due to blocking this number of times
+	Translation          string      `json:"translation"`             // translation strings
+	Debug                bool        `json:"debug"`                   // debug mode
+	IntervalMs           int         `json:"interval_ms"`             // queries interval for rate limited access
+	SourceIPAddresses    []string    `json:"source_ip_addresses"`     // source IP address to use in queries
+	DangerousErrorRate   string      `json:"dangerous_error_rate"`    // dangerous error rate, warn admin if it is reached, format "1000/10000"
+	EnableCookies        bool        `json:"enable_cookies"`          // enable cookies, it can be useful to mitigate rate limits
+	Headers              [][2]string `json:"headers"`                 // headers to make queries with
+	StatPassword         string      `json:"stat_password"`           // password for statistics
+	StatLogPeriodSeconds int         `json:"stat_log_period_seconds"` // the period of stat log
 
 	errorThreshold int
 	errorInterval  int
@@ -106,6 +107,9 @@ func checkConfig(cfg *config) error {
 	}
 	if cfg.StatPassword == "" {
 		return errors.New("configure stat_password")
+	}
+	if cfg.StatLogPeriodSeconds == 0 {
+		return errors.New("configure log_stat_period_seconds")
 	}
 	if m := errorRateRegexp.FindStringSubmatch(cfg.DangerousErrorRate); len(m) == 0 {
 		return errors.New("configure dangerous_error_rate")
