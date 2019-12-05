@@ -3,11 +3,14 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"os/signal"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -654,13 +657,32 @@ func (w *worker) processTGUpdate(u tg.Update) {
 	}
 }
 
+func getRss() (int64, error) {
+	buf, err := ioutil.ReadFile("/proc/self/statm")
+	if err != nil {
+		return 0, err
+	}
+
+	fields := strings.Split(string(buf), " ")
+	if len(fields) < 2 {
+		return 0, errors.New("Cannot parse statm")
+	}
+
+	rss, err := strconv.ParseInt(fields[1], 10, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	return rss * int64(os.Getpagesize()), err
+}
+
 func (w *worker) getStat() statistics {
 	w.mu.Lock()
 	elapsed := w.elapsed
 	w.mu.Unlock()
 
-	var mem syscall.Rusage
-	checkErr(syscall.Getrusage(syscall.RUSAGE_SELF, &mem))
+	rss, err := getRss()
+	checkErr(err)
 
 	return statistics{
 		UsersCount:             w.usersCount(),
@@ -671,7 +693,7 @@ func (w *worker) getStat() statistics {
 		OnlineModelsCount:      w.onlineModelsCount(),
 		QueriesDurationSeconds: int(elapsed.Seconds()),
 		ErrorRate:              [2]int{w.unknownsNumber(), w.cfg.errorInterval},
-		MemoryUsage:            mem.Maxrss}
+		MemoryUsage:            rss / 1024}
 }
 
 func (w *worker) handleStat(writer http.ResponseWriter, r *http.Request) {
