@@ -5,7 +5,7 @@ type statistics struct {
 	ActiveUsersCount       int    `json:"active_users_count"`
 	HeavyUsersCount        int    `json:"heavy_users_count"`
 	ModelsCount            int    `json:"models_count"`
-	ActiveModelsCount      int    `json:"active_models_count"`
+	ModelsToQueryCount     int    `json:"models_to_query_count"`
 	OnlineModelsCount      int    `json:"online_models_count"`
 	QueriesDurationSeconds int    `json:"queries_duration"`
 	ErrorRate              [2]int `json:"error_rate"`

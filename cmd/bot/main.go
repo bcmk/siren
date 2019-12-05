@@ -478,11 +478,12 @@ func (w *worker) modelsCount() int {
 	return singleInt(query)
 }
 
-func (w *worker) activeModelsCount() int {
+func (w *worker) modelsToQueryCount() int {
 	query := w.db.QueryRow(
 		`select count(distinct signals.model_id) from signals
 		left join users on signals.chat_id=users.chat_id
-		where users.block is null or users.block = 0`)
+		where users.block is null or users.block < ?`,
+		w.cfg.BlockThreshold)
 	return singleInt(query)
 }
 
@@ -515,7 +516,7 @@ func (w *worker) stat(chatID int64) {
 		stat.ActiveUsersCount,
 		stat.HeavyUsersCount,
 		stat.ModelsCount,
-		stat.ActiveModelsCount,
+		stat.ModelsToQueryCount,
 		stat.QueriesDurationSeconds,
 		stat.ErrorRate[0],
 		stat.ErrorRate[1],
@@ -662,7 +663,7 @@ func (w *worker) getStat() statistics {
 		ActiveUsersCount:       w.activeUsersCount(),
 		HeavyUsersCount:        w.heavyUsersCount(),
 		ModelsCount:            w.modelsCount(),
-		ActiveModelsCount:      w.activeModelsCount(),
+		ModelsToQueryCount:     w.modelsToQueryCount(),
 		OnlineModelsCount:      w.onlineModelsCount(),
 		QueriesDurationSeconds: int(elapsed.Seconds()),
 		ErrorRate:              [2]int{w.unknownsNumber(), w.cfg.errorInterval},
