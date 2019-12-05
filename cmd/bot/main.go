@@ -514,7 +514,7 @@ func (w *worker) heavyUsersCount() int {
 func (w *worker) statString() string {
 	stat := w.getStat()
 	return fmt.Sprintf(
-		"Users: %d\nActive users: %d\nHeavy: %d\nModels: %d\nModels to query: %d\nQueries duration: %d\nError rate: %d/%d\nMemory usage (MB): %d",
+		"Users: %d\nActive users: %d\nHeavy: %d\nModels: %d\nModels to query: %d\nQueries duration: %ds\nError rate: %d/%d\nMemory usage (KB): %d",
 		stat.UsersCount,
 		stat.ActiveUsersCount,
 		stat.HeavyUsersCount,
