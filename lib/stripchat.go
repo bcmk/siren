@@ -1,7 +1,9 @@
 package lib
 
 import (
+	"bytes"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 
 	"github.com/andybalholm/cascadia"
@@ -33,7 +35,10 @@ func CheckModelStripchat(client *Client, modelID string, headers [][2]string, db
 	if resp.StatusCode == 404 {
 		return StatusNotFound
 	}
-	doc, err := html.Parse(resp.Body)
+	buf := bytes.Buffer{}
+	_, err = buf.ReadFrom(resp.Body)
+	copy := ioutil.NopCloser(bytes.NewReader(buf.Bytes()))
+	doc, err := html.Parse(copy)
 	if err != nil {
 		Lerr("[%v] cannot parse body for model %s, %v", client.Addr, modelID, err)
 		return StatusUnknown
@@ -57,5 +62,8 @@ func CheckModelStripchat(client *Client, modelID string, headers [][2]string, db
 	}
 
 	Lerr("[%v] cannot determine status", client.Addr)
+	if dbg {
+		Ldbg("response: %s", buf.String())
+	}
 	return StatusUnknown
 }
