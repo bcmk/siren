@@ -511,23 +511,22 @@ func (w *worker) heavyUsersCount() int {
 	return singleInt(query)
 }
 
-func (w *worker) statString() string {
+func (w *worker) statStrings() []string {
 	stat := w.getStat()
-	return fmt.Sprintf(
-		"Users: %d\nActive users: %d\nHeavy: %d\nModels: %d\nModels to query: %d\nQueries duration: %ds\nError rate: %d/%d\nMemory usage (KB): %d",
-		stat.UsersCount,
-		stat.ActiveUsersCount,
-		stat.HeavyUsersCount,
-		stat.ModelsCount,
-		stat.ModelsToQueryCount,
-		stat.QueriesDurationSeconds,
-		stat.ErrorRate[0],
-		stat.ErrorRate[1],
-		stat.MemoryUsage)
+	return []string{
+		fmt.Sprintf("Users: %d", stat.UsersCount),
+		fmt.Sprintf("Active users: %d", stat.ActiveUsersCount),
+		fmt.Sprintf("Heavy: %d", stat.HeavyUsersCount),
+		fmt.Sprintf("Models: %d", stat.ModelsCount),
+		fmt.Sprintf("Models to query: %d", stat.ModelsToQueryCount),
+		fmt.Sprintf("Queries duration: %d s", stat.QueriesDurationSeconds),
+		fmt.Sprintf("Error rate: %d/%d", stat.ErrorRate[0], stat.ErrorRate[1]),
+		fmt.Sprintf("Memory usage: %d KiB", stat.MemoryUsage),
+	}
 }
 
 func (w *worker) stat(chatID int64) {
-	w.send(chatID, true, parseRaw, w.statString())
+	w.send(chatID, true, parseRaw, strings.Join(w.statStrings(), "\n"))
 }
 
 func (w *worker) broadcast(text string) {
@@ -707,13 +706,13 @@ func (w *worker) handleStat(writer http.ResponseWriter, r *http.Request) {
 	}
 	writer.WriteHeader(http.StatusOK)
 	writer.Header().Set("Content-Type", "application/json")
-	statString, err := json.MarshalIndent(w.getStat(), "", "    ")
+	statJson, err := json.MarshalIndent(w.getStat(), "", "    ")
 	checkErr(err)
-	writer.Write(statString)
+	writer.Write(statJson)
 }
 
 func (w *worker) logStat() {
-	linf("stat\n%s", w.statString())
+	linf("stat, %s", strings.Join(w.statStrings(), ", "))
 }
 
 func main() {
