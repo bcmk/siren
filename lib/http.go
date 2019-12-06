@@ -30,13 +30,14 @@ func HTTPClientWithTimeoutAndAddress(timeoutSeconds int, address string, cookies
 			DialContext: (&net.Dialer{
 				LocalAddr: addr,
 				Timeout:   time.Second * time.Duration(timeoutSeconds),
-				KeepAlive: time.Second * time.Duration(timeoutSeconds),
+				KeepAlive: 30 * time.Second,
 				DualStack: true,
 			}).DialContext,
+			ForceAttemptHTTP2:     true,
 			MaxIdleConns:          10,
-			IdleConnTimeout:       time.Second * time.Duration(timeoutSeconds),
+			IdleConnTimeout:       http.DefaultTransport.(*http.Transport).IdleConnTimeout,
 			TLSHandshakeTimeout:   time.Second * time.Duration(timeoutSeconds),
-			ExpectContinueTimeout: time.Second * time.Duration(timeoutSeconds),
+			ExpectContinueTimeout: time.Duration(0),
 			TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
 		},
 	}
