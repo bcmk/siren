@@ -521,7 +521,7 @@ func (w *worker) statStrings() []string {
 		fmt.Sprintf("Models to query: %d", stat.ModelsToQueryCount),
 		fmt.Sprintf("Queries duration: %d s", stat.QueriesDurationSeconds),
 		fmt.Sprintf("Error rate: %d/%d", stat.ErrorRate[0], stat.ErrorRate[1]),
-		fmt.Sprintf("Memory usage: %d KiB", stat.MemoryUsage),
+		fmt.Sprintf("Memory usage: %d KiB", stat.Rss),
 	}
 }
 
@@ -682,6 +682,8 @@ func (w *worker) getStat() statistics {
 
 	rss, err := getRss()
 	checkErr(err)
+	var rusage syscall.Rusage
+	checkErr(syscall.Getrusage(syscall.RUSAGE_SELF, &rusage))
 
 	return statistics{
 		UsersCount:             w.usersCount(),
@@ -692,7 +694,8 @@ func (w *worker) getStat() statistics {
 		OnlineModelsCount:      w.onlineModelsCount(),
 		QueriesDurationSeconds: int(elapsed.Seconds()),
 		ErrorRate:              [2]int{w.unknownsNumber(), w.cfg.errorInterval},
-		MemoryUsage:            rss / 1024}
+		Rss:                    rss / 1024,
+		MaxRss:                 rusage.Maxrss}
 }
 
 func (w *worker) handleStat(writer http.ResponseWriter, r *http.Request) {

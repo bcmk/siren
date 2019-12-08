@@ -9,5 +9,6 @@ type statistics struct {
 	OnlineModelsCount      int    `json:"online_models_count"`
 	QueriesDurationSeconds int    `json:"queries_duration"`
 	ErrorRate              [2]int `json:"error_rate"`
-	MemoryUsage            int64  `json:"memory_usage"`
+	Rss                    int64  `json:"rss"`
+	MaxRss                 int64  `json:"max_rss"`
 }
