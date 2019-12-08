@@ -15,7 +15,7 @@ var offlineDiv = cascadia.MustCompile("div.status-off")
 var bannedDiv = cascadia.MustCompile("div.banned")
 var statusDiv = cascadia.MustCompile("div.vc-status")
 var privateDiv = cascadia.MustCompile("div.status-private")
-var p2pStatusDiv = cascadia.MustCompile("div.status-private")
+var p2pStatusDiv = cascadia.MustCompile("div.status-p2p")
 var idleDiv = cascadia.MustCompile("div.status-idle")
 
 // CheckModelStripchat checks Stripchat model status
