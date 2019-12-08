@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -736,6 +737,7 @@ func main() {
 	for {
 		select {
 		case <-periodicTimer.C:
+			runtime.GC()
 			w.processPeriodic(statusRequests)
 		case <-statTimer.C:
 			w.logStat()
