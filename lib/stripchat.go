@@ -62,9 +62,6 @@ func CheckModelStripchat(client *Client, modelID string, headers [][2]string, db
 		return StatusOnline
 	}
 
-	Lerr("[%v] cannot determine status", client.Addr)
-	if dbg {
-		Ldbg("response: %s", buf.String())
-	}
+	Lerr("[%v] cannot determine status, response: %s", client.Addr, buf.String())
 	return StatusUnknown
 }
