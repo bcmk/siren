@@ -17,6 +17,7 @@ var statusDiv = cascadia.MustCompile("div.vc-status")
 var privateDiv = cascadia.MustCompile("div.status-private")
 var p2pStatusDiv = cascadia.MustCompile("div.status-p2p")
 var idleDiv = cascadia.MustCompile("div.status-idle")
+var disabledDiv = cascadia.MustCompile("div.account-disabled-page")
 
 // CheckModelStripchat checks Stripchat model status
 func CheckModelStripchat(client *Client, modelID string, headers [][2]string, dbg bool) StatusKind {
@@ -55,6 +56,10 @@ func CheckModelStripchat(client *Client, modelID string, headers [][2]string, db
 	}
 
 	if bannedDiv.MatchFirst(doc) != nil {
+		return StatusDenied
+	}
+
+	if disabledDiv.MatchFirst(doc) != nil {
 		return StatusDenied
 	}
 
