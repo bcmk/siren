@@ -20,6 +20,8 @@ func (s StatusKind) String() string {
 		return "online"
 	case StatusNotFound:
 		return "not found"
+	case StatusDenied:
+		return "denied"
 	}
 	return "unknown"
 }
