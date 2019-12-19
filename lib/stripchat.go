@@ -10,7 +10,7 @@ import (
 	"golang.org/x/net/html"
 )
 
-var bodyTag = cascadia.MustCompile("#body")
+var viewCamPageMainTag = cascadia.MustCompile("div.view-cam-page-main")
 var offlineDiv = cascadia.MustCompile("div.status-off")
 var bannedDiv = cascadia.MustCompile("div.banned")
 var statusDiv = cascadia.MustCompile("div.vc-status")
@@ -46,8 +46,8 @@ func CheckModelStripchat(client *Client, modelID string, headers [][2]string, db
 		return StatusUnknown
 	}
 
-	if bodyTag.MatchFirst(doc) == nil {
-		Lerr("[%v] cannot parse body for model %s", client.Addr, modelID)
+	if viewCamPageMainTag.MatchFirst(doc) == nil {
+		Lerr("[%v] cannot parse a page for model %s", client.Addr, modelID)
 		return StatusUnknown
 	}
 
@@ -55,11 +55,7 @@ func CheckModelStripchat(client *Client, modelID string, headers [][2]string, db
 		return StatusOffline
 	}
 
-	if bannedDiv.MatchFirst(doc) != nil {
-		return StatusDenied
-	}
-
-	if disabledDiv.MatchFirst(doc) != nil {
+	if bannedDiv.MatchFirst(doc) != nil || disabledDiv.MatchFirst(doc) != nil {
 		return StatusDenied
 	}
 
