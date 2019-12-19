@@ -11,9 +11,8 @@ import (
 )
 
 var viewCamPageMainTag = cascadia.MustCompile("div.view-cam-page-main")
-var offlineDiv = cascadia.MustCompile("div.status-off")
-var bannedDiv = cascadia.MustCompile("div.banned")
 var statusDiv = cascadia.MustCompile("div.vc-status")
+var offlineDiv = cascadia.MustCompile("div.status-off")
 var privateDiv = cascadia.MustCompile("div.status-private")
 var p2pStatusDiv = cascadia.MustCompile("div.status-p2p")
 var idleDiv = cascadia.MustCompile("div.status-idle")
@@ -55,7 +54,7 @@ func CheckModelStripchat(client *Client, modelID string, headers [][2]string, db
 		return StatusOffline
 	}
 
-	if bannedDiv.MatchFirst(doc) != nil || disabledDiv.MatchFirst(doc) != nil {
+	if disabledDiv.MatchFirst(doc) != nil {
 		return StatusDenied
 	}
 
