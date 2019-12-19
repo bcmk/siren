@@ -10,7 +10,7 @@ import (
 	"golang.org/x/net/html"
 )
 
-var viewCamPageMainTag = cascadia.MustCompile("div.view-cam-page-main")
+var viewCamPageMainTag = cascadia.MustCompile("div.view-cam-page-wrapper")
 var statusDiv = cascadia.MustCompile("div.vc-status")
 var offlineDiv = cascadia.MustCompile("div.status-off")
 var privateDiv = cascadia.MustCompile("div.status-private")
