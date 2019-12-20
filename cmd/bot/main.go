@@ -73,7 +73,7 @@ func newWorker() *worker {
 		mu:            &sync.Mutex{},
 		tr:            loadTranslations(cfg.Translation),
 		sendTGMessage: bot.Send,
-		unknowns:      make([]bool, cfg.errorInterval),
+		unknowns:      make([]bool, cfg.errorDenominator),
 	}
 	switch cfg.Website {
 	case "bongacams":
@@ -618,7 +618,7 @@ func (w *worker) processIncomingCommand(chatID int64, command, arguments string)
 func (w *worker) processPeriodic(statusRequests chan []string) {
 	var unknownsNumber = w.unknownsNumber()
 	if unknownsNumber > w.cfg.errorThreshold {
-		w.send(w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Dangerous error rate reached: %d/%d", unknownsNumber, w.cfg.errorInterval))
+		w.send(w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Dangerous error rate reached: %d/%d", unknownsNumber, w.cfg.errorDenominator))
 	}
 
 	select {
@@ -641,7 +641,7 @@ func (w *worker) processStatusUpdate(statusUpdate statusUpdate) {
 		}
 	}
 	w.unknowns[w.unknownsPos] = statusUpdate.status == lib.StatusUnknown
-	w.unknownsPos = (w.unknownsPos + 1) % w.cfg.errorInterval
+	w.unknownsPos = (w.unknownsPos + 1) % w.cfg.errorDenominator
 }
 
 func (w *worker) processTGUpdate(u tg.Update) {
@@ -695,7 +695,7 @@ func (w *worker) getStat() statistics {
 		ModelsToQueryCount:     w.modelsToQueryCount(),
 		OnlineModelsCount:      w.onlineModelsCount(),
 		QueriesDurationSeconds: int(elapsed.Seconds()),
-		ErrorRate:              [2]int{w.unknownsNumber(), w.cfg.errorInterval},
+		ErrorRate:              [2]int{w.unknownsNumber(), w.cfg.errorDenominator},
 		Rss:                    rss / 1024,
 		MaxRss:                 rusage.Maxrss}
 }

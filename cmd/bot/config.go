@@ -37,8 +37,8 @@ type config struct {
 	StatPassword         string      `json:"stat_password"`           // password for statistics
 	StatLogPeriodSeconds int         `json:"stat_log_period_seconds"` // the period of stat log
 
-	errorThreshold int
-	errorInterval  int
+	errorThreshold   int
+	errorDenominator int
 }
 
 var errorRateRegexp = regexp.MustCompile(`^(\d+)/(\d+)$`)
@@ -119,17 +119,17 @@ func checkConfig(cfg *config) error {
 			return err
 		}
 
-		errorInterval, err := strconv.ParseInt(m[2], 10, 0)
+		errorDenominator, err := strconv.ParseInt(m[2], 10, 0)
 		if err != nil {
 			return err
 		}
 
-		if errorInterval == 0 {
+		if errorDenominator == 0 {
 			return errors.New(`configure dangerous_errors_rate as "x/y", where y > 0`)
 		}
 
 		cfg.errorThreshold = int(errorThreshold)
-		cfg.errorInterval = int(errorInterval)
+		cfg.errorDenominator = int(errorDenominator)
 	}
 
 	return nil
