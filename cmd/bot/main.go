@@ -37,17 +37,18 @@ type statusUpdate struct {
 }
 
 type worker struct {
-	clients       []*lib.Client
-	bot           *tg.BotAPI
-	db            *sql.DB
-	cfg           *config
-	mu            *sync.Mutex
-	elapsed       time.Duration
-	tr            translations
-	checkModel    func(client *lib.Client, modelID string, headers [][2]string, dbg bool) lib.StatusKind
-	sendTGMessage func(msg tg.Chattable) (tg.Message, error)
-	unknowns      []bool
-	unknownsPos   int
+	clients         []*lib.Client
+	bot             *tg.BotAPI
+	db              *sql.DB
+	cfg             *config
+	mu              *sync.Mutex
+	elapsed         time.Duration
+	tr              translations
+	checkModel      func(client *lib.Client, modelID string, headers [][2]string, dbg bool) lib.StatusKind
+	sendTGMessage   func(msg tg.Chattable) (tg.Message, error)
+	unknowns        []bool
+	unknownsPos     int
+	nextErrorReport time.Time
 }
 
 func newWorker() *worker {
@@ -616,9 +617,11 @@ func (w *worker) processIncomingCommand(chatID int64, command, arguments string)
 }
 
 func (w *worker) processPeriodic(statusRequests chan []string) {
-	var unknownsNumber = w.unknownsNumber()
-	if unknownsNumber > w.cfg.errorThreshold {
+	unknownsNumber := w.unknownsNumber()
+	now := time.Now()
+	if w.nextErrorReport.Before(now) && unknownsNumber > w.cfg.errorThreshold {
 		w.send(w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Dangerous error rate reached: %d/%d", unknownsNumber, w.cfg.errorDenominator))
+		w.nextErrorReport = now.Add(time.Minute * time.Duration(w.cfg.ErrorReportingPeriodMinutes))
 	}
 
 	select {
