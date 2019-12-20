@@ -319,7 +319,7 @@ func (w *worker) startChecker() (input chan []string, output chan statusUpdate) 
 				output <- statusUpdate{modelID: modelID, status: newStatus}
 				queryElapsed := time.Since(queryStart) / time.Millisecond
 				if w.cfg.IntervalMs != 0 {
-					sleep := w.cfg.IntervalMs - int(queryElapsed)
+					sleep := w.cfg.IntervalMs/len(w.clients) - int(queryElapsed)
 					if sleep > 0 {
 						time.Sleep(time.Duration(sleep) * time.Millisecond)
 					}
