@@ -14,6 +14,7 @@ var viewCamPageMainTag = cascadia.MustCompile("div.view-cam-page-wrapper")
 var statusDiv = cascadia.MustCompile("div.vc-status")
 var offlineDiv = cascadia.MustCompile("div.status-off")
 var privateDiv = cascadia.MustCompile("div.status-private")
+var groupDiv = cascadia.MustCompile("div.status-groupShow")
 var p2pStatusDiv = cascadia.MustCompile("div.status-p2p")
 var idleDiv = cascadia.MustCompile("div.status-idle")
 var disabledDiv = cascadia.MustCompile("div.account-disabled-page")
@@ -58,7 +59,13 @@ func CheckModelStripchat(client *Client, modelID string, headers [][2]string, db
 		return StatusDenied
 	}
 
-	if statusDiv.MatchFirst(doc) == nil || privateDiv.MatchFirst(doc) != nil || p2pStatusDiv.MatchFirst(doc) != nil || idleDiv.MatchFirst(doc) != nil {
+	if false ||
+		statusDiv.MatchFirst(doc) == nil ||
+		privateDiv.MatchFirst(doc) != nil ||
+		p2pStatusDiv.MatchFirst(doc) != nil ||
+		idleDiv.MatchFirst(doc) != nil ||
+		groupDiv.MatchFirst(doc) != nil {
+
 		return StatusOnline
 	}
 
