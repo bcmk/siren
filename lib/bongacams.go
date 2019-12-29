@@ -7,7 +7,7 @@ import (
 
 // CheckModelBongaCams checks BongaCams model status
 func CheckModelBongaCams(client *Client, modelID string, headers [][2]string, dbg bool) StatusKind {
-	req, err := http.NewRequest("GET", fmt.Sprintf("https://bongacams.com/%s", modelID), nil)
+	req, err := http.NewRequest("GET", fmt.Sprintf("https://en.bongacams.com/%s", modelID), nil)
 	CheckErr(err)
 	for _, h := range headers {
 		req.Header.Set(h[0], h[1])
