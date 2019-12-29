@@ -38,17 +38,22 @@ type statusUpdate struct {
 
 type worker struct {
 	clients         []*lib.Client
-	bot             *tg.BotAPI
+	bots            map[string]*tg.BotAPI
 	db              *sql.DB
 	cfg             *config
 	mu              *sync.Mutex
 	elapsed         time.Duration
-	tr              translations
+	tr              map[string]translations
 	checkModel      func(client *lib.Client, modelID string, headers [][2]string, dbg bool) lib.StatusKind
-	sendTGMessage   func(msg tg.Chattable) (tg.Message, error)
+	senders         map[string]func(msg tg.Chattable) (tg.Message, error)
 	unknowns        []bool
 	unknownsPos     int
 	nextErrorReport time.Time
+}
+
+type packet struct {
+	message  tg.Update
+	endpoint string
 }
 
 func newWorker() *worker {
@@ -62,19 +67,25 @@ func newWorker() *worker {
 		clients = append(clients, lib.HTTPClientWithTimeoutAndAddress(cfg.TimeoutSeconds, address, cfg.EnableCookies))
 	}
 
-	bot, err := tg.NewBotAPIWithClient(cfg.BotToken, clients[0].Client)
-	checkErr(err)
+	bots := make(map[string]*tg.BotAPI)
+	senders := make(map[string]func(msg tg.Chattable) (tg.Message, error))
+	for n, p := range cfg.Endpoints {
+		bot, err := tg.NewBotAPIWithClient(p.BotToken, clients[0].Client)
+		checkErr(err)
+		bots[n] = bot
+		senders[n] = bot.Send
+	}
 	db, err := sql.Open("sqlite3", cfg.DBPath)
 	checkErr(err)
 	w := &worker{
-		bot:           bot,
-		db:            db,
-		cfg:           cfg,
-		clients:       clients,
-		mu:            &sync.Mutex{},
-		tr:            loadTranslations(cfg.Translation),
-		sendTGMessage: bot.Send,
-		unknowns:      make([]bool, cfg.errorDenominator),
+		bots:     bots,
+		db:       db,
+		cfg:      cfg,
+		clients:  clients,
+		mu:       &sync.Mutex{},
+		tr:       loadAllTranslations(cfg),
+		senders:  senders,
+		unknowns: make([]bool, cfg.errorDenominator),
 	}
 	switch cfg.Website {
 	case "bongacams":
@@ -91,27 +102,37 @@ func newWorker() *worker {
 }
 
 func (w *worker) setWebhook() {
-	if w.cfg.WebhookDomain == "" {
-		return
+	for n, p := range w.cfg.Endpoints {
+		linf("setting webhook for endpoint %s...", n)
+		if p.WebhookDomain == "" {
+			continue
+		}
+		if p.CertificatePath == "" {
+			var _, err = w.bots[n].SetWebhook(tg.NewWebhook(path.Join(p.WebhookDomain, p.ListenPath)))
+			checkErr(err)
+		} else {
+			var _, err = w.bots[n].SetWebhook(tg.NewWebhookWithCert(path.Join(p.WebhookDomain, p.ListenPath), p.CertificatePath))
+			checkErr(err)
+		}
+		info, err := w.bots[n].GetWebhookInfo()
+		checkErr(err)
+		if info.LastErrorDate != 0 {
+			linf("last webhook error time: %v", time.Unix(int64(info.LastErrorDate), 0))
+		}
+		if info.LastErrorMessage != "" {
+			linf("last webhook error message: %s", info.LastErrorMessage)
+		}
+		linf("OK")
 	}
 
-	linf("setting webhook...")
-	if w.cfg.CertificatePath == "" {
-		var _, err = w.bot.SetWebhook(tg.NewWebhook(path.Join(w.cfg.WebhookDomain, w.cfg.ListenPath)))
-		checkErr(err)
-	} else {
-		var _, err = w.bot.SetWebhook(tg.NewWebhookWithCert(path.Join(w.cfg.WebhookDomain, w.cfg.ListenPath), w.cfg.CertificatePath))
-		checkErr(err)
-	}
-	linf("OK")
+}
 
-	info, err := w.bot.GetWebhookInfo()
-	checkErr(err)
-	if info.LastErrorDate != 0 {
-		linf("last webhook error time: %v", time.Unix(int64(info.LastErrorDate), 0))
-	}
-	if info.LastErrorMessage != "" {
-		linf("last webhook error message: %s", info.LastErrorMessage)
+func (w *worker) removeWebhook() {
+	for n, _ := range w.cfg.Endpoints {
+		linf("removing webhook for endpoint %s...", n)
+		_, err := w.bots[n].RemoveWebhook()
+		checkErr(err)
+		linf("OK")
 	}
 }
 
@@ -123,28 +144,28 @@ func (w *worker) mustExec(query string, args ...interface{}) {
 	stmt.Close()
 }
 
-func (w *worker) incrementBlock(chatID int64) {
-	w.mustExec("insert or ignore into users (chat_id, block) values (?,?)", chatID, 0)
-	w.mustExec("update users set block=block+1 where chat_id=?", chatID)
+func (w *worker) incrementBlock(endpoint string, chatID int64) {
+	w.mustExec("insert or ignore into users (endpoint, chat_id, block) values (?,?,?)", endpoint, chatID, 0)
+	w.mustExec("update users set block=block+1 where chat_id=? and endpoint=?", chatID, endpoint)
 }
 
-func (w *worker) resetBlock(chatID int64) {
-	w.mustExec("update users set block=0 where chat_id=?", chatID)
+func (w *worker) resetBlock(endpoint string, chatID int64) {
+	w.mustExec("update users set block=0 where endpoint=? and chat_id=?", endpoint, chatID)
 }
 
-func (w *worker) send(chatID int64, notify bool, parse parseKind, text string) {
+func (w *worker) send(endpoint string, chatID int64, notify bool, parse parseKind, text string) {
 	msg := tg.NewMessage(chatID, text)
 	msg.DisableNotification = !notify
 	switch parse {
 	case parseHTML, parseMarkdown:
 		msg.ParseMode = parse.String()
 	}
-	if _, err := w.sendTGMessage(msg); err != nil {
+	if _, err := w.senders[endpoint](msg); err != nil {
 		switch err := err.(type) {
 		case tg.Error:
 			if err.Code == 403 {
 				linf("bot is blocked by the user %d, %v", chatID, err)
-				w.incrementBlock(chatID)
+				w.incrementBlock(endpoint, chatID)
 			} else {
 				lerr("cannot send a message to %d, code %d, %v", chatID, err.Code, err)
 			}
@@ -155,20 +176,35 @@ func (w *worker) send(chatID int64, notify bool, parse parseKind, text string) {
 		if w.cfg.Debug {
 			ldbg("message sent to %d", chatID)
 		}
-		w.resetBlock(chatID)
+		w.resetBlock(endpoint, chatID)
 	}
 }
 
-func (w *worker) sendTr(chatID int64, notify bool, translation *translation, args ...interface{}) {
+func (w *worker) sendTr(endpoint string, chatID int64, notify bool, translation *translation, args ...interface{}) {
 	text := fmt.Sprintf(translation.Str, args...)
-	w.send(chatID, notify, translation.Parse, text)
+	w.send(endpoint, chatID, notify, translation.Parse, text)
 }
 
 func (w *worker) createDatabase() {
-	w.mustExec("create table if not exists signals (chat_id integer, model_id text);")
-	w.mustExec("create table if not exists statuses (model_id text, status integer, not_found integer not null default 0);")
-	w.mustExec("create table if not exists feedback (chat_id integer, text text);")
-	w.mustExec("create table if not exists users (chat_id integer primary key, block integer not null default 0);")
+	linf("creating database if needed...")
+	w.mustExec(`create table if not exists signals (
+		chat_id integer,
+		model_id text,
+		endpoint text not null default '',
+		primary key (chat_id, model_id, endpoint));`)
+	w.mustExec(`create table if not exists statuses (
+		model_id text primary key,
+		status integer,
+		not_found integer not null default 0);`)
+	w.mustExec(`create table if not exists feedback (
+		chat_id integer,
+		text text,
+		endpoint text not null default '');`)
+	w.mustExec(`create table if not exists users (
+		chat_id integer,
+		block integer not null default 0,
+		endpoint text not null default '',
+		primary key(chat_id, endpoint));`)
 }
 
 func (w *worker) updateStatus(modelID string, newStatus lib.StatusKind) bool {
@@ -205,19 +241,20 @@ func (w *worker) notFound(modelID string) {
 	w.mustExec("update statuses set not_found=not_found+1 where model_id=?", modelID)
 	notFound := w.db.QueryRow("select not_found from statuses where model_id=?", modelID)
 	if singleInt(notFound) > w.cfg.NotFoundThreshold {
-		chats := w.chatsForModel(modelID)
+		chats, endpoints := w.chatsForModel(modelID)
 		w.mustExec("delete from signals where model_id=?", modelID)
 		w.cleanStatuses()
-		for _, chatID := range chats {
-			w.sendTr(chatID, false, w.tr.ProfileRemoved, modelID)
+		for i, chatID := range chats {
+			endpoint := endpoints[i]
+			w.sendTr(endpoint, chatID, false, w.tr[endpoint].ProfileRemoved, modelID)
 		}
 	}
 }
 
 func (w *worker) models() (models []string) {
 	modelsQuery, err := w.db.Query(
-		`select distinct model_id from signals left join users
-		on signals.chat_id=users.chat_id
+		`select distinct model_id from signals
+		left join users on signals.chat_id=users.chat_id and signals.endpoint=users.endpoint
 		where users.block is null or users.block<?
 		order by model_id`,
 		w.cfg.BlockThreshold)
@@ -231,10 +268,10 @@ func (w *worker) models() (models []string) {
 	return
 }
 
-func (w *worker) chatsForModel(modelID string) (chats []int64) {
+func (w *worker) chatsForModel(modelID string) (chats []int64, endpoints []string) {
 	chatsQuery, err := w.db.Query(
-		`select signals.chat_id from signals left join users
-		on signals.chat_id=users.chat_id
+		`select signals.chat_id, signals.endpoint from signals left join users
+		on signals.chat_id=users.chat_id and signals.endpoint=users.endpoint
 		where signals.model_id=? and (users.block is null or users.block<?)
 		order by signals.chat_id`,
 		modelID,
@@ -243,19 +280,22 @@ func (w *worker) chatsForModel(modelID string) (chats []int64) {
 	defer chatsQuery.Close()
 	for chatsQuery.Next() {
 		var chatID int64
-		checkErr(chatsQuery.Scan(&chatID))
+		var endpoint string
+		checkErr(chatsQuery.Scan(&chatID, &endpoint))
 		chats = append(chats, chatID)
+		endpoints = append(endpoints, endpoint)
 	}
 	return
 }
 
-func (w *worker) broadcastChats() (chats []int64) {
+func (w *worker) broadcastChats(endpoint string) (chats []int64) {
 	chatsQuery, err := w.db.Query(
 		`select distinct signals.chat_id from signals left join users
-		on signals.chat_id=users.chat_id
-		where users.block is null or users.block<?
+		on signals.chat_id=users.chat_id and signals.endpoint=users.endpoint
+		where (users.block is null or users.block<?) and signals.endpoint=?
 		order by signals.chat_id`,
-		w.cfg.BlockThreshold)
+		w.cfg.BlockThreshold,
+		endpoint)
 	checkErr(err)
 	defer chatsQuery.Close()
 	for chatsQuery.Next() {
@@ -266,12 +306,12 @@ func (w *worker) broadcastChats() (chats []int64) {
 	return
 }
 
-func (w *worker) statusesForChat(chatID int64) []statusUpdate {
+func (w *worker) statusesForChat(endpoint string, chatID int64) []statusUpdate {
 	statusesQuery, err := w.db.Query(`select statuses.model_id, statuses.status
 		from statuses inner join signals
 		on statuses.model_id=signals.model_id
-		where signals.chat_id=?
-		order by statuses.model_id`, chatID)
+		where signals.chat_id=? and signals.endpoint=?
+		order by statuses.model_id`, chatID, endpoint)
 	checkErr(err)
 	defer statusesQuery.Close()
 	var statuses []statusUpdate
@@ -284,25 +324,25 @@ func (w *worker) statusesForChat(chatID int64) []statusUpdate {
 	return statuses
 }
 
-func (w *worker) statusKey(status lib.StatusKind) *translation {
+func (w *worker) statusKey(endpoint string, status lib.StatusKind) *translation {
 	switch status {
 	case lib.StatusOnline:
-		return w.tr.OnlineList
+		return w.tr[endpoint].OnlineList
 	case lib.StatusDenied:
-		return w.tr.DeniedList
+		return w.tr[endpoint].DeniedList
 	default:
-		return w.tr.OfflineList
+		return w.tr[endpoint].OfflineList
 	}
 }
 
-func (w *worker) reportStatus(chatID int64, modelID string, status lib.StatusKind) {
+func (w *worker) reportStatus(endpoint string, chatID int64, modelID string, status lib.StatusKind) {
 	switch status {
 	case lib.StatusOnline:
-		w.sendTr(chatID, true, w.tr.Online, modelID)
+		w.sendTr(endpoint, chatID, true, w.tr[endpoint].Online, modelID)
 	case lib.StatusOffline:
-		w.sendTr(chatID, false, w.tr.Offline, modelID)
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Offline, modelID)
 	case lib.StatusDenied:
-		w.sendTr(chatID, false, w.tr.Denied, modelID)
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Denied, modelID)
 	}
 }
 
@@ -345,114 +385,114 @@ func singleInt(row *sql.Row) (result int) {
 	return result
 }
 
-func (w *worker) checkExists(chatID int64, modelID string) bool {
-	duplicate := w.db.QueryRow("select count(*) from signals where chat_id=? and model_id=?", chatID, modelID)
+func (w *worker) checkExists(endpoint string, chatID int64, modelID string) bool {
+	duplicate := w.db.QueryRow("select count(*) from signals where chat_id=? and model_id=? and endpoint=?", chatID, modelID, endpoint)
 	count := singleInt(duplicate)
 	return count != 0
 }
 
-func (w *worker) checkMaximum(chatID int64) int {
-	limit := w.db.QueryRow("select count(*) from signals where chat_id=?", chatID)
+func (w *worker) checkMaximum(endpoint string, chatID int64) int {
+	limit := w.db.QueryRow("select count(*) from signals where chat_id=? and endpoint=?", chatID, endpoint)
 	count := singleInt(limit)
 	return count
 }
 
-func (w *worker) addModel(chatID int64, modelID string) {
+func (w *worker) addModel(endpoint string, chatID int64, modelID string) {
 	if modelID == "" {
-		w.sendTr(chatID, false, w.tr.SyntaxAdd)
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].SyntaxAdd)
 		return
 	}
 	modelID = strings.ToLower(modelID)
 	if !lib.ModelIDRegexp.MatchString(modelID) {
-		w.sendTr(chatID, false, w.tr.InvalidSymbols, modelID)
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, modelID)
 		return
 	}
-	if w.checkExists(chatID, modelID) {
-		w.sendTr(chatID, false, w.tr.AlreadyAdded, modelID)
+	if w.checkExists(endpoint, chatID, modelID) {
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].AlreadyAdded, modelID)
 		return
 	}
-	count := w.checkMaximum(chatID)
+	count := w.checkMaximum(endpoint, chatID)
 	if count > w.cfg.MaxModels-1 {
-		w.sendTr(chatID, false, w.tr.MaxModels, w.cfg.MaxModels)
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].MaxModels, w.cfg.MaxModels)
 		return
 	}
 	status := w.checkModel(w.clients[0], modelID, w.cfg.Headers, w.cfg.Debug)
 	if status == lib.StatusUnknown || status == lib.StatusNotFound {
-		w.sendTr(chatID, false, w.tr.AddError, modelID)
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].AddError, modelID)
 		return
 	}
-	w.mustExec("insert into signals (chat_id, model_id) values (?,?)", chatID, modelID)
+	w.mustExec("insert into signals (chat_id, model_id, endpoint) values (?,?,?)", chatID, modelID, endpoint)
 	w.updateStatus(modelID, status)
 	if status != lib.StatusDenied {
-		w.sendTr(chatID, false, w.tr.ModelAdded, modelID)
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].ModelAdded, modelID)
 	}
-	w.reportStatus(chatID, modelID, status)
+	w.reportStatus(endpoint, chatID, modelID, status)
 }
 
-func (w *worker) removeModel(chatID int64, modelID string) {
+func (w *worker) removeModel(endpoint string, chatID int64, modelID string) {
 	if modelID == "" {
-		w.sendTr(chatID, false, w.tr.SyntaxRemove)
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].SyntaxRemove)
 		return
 	}
 	modelID = strings.ToLower(modelID)
 	if !lib.ModelIDRegexp.MatchString(modelID) {
-		w.sendTr(chatID, false, w.tr.InvalidSymbols, modelID)
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, modelID)
 		return
 	}
-	if !w.checkExists(chatID, modelID) {
-		w.sendTr(chatID, false, w.tr.ModelNotInList, modelID)
+	if !w.checkExists(endpoint, chatID, modelID) {
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].ModelNotInList, modelID)
 		return
 	}
-	w.mustExec("delete from signals where chat_id=? and model_id=?", chatID, modelID)
+	w.mustExec("delete from signals where chat_id=? and model_id=? and endpoint=?", chatID, modelID, endpoint)
 	w.cleanStatuses()
-	w.sendTr(chatID, false, w.tr.ModelRemoved, modelID)
+	w.sendTr(endpoint, chatID, false, w.tr[endpoint].ModelRemoved, modelID)
 }
 
-func (w *worker) sureRemoveAll(chatID int64) {
-	w.mustExec("delete from signals where chat_id=?", chatID)
+func (w *worker) sureRemoveAll(endpoint string, chatID int64) {
+	w.mustExec("delete from signals where chat_id=? and endpoint=?", chatID, endpoint)
 	w.cleanStatuses()
-	w.sendTr(chatID, false, w.tr.AllModelsRemoved)
+	w.sendTr(endpoint, chatID, false, w.tr[endpoint].AllModelsRemoved)
 }
 
 func (w *worker) cleanStatuses() {
 	w.mustExec("delete from statuses where not exists(select * from signals where signals.model_id=statuses.model_id);")
 }
 
-func (w *worker) listModels(chatID int64) {
-	statuses := w.statusesForChat(chatID)
+func (w *worker) listModels(endpoint string, chatID int64) {
+	statuses := w.statusesForChat(endpoint, chatID)
 	var lines []string
 	for _, s := range statuses {
-		lines = append(lines, fmt.Sprintf(w.statusKey(s.status).Str, s.modelID))
+		lines = append(lines, fmt.Sprintf(w.statusKey(endpoint, s.status).Str, s.modelID))
 	}
 	if len(lines) == 0 {
-		lines = append(lines, w.tr.NoModels.Str)
+		lines = append(lines, w.tr[endpoint].NoModels.Str)
 	}
-	w.send(chatID, false, w.tr.NoModels.Parse, strings.Join(lines, "\n"))
+	w.send(endpoint, chatID, false, w.tr[endpoint].NoModels.Parse, strings.Join(lines, "\n"))
 }
 
-func (w *worker) listOnlineModels(chatID int64) {
-	statuses := w.statusesForChat(chatID)
+func (w *worker) listOnlineModels(endpoint string, chatID int64) {
+	statuses := w.statusesForChat(endpoint, chatID)
 	online := 0
 	for _, s := range statuses {
 		if s.status == lib.StatusOnline {
-			w.sendTr(chatID, false, w.tr.Online, s.modelID)
+			w.sendTr(endpoint, chatID, false, w.tr[endpoint].Online, s.modelID)
 			online++
 		}
 	}
 	if online == 0 {
-		w.sendTr(chatID, false, w.tr.NoOnlineModels)
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].NoOnlineModels)
 	}
 }
 
-func (w *worker) feedback(chatID int64, text string) {
+func (w *worker) feedback(endpoint string, chatID int64, text string) {
 	if text == "" {
-		w.sendTr(chatID, false, w.tr.SyntaxFeedback)
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].SyntaxFeedback)
 		return
 	}
 
-	w.mustExec("insert into feedback (chat_id, text) values (?, ?)", chatID, text)
-	w.sendTr(chatID, false, w.tr.Feedback)
-	w.send(w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Feedback: %s", text))
+	w.mustExec("insert into feedback (endpoint, chat_id, text) values (?, ?, ?)", endpoint, chatID, text)
+	w.sendTr(endpoint, chatID, false, w.tr[endpoint].Feedback)
+	w.send(endpoint, w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Feedback: %s", text))
 }
 
 func (w *worker) unknownsNumber() int {
@@ -465,57 +505,60 @@ func (w *worker) unknownsNumber() int {
 	return errors
 }
 
-func (w *worker) usersCount() int {
-	query := w.db.QueryRow("select count(distinct chat_id) from signals")
+func (w *worker) usersCount(endpoint string) int {
+	query := w.db.QueryRow("select count(distinct chat_id) from signals where endpoint=?", endpoint)
 	return singleInt(query)
 }
 
-func (w *worker) activeUsersCount() int {
+func (w *worker) activeUsersCount(endpoint string) int {
 	query := w.db.QueryRow(
 		`select count(distinct signals.chat_id) from signals
-		left join users on signals.chat_id=users.chat_id
-		where users.block is null or users.block = 0`)
+		left join users on signals.chat_id=users.chat_id and signals.endpoint=users.endpoint
+		where (users.block is null or users.block = 0) and signals.endpoint=?`, endpoint)
 	return singleInt(query)
 }
 
-func (w *worker) modelsCount() int {
-	query := w.db.QueryRow("select count(distinct model_id) from signals")
+func (w *worker) modelsCount(endpoint string) int {
+	query := w.db.QueryRow("select count(distinct model_id) from signals where endpoint=?", endpoint)
 	return singleInt(query)
 }
 
-func (w *worker) modelsToQueryCount() int {
+func (w *worker) modelsToQueryCount(endpoint string) int {
 	query := w.db.QueryRow(
 		`select count(distinct signals.model_id) from signals
-		left join users on signals.chat_id=users.chat_id
-		where users.block is null or users.block < ?`,
-		w.cfg.BlockThreshold)
+		left join users on signals.chat_id=users.chat_id and signals.endpoint=users.endpoint
+		where (users.block is null or users.block < ?) and signals.endpoint=?`,
+		w.cfg.BlockThreshold,
+		endpoint)
 	return singleInt(query)
 }
 
-func (w *worker) onlineModelsCount() int {
+func (w *worker) onlineModelsCount(endpoint string) int {
 	query := w.db.QueryRow(`
 		select count(distinct signals.model_id) from signals
 		join statuses on signals.model_id=statuses.model_id
-		left join users on signals.chat_id=users.chat_id
-		where statuses.status=2 and (users.block is null or users.block < ?)`,
-		w.cfg.BlockThreshold)
+		left join users on signals.chat_id=users.chat_id and signals.endpoint=users.endpoint
+		where statuses.status=2 and (users.block is null or users.block < ?) and signals.endpoint=?`,
+		w.cfg.BlockThreshold,
+		endpoint)
 	return singleInt(query)
 }
 
-func (w *worker) heavyUsersCount() int {
+func (w *worker) heavyUsersCount(endpoint string) int {
 	query := w.db.QueryRow(`
 		select count(*) from (
 			select 1
 			from signals left join users
-			on signals.chat_id=users.chat_id
-			where users.block is null or users.block = 0
+			on signals.chat_id=users.chat_id and signals.endpoint=users.endpoint
+			where (users.block is null or users.block = 0) and signals.endpoint=?
 			group by signals.chat_id
-			having count(*) >= 7);`)
+			having count(*) >= 7);`,
+		endpoint)
 	return singleInt(query)
 }
 
-func (w *worker) statStrings() []string {
-	stat := w.getStat()
+func (w *worker) statStrings(endpoint string) []string {
+	stat := w.getStat(endpoint)
 	return []string{
 		fmt.Sprintf("Users: %d", stat.UsersCount),
 		fmt.Sprintf("Active users: %d", stat.ActiveUsersCount),
@@ -528,31 +571,38 @@ func (w *worker) statStrings() []string {
 	}
 }
 
-func (w *worker) stat(chatID int64) {
-	w.send(chatID, true, parseRaw, strings.Join(w.statStrings(), "\n"))
+func (w *worker) stat(endpoint string) {
+	w.send(endpoint, w.cfg.AdminID, true, parseRaw, strings.Join(w.statStrings(endpoint), "\n"))
 }
 
-func (w *worker) broadcast(text string) {
+func (w *worker) broadcast(endpoint string, text string) {
 	if text == "" {
 		return
 	}
 	if w.cfg.Debug {
 		ldbg("broadcasting")
 	}
-	chats := w.broadcastChats()
+	chats := w.broadcastChats(endpoint)
 	for _, chatID := range chats {
-		w.send(chatID, true, parseRaw, text)
+		w.send(endpoint, chatID, true, parseRaw, text)
 	}
 }
 
-func (w *worker) serve() {
+func (w *worker) serveEndpoint(n string, p endpoint) {
+	linf("serving endpoint %s...", n)
 	var err error
-	if w.cfg.CertificatePath != "" && w.cfg.CertificateKeyPath != "" {
-		err = http.ListenAndServeTLS(w.cfg.ListenAddress, w.cfg.CertificatePath, w.cfg.CertificateKeyPath, nil)
+	if p.CertificatePath != "" && p.CertificateKeyPath != "" {
+		err = http.ListenAndServeTLS(p.ListenAddress, p.CertificatePath, p.CertificateKeyPath, nil)
 	} else {
-		err = http.ListenAndServe(w.cfg.ListenAddress, nil)
+		err = http.ListenAndServe(p.ListenAddress, nil)
 	}
 	checkErr(err)
+}
+
+func (w *worker) serveEndpoints() {
+	for n, p := range w.cfg.Endpoints {
+		go w.serveEndpoint(n, p)
+	}
 }
 
 func (w *worker) logConfig() {
@@ -561,58 +611,58 @@ func (w *worker) logConfig() {
 	linf("config: " + string(cfgString))
 }
 
-func (w *worker) processAdminMessage(chatID int64, command, arguments string) bool {
+func (w *worker) processAdminMessage(endpoint string, command, arguments string) bool {
 	switch command {
 	case "stat":
-		w.stat(chatID)
+		w.stat(endpoint)
 		return true
 	case "broadcast":
-		w.broadcast(arguments)
+		w.broadcast(endpoint, arguments)
 		return true
 	}
 	return false
 }
 
-func (w *worker) processIncomingCommand(chatID int64, command, arguments string) {
-	w.resetBlock(chatID)
+func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, arguments string) {
+	w.resetBlock(endpoint, chatID)
 	command = strings.ToLower(command)
 	linf("chat: %d, command: %s %s", chatID, command, arguments)
 
-	if chatID == w.cfg.AdminID && w.processAdminMessage(chatID, command, arguments) {
+	if chatID == w.cfg.AdminID && w.processAdminMessage(endpoint, command, arguments) {
 		return
 	}
 
 	switch command {
 	case "add":
 		arguments = strings.Replace(arguments, "—", "--", -1)
-		w.addModel(chatID, arguments)
+		w.addModel(endpoint, chatID, arguments)
 	case "remove":
 		arguments = strings.Replace(arguments, "—", "--", -1)
-		w.removeModel(chatID, arguments)
+		w.removeModel(endpoint, chatID, arguments)
 	case "list":
-		w.listModels(chatID)
+		w.listModels(endpoint, chatID)
 	case "online":
-		w.listOnlineModels(chatID)
+		w.listOnlineModels(endpoint, chatID)
 	case "start", "help":
-		w.sendTr(chatID, false, w.tr.Help)
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Help)
 	case "donate":
-		w.sendTr(chatID, false, w.tr.Donation)
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Donation)
 	case "feedback":
-		w.feedback(chatID, arguments)
+		w.feedback(endpoint, chatID, arguments)
 	case "source":
-		w.sendTr(chatID, false, w.tr.SourceCode)
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].SourceCode)
 	case "language":
-		w.sendTr(chatID, false, w.tr.Languages)
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Languages)
 	case "version":
-		w.sendTr(chatID, false, w.tr.Version, version)
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Version, version)
 	case "remove_all":
-		w.sendTr(chatID, false, w.tr.RemoveAll)
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].RemoveAll)
 	case "sure_remove_all":
-		w.sureRemoveAll(chatID)
+		w.sureRemoveAll(endpoint, chatID)
 	case "":
-		w.sendTr(chatID, false, w.tr.Slash)
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Slash)
 	default:
-		w.sendTr(chatID, false, w.tr.UnknownCommand)
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].UnknownCommand)
 	}
 }
 
@@ -620,7 +670,7 @@ func (w *worker) processPeriodic(statusRequests chan []string) {
 	unknownsNumber := w.unknownsNumber()
 	now := time.Now()
 	if w.nextErrorReport.Before(now) && unknownsNumber > w.cfg.errorThreshold {
-		w.send(w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Dangerous error rate reached: %d/%d", unknownsNumber, w.cfg.errorDenominator))
+		w.send(w.cfg.AdminEndpoint, w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Dangerous error rate reached: %d/%d", unknownsNumber, w.cfg.errorDenominator))
 		w.nextErrorReport = now.Add(time.Minute * time.Duration(w.cfg.ErrorReportingPeriodMinutes))
 	}
 
@@ -639,24 +689,26 @@ func (w *worker) processStatusUpdate(statusUpdate statusUpdate) {
 		if w.cfg.Debug {
 			ldbg("reporting status of the model %s", statusUpdate.modelID)
 		}
-		for _, chatID := range w.chatsForModel(statusUpdate.modelID) {
-			w.reportStatus(chatID, statusUpdate.modelID, statusUpdate.status)
+		chats, endpoints := w.chatsForModel(statusUpdate.modelID)
+		for i, chatID := range chats {
+			w.reportStatus(endpoints[i], chatID, statusUpdate.modelID, statusUpdate.status)
 		}
 	}
 	w.unknowns[w.unknownsPos] = statusUpdate.status == lib.StatusUnknown
 	w.unknownsPos = (w.unknownsPos + 1) % w.cfg.errorDenominator
 }
 
-func (w *worker) processTGUpdate(u tg.Update) {
+func (w *worker) processTGUpdate(p packet) {
+	u := p.message
 	if u.Message != nil && u.Message.Chat != nil {
 		if u.Message.IsCommand() {
-			w.processIncomingCommand(u.Message.Chat.ID, u.Message.Command(), u.Message.CommandArguments())
+			w.processIncomingCommand(p.endpoint, u.Message.Chat.ID, u.Message.Command(), u.Message.CommandArguments())
 		} else {
 			parts := strings.SplitN(u.Message.Text, " ", 2)
 			for len(parts) < 2 {
 				parts = append(parts, "")
 			}
-			w.processIncomingCommand(u.Message.Chat.ID, parts[0], parts[1])
+			w.processIncomingCommand(p.endpoint, u.Message.Chat.ID, parts[0], parts[1])
 		}
 	}
 }
@@ -680,7 +732,7 @@ func getRss() (int64, error) {
 	return rss * int64(os.Getpagesize()), err
 }
 
-func (w *worker) getStat() statistics {
+func (w *worker) getStat(endpoint string) statistics {
 	w.mu.Lock()
 	elapsed := w.elapsed
 	w.mu.Unlock()
@@ -691,36 +743,54 @@ func (w *worker) getStat() statistics {
 	checkErr(syscall.Getrusage(syscall.RUSAGE_SELF, &rusage))
 
 	return statistics{
-		UsersCount:             w.usersCount(),
-		ActiveUsersCount:       w.activeUsersCount(),
-		HeavyUsersCount:        w.heavyUsersCount(),
-		ModelsCount:            w.modelsCount(),
-		ModelsToQueryCount:     w.modelsToQueryCount(),
-		OnlineModelsCount:      w.onlineModelsCount(),
+		UsersCount:             w.usersCount(endpoint),
+		ActiveUsersCount:       w.activeUsersCount(endpoint),
+		HeavyUsersCount:        w.heavyUsersCount(endpoint),
+		ModelsCount:            w.modelsCount(endpoint),
+		ModelsToQueryCount:     w.modelsToQueryCount(endpoint),
+		OnlineModelsCount:      w.onlineModelsCount(endpoint),
 		QueriesDurationSeconds: int(elapsed.Seconds()),
 		ErrorRate:              [2]int{w.unknownsNumber(), w.cfg.errorDenominator},
 		Rss:                    rss / 1024,
 		MaxRss:                 rusage.Maxrss}
 }
 
-func (w *worker) handleStat(writer http.ResponseWriter, r *http.Request) {
-	passwords, ok := r.URL.Query()["password"]
-	if !ok || len(passwords[0]) < 1 {
-		return
+func (w *worker) handleStat(endpoint string) func(writer http.ResponseWriter, r *http.Request) {
+	return func(writer http.ResponseWriter, r *http.Request) {
+		passwords, ok := r.URL.Query()["password"]
+		if !ok || len(passwords[0]) < 1 {
+			return
+		}
+		password := passwords[0]
+		if password != w.cfg.StatPassword {
+			return
+		}
+		writer.WriteHeader(http.StatusOK)
+		writer.Header().Set("Content-Type", "application/json")
+		statJson, err := json.MarshalIndent(w.getStat(endpoint), "", "    ")
+		checkErr(err)
+		writer.Write(statJson)
 	}
-	password := passwords[0]
-	if password != w.cfg.StatPassword {
-		return
-	}
-	writer.WriteHeader(http.StatusOK)
-	writer.Header().Set("Content-Type", "application/json")
-	statJson, err := json.MarshalIndent(w.getStat(), "", "    ")
-	checkErr(err)
-	writer.Write(statJson)
 }
 
-func (w *worker) logStat() {
-	linf("stat, %s", strings.Join(w.statStrings(), ", "))
+func (w *worker) handleStatEndpoints() {
+	for n, p := range w.cfg.Endpoints {
+		http.HandleFunc(p.WebhookDomain+"/stat", w.handleStat(n))
+	}
+}
+
+func (w *worker) incoming() chan packet {
+	result := make(chan packet)
+	for n, p := range w.cfg.Endpoints {
+		linf("listening for a webhook for endpoint %s", n)
+		incoming := w.bots[n].ListenForWebhook(p.WebhookDomain + p.ListenPath)
+		go func(n string, incoming tg.UpdatesChannel) {
+			for i := range incoming {
+				result <- packet{message: i, endpoint: n}
+			}
+		}(n, incoming)
+	}
+	return result
 }
 
 func main() {
@@ -729,11 +799,10 @@ func main() {
 	w.setWebhook()
 	w.createDatabase()
 
-	incoming := w.bot.ListenForWebhook(w.cfg.ListenPath)
-	http.HandleFunc("/stat", w.handleStat)
-	go w.serve()
+	incoming := w.incoming()
+	w.handleStatEndpoints()
+	w.serveEndpoints()
 	var periodicTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
-	var statTimer = time.NewTicker(time.Duration(w.cfg.StatLogPeriodSeconds) * time.Second)
 	statusRequests, statusUpdates := w.startChecker()
 	statusRequests <- w.models()
 	signals := make(chan os.Signal, 16)
@@ -743,14 +812,13 @@ func main() {
 		case <-periodicTimer.C:
 			runtime.GC()
 			w.processPeriodic(statusRequests)
-		case <-statTimer.C:
-			w.logStat()
 		case statusUpdate := <-statusUpdates:
 			w.processStatusUpdate(statusUpdate)
 		case u := <-incoming:
 			w.processTGUpdate(u)
 		case s := <-signals:
 			linf("got signal %v", s)
+			w.removeWebhook()
 			return
 		}
 	}

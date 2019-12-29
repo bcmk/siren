@@ -74,6 +74,14 @@ func noNils(xs ...*translation) error {
 	return nil
 }
 
+func loadAllTranslations(cfg *config) map[string]translations {
+	result := make(map[string]translations)
+	for e, x := range cfg.Endpoints {
+		result[e] = loadTranslations(x.Translation)
+	}
+	return result
+}
+
 func loadTranslations(path string) translations {
 	file, err := os.Open(filepath.Clean(path))
 	checkErr(err)
