@@ -22,7 +22,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-var version = "2.1"
+var version = "3.0"
 
 var (
 	checkErr = lib.CheckErr
