@@ -232,23 +232,28 @@ func (w *worker) updateStatus(modelID string, newStatus lib.StatusKind) bool {
 	return oldStatus != newStatus
 }
 
-func (w *worker) notFound(modelID string) {
+func (w *worker) notFound(modelID string) bool {
 	linf("model %s not found", modelID)
 	exists := w.db.QueryRow("select count(*) from statuses where model_id=?", modelID)
 	if singleInt(exists) == 0 {
-		return
+		return false
 	}
 	w.mustExec("update statuses set not_found=not_found+1 where model_id=?", modelID)
 	notFound := w.db.QueryRow("select not_found from statuses where model_id=?", modelID)
-	if singleInt(notFound) > w.cfg.NotFoundThreshold {
-		chats, endpoints := w.chatsForModel(modelID)
-		w.mustExec("delete from signals where model_id=?", modelID)
-		w.cleanStatuses()
-		for i, chatID := range chats {
-			endpoint := endpoints[i]
-			w.sendTr(endpoint, chatID, false, w.tr[endpoint].ProfileRemoved, modelID)
-		}
+	return singleInt(notFound) > w.cfg.NotFoundThreshold
+}
+
+func (w *worker) reportNotFound(modelID string) {
+	chats, endpoints := w.chatsForModel(modelID)
+	for i, chatID := range chats {
+		endpoint := endpoints[i]
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].ProfileRemoved, modelID)
 	}
+}
+
+func (w *worker) removeNotFound(modelID string) {
+	w.mustExec("delete from signals where model_id=?", modelID)
+	w.cleanStatuses()
 }
 
 func (w *worker) models() (models []string) {
@@ -683,7 +688,10 @@ func (w *worker) processPeriodic(statusRequests chan []string) {
 
 func (w *worker) processStatusUpdate(statusUpdate statusUpdate) {
 	if statusUpdate.status == lib.StatusNotFound {
-		w.notFound(statusUpdate.modelID)
+		if w.notFound(statusUpdate.modelID) {
+			w.reportNotFound(statusUpdate.modelID)
+			w.removeNotFound(statusUpdate.modelID)
+		}
 	}
 	if statusUpdate.status != lib.StatusUnknown && w.updateStatus(statusUpdate.modelID, statusUpdate.status) {
 		if w.cfg.Debug {

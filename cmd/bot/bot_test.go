@@ -8,6 +8,7 @@ import (
 )
 
 func TestSql(t *testing.T) {
+	linf = func(string, ...interface{}) {}
 	w := newTestWorker()
 	w.createDatabase()
 	w.mustExec("insert into signals (endpoint, chat_id, model_id) values (?,?,?)", "ep1", 1, "a")
@@ -172,5 +173,18 @@ func TestUpdateStatus(t *testing.T) {
 	w.updateStatus("a", lib.StatusOffline)
 	if w.updateStatus("a", lib.StatusNotFound) {
 		t.Error("unexpected status update")
+	}
+	if w.notFound("a") {
+		t.Error("unexpected result")
+	}
+	if w.notFound("a") {
+		t.Error("unexpected result")
+	}
+	if !w.notFound("a") {
+		t.Error("unexpected result")
+	}
+	w.removeNotFound("a")
+	if w.notFound("a") {
+		t.Error("unexpected result")
 	}
 }
