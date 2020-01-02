@@ -515,11 +515,19 @@ func (w *worker) usersCount(endpoint string) int {
 	return singleInt(query)
 }
 
-func (w *worker) activeUsersCount(endpoint string) int {
+func (w *worker) activeUsersOnEndpointCount(endpoint string) int {
 	query := w.db.QueryRow(
 		`select count(distinct signals.chat_id) from signals
 		left join users on signals.chat_id=users.chat_id and signals.endpoint=users.endpoint
 		where (users.block is null or users.block = 0) and signals.endpoint=?`, endpoint)
+	return singleInt(query)
+}
+
+func (w *worker) activeUsersTotalCount() int {
+	query := w.db.QueryRow(
+		`select count(distinct signals.chat_id) from signals
+		left join users on signals.chat_id=users.chat_id and signals.endpoint=users.endpoint
+		where (users.block is null or users.block = 0)`)
 	return singleInt(query)
 }
 
@@ -528,7 +536,7 @@ func (w *worker) modelsCount(endpoint string) int {
 	return singleInt(query)
 }
 
-func (w *worker) modelsToQueryCount(endpoint string) int {
+func (w *worker) modelsToQueryOnEndpointCount(endpoint string) int {
 	query := w.db.QueryRow(
 		`select count(distinct signals.model_id) from signals
 		left join users on signals.chat_id=users.chat_id and signals.endpoint=users.endpoint
@@ -538,6 +546,14 @@ func (w *worker) modelsToQueryCount(endpoint string) int {
 	return singleInt(query)
 }
 
+func (w *worker) modelsToQueryTotalCount() int {
+	query := w.db.QueryRow(
+		`select count(distinct signals.model_id) from signals
+		left join users on signals.chat_id=users.chat_id and signals.endpoint=users.endpoint
+		where (users.block is null or users.block < ?)`,
+		w.cfg.BlockThreshold)
+	return singleInt(query)
+}
 func (w *worker) onlineModelsCount(endpoint string) int {
 	query := w.db.QueryRow(`
 		select count(distinct signals.model_id) from signals
@@ -566,10 +582,10 @@ func (w *worker) statStrings(endpoint string) []string {
 	stat := w.getStat(endpoint)
 	return []string{
 		fmt.Sprintf("Users: %d", stat.UsersCount),
-		fmt.Sprintf("Active users: %d", stat.ActiveUsersCount),
+		fmt.Sprintf("Active users: %d", stat.ActiveUsersOnEndpointCount),
 		fmt.Sprintf("Heavy: %d", stat.HeavyUsersCount),
 		fmt.Sprintf("Models: %d", stat.ModelsCount),
-		fmt.Sprintf("Models to query: %d", stat.ModelsToQueryCount),
+		fmt.Sprintf("Models to query: %d", stat.ModelsToQueryOnEndpointCount),
 		fmt.Sprintf("Queries duration: %d s", stat.QueriesDurationSeconds),
 		fmt.Sprintf("Error rate: %d/%d", stat.ErrorRate[0], stat.ErrorRate[1]),
 		fmt.Sprintf("Memory usage: %d KiB", stat.Rss),
@@ -751,16 +767,18 @@ func (w *worker) getStat(endpoint string) statistics {
 	checkErr(syscall.Getrusage(syscall.RUSAGE_SELF, &rusage))
 
 	return statistics{
-		UsersCount:             w.usersCount(endpoint),
-		ActiveUsersCount:       w.activeUsersCount(endpoint),
-		HeavyUsersCount:        w.heavyUsersCount(endpoint),
-		ModelsCount:            w.modelsCount(endpoint),
-		ModelsToQueryCount:     w.modelsToQueryCount(endpoint),
-		OnlineModelsCount:      w.onlineModelsCount(endpoint),
-		QueriesDurationSeconds: int(elapsed.Seconds()),
-		ErrorRate:              [2]int{w.unknownsNumber(), w.cfg.errorDenominator},
-		Rss:                    rss / 1024,
-		MaxRss:                 rusage.Maxrss}
+		UsersCount:                   w.usersCount(endpoint),
+		ActiveUsersOnEndpointCount:   w.activeUsersOnEndpointCount(endpoint),
+		ActiveUsersTotalCount:        w.activeUsersTotalCount(),
+		HeavyUsersCount:              w.heavyUsersCount(endpoint),
+		ModelsCount:                  w.modelsCount(endpoint),
+		ModelsToQueryOnEndpointCount: w.modelsToQueryOnEndpointCount(endpoint),
+		ModelsToQueryTotalCount:      w.modelsToQueryTotalCount(),
+		OnlineModelsCount:            w.onlineModelsCount(endpoint),
+		QueriesDurationSeconds:       int(elapsed.Seconds()),
+		ErrorRate:                    [2]int{w.unknownsNumber(), w.cfg.errorDenominator},
+		Rss:                          rss / 1024,
+		MaxRss:                       rusage.Maxrss}
 }
 
 func (w *worker) handleStat(endpoint string) func(writer http.ResponseWriter, r *http.Request) {
