@@ -40,7 +40,7 @@ type config struct {
 	Headers                     [][2]string         `json:"headers"`                        // HTTP headers to make queries with
 	StatPassword                string              `json:"stat_password"`                  // password for statistics
 	ErrorReportingPeriodMinutes int                 `json:"error_reporting_period_minutes"` // the period of the error reports
-	Endpoints                   map[string]endpoint `json:"endpoints"`
+	Endpoints                   map[string]endpoint `json:"endpoints"`                      // the endpoints by simple name, used for the support of the bots in different languages accessing the same database
 
 	errorThreshold   int
 	errorDenominator int
