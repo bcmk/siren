@@ -205,6 +205,9 @@ func (w *worker) createDatabase() {
 		block integer not null default 0,
 		endpoint text not null default '',
 		primary key(chat_id, endpoint));`)
+	w.mustExec(`create table if not exists limits (
+		chat_id integer primary key,
+		max_models integer not null default 0);`)
 }
 
 func (w *worker) updateStatus(modelID string, newStatus lib.StatusKind) bool {
@@ -402,6 +405,18 @@ func (w *worker) checkMaximum(endpoint string, chatID int64) int {
 	return count
 }
 
+func (w *worker) maxModels(chatID int64) int {
+	query, err := w.db.Query("select max_models from limits where chat_id=?", chatID)
+	checkErr(err)
+	defer query.Close()
+	if !query.Next() {
+		return w.cfg.MaxModels
+	}
+	var result int
+	checkErr(query.Scan(&result))
+	return result
+}
+
 func (w *worker) addModel(endpoint string, chatID int64, modelID string) {
 	if modelID == "" {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].SyntaxAdd)
@@ -417,8 +432,9 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) {
 		return
 	}
 	count := w.checkMaximum(endpoint, chatID)
-	if count > w.cfg.MaxModels-1 {
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].MaxModels, w.cfg.MaxModels)
+	maxModels := w.maxModels(chatID)
+	if count >= maxModels {
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].MaxModels, maxModels)
 		return
 	}
 	status := w.checkModel(w.clients[0], modelID, w.cfg.Headers, w.cfg.Debug)
@@ -498,6 +514,14 @@ func (w *worker) feedback(endpoint string, chatID int64, text string) {
 	w.mustExec("insert into feedback (endpoint, chat_id, text) values (?, ?, ?)", endpoint, chatID, text)
 	w.sendTr(endpoint, chatID, false, w.tr[endpoint].Feedback)
 	w.send(endpoint, w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Feedback: %s", text))
+}
+
+func (w *worker) setLimit(chatID int64, max_models int) {
+	w.mustExec(`
+		insert or replace into limits (chat_id, max_models) values (?, ?)
+		on conflict(chat_id) do update set max_models=excluded.max_models`,
+		chatID,
+		max_models)
 }
 
 func (w *worker) unknownsNumber() int {
@@ -632,13 +656,32 @@ func (w *worker) logConfig() {
 	linf("config: " + string(cfgString))
 }
 
-func (w *worker) processAdminMessage(endpoint string, command, arguments string) bool {
+func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arguments string) bool {
 	switch command {
 	case "stat":
 		w.stat(endpoint)
 		return true
 	case "broadcast":
 		w.broadcast(endpoint, arguments)
+		return true
+	case "set_max_models":
+		parts := strings.Split(arguments, " ")
+		if len(parts) != 2 {
+			w.send(endpoint, chatID, false, parseRaw, "expecting two arguments")
+			return true
+		}
+		who, err := strconv.ParseInt(parts[0], 10, 64)
+		if err != nil {
+			w.send(endpoint, chatID, false, parseRaw, "first argument is invalid")
+			return true
+		}
+		max_models, err := strconv.Atoi(parts[1])
+		if err != nil {
+			w.send(endpoint, chatID, false, parseRaw, "second argument is invalid")
+			return true
+		}
+		w.setLimit(who, max_models)
+		w.send(endpoint, chatID, false, parseRaw, "OK")
 		return true
 	}
 	return false
@@ -649,7 +692,7 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	command = strings.ToLower(command)
 	linf("chat: %d, command: %s %s", chatID, command, arguments)
 
-	if chatID == w.cfg.AdminID && w.processAdminMessage(endpoint, command, arguments) {
+	if chatID == w.cfg.AdminID && w.processAdminMessage(endpoint, chatID, command, arguments) {
 		return
 	}
 
