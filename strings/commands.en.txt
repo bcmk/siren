@@ -3,7 +3,8 @@ remove - Remove model
 remove_all - Remove all models
 list - Your model subscriptions
 online - Your models online
-donate - Donation instructions
+buy - Buy additional subscriptions
+max_models - Show your subscription limit
 feedback - Send feedback
 source - Show source code
 language - This bot in other languages
