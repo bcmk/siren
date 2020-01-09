@@ -2,9 +2,10 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 )
 
 //go:generate jsonenums -type=parseKind
@@ -55,6 +56,7 @@ type translations struct {
 	Feedback         *translation `json:"feedback"`
 	SourceCode       *translation `json:"source_code"`
 	UnknownCommand   *translation `json:"unknown_command"`
+	InvalidCommand   *translation `json:"invalid_command"`
 	Slash            *translation `json:"slash"`
 	Languages        *translation `json:"languages"`
 	Version          *translation `json:"version"`
@@ -63,15 +65,17 @@ type translations struct {
 	NoOnlineModels   *translation `json:"no_online_models"`
 	RemoveAll        *translation `json:"remove_all"`
 	AllModelsRemoved *translation `json:"all_models_removed"`
-}
-
-func noNils(xs ...*translation) error {
-	for _, x := range xs {
-		if x == nil {
-			return errors.New("required translation is not set")
-		}
-	}
-	return nil
+	TryToBuyLater    *translation `json:"try_to_buy_later"`
+	PayThis          *translation `json:"pay_this"`
+	NeedEmail        *translation `json:"need_email"`
+	InvalidEmail     *translation `json:"invalid_email"`
+	SpecifyEmail     *translation `json:"specify_email"`
+	EmailUpdated     *translation `json:"email_updated"`
+	SelectCurrency   *translation `json:"select_currency"`
+	UnknownCurrency  *translation `json:"unknown_currency"`
+	ModelsRemain     *translation `json:"models_remain"`
+	YourMaxModels    *translation `json:"your_max_models"`
+	PaymentComplete  *translation `json:"payment_complete"`
 }
 
 func loadAllTranslations(cfg *config) map[string]translations {
@@ -80,6 +84,18 @@ func loadAllTranslations(cfg *config) map[string]translations {
 		result[e] = loadTranslations(x.Translation)
 	}
 	return result
+}
+
+func noNils(x interface{}) error {
+	rv := reflect.ValueOf(x)
+	for i := 0; i < rv.NumField(); i++ {
+		field := rv.Field(i)
+		if field.IsNil() {
+			tag := rv.Type().Field(i).Tag.Get("json")
+			return fmt.Errorf("required translation is not set: %s", tag)
+		}
+	}
+	return nil
 }
 
 func loadTranslations(path string) translations {
@@ -91,36 +107,6 @@ func loadTranslations(path string) translations {
 	parsed := translations{}
 	err = decoder.Decode(&parsed)
 	checkErr(err)
-	checkErr(noNils(
-		parsed.Help,
-		parsed.Online,
-		parsed.OnlineList,
-		parsed.Offline,
-		parsed.OfflineList,
-		parsed.Denied,
-		parsed.DeniedList,
-		parsed.SyntaxAdd,
-		parsed.SyntaxRemove,
-		parsed.SyntaxFeedback,
-		parsed.InvalidSymbols,
-		parsed.AlreadyAdded,
-		parsed.MaxModels,
-		parsed.AddError,
-		parsed.ModelAdded,
-		parsed.ModelNotInList,
-		parsed.ModelRemoved,
-		parsed.Donation,
-		parsed.Feedback,
-		parsed.SourceCode,
-		parsed.UnknownCommand,
-		parsed.Slash,
-		parsed.Languages,
-		parsed.Version,
-		parsed.ProfileRemoved,
-		parsed.NoModels,
-		parsed.NoOnlineModels,
-		parsed.RemoveAll,
-		parsed.AllModelsRemoved,
-	))
+	checkErr(noNils(parsed))
 	return parsed
 }

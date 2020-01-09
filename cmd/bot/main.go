@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -18,11 +19,13 @@ import (
 	"time"
 
 	"github.com/bcmk/siren/lib"
+	"github.com/bcmk/siren/payments"
 	tg "github.com/bcmk/telegram-bot-api"
+	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 )
 
-var version = "3.0"
+var version = "5.0"
 
 var (
 	checkErr = lib.CheckErr
@@ -30,6 +33,8 @@ var (
 	linf     = lib.Linf
 	ldbg     = lib.Ldbg
 )
+
+var emailRegexp = regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+\\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
 
 type statusUpdate struct {
 	modelID string
@@ -49,6 +54,8 @@ type worker struct {
 	unknowns        []bool
 	unknownsPos     int
 	nextErrorReport time.Time
+	coinPaymentsAPI *payments.CoinPaymentsAPI
+	ipnServeMux     *http.ServeMux
 }
 
 type packet struct {
@@ -78,15 +85,21 @@ func newWorker() *worker {
 	db, err := sql.Open("sqlite3", cfg.DBPath)
 	checkErr(err)
 	w := &worker{
-		bots:     bots,
-		db:       db,
-		cfg:      cfg,
-		clients:  clients,
-		mu:       &sync.Mutex{},
-		tr:       loadAllTranslations(cfg),
-		senders:  senders,
-		unknowns: make([]bool, cfg.errorDenominator),
+		bots:        bots,
+		db:          db,
+		cfg:         cfg,
+		clients:     clients,
+		mu:          &sync.Mutex{},
+		tr:          loadAllTranslations(cfg),
+		senders:     senders,
+		unknowns:    make([]bool, cfg.errorDenominator),
+		ipnServeMux: http.NewServeMux(),
 	}
+
+	if cp := cfg.CoinPayments; cp != nil {
+		w.coinPaymentsAPI = payments.NewCoinPaymentsAPI(cp.PublicKey, cp.PrivateKey, "https://"+cp.IPNListenURL, cfg.TimeoutSeconds, cfg.Debug)
+	}
+
 	switch cfg.Website {
 	case "bongacams":
 		w.checkModel = lib.CheckModelBongaCams
@@ -145,12 +158,12 @@ func (w *worker) mustExec(query string, args ...interface{}) {
 }
 
 func (w *worker) incrementBlock(endpoint string, chatID int64) {
-	w.mustExec("insert or ignore into users (endpoint, chat_id, block) values (?,?,?)", endpoint, chatID, 0)
-	w.mustExec("update users set block=block+1 where chat_id=? and endpoint=?", chatID, endpoint)
+	w.mustExec("insert or ignore into block (endpoint, chat_id, block) values (?,?,?)", endpoint, chatID, 0)
+	w.mustExec("update block set block=block+1 where chat_id=? and endpoint=?", chatID, endpoint)
 }
 
 func (w *worker) resetBlock(endpoint string, chatID int64) {
-	w.mustExec("update users set block=0 where endpoint=? and chat_id=?", endpoint, chatID)
+	w.mustExec("update block set block=0 where endpoint=? and chat_id=?", endpoint, chatID)
 }
 
 func (w *worker) send(endpoint string, chatID int64, notify bool, parse parseKind, text string) {
@@ -160,6 +173,10 @@ func (w *worker) send(endpoint string, chatID int64, notify bool, parse parseKin
 	case parseHTML, parseMarkdown:
 		msg.ParseMode = parse.String()
 	}
+	w.sendMessage(endpoint, chatID, msg)
+}
+
+func (w *worker) sendMessage(endpoint string, chatID int64, msg tg.Chattable) {
 	if _, err := w.senders[endpoint](msg); err != nil {
 		switch err := err.(type) {
 		case tg.Error:
@@ -187,27 +204,51 @@ func (w *worker) sendTr(endpoint string, chatID int64, notify bool, translation 
 
 func (w *worker) createDatabase() {
 	linf("creating database if needed...")
-	w.mustExec(`create table if not exists signals (
-		chat_id integer,
-		model_id text,
-		endpoint text not null default '',
-		primary key (chat_id, model_id, endpoint));`)
-	w.mustExec(`create table if not exists statuses (
-		model_id text primary key,
-		status integer,
-		not_found integer not null default 0);`)
-	w.mustExec(`create table if not exists feedback (
-		chat_id integer,
-		text text,
-		endpoint text not null default '');`)
-	w.mustExec(`create table if not exists users (
-		chat_id integer,
-		block integer not null default 0,
-		endpoint text not null default '',
-		primary key(chat_id, endpoint));`)
-	w.mustExec(`create table if not exists limits (
-		chat_id integer primary key,
-		max_models integer not null default 0);`)
+	w.mustExec(`
+		create table if not exists signals (
+			chat_id integer,
+			model_id text,
+			endpoint text not null default '',
+			primary key (chat_id, model_id, endpoint));`)
+	w.mustExec(`
+		create table if not exists statuses (
+			model_id text primary key,
+			status integer,
+			not_found integer not null default 0);`)
+	w.mustExec(`
+		create table if not exists feedback (
+			chat_id integer,
+			text text,
+			endpoint text not null default '');`)
+	w.mustExec(`
+		create table if not exists block (
+			chat_id integer,
+			block integer not null default 0,
+			endpoint text not null default '',
+			primary key(chat_id, endpoint));`)
+	w.mustExec(`
+		create table if not exists users (
+			chat_id integer primary key,
+			max_models integer not null default 0,
+			email text not null default '');`)
+	w.mustExec(`
+		create table if not exists transactions (
+			local_id text primary key,
+			kind text,
+			chat_id integer,
+			remote_id text,
+			timeout integer,
+			amount text,
+			address string,
+			status_url string,
+			checkout_url string,
+			dest_tag string,
+			status integer,
+			timestamp integer,
+			model_number integer,
+			currency text,
+			endpoint text not null default ''
+		);`)
 }
 
 func (w *worker) updateStatus(modelID string, newStatus lib.StatusKind) bool {
@@ -262,8 +303,8 @@ func (w *worker) removeNotFound(modelID string) {
 func (w *worker) models() (models []string) {
 	modelsQuery, err := w.db.Query(
 		`select distinct model_id from signals
-		left join users on signals.chat_id=users.chat_id and signals.endpoint=users.endpoint
-		where users.block is null or users.block<?
+		left join block on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
+		where block.block is null or block.block<?
 		order by model_id`,
 		w.cfg.BlockThreshold)
 	checkErr(err)
@@ -278,9 +319,9 @@ func (w *worker) models() (models []string) {
 
 func (w *worker) chatsForModel(modelID string) (chats []int64, endpoints []string) {
 	chatsQuery, err := w.db.Query(
-		`select signals.chat_id, signals.endpoint from signals left join users
-		on signals.chat_id=users.chat_id and signals.endpoint=users.endpoint
-		where signals.model_id=? and (users.block is null or users.block<?)
+		`select signals.chat_id, signals.endpoint from signals left join block
+		on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
+		where signals.model_id=? and (block.block is null or block.block<?)
 		order by signals.chat_id`,
 		modelID,
 		w.cfg.BlockThreshold)
@@ -298,9 +339,9 @@ func (w *worker) chatsForModel(modelID string) (chats []int64, endpoints []strin
 
 func (w *worker) broadcastChats(endpoint string) (chats []int64) {
 	chatsQuery, err := w.db.Query(
-		`select distinct signals.chat_id from signals left join users
-		on signals.chat_id=users.chat_id and signals.endpoint=users.endpoint
-		where (users.block is null or users.block<?) and signals.endpoint=?
+		`select distinct signals.chat_id from signals left join block
+		on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
+		where (block.block is null or block.block<?) and signals.endpoint=?
 		order by signals.chat_id`,
 		w.cfg.BlockThreshold,
 		endpoint)
@@ -399,14 +440,14 @@ func (w *worker) checkExists(endpoint string, chatID int64, modelID string) bool
 	return count != 0
 }
 
-func (w *worker) checkMaximum(endpoint string, chatID int64) int {
+func (w *worker) subscriptionsNumber(endpoint string, chatID int64) int {
 	limit := w.db.QueryRow("select count(*) from signals where chat_id=? and endpoint=?", chatID, endpoint)
 	count := singleInt(limit)
 	return count
 }
 
 func (w *worker) maxModels(chatID int64) int {
-	query, err := w.db.Query("select max_models from limits where chat_id=?", chatID)
+	query, err := w.db.Query("select max_models from users where chat_id=?", chatID)
 	checkErr(err)
 	defer query.Close()
 	if !query.Next() {
@@ -431,10 +472,22 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].AlreadyAdded, modelID)
 		return
 	}
-	count := w.checkMaximum(endpoint, chatID)
+	subscriptionsNumber := w.subscriptionsNumber(endpoint, chatID)
 	maxModels := w.maxModels(chatID)
-	if count >= maxModels {
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].MaxModels, maxModels)
+	if subscriptionsNumber >= maxModels {
+		if w.cfg.CoinPayments != nil {
+			w.sendTr(
+				endpoint,
+				chatID,
+				false,
+				w.tr[endpoint].ModelsRemain,
+				0,
+				maxModels,
+				maxModels+w.cfg.CoinPayments.subscriptionPacketModelNumber,
+				w.cfg.CoinPayments.subscriptionPacketPrice)
+		} else {
+			w.sendTr(endpoint, chatID, false, w.tr[endpoint].MaxModels, maxModels)
+		}
 		return
 	}
 	status := w.checkModel(w.clients[0], modelID, w.cfg.Headers, w.cfg.Debug)
@@ -443,11 +496,24 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) {
 		return
 	}
 	w.mustExec("insert into signals (chat_id, model_id, endpoint) values (?,?,?)", chatID, modelID, endpoint)
+	subscriptionsNumber++
 	w.updateStatus(modelID, status)
 	if status != lib.StatusDenied {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].ModelAdded, modelID)
 	}
 	w.reportStatus(endpoint, chatID, modelID, status)
+	modelsRemain := maxModels - subscriptionsNumber
+	if modelsRemain <= w.cfg.HeavyUserRemainder && w.cfg.CoinPayments != nil {
+		w.sendTr(
+			endpoint,
+			chatID,
+			false,
+			w.tr[endpoint].ModelsRemain,
+			modelsRemain,
+			maxModels,
+			maxModels+w.cfg.CoinPayments.subscriptionPacketModelNumber,
+			w.cfg.CoinPayments.subscriptionPacketPrice)
+	}
 }
 
 func (w *worker) removeModel(endpoint string, chatID int64, modelID string) {
@@ -473,6 +539,138 @@ func (w *worker) sureRemoveAll(endpoint string, chatID int64) {
 	w.mustExec("delete from signals where chat_id=? and endpoint=?", chatID, endpoint)
 	w.cleanStatuses()
 	w.sendTr(endpoint, chatID, false, w.tr[endpoint].AllModelsRemoved)
+}
+
+func (w *worker) buy(endpoint string, chatID int64) {
+	email := w.email(chatID)
+	if email == "" {
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].NeedEmail)
+		return
+	}
+
+	buttons := [][]tg.InlineKeyboardButton{}
+	for _, c := range w.cfg.CoinPayments.Currencies {
+		buttons = append(buttons, []tg.InlineKeyboardButton{tg.NewInlineKeyboardButtonData(c, "buy_with "+c)})
+	}
+
+	keyboard := tg.NewInlineKeyboardMarkup(buttons...)
+	current := w.maxModels(chatID)
+	additional := w.cfg.CoinPayments.subscriptionPacketModelNumber
+	overall := current + additional
+	usd := w.cfg.CoinPayments.subscriptionPacketPrice
+	text := fmt.Sprintf(w.tr[endpoint].SelectCurrency.Str, additional, overall, usd)
+	msg := tg.NewMessage(chatID, text)
+	msg.ReplyMarkup = keyboard
+	w.sendMessage(endpoint, chatID, msg)
+}
+
+func (w *worker) setEmail(endpoint string, chatID int64, email string) {
+	if email == "" {
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].SpecifyEmail)
+		return
+	}
+
+	if len(email) > 254 || !emailRegexp.MatchString(email) {
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].InvalidEmail)
+		return
+	}
+
+	w.mustExec(`
+		insert or replace into users (chat_id, max_models, email) values (?, ?, ?)
+		on conflict(chat_id) do update set email=excluded.email`,
+		chatID,
+		w.cfg.MaxModels,
+		email)
+
+	w.sendTr(endpoint, chatID, false, w.tr[endpoint].EmailUpdated)
+}
+
+func (w *worker) email(chatID int64) string {
+	query, err := w.db.Query("select email from users where chat_id=?", chatID)
+	checkErr(err)
+	defer query.Close()
+	if !query.Next() {
+		return ""
+	}
+	var result string
+	checkErr(query.Scan(&result))
+	return result
+}
+
+func (w *worker) transaction(uuid string) (status payments.StatusKind, chatID int64, endpoint string) {
+	query, err := w.db.Query("select status, chat_id, endpoint from transactions where local_id=?", uuid)
+	checkErr(err)
+	defer query.Close()
+	if !query.Next() {
+		return
+	}
+	checkErr(query.Scan(&status, &chatID, &endpoint))
+	return
+}
+
+func (w *worker) buyWith(endpoint string, chatID int64, currency string) {
+	found := false
+	for _, c := range w.cfg.CoinPayments.Currencies {
+		if currency == c {
+			found = true
+			break
+		}
+	}
+	if !found {
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].UnknownCurrency)
+		return
+	}
+
+	email := w.email(chatID)
+	if email == "" {
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].NeedEmail)
+		return
+	}
+
+	localID := uuid.New()
+	transaction, err := w.coinPaymentsAPI.CreateTransaction(w.cfg.CoinPayments.subscriptionPacketPrice, currency, email, localID.String())
+	if err != nil {
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].TryToBuyLater)
+		lerr("create transaction failed, %v", err)
+		return
+	}
+	kind := "coinpayments"
+	timestamp := int(time.Now().Unix())
+	w.mustExec(`
+		insert into transactions (
+			status,
+			kind,
+			local_id,
+			chat_id,
+			remote_id,
+			timeout,
+			amount,
+			address,
+			dest_tag,
+			status_url,
+			checkout_url,
+			timestamp,
+			model_number,
+			currency,
+			endpoint)
+		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		payments.StatusCreated,
+		kind,
+		localID,
+		chatID,
+		transaction.TXNID,
+		transaction.Timeout,
+		transaction.Amount,
+		transaction.Address,
+		transaction.DestTag,
+		transaction.StatusURL,
+		transaction.CheckoutURL,
+		timestamp,
+		w.cfg.CoinPayments.subscriptionPacketModelNumber,
+		currency,
+		endpoint)
+
+	w.sendTr(endpoint, chatID, false, w.tr[endpoint].PayThis, transaction.Amount, currency, transaction.CheckoutURL)
 }
 
 func (w *worker) cleanStatuses() {
@@ -518,7 +716,7 @@ func (w *worker) feedback(endpoint string, chatID int64, text string) {
 
 func (w *worker) setLimit(chatID int64, max_models int) {
 	w.mustExec(`
-		insert or replace into limits (chat_id, max_models) values (?, ?)
+		insert or replace into users (chat_id, max_models) values (?, ?)
 		on conflict(chat_id) do update set max_models=excluded.max_models`,
 		chatID,
 		max_models)
@@ -542,16 +740,16 @@ func (w *worker) usersCount(endpoint string) int {
 func (w *worker) activeUsersOnEndpointCount(endpoint string) int {
 	query := w.db.QueryRow(
 		`select count(distinct signals.chat_id) from signals
-		left join users on signals.chat_id=users.chat_id and signals.endpoint=users.endpoint
-		where (users.block is null or users.block = 0) and signals.endpoint=?`, endpoint)
+		left join block on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
+		where (block.block is null or block.block = 0) and signals.endpoint=?`, endpoint)
 	return singleInt(query)
 }
 
 func (w *worker) activeUsersTotalCount() int {
 	query := w.db.QueryRow(
 		`select count(distinct signals.chat_id) from signals
-		left join users on signals.chat_id=users.chat_id and signals.endpoint=users.endpoint
-		where (users.block is null or users.block = 0)`)
+		left join block on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
+		where (block.block is null or block.block = 0)`)
 	return singleInt(query)
 }
 
@@ -563,8 +761,8 @@ func (w *worker) modelsCount(endpoint string) int {
 func (w *worker) modelsToQueryOnEndpointCount(endpoint string) int {
 	query := w.db.QueryRow(
 		`select count(distinct signals.model_id) from signals
-		left join users on signals.chat_id=users.chat_id and signals.endpoint=users.endpoint
-		where (users.block is null or users.block < ?) and signals.endpoint=?`,
+		left join block on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
+		where (block.block is null or block.block < ?) and signals.endpoint=?`,
 		w.cfg.BlockThreshold,
 		endpoint)
 	return singleInt(query)
@@ -573,8 +771,8 @@ func (w *worker) modelsToQueryOnEndpointCount(endpoint string) int {
 func (w *worker) modelsToQueryTotalCount() int {
 	query := w.db.QueryRow(
 		`select count(distinct signals.model_id) from signals
-		left join users on signals.chat_id=users.chat_id and signals.endpoint=users.endpoint
-		where (users.block is null or users.block < ?)`,
+		left join block on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
+		where (block.block is null or block.block < ?)`,
 		w.cfg.BlockThreshold)
 	return singleInt(query)
 }
@@ -582,8 +780,8 @@ func (w *worker) onlineModelsCount(endpoint string) int {
 	query := w.db.QueryRow(`
 		select count(distinct signals.model_id) from signals
 		join statuses on signals.model_id=statuses.model_id
-		left join users on signals.chat_id=users.chat_id and signals.endpoint=users.endpoint
-		where statuses.status=2 and (users.block is null or users.block < ?) and signals.endpoint=?`,
+		left join block on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
+		where statuses.status=2 and (block.block is null or block.block < ?) and signals.endpoint=?`,
 		w.cfg.BlockThreshold,
 		endpoint)
 	return singleInt(query)
@@ -592,13 +790,13 @@ func (w *worker) onlineModelsCount(endpoint string) int {
 func (w *worker) heavyUsersCount(endpoint string) int {
 	query := w.db.QueryRow(`
 		select count(*) from (
-			select 1
-			from signals left join users
-			on signals.chat_id=users.chat_id and signals.endpoint=users.endpoint
-			where (users.block is null or users.block = 0) and signals.endpoint=?
+			select 1 from signals
+			left join block on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
+			where (block.block is null or block.block = 0) and signals.endpoint=?
 			group by signals.chat_id
-			having count(*) >= 7);`,
-		endpoint)
+			having count(*) >= ?);`,
+		endpoint,
+		w.cfg.MaxModels-w.cfg.HeavyUserRemainder)
 	return singleInt(query)
 }
 
@@ -648,6 +846,10 @@ func (w *worker) serveEndpoints() {
 	for n, p := range w.cfg.Endpoints {
 		go w.serveEndpoint(n, p)
 	}
+}
+
+func (w *worker) serveIPN() {
+	go http.ListenAndServe(w.cfg.CoinPayments.IPNListenAddress, w.ipnServeMux)
 }
 
 func (w *worker) logConfig() {
@@ -723,6 +925,22 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].RemoveAll)
 	case "sure_remove_all":
 		w.sureRemoveAll(endpoint, chatID)
+	case "buy":
+		if w.cfg.CoinPayments == nil {
+			w.sendTr(endpoint, chatID, false, w.tr[endpoint].UnknownCommand)
+			return
+		}
+		w.buy(endpoint, chatID)
+	case "buy_with":
+		if w.cfg.CoinPayments == nil {
+			w.sendTr(endpoint, chatID, false, w.tr[endpoint].UnknownCommand)
+			return
+		}
+		w.buyWith(endpoint, chatID, arguments)
+	case "email":
+		w.setEmail(endpoint, chatID, arguments)
+	case "max_models":
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].YourMaxModels, w.maxModels(chatID))
 	case "":
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Slash)
 	default:
@@ -777,6 +995,17 @@ func (w *worker) processTGUpdate(p packet) {
 			}
 			w.processIncomingCommand(p.endpoint, u.Message.Chat.ID, parts[0], parts[1])
 		}
+	}
+	if u.CallbackQuery != nil {
+		callback := tg.CallbackConfig{CallbackQueryID: u.CallbackQuery.ID}
+		w.bots[p.endpoint].AnswerCallbackQuery(callback)
+		data := strings.SplitN(u.CallbackQuery.Data, " ", 2)
+		chatID := int64(u.CallbackQuery.From.ID)
+		if len(data) != 2 {
+			w.sendTr(p.endpoint, chatID, false, w.tr[p.endpoint].InvalidCommand)
+			return
+		}
+		w.processIncomingCommand(p.endpoint, chatID, data[0], data[1])
 	}
 }
 
@@ -842,10 +1071,42 @@ func (w *worker) handleStat(endpoint string) func(writer http.ResponseWriter, r 
 	}
 }
 
+func (w *worker) handleIPN(writer http.ResponseWriter, r *http.Request) {
+	linf("got IPN data")
+
+	newStatus, custom, err := payments.ProcessIPN(r, w.cfg.CoinPayments.IPNSecret, w.cfg.Debug)
+	if err != nil {
+		lerr("error on processing IPN, %v", err)
+		return
+	}
+
+	switch newStatus {
+	case payments.StatusFinished:
+		oldStatus, chatID, endpoint := w.transaction(custom)
+		if oldStatus == payments.StatusFinished {
+			lerr("transaction is already finished")
+			return
+		}
+		w.mustExec("update transactions set status=? where local_id=?", payments.StatusFinished, custom)
+		w.mustExec("update users set max_models = max_models + (select sum(model_number) from transactions where local_id=?)", custom)
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].PaymentComplete, w.maxModels(chatID))
+		linf("payment %s is finished", custom)
+	case payments.StatusCanceled:
+		w.mustExec("update transactions set status=? where local_id=?", payments.StatusCanceled, custom)
+		linf("payment %s is canceled", custom)
+	default:
+		linf("payment %s is still pending", custom)
+	}
+}
+
 func (w *worker) handleStatEndpoints() {
 	for n, p := range w.cfg.Endpoints {
 		http.HandleFunc(p.WebhookDomain+"/stat", w.handleStat(n))
 	}
+}
+
+func (w *worker) handleIPNEndpoint() {
+	w.ipnServeMux.HandleFunc(w.cfg.CoinPayments.IPNListenURL, w.handleIPN)
 }
 
 func (w *worker) incoming() chan packet {
@@ -871,6 +1132,12 @@ func main() {
 	incoming := w.incoming()
 	w.handleStatEndpoints()
 	w.serveEndpoints()
+
+	if w.cfg.CoinPayments != nil {
+		w.handleIPNEndpoint()
+		w.serveIPN()
+	}
+
 	var periodicTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
 	statusRequests, statusUpdates := w.startChecker()
 	statusRequests <- w.models()

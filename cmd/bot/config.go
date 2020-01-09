@@ -22,6 +22,19 @@ type endpoint struct {
 	Translation        string `json:"translation"`          // translation strings
 }
 
+type coinPaymentsConfig struct {
+	SubscriptionPacket string   `json:"subscription_packet"` // subscription packet, format "15/10" meaning 15 USD for 10 models
+	Currencies         []string `json:"currencies"`          // CoinPayments currencies to buy a subscription with
+	PublicKey          string   `json:"public_key"`          // CoinPayments public key
+	PrivateKey         string   `json:"private_key"`         // CoinPayments private key
+	IPNListenURL       string   `json:"ipn_listen_url"`      // CoinPayments IPN payment status notification listen URL
+	IPNListenAddress   string   `json:"ipn_listen_address"`  // CoinPayments IPN payment status notification listen address
+	IPNSecret          string   `json:"ipn_secret"`          // CoinPayments IPN secret
+
+	subscriptionPacketPrice       int
+	subscriptionPacketModelNumber int
+}
+
 type config struct {
 	Website                     string              `json:"website"`                        // one of the following strings: "bongacams", "stripchat", "chaturbate"
 	PeriodSeconds               int                 `json:"period_seconds"`                 // the period of querying models statuses
@@ -41,12 +54,14 @@ type config struct {
 	StatPassword                string              `json:"stat_password"`                  // password for statistics
 	ErrorReportingPeriodMinutes int                 `json:"error_reporting_period_minutes"` // the period of the error reports
 	Endpoints                   map[string]endpoint `json:"endpoints"`                      // the endpoints by simple name, used for the support of the bots in different languages accessing the same database
+	CoinPayments                *coinPaymentsConfig `json:"coin_payments"`                  // CoinPayments integration
+	HeavyUserRemainder          int                 `json:"heavy_user_remainder"`           // The maximum remainder of models to treat an user as heavy
 
 	errorThreshold   int
 	errorDenominator int
 }
 
-var errorRateRegexp = regexp.MustCompile(`^(\d+)/(\d+)$`)
+var fractionRegexp = regexp.MustCompile(`^(\d+)/(\d+)$`)
 
 func readConfig(path string) *config {
 	file, err := os.Open(filepath.Clean(path))
@@ -121,9 +136,11 @@ func checkConfig(cfg *config) error {
 	if cfg.ErrorReportingPeriodMinutes == 0 {
 		return errors.New("configure error_reporting_period_minutes")
 	}
-	if m := errorRateRegexp.FindStringSubmatch(cfg.DangerousErrorRate); len(m) == 0 {
-		return errors.New("configure dangerous_error_rate")
-	} else {
+	if cfg.HeavyUserRemainder == 0 {
+		return errors.New("configure heavy_user_remainder")
+	}
+
+	if m := fractionRegexp.FindStringSubmatch(cfg.DangerousErrorRate); len(m) == 3 {
 		errorThreshold, err := strconv.ParseInt(m[1], 10, 0)
 		if err != nil {
 			return err
@@ -140,6 +157,58 @@ func checkConfig(cfg *config) error {
 
 		cfg.errorThreshold = int(errorThreshold)
 		cfg.errorDenominator = int(errorDenominator)
+	} else {
+		return errors.New("configure dangerous_error_rate")
+	}
+
+	if cfg.CoinPayments != nil {
+		if err := checkCoinPaymentsConfig(cfg.CoinPayments); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func checkCoinPaymentsConfig(cfg *coinPaymentsConfig) error {
+	if len(cfg.Currencies) == 0 {
+		return errors.New("configure currencies")
+	}
+	if cfg.PublicKey == "" {
+		return errors.New("configure public_key")
+	}
+	if cfg.PrivateKey == "" {
+		return errors.New("configure private_key")
+	}
+	if cfg.IPNListenURL == "" {
+		return errors.New("configure ipn_path")
+	}
+	if cfg.IPNListenAddress == "" {
+		return errors.New("configure ipn_path")
+	}
+	if cfg.IPNSecret == "" {
+		return errors.New("configure ipn_secret")
+	}
+
+	if m := fractionRegexp.FindStringSubmatch(cfg.SubscriptionPacket); len(m) == 3 {
+		subscriptionPacketModelNumber, err := strconv.ParseInt(m[1], 10, 0)
+		if err != nil {
+			return err
+		}
+
+		subscriptionPacketPrice, err := strconv.ParseInt(m[2], 10, 0)
+		if err != nil {
+			return err
+		}
+
+		if subscriptionPacketModelNumber == 0 || subscriptionPacketPrice == 0 {
+			return errors.New("invalid subscription packet")
+		}
+
+		cfg.subscriptionPacketPrice = int(subscriptionPacketPrice)
+		cfg.subscriptionPacketModelNumber = int(subscriptionPacketModelNumber)
+	} else {
+		return errors.New("configure subscription_packet")
 	}
 
 	return nil
