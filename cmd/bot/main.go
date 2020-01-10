@@ -831,6 +831,24 @@ func (w *worker) broadcast(endpoint string, text string) {
 	}
 }
 
+func (w *worker) direct(endpoint string, arguments string) {
+	parts := strings.SplitN(arguments, " ", 2)
+	if len(parts) < 2 {
+		w.send(endpoint, w.cfg.AdminID, false, parseRaw, "usage: /direct chatID text")
+		return
+	}
+	whom, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		w.send(endpoint, w.cfg.AdminID, false, parseRaw, "first argument is invalid")
+		return
+	}
+	text := parts[1]
+	if text == "" {
+		return
+	}
+	w.send(endpoint, whom, true, parseRaw, text)
+}
+
 func (w *worker) serveEndpoint(n string, p endpoint) {
 	linf("serving endpoint %s...", n)
 	var err error
@@ -865,6 +883,9 @@ func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arg
 		return true
 	case "broadcast":
 		w.broadcast(endpoint, arguments)
+		return true
+	case "direct":
+		w.direct(endpoint, arguments)
 		return true
 	case "set_max_models":
 		parts := strings.Split(arguments, " ")
