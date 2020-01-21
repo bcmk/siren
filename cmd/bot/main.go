@@ -1007,9 +1007,23 @@ func (w *worker) processStatusUpdate(statusUpdate statusUpdate) {
 func (w *worker) processTGUpdate(p packet) {
 	u := p.message
 	if u.Message != nil && u.Message.Chat != nil {
-		if u.Message.IsCommand() {
+		if newMembers := u.Message.NewChatMembers; newMembers != nil && len(*newMembers) > 0 {
+			ourIDs := w.ourIDs()
+		addedToChat:
+			for _, m := range *newMembers {
+				for _, ourID := range ourIDs {
+					if int64(m.ID) == ourID {
+						w.sendTr(p.endpoint, u.Message.Chat.ID, false, w.tr[p.endpoint].Help)
+						break addedToChat
+					}
+				}
+			}
+		} else if u.Message.IsCommand() {
 			w.processIncomingCommand(p.endpoint, u.Message.Chat.ID, u.Message.Command(), u.Message.CommandArguments())
 		} else {
+			if u.Message.Text == "" {
+				return
+			}
 			parts := strings.SplitN(u.Message.Text, " ", 2)
 			for len(parts) < 2 {
 				parts = append(parts, "")
@@ -1142,6 +1156,20 @@ func (w *worker) incoming() chan packet {
 		}(n, incoming)
 	}
 	return result
+}
+
+func (w *worker) ourIDs() []int64 {
+	ids := []int64{}
+	for _, e := range w.cfg.Endpoints {
+		if idx := strings.Index(e.BotToken, ":"); idx != -1 {
+			id, err := strconv.ParseInt(e.BotToken[:idx], 10, 64)
+			checkErr(err)
+			ids = append(ids, id)
+		} else {
+			checkErr(errors.New("cannot get our ID"))
+		}
+	}
+	return ids
 }
 
 func main() {
