@@ -800,6 +800,16 @@ func (w *worker) heavyUsersCount(endpoint string) int {
 	return singleInt(query)
 }
 
+func (w *worker) transactionsOnEndpoint(endpoint string) int {
+	query := w.db.QueryRow("select count(*) from transactions where endpoint=?", endpoint)
+	return singleInt(query)
+}
+
+func (w *worker) transactionsOnEndpointFinished(endpoint string) int {
+	query := w.db.QueryRow("select count(*) from transactions where endpoint=? and status=?", endpoint, payments.StatusFinished)
+	return singleInt(query)
+}
+
 func (w *worker) statStrings(endpoint string) []string {
 	stat := w.getStat(endpoint)
 	return []string{
@@ -1074,18 +1084,20 @@ func (w *worker) getStat(endpoint string) statistics {
 	checkErr(syscall.Getrusage(syscall.RUSAGE_SELF, &rusage))
 
 	return statistics{
-		UsersCount:                   w.usersCount(endpoint),
-		ActiveUsersOnEndpointCount:   w.activeUsersOnEndpointCount(endpoint),
-		ActiveUsersTotalCount:        w.activeUsersTotalCount(),
-		HeavyUsersCount:              w.heavyUsersCount(endpoint),
-		ModelsCount:                  w.modelsCount(endpoint),
-		ModelsToQueryOnEndpointCount: w.modelsToQueryOnEndpointCount(endpoint),
-		ModelsToQueryTotalCount:      w.modelsToQueryTotalCount(),
-		OnlineModelsCount:            w.onlineModelsCount(endpoint),
-		QueriesDurationSeconds:       int(elapsed.Seconds()),
-		ErrorRate:                    [2]int{w.unknownsNumber(), w.cfg.errorDenominator},
-		Rss:                          rss / 1024,
-		MaxRss:                       rusage.Maxrss}
+		UsersCount:                     w.usersCount(endpoint),
+		ActiveUsersOnEndpointCount:     w.activeUsersOnEndpointCount(endpoint),
+		ActiveUsersTotalCount:          w.activeUsersTotalCount(),
+		HeavyUsersCount:                w.heavyUsersCount(endpoint),
+		ModelsCount:                    w.modelsCount(endpoint),
+		ModelsToQueryOnEndpointCount:   w.modelsToQueryOnEndpointCount(endpoint),
+		ModelsToQueryTotalCount:        w.modelsToQueryTotalCount(),
+		OnlineModelsCount:              w.onlineModelsCount(endpoint),
+		TransactionsOnEndpointCount:    w.transactionsOnEndpoint(endpoint),
+		TransactionsOnEndpointFinished: w.transactionsOnEndpointFinished(endpoint),
+		QueriesDurationSeconds:         int(elapsed.Seconds()),
+		ErrorRate:                      [2]int{w.unknownsNumber(), w.cfg.errorDenominator},
+		Rss:                            rss / 1024,
+		MaxRss:                         rusage.Maxrss}
 }
 
 func (w *worker) handleStat(endpoint string) func(writer http.ResponseWriter, r *http.Request) {
