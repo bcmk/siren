@@ -2,6 +2,7 @@ package main
 
 type statistics struct {
 	UsersCount                     int    `json:"users_count"`
+	GroupsCount                    int    `json:"groups_count"`
 	ActiveUsersOnEndpointCount     int    `json:"active_users_on_endpoint_count"`
 	ActiveUsersTotalCount          int    `json:"active_users_total_count"`
 	HeavyUsersCount                int    `json:"heavy_users_count"`

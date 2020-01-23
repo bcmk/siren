@@ -737,6 +737,11 @@ func (w *worker) usersCount(endpoint string) int {
 	return singleInt(query)
 }
 
+func (w *worker) groupsCount(endpoint string) int {
+	query := w.db.QueryRow("select count(distinct chat_id) from signals where endpoint=? and chat_id < 0", endpoint)
+	return singleInt(query)
+}
+
 func (w *worker) activeUsersOnEndpointCount(endpoint string) int {
 	query := w.db.QueryRow(
 		`select count(distinct signals.chat_id) from signals
@@ -814,6 +819,7 @@ func (w *worker) statStrings(endpoint string) []string {
 	stat := w.getStat(endpoint)
 	return []string{
 		fmt.Sprintf("Users: %d", stat.UsersCount),
+		fmt.Sprintf("Groups: %d", stat.GroupsCount),
 		fmt.Sprintf("Active users: %d", stat.ActiveUsersOnEndpointCount),
 		fmt.Sprintf("Heavy: %d", stat.HeavyUsersCount),
 		fmt.Sprintf("Models: %d", stat.ModelsCount),
@@ -821,6 +827,7 @@ func (w *worker) statStrings(endpoint string) []string {
 		fmt.Sprintf("Queries duration: %d s", stat.QueriesDurationSeconds),
 		fmt.Sprintf("Error rate: %d/%d", stat.ErrorRate[0], stat.ErrorRate[1]),
 		fmt.Sprintf("Memory usage: %d KiB", stat.Rss),
+		fmt.Sprintf("Transactions: %d/%d", stat.TransactionsOnEndpointFinished, stat.TransactionsOnEndpointCount),
 	}
 }
 
@@ -1091,6 +1098,7 @@ func (w *worker) getStat(endpoint string) statistics {
 
 	return statistics{
 		UsersCount:                     w.usersCount(endpoint),
+		GroupsCount:                    w.groupsCount(endpoint),
 		ActiveUsersOnEndpointCount:     w.activeUsersOnEndpointCount(endpoint),
 		ActiveUsersTotalCount:          w.activeUsersTotalCount(),
 		HeavyUsersCount:                w.heavyUsersCount(endpoint),
