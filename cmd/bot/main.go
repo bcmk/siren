@@ -670,7 +670,7 @@ func (w *worker) buyWith(endpoint string, chatID int64, currency string) {
 		currency,
 		endpoint)
 
-	w.sendTr(endpoint, chatID, false, w.tr[endpoint].PayThis, transaction.Amount, currency, transaction.StatusURL)
+	w.sendTr(endpoint, chatID, false, w.tr[endpoint].PayThis, transaction.Amount, currency, transaction.CheckoutURL)
 }
 
 func (w *worker) cleanStatuses() {
