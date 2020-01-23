@@ -141,7 +141,7 @@ func (w *worker) setWebhook() {
 }
 
 func (w *worker) removeWebhook() {
-	for n, _ := range w.cfg.Endpoints {
+	for n := range w.cfg.Endpoints {
 		linf("removing webhook for endpoint %s...", n)
 		_, err := w.bots[n].RemoveWebhook()
 		checkErr(err)
@@ -877,7 +877,10 @@ func (w *worker) serveEndpoints() {
 }
 
 func (w *worker) serveIPN() {
-	go http.ListenAndServe(w.cfg.CoinPayments.IPNListenAddress, w.ipnServeMux)
+	go func() {
+		err := http.ListenAndServe(w.cfg.CoinPayments.IPNListenAddress, w.ipnServeMux)
+		checkErr(err)
+	}()
 }
 
 func (w *worker) logConfig() {
@@ -1043,7 +1046,10 @@ func (w *worker) processTGUpdate(p packet) {
 	}
 	if u.CallbackQuery != nil {
 		callback := tg.CallbackConfig{CallbackQueryID: u.CallbackQuery.ID}
-		w.bots[p.endpoint].AnswerCallbackQuery(callback)
+		_, err := w.bots[p.endpoint].AnswerCallbackQuery(callback)
+		if err != nil {
+			lerr("cannot answer callback query, %v", err)
+		}
 		data := strings.SplitN(u.CallbackQuery.Data, " ", 2)
 		chatID := int64(u.CallbackQuery.From.ID)
 		if len(data) != 2 {
@@ -1114,7 +1120,8 @@ func (w *worker) handleStat(endpoint string) func(writer http.ResponseWriter, r 
 		writer.Header().Set("Content-Type", "application/json")
 		statJson, err := json.MarshalIndent(w.getStat(endpoint), "", "    ")
 		checkErr(err)
-		writer.Write(statJson)
+		_, err = writer.Write(statJson)
+		checkErr(err)
 	}
 }
 
@@ -1203,7 +1210,7 @@ func main() {
 	statusRequests, statusUpdates := w.startChecker()
 	statusRequests <- w.models()
 	signals := make(chan os.Signal, 16)
-	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT, syscall.SIGKILL)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT)
 	for {
 		select {
 		case <-periodicTimer.C:

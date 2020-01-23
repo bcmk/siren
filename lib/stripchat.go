@@ -39,6 +39,10 @@ func CheckModelStripchat(client *Client, modelID string, headers [][2]string, db
 	}
 	buf := bytes.Buffer{}
 	_, err = buf.ReadFrom(resp.Body)
+	if err != nil {
+		Lerr("[%v] cannot read body for model %s, %v", client.Addr, modelID, err)
+		return StatusUnknown
+	}
 	copy := ioutil.NopCloser(bytes.NewReader(buf.Bytes()))
 	doc, err := html.Parse(copy)
 	if err != nil {
