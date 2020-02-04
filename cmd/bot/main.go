@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/signal"
 	"path"
-	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -21,6 +20,7 @@ import (
 	"github.com/bcmk/siren/lib"
 	"github.com/bcmk/siren/payments"
 	tg "github.com/bcmk/telegram-bot-api"
+	"github.com/bradfitz/go-smtpd/smtpd"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -33,8 +33,6 @@ var (
 	linf     = lib.Linf
 	ldbg     = lib.Ldbg
 )
-
-var emailRegexp = regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+\\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
 
 type statusUpdate struct {
 	modelID string
@@ -61,6 +59,12 @@ type worker struct {
 type packet struct {
 	message  tg.Update
 	endpoint string
+}
+
+type email struct {
+	chatID   int64
+	endpoint string
+	email    string
 }
 
 func newWorker() *worker {
@@ -166,18 +170,19 @@ func (w *worker) resetBlock(endpoint string, chatID int64) {
 	w.mustExec("update block set block=0 where endpoint=? and chat_id=?", endpoint, chatID)
 }
 
-func (w *worker) send(endpoint string, chatID int64, notify bool, parse parseKind, text string) {
+func (w *worker) sendText(endpoint string, chatID int64, notify bool, parse parseKind, text string) {
 	msg := tg.NewMessage(chatID, text)
 	msg.DisableNotification = !notify
 	switch parse {
 	case parseHTML, parseMarkdown:
 		msg.ParseMode = parse.String()
 	}
-	w.sendMessage(endpoint, chatID, msg)
+	w.sendMessage(endpoint, &messageConfig{msg})
 }
 
-func (w *worker) sendMessage(endpoint string, chatID int64, msg tg.Chattable) {
-	if _, err := w.senders[endpoint](msg); err != nil {
+func (w *worker) sendMessage(endpoint string, msg baseChattable) {
+	chatID := msg.baseChat().ChatID
+	if _, err := w.bots[endpoint].Send(msg); err != nil {
 		switch err := err.(type) {
 		case tg.Error:
 			if err.Code == 403 {
@@ -187,19 +192,19 @@ func (w *worker) sendMessage(endpoint string, chatID int64, msg tg.Chattable) {
 				lerr("cannot send a message to %d, code %d, %v", chatID, err.Code, err)
 			}
 		default:
-			lerr("unexpected error type while sending a message to %d, %v", chatID, err)
+			lerr("unexpected error type while sending a message to %d, %v", msg.baseChat().ChatID, err)
 		}
-	} else {
-		if w.cfg.Debug {
-			ldbg("message sent to %d", chatID)
-		}
-		w.resetBlock(endpoint, chatID)
+		return
 	}
+	if w.cfg.Debug {
+		ldbg("message sent to %d", chatID)
+	}
+	w.resetBlock(endpoint, chatID)
 }
 
 func (w *worker) sendTr(endpoint string, chatID int64, notify bool, translation *translation, args ...interface{}) {
 	text := fmt.Sprintf(translation.Str, args...)
-	w.send(endpoint, chatID, notify, translation.Parse, text)
+	w.sendText(endpoint, chatID, notify, translation.Parse, text)
 }
 
 func (w *worker) createDatabase() {
@@ -229,8 +234,13 @@ func (w *worker) createDatabase() {
 	w.mustExec(`
 		create table if not exists users (
 			chat_id integer primary key,
-			max_models integer not null default 0,
-			email text not null default '');`)
+			max_models integer not null default 0);`)
+	w.mustExec(`
+		create table if not exists emails (
+			chat_id integer,
+			endpoint text not null default '',
+			email text not null default '',
+			primary key(chat_id, endpoint));`)
 	w.mustExec(`
 		create table if not exists transactions (
 			local_id text primary key,
@@ -429,8 +439,7 @@ func (w *worker) startChecker() (input chan []string, output chan statusUpdate) 
 }
 
 func singleInt(row *sql.Row) (result int) {
-	err := row.Scan(&result)
-	checkErr(err)
+	checkErr(row.Scan(&result))
 	return result
 }
 
@@ -458,6 +467,11 @@ func (w *worker) maxModels(chatID int64) int {
 	return result
 }
 
+func (w *worker) addUser(endpoint string, chatID int64) {
+	w.mustExec(`insert or ignore into users (chat_id, max_models) values (?, ?)`, chatID, w.cfg.MaxModels)
+	w.mustExec(`insert or ignore into emails (endpoint, chat_id, email) values (?, ?, ?)`, endpoint, chatID, uuid.New())
+}
+
 func (w *worker) addModel(endpoint string, chatID int64, modelID string) {
 	if modelID == "" {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].SyntaxAdd)
@@ -468,6 +482,9 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, modelID)
 		return
 	}
+
+	w.addUser(endpoint, chatID)
+
 	if w.checkExists(endpoint, chatID, modelID) {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].AlreadyAdded, modelID)
 		return
@@ -542,12 +559,6 @@ func (w *worker) sureRemoveAll(endpoint string, chatID int64) {
 }
 
 func (w *worker) buy(endpoint string, chatID int64) {
-	email := w.email(chatID)
-	if email == "" {
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].NeedEmail)
-		return
-	}
-
 	buttons := [][]tg.InlineKeyboardButton{}
 	for _, c := range w.cfg.CoinPayments.Currencies {
 		buttons = append(buttons, []tg.InlineKeyboardButton{tg.NewInlineKeyboardButtonData(c, "buy_with "+c)})
@@ -561,40 +572,14 @@ func (w *worker) buy(endpoint string, chatID int64) {
 	text := fmt.Sprintf(w.tr[endpoint].SelectCurrency.Str, additional, overall, usd)
 	msg := tg.NewMessage(chatID, text)
 	msg.ReplyMarkup = keyboard
-	w.sendMessage(endpoint, chatID, msg)
+	w.sendMessage(endpoint, &messageConfig{msg})
 }
 
-func (w *worker) setEmail(endpoint string, chatID int64, email string) {
-	if email == "" {
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].SpecifyEmail)
-		return
-	}
-
-	if len(email) > 254 || !emailRegexp.MatchString(email) {
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].InvalidEmail)
-		return
-	}
-
-	w.mustExec(`
-		insert or replace into users (chat_id, max_models, email) values (?, ?, ?)
-		on conflict(chat_id) do update set email=excluded.email`,
-		chatID,
-		w.cfg.MaxModels,
-		email)
-
-	w.sendTr(endpoint, chatID, false, w.tr[endpoint].EmailUpdated)
-}
-
-func (w *worker) email(chatID int64) string {
-	query, err := w.db.Query("select email from users where chat_id=?", chatID)
-	checkErr(err)
-	defer query.Close()
-	if !query.Next() {
-		return ""
-	}
+func (w *worker) email(endpoint string, chatID int64) string {
+	row := w.db.QueryRow("select email from emails where endpoint=? and chat_id=?", endpoint, chatID)
 	var result string
-	checkErr(query.Scan(&result))
-	return result
+	checkErr(row.Scan(&result))
+	return result + w.cfg.MailHost
 }
 
 func (w *worker) transaction(uuid string) (status payments.StatusKind, chatID int64, endpoint string) {
@@ -621,12 +606,8 @@ func (w *worker) buyWith(endpoint string, chatID int64, currency string) {
 		return
 	}
 
-	email := w.email(chatID)
-	if email == "" {
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].NeedEmail)
-		return
-	}
-
+	w.addUser(endpoint, chatID)
+	email := w.email(endpoint, chatID)
 	localID := uuid.New()
 	transaction, err := w.coinPaymentsAPI.CreateTransaction(w.cfg.CoinPayments.subscriptionPacketPrice, currency, email, localID.String())
 	if err != nil {
@@ -686,7 +667,7 @@ func (w *worker) listModels(endpoint string, chatID int64) {
 	if len(lines) == 0 {
 		lines = append(lines, w.tr[endpoint].NoModels.Str)
 	}
-	w.send(endpoint, chatID, false, w.tr[endpoint].NoModels.Parse, strings.Join(lines, "\n"))
+	w.sendText(endpoint, chatID, false, w.tr[endpoint].NoModels.Parse, strings.Join(lines, "\n"))
 }
 
 func (w *worker) listOnlineModels(endpoint string, chatID int64) {
@@ -711,7 +692,7 @@ func (w *worker) feedback(endpoint string, chatID int64, text string) {
 
 	w.mustExec("insert into feedback (endpoint, chat_id, text) values (?, ?, ?)", endpoint, chatID, text)
 	w.sendTr(endpoint, chatID, false, w.tr[endpoint].Feedback)
-	w.send(endpoint, w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Feedback: %s", text))
+	w.sendText(endpoint, w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Feedback: %s", text))
 }
 
 func (w *worker) setLimit(chatID int64, max_models int) {
@@ -832,7 +813,7 @@ func (w *worker) statStrings(endpoint string) []string {
 }
 
 func (w *worker) stat(endpoint string) {
-	w.send(endpoint, w.cfg.AdminID, true, parseRaw, strings.Join(w.statStrings(endpoint), "\n"))
+	w.sendText(endpoint, w.cfg.AdminID, true, parseRaw, strings.Join(w.statStrings(endpoint), "\n"))
 }
 
 func (w *worker) broadcast(endpoint string, text string) {
@@ -844,26 +825,26 @@ func (w *worker) broadcast(endpoint string, text string) {
 	}
 	chats := w.broadcastChats(endpoint)
 	for _, chatID := range chats {
-		w.send(endpoint, chatID, true, parseRaw, text)
+		w.sendText(endpoint, chatID, true, parseRaw, text)
 	}
 }
 
 func (w *worker) direct(endpoint string, arguments string) {
 	parts := strings.SplitN(arguments, " ", 2)
 	if len(parts) < 2 {
-		w.send(endpoint, w.cfg.AdminID, false, parseRaw, "usage: /direct chatID text")
+		w.sendText(endpoint, w.cfg.AdminID, false, parseRaw, "usage: /direct chatID text")
 		return
 	}
 	whom, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
-		w.send(endpoint, w.cfg.AdminID, false, parseRaw, "first argument is invalid")
+		w.sendText(endpoint, w.cfg.AdminID, false, parseRaw, "first argument is invalid")
 		return
 	}
 	text := parts[1]
 	if text == "" {
 		return
 	}
-	w.send(endpoint, whom, true, parseRaw, text)
+	w.sendText(endpoint, whom, true, parseRaw, text)
 }
 
 func (w *worker) serveEndpoint(n string, p endpoint) {
@@ -910,24 +891,88 @@ func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arg
 	case "set_max_models":
 		parts := strings.Split(arguments, " ")
 		if len(parts) != 2 {
-			w.send(endpoint, chatID, false, parseRaw, "expecting two arguments")
+			w.sendText(endpoint, chatID, false, parseRaw, "expecting two arguments")
 			return true
 		}
 		who, err := strconv.ParseInt(parts[0], 10, 64)
 		if err != nil {
-			w.send(endpoint, chatID, false, parseRaw, "first argument is invalid")
+			w.sendText(endpoint, chatID, false, parseRaw, "first argument is invalid")
 			return true
 		}
 		max_models, err := strconv.Atoi(parts[1])
 		if err != nil {
-			w.send(endpoint, chatID, false, parseRaw, "second argument is invalid")
+			w.sendText(endpoint, chatID, false, parseRaw, "second argument is invalid")
 			return true
 		}
 		w.setLimit(who, max_models)
-		w.send(endpoint, chatID, false, parseRaw, "OK")
+		w.sendText(endpoint, chatID, false, parseRaw, "OK")
 		return true
 	}
 	return false
+}
+
+func splitAddress(a string) (string, string) {
+	a = strings.ToLower(a)
+	parts := strings.Split(a, "@")
+	if len(parts) != 2 {
+		return "", ""
+	}
+	return parts[0], parts[1]
+}
+
+func (w *worker) recordForEmail(username string) *email {
+	modelsQuery, err := w.db.Query(`select chat_id, endpoint from emails where email=?`, username)
+	checkErr(err)
+	defer modelsQuery.Close()
+	if modelsQuery.Next() {
+		email := email{email: username}
+		checkErr(modelsQuery.Scan(&email.chatID, &email.endpoint))
+		return &email
+	}
+	return nil
+}
+
+func (w *worker) mailReceived(e *env) {
+	emails := make(map[email]bool)
+	for _, r := range e.rcpts {
+		username, host := splitAddress(r.Email())
+		if host != w.cfg.MailHost {
+			continue
+		}
+		email := w.recordForEmail(username)
+		if email != nil {
+			emails[*email] = true
+		}
+	}
+
+	for email := range emails {
+		w.sendTr(email.endpoint, email.chatID, true, w.tr[email.endpoint].MailReceived,
+			e.mime.GetHeader("Subject"),
+			e.mime.GetHeader("From"),
+			e.mime.Text)
+		for _, inline := range e.mime.Inlines {
+			b := tg.FileBytes{Name: inline.FileName, Bytes: inline.Content}
+			switch {
+			case strings.HasPrefix(inline.ContentType, "image/"):
+				msg := tg.NewPhotoUpload(email.chatID, b)
+				w.sendMessage(email.endpoint, &photoConfig{msg})
+			default:
+				msg := tg.NewDocumentUpload(email.chatID, b)
+				w.sendMessage(email.endpoint, &documentConfig{msg})
+			}
+		}
+		for _, inline := range e.mime.Attachments {
+			b := tg.FileBytes{Name: inline.FileName, Bytes: inline.Content}
+			msg := tg.NewDocumentUpload(email.chatID, b)
+			w.sendMessage(email.endpoint, &documentConfig{msg})
+		}
+	}
+}
+
+func envelopeFactory(ch chan *env) func(smtpd.Connection, smtpd.MailAddress) (smtpd.Envelope, error) {
+	return func(c smtpd.Connection, from smtpd.MailAddress) (smtpd.Envelope, error) {
+		return &env{BasicEnvelope: &smtpd.BasicEnvelope{}, from: from, ch: ch}, nil
+	}
 }
 
 func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, arguments string) {
@@ -978,8 +1023,6 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 			return
 		}
 		w.buyWith(endpoint, chatID, arguments)
-	case "email":
-		w.setEmail(endpoint, chatID, arguments)
 	case "max_models":
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].YourMaxModels, w.maxModels(chatID))
 	case "":
@@ -993,7 +1036,7 @@ func (w *worker) processPeriodic(statusRequests chan []string) {
 	unknownsNumber := w.unknownsNumber()
 	now := time.Now()
 	if w.nextErrorReport.Before(now) && unknownsNumber > w.cfg.errorThreshold {
-		w.send(w.cfg.AdminEndpoint, w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Dangerous error rate reached: %d/%d", unknownsNumber, w.cfg.errorDenominator))
+		w.sendText(w.cfg.AdminEndpoint, w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Dangerous error rate reached: %d/%d", unknownsNumber, w.cfg.errorDenominator))
 		w.nextErrorReport = now.Add(time.Minute * time.Duration(w.cfg.ErrorReportingPeriodMinutes))
 	}
 
@@ -1214,6 +1257,17 @@ func main() {
 		w.serveIPN()
 	}
 
+	mail := make(chan *env)
+	smtp := &smtpd.Server{
+		Hostname:  w.cfg.MailHost,
+		Addr:      w.cfg.MailListenAddress,
+		OnNewMail: envelopeFactory(mail),
+	}
+	go func() {
+		err := smtp.ListenAndServe()
+		checkErr(err)
+	}()
+
 	var periodicTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
 	statusRequests, statusUpdates := w.startChecker()
 	statusRequests <- w.models()
@@ -1228,6 +1282,8 @@ func main() {
 			w.processStatusUpdate(statusUpdate)
 		case u := <-incoming:
 			w.processTGUpdate(u)
+		case m := <-mail:
+			w.mailReceived(m)
 		case s := <-signals:
 			linf("got signal %v", s)
 			w.removeWebhook()

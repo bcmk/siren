@@ -55,7 +55,9 @@ type config struct {
 	ErrorReportingPeriodMinutes int                 `json:"error_reporting_period_minutes"` // the period of the error reports
 	Endpoints                   map[string]endpoint `json:"endpoints"`                      // the endpoints by simple name, used for the support of the bots in different languages accessing the same database
 	CoinPayments                *coinPaymentsConfig `json:"coin_payments"`                  // CoinPayments integration
-	HeavyUserRemainder          int                 `json:"heavy_user_remainder"`           // The maximum remainder of models to treat an user as heavy
+	HeavyUserRemainder          int                 `json:"heavy_user_remainder"`           // the maximum remainder of models to treat an user as heavy
+	MailHost                    string              `json:"mail_host"`                      // the hostname for email
+	MailListenAddress           string              `json:"mail_listen_address"`            // the address to listen to incoming mail
 
 	errorThreshold   int
 	errorDenominator int
@@ -138,6 +140,12 @@ func checkConfig(cfg *config) error {
 	}
 	if cfg.HeavyUserRemainder == 0 {
 		return errors.New("configure heavy_user_remainder")
+	}
+	if cfg.MailHost == "" {
+		return errors.New("configure mail_host")
+	}
+	if cfg.MailListenAddress == "" {
+		return errors.New("configure mail_listen_address")
 	}
 
 	if m := fractionRegexp.FindStringSubmatch(cfg.DangerousErrorRate); len(m) == 3 {

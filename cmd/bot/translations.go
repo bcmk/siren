@@ -67,15 +67,12 @@ type translations struct {
 	AllModelsRemoved *translation `json:"all_models_removed"`
 	TryToBuyLater    *translation `json:"try_to_buy_later"`
 	PayThis          *translation `json:"pay_this"`
-	NeedEmail        *translation `json:"need_email"`
-	InvalidEmail     *translation `json:"invalid_email"`
-	SpecifyEmail     *translation `json:"specify_email"`
-	EmailUpdated     *translation `json:"email_updated"`
 	SelectCurrency   *translation `json:"select_currency"`
 	UnknownCurrency  *translation `json:"unknown_currency"`
 	ModelsRemain     *translation `json:"models_remain"`
 	YourMaxModels    *translation `json:"your_max_models"`
 	PaymentComplete  *translation `json:"payment_complete"`
+	MailReceived     *translation `json:"mail_received"`
 }
 
 func loadAllTranslations(cfg *config) map[string]translations {
