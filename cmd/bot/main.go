@@ -579,7 +579,7 @@ func (w *worker) email(endpoint string, chatID int64) string {
 	row := w.db.QueryRow("select email from emails where endpoint=? and chat_id=?", endpoint, chatID)
 	var result string
 	checkErr(row.Scan(&result))
-	return result + w.cfg.MailHost
+	return result + "@" + w.cfg.MailHost
 }
 
 func (w *worker) transaction(uuid string) (status payments.StatusKind, chatID int64, endpoint string) {
@@ -877,10 +877,19 @@ func (w *worker) logConfig() {
 	linf("config: " + string(cfgString))
 }
 
+func (w *worker) myEmail(endpoint string) {
+	w.addUser(endpoint, w.cfg.AdminID)
+	email := w.email(endpoint, w.cfg.AdminID)
+	w.sendText(endpoint, w.cfg.AdminID, true, parseRaw, email)
+}
+
 func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arguments string) bool {
 	switch command {
 	case "stat":
 		w.stat(endpoint)
+		return true
+	case "email":
+		w.myEmail(endpoint)
 		return true
 	case "broadcast":
 		w.broadcast(endpoint, arguments)
