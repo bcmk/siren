@@ -1120,9 +1120,8 @@ func (w *worker) processTGUpdate(p packet) {
 		}
 		data := strings.SplitN(u.CallbackQuery.Data, " ", 2)
 		chatID := int64(u.CallbackQuery.From.ID)
-		if len(data) != 2 {
-			w.sendTr(p.endpoint, chatID, false, w.tr[p.endpoint].InvalidCommand)
-			return
+		if len(data) < 2 {
+			data = append(data, "")
 		}
 		w.processIncomingCommand(p.endpoint, chatID, data[0], data[1])
 	}
