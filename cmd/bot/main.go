@@ -497,15 +497,7 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) {
 	maxModels := w.maxModels(chatID)
 	if subscriptionsNumber >= maxModels {
 		if w.cfg.CoinPayments != nil {
-			w.sendTr(
-				endpoint,
-				chatID,
-				false,
-				w.tr[endpoint].ModelsRemain,
-				0,
-				maxModels,
-				maxModels+w.cfg.CoinPayments.subscriptionPacketModelNumber,
-				w.cfg.CoinPayments.subscriptionPacketPrice)
+			w.suggestToBuy(endpoint, chatID, 0, maxModels)
 		} else {
 			w.sendTr(endpoint, chatID, false, w.tr[endpoint].MaxModels, maxModels)
 		}
@@ -524,23 +516,24 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) {
 	}
 	w.reportStatus(endpoint, chatID, modelID, status)
 	modelsRemain := maxModels - subscriptionsNumber
-	if modelsRemain < 0 {
-		modelsRemain = 0
-	}
 	if modelsRemain <= w.cfg.HeavyUserRemainder && w.cfg.CoinPayments != nil {
-		text := fmt.Sprintf(w.tr[endpoint].ModelsRemain.Str,
-			modelsRemain,
-			maxModels,
-			maxModels+w.cfg.CoinPayments.subscriptionPacketModelNumber,
-			w.cfg.CoinPayments.subscriptionPacketPrice)
-
-		buttonText := fmt.Sprintf(w.tr[endpoint].BuyButton.Str, w.cfg.CoinPayments.subscriptionPacketModelNumber)
-		buttons := [][]tg.InlineKeyboardButton{[]tg.InlineKeyboardButton{tg.NewInlineKeyboardButtonData(buttonText, "buy")}}
-		keyboard := tg.NewInlineKeyboardMarkup(buttons...)
-		msg := tg.NewMessage(chatID, text)
-		msg.ReplyMarkup = keyboard
-		w.sendMessage(endpoint, &messageConfig{msg})
+		w.suggestToBuy(endpoint, chatID, modelsRemain, maxModels)
 	}
+}
+
+func (w *worker) suggestToBuy(endpoint string, chatID int64, modelsRemain int, maxModels int) {
+	text := fmt.Sprintf(w.tr[endpoint].ModelsRemain.Str,
+		modelsRemain,
+		maxModels,
+		maxModels+w.cfg.CoinPayments.subscriptionPacketModelNumber,
+		w.cfg.CoinPayments.subscriptionPacketPrice)
+
+	buttonText := fmt.Sprintf(w.tr[endpoint].BuyButton.Str, w.cfg.CoinPayments.subscriptionPacketModelNumber)
+	buttons := [][]tg.InlineKeyboardButton{[]tg.InlineKeyboardButton{tg.NewInlineKeyboardButtonData(buttonText, "buy")}}
+	keyboard := tg.NewInlineKeyboardMarkup(buttons...)
+	msg := tg.NewMessage(chatID, text)
+	msg.ReplyMarkup = keyboard
+	w.sendMessage(endpoint, &messageConfig{msg})
 }
 
 func (w *worker) removeModel(endpoint string, chatID int64, modelID string) {
