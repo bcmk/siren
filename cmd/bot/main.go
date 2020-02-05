@@ -456,9 +456,7 @@ func (w *worker) checkExists(endpoint string, chatID int64, modelID string) bool
 }
 
 func (w *worker) subscriptionsNumber(endpoint string, chatID int64) int {
-	limit := w.db.QueryRow("select count(*) from signals where chat_id=? and endpoint=?", chatID, endpoint)
-	count := singleInt(limit)
-	return count
+	return singleInt(w.db.QueryRow("select count(*) from signals where chat_id=? and endpoint=?", chatID, endpoint))
 }
 
 func (w *worker) maxModels(chatID int64) int {
