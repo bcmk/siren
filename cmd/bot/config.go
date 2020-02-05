@@ -58,6 +58,8 @@ type config struct {
 	HeavyUserRemainder          int                 `json:"heavy_user_remainder"`           // the maximum remainder of models to treat an user as heavy
 	MailHost                    string              `json:"mail_host"`                      // the hostname for email
 	MailListenAddress           string              `json:"mail_listen_address"`            // the address to listen to incoming mail
+	MailCertificate             string              `json:"mail_certificate"`               // certificate path for STARTTLS
+	MailCertificateKey          string              `json:"mail_certificate_key"`           // certificate key path for STARTTLS
 
 	errorThreshold   int
 	errorDenominator int
@@ -146,6 +148,12 @@ func checkConfig(cfg *config) error {
 	}
 	if cfg.MailListenAddress == "" {
 		return errors.New("configure mail_listen_address")
+	}
+	if cfg.MailCertificate == "" {
+		return errors.New("configure mail_certificate")
+	}
+	if cfg.MailCertificateKey == "" {
+		return errors.New("configure mail_certificate_key")
 	}
 
 	if m := fractionRegexp.FindStringSubmatch(cfg.DangerousErrorRate); len(m) == 3 {
