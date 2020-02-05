@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -17,10 +18,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bcmk/go-smtpd/smtpd"
 	"github.com/bcmk/siren/lib"
 	"github.com/bcmk/siren/payments"
 	tg "github.com/bcmk/telegram-bot-api"
-	"github.com/bradfitz/go-smtpd/smtpd"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -54,6 +55,7 @@ type worker struct {
 	nextErrorReport time.Time
 	coinPaymentsAPI *payments.CoinPaymentsAPI
 	ipnServeMux     *http.ServeMux
+	mailTLS         *tls.Config
 }
 
 type packet struct {
@@ -72,6 +74,9 @@ func newWorker() *worker {
 		panic("usage: siren <config>")
 	}
 	cfg := readConfig(os.Args[1])
+
+	mailTLS, err := loadTLS(cfg.MailCertificate, cfg.MailCertificateKey)
+	checkErr(err)
 
 	var clients []*lib.Client
 	for _, address := range cfg.SourceIPAddresses {
@@ -98,6 +103,7 @@ func newWorker() *worker {
 		senders:     senders,
 		unknowns:    make([]bool, cfg.errorDenominator),
 		ipnServeMux: http.NewServeMux(),
+		mailTLS:     mailTLS,
 	}
 
 	if cp := cfg.CoinPayments; cp != nil {
@@ -981,8 +987,8 @@ func (w *worker) mailReceived(e *env) {
 	}
 }
 
-func envelopeFactory(ch chan *env) func(smtpd.Connection, smtpd.MailAddress) (smtpd.Envelope, error) {
-	return func(c smtpd.Connection, from smtpd.MailAddress) (smtpd.Envelope, error) {
+func envelopeFactory(ch chan *env) func(smtpd.Connection, smtpd.MailAddress, *int) (smtpd.Envelope, error) {
+	return func(c smtpd.Connection, from smtpd.MailAddress, size *int) (smtpd.Envelope, error) {
 		return &env{BasicEnvelope: &smtpd.BasicEnvelope{}, from: from, ch: ch}, nil
 	}
 }
@@ -1254,6 +1260,14 @@ func (w *worker) ourIDs() []int64 {
 	return ids
 }
 
+func loadTLS(certFile string, keyFile string) (*tls.Config, error) {
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, err
+	}
+	return &tls.Config{Certificates: []tls.Certificate{cert}}, nil
+}
+
 func main() {
 	w := newWorker()
 	w.logConfig()
@@ -1274,6 +1288,7 @@ func main() {
 		Hostname:  w.cfg.MailHost,
 		Addr:      w.cfg.MailListenAddress,
 		OnNewMail: envelopeFactory(mail),
+		TLSConfig: w.mailTLS,
 	}
 	go func() {
 		err := smtp.ListenAndServe()

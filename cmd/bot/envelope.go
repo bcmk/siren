@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 
-	"github.com/bradfitz/go-smtpd/smtpd"
+	"github.com/bcmk/go-smtpd/smtpd"
 	"github.com/jhillyerd/enmime"
 )
 
