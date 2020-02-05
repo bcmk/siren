@@ -524,6 +524,9 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) {
 	}
 	w.reportStatus(endpoint, chatID, modelID, status)
 	modelsRemain := maxModels - subscriptionsNumber
+	if modelsRemain < 0 {
+		modelsRemain = 0
+	}
 	if modelsRemain <= w.cfg.HeavyUserRemainder && w.cfg.CoinPayments != nil {
 		text := fmt.Sprintf(w.tr[endpoint].ModelsRemain.Str,
 			modelsRemain,
