@@ -521,15 +521,18 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) {
 	w.reportStatus(endpoint, chatID, modelID, status)
 	modelsRemain := maxModels - subscriptionsNumber
 	if modelsRemain <= w.cfg.HeavyUserRemainder && w.cfg.CoinPayments != nil {
-		w.sendTr(
-			endpoint,
-			chatID,
-			false,
-			w.tr[endpoint].ModelsRemain,
+		text := fmt.Sprintf(w.tr[endpoint].ModelsRemain.Str,
 			modelsRemain,
 			maxModels,
 			maxModels+w.cfg.CoinPayments.subscriptionPacketModelNumber,
 			w.cfg.CoinPayments.subscriptionPacketPrice)
+
+		buttonText := fmt.Sprintf(w.tr[endpoint].BuyButton.Str, w.cfg.CoinPayments.subscriptionPacketModelNumber)
+		buttons := [][]tg.InlineKeyboardButton{[]tg.InlineKeyboardButton{tg.NewInlineKeyboardButtonData(buttonText, "buy")}}
+		keyboard := tg.NewInlineKeyboardMarkup(buttons...)
+		msg := tg.NewMessage(chatID, text)
+		msg.ReplyMarkup = keyboard
+		w.sendMessage(endpoint, &messageConfig{msg})
 	}
 }
 

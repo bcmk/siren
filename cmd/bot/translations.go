@@ -73,6 +73,7 @@ type translations struct {
 	YourMaxModels    *translation `json:"your_max_models"`
 	PaymentComplete  *translation `json:"payment_complete"`
 	MailReceived     *translation `json:"mail_received"`
+	BuyButton        *translation `json:"buy_button"`
 }
 
 func loadAllTranslations(cfg *config) map[string]translations {
