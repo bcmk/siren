@@ -75,8 +75,13 @@ func newWorker() *worker {
 	}
 	cfg := readConfig(os.Args[1])
 
-	mailTLS, err := loadTLS(cfg.MailCertificate, cfg.MailCertificateKey)
-	checkErr(err)
+	var err error
+	var mailTLS *tls.Config
+
+	if cfg.Mail != nil {
+		mailTLS, err = loadTLS(cfg.Mail.Certificate, cfg.Mail.CertificateKey)
+		checkErr(err)
+	}
 
 	var clients []*lib.Client
 	for _, address := range cfg.SourceIPAddresses {
@@ -582,7 +587,7 @@ func (w *worker) email(endpoint string, chatID int64) string {
 	row := w.db.QueryRow("select email from emails where endpoint=? and chat_id=?", endpoint, chatID)
 	var result string
 	checkErr(row.Scan(&result))
-	return result + "@" + w.cfg.MailHost
+	return result + "@" + w.cfg.Mail.Host
 }
 
 func (w *worker) transaction(uuid string) (status payments.StatusKind, chatID int64, endpoint string) {
@@ -948,7 +953,7 @@ func (w *worker) mailReceived(e *env) {
 	emails := make(map[email]bool)
 	for _, r := range e.rcpts {
 		username, host := splitAddress(r.Email())
-		if host != w.cfg.MailHost {
+		if host != w.cfg.Mail.Host {
 			continue
 		}
 		email := w.recordForEmail(username)
@@ -1024,13 +1029,13 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	case "sure_remove_all":
 		w.sureRemoveAll(endpoint, chatID)
 	case "buy":
-		if w.cfg.CoinPayments == nil {
+		if w.cfg.CoinPayments == nil || w.cfg.Mail == nil {
 			w.sendTr(endpoint, chatID, false, w.tr[endpoint].UnknownCommand)
 			return
 		}
 		w.buy(endpoint, chatID)
 	case "buy_with":
-		if w.cfg.CoinPayments == nil {
+		if w.cfg.CoinPayments == nil || w.cfg.Mail == nil {
 			w.sendTr(endpoint, chatID, false, w.tr[endpoint].UnknownCommand)
 			return
 		}
@@ -1277,16 +1282,19 @@ func main() {
 	}
 
 	mail := make(chan *env)
-	smtp := &smtpd.Server{
-		Hostname:  w.cfg.MailHost,
-		Addr:      w.cfg.MailListenAddress,
-		OnNewMail: envelopeFactory(mail),
-		TLSConfig: w.mailTLS,
+
+	if w.cfg.Mail != nil {
+		smtp := &smtpd.Server{
+			Hostname:  w.cfg.Mail.Host,
+			Addr:      w.cfg.Mail.ListenAddress,
+			OnNewMail: envelopeFactory(mail),
+			TLSConfig: w.mailTLS,
+		}
+		go func() {
+			err := smtp.ListenAndServe()
+			checkErr(err)
+		}()
 	}
-	go func() {
-		err := smtp.ListenAndServe()
-		checkErr(err)
-	}()
 
 	var periodicTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
 	statusRequests, statusUpdates := w.startChecker()
