@@ -1,3 +1,4 @@
+referral - Your referral link
 add - Add model
 remove - Remove model
 remove_all - Remove all models
