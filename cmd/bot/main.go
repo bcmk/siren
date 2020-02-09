@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -270,6 +271,10 @@ func (w *worker) createDatabase() {
 			currency text,
 			endpoint text not null default ''
 		);`)
+	w.mustExec(`
+		create table if not exists referrals (
+			chat_id integer primary key,
+			referral_id text not null default '');`)
 }
 
 func (w *worker) updateStatus(modelID string, newStatus lib.StatusKind) bool {
@@ -501,11 +506,8 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) {
 	subscriptionsNumber := w.subscriptionsNumber(endpoint, chatID)
 	maxModels := w.maxModels(chatID)
 	if subscriptionsNumber >= maxModels {
-		if w.cfg.CoinPayments != nil {
-			w.suggestToBuy(endpoint, chatID, 0, maxModels)
-		} else {
-			w.sendTr(endpoint, chatID, false, w.tr[endpoint].MaxModels, maxModels)
-		}
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].NotEnoughSubscriptions)
+		w.subscriptionUsage(endpoint, chatID, true)
 		return
 	}
 	status := w.checkModel(w.clients[0], modelID, w.cfg.Headers, w.cfg.Debug)
@@ -520,18 +522,32 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].ModelAdded, modelID)
 	}
 	w.reportStatus(endpoint, chatID, modelID, status)
-	modelsRemain := maxModels - subscriptionsNumber
-	if modelsRemain <= w.cfg.HeavyUserRemainder && w.cfg.CoinPayments != nil {
-		w.suggestToBuy(endpoint, chatID, modelsRemain, maxModels)
+	if subscriptionsNumber >= maxModels-w.cfg.HeavyUserRemainder {
+		w.subscriptionUsage(endpoint, chatID, true)
 	}
 }
 
-func (w *worker) suggestToBuy(endpoint string, chatID int64, modelsRemain int, maxModels int) {
-	text := fmt.Sprintf(w.tr[endpoint].ModelsRemain.Str,
-		modelsRemain,
-		maxModels,
-		maxModels+w.cfg.CoinPayments.subscriptionPacketModelNumber,
-		w.cfg.CoinPayments.subscriptionPacketPrice)
+func (w *worker) subscriptionUsage(endpoint string, chatID int64, ad bool) {
+	subscriptionsNumber := w.subscriptionsNumber(endpoint, chatID)
+	maxModels := w.maxModels(chatID)
+	tr := w.tr[endpoint].SubscriptionUsage
+	if ad {
+		tr = w.tr[endpoint].SubscriptionUsageAd
+	}
+	w.sendTr(endpoint, chatID, false, tr, subscriptionsNumber, maxModels)
+}
+
+func (w *worker) wantMore(endpoint string, chatID int64) {
+	w.subscriptionUsage(endpoint, chatID, false)
+	w.referral(endpoint, chatID)
+
+	if w.cfg.CoinPayments == nil || w.cfg.Mail == nil {
+		return
+	}
+
+	text := fmt.Sprintf(w.tr[endpoint].BuyAd.Str,
+		w.cfg.CoinPayments.subscriptionPacketPrice,
+		w.cfg.CoinPayments.subscriptionPacketModelNumber)
 
 	buttonText := fmt.Sprintf(w.tr[endpoint].BuyButton.Str, w.cfg.CoinPayments.subscriptionPacketModelNumber)
 	buttons := [][]tg.InlineKeyboardButton{[]tg.InlineKeyboardButton{tg.NewInlineKeyboardButtonData(buttonText, "buy")}}
@@ -992,6 +1008,69 @@ func envelopeFactory(ch chan *env) func(smtpd.Connection, smtpd.MailAddress, *in
 	}
 }
 
+const letterBytes = "abcdefghijklmnopqrstuvwxyz"
+
+func randString(n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = letterBytes[rand.Intn(len(letterBytes))]
+	}
+	return string(b)
+}
+
+func (w *worker) newRandReferralID() (id string) {
+	for {
+		id = randString(5)
+		exists := w.db.QueryRow("select count(*) from referrals where referral_id=?", id)
+		if singleInt(exists) == 0 {
+			break
+		}
+	}
+	return
+}
+
+func (w *worker) refer(followerChatID int64, referrer string) {
+	referrerChatID := w.chatForReferralID(referrer)
+	if referrerChatID == nil {
+		return
+	}
+	w.mustExec(`
+		insert or replace into users (chat_id, max_models) values (?, ?)
+		on conflict(chat_id) do update set max_models=max_models+?`,
+		followerChatID,
+		w.cfg.MaxModels+w.cfg.FollowerBonus,
+		w.cfg.FollowerBonus)
+	w.mustExec(`
+		insert or replace into users (chat_id, max_models) values (?, ?)
+		on conflict(chat_id) do update set max_models=max_models+?`,
+		*referrerChatID,
+		w.cfg.MaxModels+w.cfg.ReferralBonus,
+		w.cfg.ReferralBonus)
+}
+
+func (w *worker) referral(endpoint string, chatID int64) {
+	referralID := w.referralID(chatID)
+	if referralID == nil {
+		temp := w.newRandReferralID()
+		referralID = &temp
+		w.mustExec("insert into referrals (chat_id, referral_id) values (?, ?)", chatID, *referralID)
+	}
+	referralLink := fmt.Sprintf("https://t.me/%s?start=%s", w.cfg.Endpoints[endpoint].BotName, *referralID)
+	w.sendTr(endpoint, chatID, false, w.tr[endpoint].ReferralLink, referralLink, w.cfg.ReferralBonus, w.cfg.FollowerBonus)
+}
+
+func (w *worker) start(endpoint string, chatID int64, referrer string) {
+	referralID := w.referralID(chatID)
+	if referralID != nil && *referralID == referrer {
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].OwnReferralLinkHit)
+		return
+	}
+	if referralID == nil && chatID > 0 && referrer != "" {
+		w.refer(chatID, referrer)
+	}
+	w.sendTr(endpoint, chatID, false, w.tr[endpoint].Help)
+}
+
 func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, arguments string) {
 	w.resetBlock(endpoint, chatID)
 	command = strings.ToLower(command)
@@ -1013,7 +1092,7 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	case "online":
 		w.listOnlineModels(endpoint, chatID)
 	case "start", "help":
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Help)
+		w.start(endpoint, chatID, arguments)
 	case "donate":
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Donation)
 	case "feedback":
@@ -1028,6 +1107,8 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].RemoveAll)
 	case "sure_remove_all":
 		w.sureRemoveAll(endpoint, chatID)
+	case "want_more":
+		w.wantMore(endpoint, chatID)
 	case "buy":
 		if w.cfg.CoinPayments == nil || w.cfg.Mail == nil {
 			w.sendTr(endpoint, chatID, false, w.tr[endpoint].UnknownCommand)
@@ -1042,6 +1123,8 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		w.buyWith(endpoint, chatID, arguments)
 	case "max_models":
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].YourMaxModels, w.maxModels(chatID))
+	case "referral":
+		w.referral(endpoint, chatID)
 	case "":
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Slash)
 	default:
@@ -1266,7 +1349,33 @@ func loadTLS(certFile string, keyFile string) (*tls.Config, error) {
 	return &tls.Config{Certificates: []tls.Certificate{cert}}, nil
 }
 
+func (w *worker) referralID(chatID int64) *string {
+	query, err := w.db.Query("select referral_id from referrals where chat_id=?", chatID)
+	checkErr(err)
+	defer query.Close()
+	if !query.Next() {
+		return nil
+	}
+	var referralID string
+	checkErr(query.Scan(&referralID))
+	return &referralID
+}
+
+func (w *worker) chatForReferralID(referralID string) *int64 {
+	query, err := w.db.Query("select chat_id from referrals where referral_id=?", referralID)
+	checkErr(err)
+	defer query.Close()
+	if !query.Next() {
+		return nil
+	}
+	var chatID int64
+	checkErr(query.Scan(&chatID))
+	return &chatID
+}
+
 func main() {
+	rand.Seed(time.Now().UnixNano())
+
 	w := newWorker()
 	w.logConfig()
 	w.setWebhook()

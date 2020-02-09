@@ -13,6 +13,7 @@ import (
 )
 
 type endpoint struct {
+	BotName            string `json:"bot_name"`             // the name of the bot
 	ListenPath         string `json:"listen_path"`          // the path excluding domain to listen to, the good choice is "/your-telegram-bot-token"
 	ListenAddress      string `json:"listen_address"`       // the address to listen to
 	WebhookDomain      string `json:"webhook_domain"`       // the domain listening to the webhook
@@ -63,7 +64,9 @@ type config struct {
 	Endpoints                   map[string]endpoint `json:"endpoints"`                      // the endpoints by simple name, used for the support of the bots in different languages accessing the same database
 	HeavyUserRemainder          int                 `json:"heavy_user_remainder"`           // the maximum remainder of models to treat an user as heavy
 	CoinPayments                *coinPaymentsConfig `json:"coin_payments"`                  // CoinPayments integration
-	Mail                        *mailConfig         `json:"mail"`
+	Mail                        *mailConfig         `json:"mail"`                           // mail config
+	ReferralBonus               int                 `json:"referral_bonus"`                 // number of emails for a referrer
+	FollowerBonus               int                 `json:"follower_bonus"`                 // number of emails for a new user registered by a referral link
 
 	errorThreshold   int
 	errorDenominator int
@@ -98,6 +101,9 @@ func checkConfig(cfg *config) error {
 		}
 	}
 	for _, x := range cfg.Endpoints {
+		if x.BotName == "" {
+			return errors.New("configure bot_name")
+		}
 		if x.ListenAddress == "" {
 			return errors.New("configure listen_address")
 		}
@@ -146,6 +152,12 @@ func checkConfig(cfg *config) error {
 	}
 	if cfg.HeavyUserRemainder == 0 {
 		return errors.New("configure heavy_user_remainder")
+	}
+	if cfg.ReferralBonus == 0 {
+		return errors.New("configure referral_bonus")
+	}
+	if cfg.FollowerBonus == 0 {
+		return errors.New("configure follower_bonus")
 	}
 
 	if m := fractionRegexp.FindStringSubmatch(cfg.DangerousErrorRate); len(m) == 3 {
