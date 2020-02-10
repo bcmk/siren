@@ -47,11 +47,17 @@ func CheckModelStripchat(client *Client, modelID string, headers [][2]string, db
 	doc, err := html.Parse(copy)
 	if err != nil {
 		Lerr("[%v] cannot parse body for model %s, %v", client.Addr, modelID, err)
+		if dbg {
+			Ldbg("[%v] response:\n%s", client.Addr, buf.String())
+		}
 		return StatusUnknown
 	}
 
 	if viewCamPageMainTag.MatchFirst(doc) == nil {
 		Lerr("[%v] cannot parse a page for model %s", client.Addr, modelID)
+		if dbg {
+			Ldbg("[%v] response:\n%s", client.Addr, buf.String())
+		}
 		return StatusUnknown
 	}
 
