@@ -56,11 +56,11 @@ func calcHMAC(message, secret string) string {
 
 func (api *CoinPaymentsAPI) coinpaymentsMethod(method string, additionalParams []kv) (body []byte, err error) {
 	params := []kv{
-		kv{"version", "1"},
-		kv{"cmd", method},
-		kv{"key", api.publicKey},
-		kv{"nonce", strconv.Itoa(api.nonce)},
-		kv{"format", "json"}}
+		{"version", "1"},
+		{"cmd", method},
+		{"key", api.publicKey},
+		{"nonce", strconv.Itoa(api.nonce)},
+		{"format", "json"}}
 	params = append(params, additionalParams...)
 
 	values := url.Values{}
