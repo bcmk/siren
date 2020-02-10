@@ -550,7 +550,7 @@ func (w *worker) wantMore(endpoint string, chatID int64) {
 		w.cfg.CoinPayments.subscriptionPacketModelNumber)
 
 	buttonText := fmt.Sprintf(w.tr[endpoint].BuyButton.Str, w.cfg.CoinPayments.subscriptionPacketModelNumber)
-	buttons := [][]tg.InlineKeyboardButton{[]tg.InlineKeyboardButton{tg.NewInlineKeyboardButtonData(buttonText, "buy")}}
+	buttons := [][]tg.InlineKeyboardButton{{tg.NewInlineKeyboardButtonData(buttonText, "buy")}}
 	keyboard := tg.NewInlineKeyboardMarkup(buttons...)
 	msg := tg.NewMessage(chatID, text)
 	msg.ReplyMarkup = keyboard
