@@ -719,12 +719,12 @@ func (w *worker) feedback(endpoint string, chatID int64, text string) {
 	w.sendText(endpoint, w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Feedback: %s", text))
 }
 
-func (w *worker) setLimit(chatID int64, max_models int) {
+func (w *worker) setLimit(chatID int64, maxModels int) {
 	w.mustExec(`
 		insert or replace into users (chat_id, max_models) values (?, ?)
 		on conflict(chat_id) do update set max_models=excluded.max_models`,
 		chatID,
-		max_models)
+		maxModels)
 }
 
 func (w *worker) unknownsNumber() int {
@@ -932,12 +932,12 @@ func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arg
 			w.sendText(endpoint, chatID, false, parseRaw, "first argument is invalid")
 			return true
 		}
-		max_models, err := strconv.Atoi(parts[1])
+		maxModels, err := strconv.Atoi(parts[1])
 		if err != nil {
 			w.sendText(endpoint, chatID, false, parseRaw, "second argument is invalid")
 			return true
 		}
-		w.setLimit(who, max_models)
+		w.setLimit(who, maxModels)
 		w.sendText(endpoint, chatID, false, parseRaw, "OK")
 		return true
 	}
@@ -1278,7 +1278,7 @@ func (w *worker) handleStat(endpoint string) func(writer http.ResponseWriter, r 
 func (w *worker) handleIPN(writer http.ResponseWriter, r *http.Request) {
 	linf("got IPN data")
 
-	newStatus, custom, err := payments.ProcessIPN(r, w.cfg.CoinPayments.IPNSecret, w.cfg.Debug)
+	newStatus, custom, err := payments.ParseIPN(r, w.cfg.CoinPayments.IPNSecret, w.cfg.Debug)
 	if err != nil {
 		lerr("error on processing IPN, %v", err)
 		return

@@ -12,7 +12,8 @@ import (
 
 var ldbg = lib.Ldbg
 
-func ProcessIPN(r *http.Request, ipnSecret string, debug bool) (StatusKind, string, error) {
+// ParseIPN parses IPN request from CoinPayments
+func ParseIPN(r *http.Request, ipnSecret string, debug bool) (StatusKind, string, error) {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		return StatusUnknown, "", errors.New("cannot read body")
@@ -37,7 +38,7 @@ func ProcessIPN(r *http.Request, ipnSecret string, debug bool) (StatusKind, stri
 		return StatusUnknown, "", errors.New("HMAC header is not set")
 	}
 
-	hash := GetHMAC(string(body), ipnSecret)
+	hash := calcHMAC(string(body), ipnSecret)
 	if httpHMAC != hash {
 		return StatusUnknown, "", errors.New("signatures don't match")
 	}

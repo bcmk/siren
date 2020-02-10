@@ -18,6 +18,7 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// CoinPaymentsAPI implements CoinPayments API
 type CoinPaymentsAPI struct {
 	nonce      int
 	publicKey  string
@@ -28,6 +29,7 @@ type CoinPaymentsAPI struct {
 	debug      bool
 }
 
+// NewCoinPaymentsAPI returns new CoinPaymentsAPI object
 func NewCoinPaymentsAPI(publicKey, privateKey, ipnURL string, timeoutSeconds int, debug bool) *CoinPaymentsAPI {
 	return &CoinPaymentsAPI{
 		nonce:      int(time.Now().Unix()),
@@ -45,7 +47,7 @@ type kv struct {
 	v string
 }
 
-func GetHMAC(message, secret string) string {
+func calcHMAC(message, secret string) string {
 	hash := hmac.New(sha512.New, []byte(secret))
 	_, err := hash.Write([]byte(message))
 	lib.CheckErr(err)
@@ -75,7 +77,7 @@ func (api *CoinPaymentsAPI) coinpaymentsMethod(method string, additionalParams [
 
 	api.nonce++
 
-	hash := GetHMAC(payload, api.privateKey)
+	hash := calcHMAC(payload, api.privateKey)
 	req.Header.Set("HMAC", hash)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
@@ -119,6 +121,7 @@ type transactionResponse struct {
 	Result transactionWrapper `json:"result"`
 }
 
+// CreateTransaction creates transaction object
 func (api *CoinPaymentsAPI) CreateTransaction(amount int, currency string, email string, transactionUUID string) (res *transaction, err error) {
 	body, err := api.coinpaymentsMethod("create_transaction", []kv{
 		{"amount", strconv.Itoa(amount)},
