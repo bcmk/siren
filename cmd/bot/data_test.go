@@ -24,7 +24,7 @@ var testTranslations = translations{
 	SyntaxFeedback: &translation{Str: "SyntaxFeedback", Parse: parseRaw},
 	InvalidSymbols: &translation{Str: "InvalidSymbols", Parse: parseRaw},
 	AlreadyAdded:   &translation{Str: "AlreadyAdded %s", Parse: parseRaw},
-	MaxModels:      &translation{Str: "MaxModels %d", Parse: parseRaw},
+	YourMaxModels:  &translation{Str: "YourMaxModels %d", Parse: parseRaw},
 	AddError:       &translation{Str: "AddError %s", Parse: parseRaw},
 	ModelAdded:     &translation{Str: "ModelAdded %s", Parse: parseRaw},
 	ModelNotInList: &translation{Str: "ModelNotInList %s", Parse: parseRaw},
