@@ -851,6 +851,7 @@ func (w *worker) broadcast(endpoint string, text string) {
 	for _, chatID := range chats {
 		w.sendText(endpoint, chatID, true, parseRaw, text)
 	}
+	w.sendText(endpoint, w.cfg.AdminID, false, parseRaw, "OK")
 }
 
 func (w *worker) direct(endpoint string, arguments string) {
@@ -869,6 +870,7 @@ func (w *worker) direct(endpoint string, arguments string) {
 		return
 	}
 	w.sendText(endpoint, whom, true, parseRaw, text)
+	w.sendText(endpoint, w.cfg.AdminID, false, parseRaw, "OK")
 }
 
 func (w *worker) serveEndpoint(n string, p endpoint) {
