@@ -16,4 +16,5 @@ type statistics struct {
 	MaxRss                         int64  `json:"max_rss"`
 	TransactionsOnEndpointCount    int    `json:"transactions_on_endpoint_count"`
 	TransactionsOnEndpointFinished int    `json:"transactions_on_endpoint_finished"`
+	ReferralsCount                 int    `json:"referrals_count"`
 }

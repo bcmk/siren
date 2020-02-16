@@ -274,7 +274,8 @@ func (w *worker) createDatabase() {
 	w.mustExec(`
 		create table if not exists referrals (
 			chat_id integer primary key,
-			referral_id text not null default '');`)
+			referral_id text not null default '',
+			referred_users integer not null default 0);`)
 }
 
 func (w *worker) updateStatus(modelID string, newStatus lib.StatusKind) bool {
@@ -737,6 +738,11 @@ func (w *worker) unknownsNumber() int {
 	return errors
 }
 
+func (w *worker) referralsCount() int {
+	query := w.db.QueryRow("select sum(referred_users) from referrals")
+	return singleInt(query)
+}
+
 func (w *worker) usersCount(endpoint string) int {
 	query := w.db.QueryRow("select count(distinct chat_id) from signals where endpoint=?", endpoint)
 	return singleInt(query)
@@ -1048,6 +1054,7 @@ func (w *worker) refer(followerChatID int64, referrer string) {
 		*referrerChatID,
 		w.cfg.MaxModels+w.cfg.ReferralBonus,
 		w.cfg.ReferralBonus)
+	w.mustExec("update referrals set referred_users=referred_users+1 where chat_id=?", referrerChatID)
 }
 
 func (w *worker) showReferral(endpoint string, chatID int64) {
@@ -1255,7 +1262,8 @@ func (w *worker) getStat(endpoint string) statistics {
 		QueriesDurationSeconds:         int(elapsed.Seconds()),
 		ErrorRate:                      [2]int{w.unknownsNumber(), w.cfg.errorDenominator},
 		Rss:                            rss / 1024,
-		MaxRss:                         rusage.Maxrss}
+		MaxRss:                         rusage.Maxrss,
+		ReferralsCount:                 w.referralsCount()}
 }
 
 func (w *worker) handleStat(endpoint string) func(writer http.ResponseWriter, r *http.Request) {
