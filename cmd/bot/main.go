@@ -539,7 +539,7 @@ func (w *worker) subscriptionUsage(endpoint string, chatID int64, ad bool) {
 
 func (w *worker) wantMore(endpoint string, chatID int64) {
 	w.subscriptionUsage(endpoint, chatID, false)
-	w.referral(endpoint, chatID)
+	w.showReferral(endpoint, chatID)
 
 	if w.cfg.CoinPayments == nil || w.cfg.Mail == nil {
 		return
@@ -1050,7 +1050,7 @@ func (w *worker) refer(followerChatID int64, referrer string) {
 		w.cfg.ReferralBonus)
 }
 
-func (w *worker) referral(endpoint string, chatID int64) {
+func (w *worker) showReferral(endpoint string, chatID int64) {
 	referralID := w.referralID(chatID)
 	if referralID == nil {
 		temp := w.newRandReferralID()
@@ -1126,7 +1126,7 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	case "max_models":
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].YourMaxModels, w.maxModels(chatID))
 	case "referral":
-		w.referral(endpoint, chatID)
+		w.showReferral(endpoint, chatID)
 	case "":
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Slash)
 	default:
