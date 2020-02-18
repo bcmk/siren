@@ -36,11 +36,6 @@ var (
 	ldbg     = lib.Ldbg
 )
 
-type statusUpdate struct {
-	modelID string
-	status  lib.StatusKind
-}
-
 type worker struct {
 	clients         []*lib.Client
 	bots            map[string]*tg.BotAPI
@@ -50,6 +45,7 @@ type worker struct {
 	elapsed         time.Duration
 	tr              map[string]translations
 	checkModel      func(client *lib.Client, modelID string, headers [][2]string, dbg bool) lib.StatusKind
+	startChecker    func(clients []*lib.Client, headers [][2]string, intervalMs int, debug bool) (input chan []string, output chan lib.StatusUpdate, elapsed chan time.Duration)
 	senders         map[string]func(msg tg.Chattable) (tg.Message, error)
 	unknowns        []bool
 	unknownsPos     int
@@ -119,10 +115,13 @@ func newWorker() *worker {
 	switch cfg.Website {
 	case "bongacams":
 		w.checkModel = lib.CheckModelBongaCams
+		w.startChecker = lib.StartBongaCamsChecker
 	case "chaturbate":
 		w.checkModel = lib.CheckModelChaturbate
+		w.startChecker = lib.StartChaturbateChecker
 	case "stripchat":
 		w.checkModel = lib.CheckModelStripchat
+		w.startChecker = lib.StartStripchatChecker
 	default:
 		panic("wrong website")
 	}
@@ -382,7 +381,7 @@ func (w *worker) broadcastChats(endpoint string) (chats []int64) {
 	return
 }
 
-func (w *worker) statusesForChat(endpoint string, chatID int64) []statusUpdate {
+func (w *worker) statusesForChat(endpoint string, chatID int64) []lib.StatusUpdate {
 	statusesQuery, err := w.db.Query(`select statuses.model_id, statuses.status
 		from statuses inner join signals
 		on statuses.model_id=signals.model_id
@@ -390,12 +389,12 @@ func (w *worker) statusesForChat(endpoint string, chatID int64) []statusUpdate {
 		order by statuses.model_id`, chatID, endpoint)
 	checkErr(err)
 	defer statusesQuery.Close()
-	var statuses []statusUpdate
+	var statuses []lib.StatusUpdate
 	for statusesQuery.Next() {
 		var modelID string
 		var status lib.StatusKind
 		checkErr(statusesQuery.Scan(&modelID, &status))
-		statuses = append(statuses, statusUpdate{modelID: modelID, status: status})
+		statuses = append(statuses, lib.StatusUpdate{ModelID: modelID, Status: status})
 	}
 	return statuses
 }
@@ -420,37 +419,6 @@ func (w *worker) reportStatus(endpoint string, chatID int64, modelID string, sta
 	case lib.StatusDenied:
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Denied, modelID)
 	}
-}
-
-func (w *worker) startChecker() (input chan []string, output chan statusUpdate, elapsed chan time.Duration) {
-	input = make(chan []string)
-	output = make(chan statusUpdate)
-	elapsed = make(chan time.Duration)
-	clientIdx := 0
-	clientsNum := len(w.clients)
-	go func() {
-		for models := range input {
-			start := time.Now()
-			for _, modelID := range models {
-				queryStart := time.Now()
-				newStatus := w.checkModel(w.clients[clientIdx], modelID, w.cfg.Headers, w.cfg.Debug)
-				output <- statusUpdate{modelID: modelID, status: newStatus}
-				queryElapsed := time.Since(queryStart) / time.Millisecond
-				if w.cfg.IntervalMs != 0 {
-					sleep := w.cfg.IntervalMs/len(w.clients) - int(queryElapsed)
-					if sleep > 0 {
-						time.Sleep(time.Duration(sleep) * time.Millisecond)
-					}
-				}
-				clientIdx++
-				if clientIdx == clientsNum {
-					clientIdx = 0
-				}
-			}
-			elapsed <- time.Since(start)
-		}
-	}()
-	return
 }
 
 func singleInt(row *sql.Row) (result int) {
@@ -685,7 +653,7 @@ func (w *worker) listModels(endpoint string, chatID int64) {
 	statuses := w.statusesForChat(endpoint, chatID)
 	var lines []string
 	for _, s := range statuses {
-		lines = append(lines, fmt.Sprintf(w.statusKey(endpoint, s.status).Str, s.modelID))
+		lines = append(lines, fmt.Sprintf(w.statusKey(endpoint, s.Status).Str, s.ModelID))
 	}
 	if len(lines) == 0 {
 		lines = append(lines, w.tr[endpoint].NoModels.Str)
@@ -697,8 +665,8 @@ func (w *worker) listOnlineModels(endpoint string, chatID int64) {
 	statuses := w.statusesForChat(endpoint, chatID)
 	online := 0
 	for _, s := range statuses {
-		if s.status == lib.StatusOnline {
-			w.sendTr(endpoint, chatID, false, w.tr[endpoint].Online, s.modelID)
+		if s.Status == lib.StatusOnline {
+			w.sendTr(endpoint, chatID, false, w.tr[endpoint].Online, s.ModelID)
 			online++
 		}
 	}
@@ -1154,23 +1122,23 @@ func (w *worker) processPeriodic(statusRequests chan []string) {
 	}
 }
 
-func (w *worker) processStatusUpdate(statusUpdate statusUpdate) {
-	if statusUpdate.status == lib.StatusNotFound {
-		if w.notFound(statusUpdate.modelID) {
-			w.reportNotFound(statusUpdate.modelID)
-			w.removeNotFound(statusUpdate.modelID)
+func (w *worker) processStatusUpdate(statusUpdate lib.StatusUpdate) {
+	if statusUpdate.Status == lib.StatusNotFound {
+		if w.notFound(statusUpdate.ModelID) {
+			w.reportNotFound(statusUpdate.ModelID)
+			w.removeNotFound(statusUpdate.ModelID)
 		}
 	}
-	if statusUpdate.status != lib.StatusUnknown && w.updateStatus(statusUpdate.modelID, statusUpdate.status) {
+	if statusUpdate.Status != lib.StatusUnknown && w.updateStatus(statusUpdate.ModelID, statusUpdate.Status) {
 		if w.cfg.Debug {
-			ldbg("reporting status of the model %s", statusUpdate.modelID)
+			ldbg("reporting status of the model %s", statusUpdate.ModelID)
 		}
-		chats, endpoints := w.chatsForModel(statusUpdate.modelID)
+		chats, endpoints := w.chatsForModel(statusUpdate.ModelID)
 		for i, chatID := range chats {
-			w.reportStatus(endpoints[i], chatID, statusUpdate.modelID, statusUpdate.status)
+			w.reportStatus(endpoints[i], chatID, statusUpdate.ModelID, statusUpdate.Status)
 		}
 	}
-	w.unknowns[w.unknownsPos] = statusUpdate.status == lib.StatusUnknown
+	w.unknowns[w.unknownsPos] = statusUpdate.Status == lib.StatusUnknown
 	w.unknownsPos = (w.unknownsPos + 1) % w.cfg.errorDenominator
 }
 
@@ -1414,7 +1382,7 @@ func main() {
 	}
 
 	var periodicTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
-	statusRequests, statusUpdates, elapsed := w.startChecker()
+	statusRequests, statusUpdates, elapsed := w.startChecker(w.clients, w.cfg.Headers, w.cfg.IntervalMs, w.cfg.Debug)
 	statusRequests <- w.models()
 	signals := make(chan os.Signal, 16)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT)

@@ -100,9 +100,9 @@ func TestSql(t *testing.T) {
 		t.Error("unexpected block for model result", chatsForModel)
 	}
 	statuses := w.statusesForChat("ep1", 3)
-	if !reflect.DeepEqual(statuses, []statusUpdate{
-		{modelID: "c", status: lib.StatusOnline},
-		{modelID: "c2", status: lib.StatusOnline}}) {
+	if !reflect.DeepEqual(statuses, []lib.StatusUpdate{
+		{ModelID: "c", Status: lib.StatusOnline},
+		{ModelID: "c2", Status: lib.StatusOnline}}) {
 		t.Error("unexpected statuses", statuses)
 	}
 }

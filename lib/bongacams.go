@@ -3,6 +3,7 @@ package lib
 import (
 	"fmt"
 	"net/http"
+	"time"
 )
 
 // CheckModelBongaCams checks BongaCams model status
@@ -30,4 +31,36 @@ func CheckModelBongaCams(client *Client, modelID string, headers [][2]string, db
 		return StatusNotFound
 	}
 	return StatusUnknown
+}
+
+// StartBongaCamsChecker starts a checker for BongaCams
+func StartBongaCamsChecker(clients []*Client, headers [][2]string, intervalMs int, debug bool) (input chan []string, output chan StatusUpdate, elapsed chan time.Duration) {
+	input = make(chan []string)
+	output = make(chan StatusUpdate)
+	elapsed = make(chan time.Duration)
+	clientIdx := 0
+	clientsNum := len(clients)
+	go func() {
+		for models := range input {
+			start := time.Now()
+			for _, modelID := range models {
+				queryStart := time.Now()
+				newStatus := CheckModelBongaCams(clients[clientIdx], modelID, headers, debug)
+				output <- StatusUpdate{ModelID: modelID, Status: newStatus}
+				queryElapsed := time.Since(queryStart) / time.Millisecond
+				if intervalMs != 0 {
+					sleep := intervalMs/len(clients) - int(queryElapsed)
+					if sleep > 0 {
+						time.Sleep(time.Duration(sleep) * time.Millisecond)
+					}
+				}
+				clientIdx++
+				if clientIdx == clientsNum {
+					clientIdx = 0
+				}
+			}
+			elapsed <- time.Since(start)
+		}
+	}()
+	return
 }
