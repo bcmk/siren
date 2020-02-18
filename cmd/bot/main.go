@@ -422,9 +422,10 @@ func (w *worker) reportStatus(endpoint string, chatID int64, modelID string, sta
 	}
 }
 
-func (w *worker) startChecker() (input chan []string, output chan statusUpdate) {
+func (w *worker) startChecker() (input chan []string, output chan statusUpdate, elapsed chan time.Duration) {
 	input = make(chan []string)
 	output = make(chan statusUpdate)
+	elapsed = make(chan time.Duration)
 	clientIdx := 0
 	clientsNum := len(w.clients)
 	go func() {
@@ -446,10 +447,7 @@ func (w *worker) startChecker() (input chan []string, output chan statusUpdate) 
 					clientIdx = 0
 				}
 			}
-			elapsed := time.Since(start)
-			w.mu.Lock()
-			w.elapsed = elapsed
-			w.mu.Unlock()
+			elapsed <- time.Since(start)
 		}
 	}()
 	return
@@ -1416,12 +1414,14 @@ func main() {
 	}
 
 	var periodicTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
-	statusRequests, statusUpdates := w.startChecker()
+	statusRequests, statusUpdates, elapsed := w.startChecker()
 	statusRequests <- w.models()
 	signals := make(chan os.Signal, 16)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT)
 	for {
 		select {
+		case e := <-elapsed:
+			w.elapsed = e
 		case <-periodicTimer.C:
 			runtime.GC()
 			w.processPeriodic(statusRequests)
