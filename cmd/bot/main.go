@@ -45,7 +45,7 @@ type worker struct {
 	elapsed         time.Duration
 	tr              map[string]translations
 	checkModel      func(client *lib.Client, modelID string, headers [][2]string, dbg bool) lib.StatusKind
-	startChecker    func(clients []*lib.Client, headers [][2]string, intervalMs int, debug bool) (input chan []string, output chan lib.StatusUpdate, elapsed chan time.Duration)
+	startChecker    func(usersOnlineEndpoint string, clients []*lib.Client, headers [][2]string, intervalMs int, debug bool) (input chan []string, output chan lib.StatusUpdate, elapsed chan time.Duration)
 	senders         map[string]func(msg tg.Chattable) (tg.Message, error)
 	unknowns        []bool
 	unknownsPos     int
@@ -484,11 +484,15 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) {
 	}
 	w.mustExec("insert into signals (chat_id, model_id, endpoint) values (?,?,?)", chatID, modelID, endpoint)
 	subscriptionsNumber++
-	w.updateStatus(modelID, status)
+	if status != lib.StatusExists {
+		w.updateStatus(modelID, status)
+	}
 	if status != lib.StatusDenied {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].ModelAdded, modelID)
 	}
-	w.reportStatus(endpoint, chatID, modelID, status)
+	if status != lib.StatusExists {
+		w.reportStatus(endpoint, chatID, modelID, status)
+	}
 	if subscriptionsNumber >= maxModels-w.cfg.HeavyUserRemainder {
 		w.subscriptionUsage(endpoint, chatID, true)
 	}
@@ -1382,7 +1386,7 @@ func main() {
 	}
 
 	var periodicTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
-	statusRequests, statusUpdates, elapsed := w.startChecker(w.clients, w.cfg.Headers, w.cfg.IntervalMs, w.cfg.Debug)
+	statusRequests, statusUpdates, elapsed := w.startChecker(w.cfg.UsersOnlineEndpoint, w.clients, w.cfg.Headers, w.cfg.IntervalMs, w.cfg.Debug)
 	statusRequests <- w.models()
 	signals := make(chan os.Signal, 16)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT)

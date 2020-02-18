@@ -67,6 +67,7 @@ type config struct {
 	Mail                        *mailConfig         `json:"mail"`                           // mail config
 	ReferralBonus               int                 `json:"referral_bonus"`                 // number of emails for a referrer
 	FollowerBonus               int                 `json:"follower_bonus"`                 // number of emails for a new user registered by a referral link
+	UsersOnlineEndpoint         string              `json:"users_online_endpoint"`          // the endpoint to fetch online users
 
 	errorThreshold   int
 	errorDenominator int

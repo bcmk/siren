@@ -80,7 +80,7 @@ func chaturbateStatus(roomStatus string) StatusKind {
 }
 
 // StartChaturbateChecker starts a checker for Chaturbate
-func StartChaturbateChecker(clients []*Client, headers [][2]string, intervalMs int, debug bool) (input chan []string, output chan StatusUpdate, elapsed chan time.Duration) {
+func StartChaturbateChecker(usersOnlineEndpoint string, clients []*Client, headers [][2]string, intervalMs int, debug bool) (input chan []string, output chan StatusUpdate, elapsed chan time.Duration) {
 	input = make(chan []string)
 	output = make(chan StatusUpdate)
 	elapsed = make(chan time.Duration)

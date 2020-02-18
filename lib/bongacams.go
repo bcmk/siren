@@ -34,7 +34,7 @@ func CheckModelBongaCams(client *Client, modelID string, headers [][2]string, db
 }
 
 // StartBongaCamsChecker starts a checker for BongaCams
-func StartBongaCamsChecker(clients []*Client, headers [][2]string, intervalMs int, debug bool) (input chan []string, output chan StatusUpdate, elapsed chan time.Duration) {
+func StartBongaCamsChecker(usersOnlineEndpoint string, clients []*Client, headers [][2]string, intervalMs int, debug bool) (input chan []string, output chan StatusUpdate, elapsed chan time.Duration) {
 	input = make(chan []string)
 	output = make(chan StatusUpdate)
 	elapsed = make(chan time.Duration)

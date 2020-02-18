@@ -2,90 +2,109 @@ package lib
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"time"
 
-	"github.com/andybalholm/cascadia"
-	"golang.org/x/net/html"
+	"github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/chromedp"
 )
 
-var viewCamPageMainTag = cascadia.MustCompile("div.view-cam-page-wrapper")
-var statusDiv = cascadia.MustCompile("div.vc-status")
-var offlineDiv = cascadia.MustCompile("div.status-off")
-var privateDiv = cascadia.MustCompile("div.status-private")
-var groupDiv = cascadia.MustCompile("div.status-groupShow")
-var p2pStatusDiv = cascadia.MustCompile("div.status-p2p")
-var idleDiv = cascadia.MustCompile("div.status-idle")
-var disabledDiv = cascadia.MustCompile("div.account-disabled-page")
+type stripchatModel struct {
+	Username string `json:"username"`
+}
+
+type stripchatResponse struct {
+	Models []stripchatModel `json:"models"`
+}
+
+var statusesOffline = map[string]bool{
+	"status-off": true,
+}
+
+var statusesOnline = map[string]bool{
+	"status-p2p":       true,
+	"status-private":   true,
+	"status-groupShow": true,
+	"status-idle":      true,
+}
 
 // CheckModelStripchat checks Stripchat model status
 func CheckModelStripchat(client *Client, modelID string, headers [][2]string, dbg bool) StatusKind {
-	req, err := http.NewRequest("GET", fmt.Sprintf("https://stripchat.com/%s", modelID), nil)
-	CheckErr(err)
-	for _, h := range headers {
-		req.Header.Set(h[0], h[1])
-	}
-	resp, err := client.Client.Do(req)
+	ctx, cancel := chromedp.NewContext(context.Background(), chromedp.WithLogf(Ldbg))
+	defer cancel()
+
+	ctx, cancel = context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	videoNode := []*cdp.Node{}
+	statusNode := []*cdp.Node{}
+	disabledNode := []*cdp.Node{}
+	notFoundNode := []*cdp.Node{}
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(fmt.Sprintf("https://stripchat.com/%s", modelID)),
+		chromedp.WaitVisible(`video, .vc-status, .account-disabled-page, .not-found-error`, chromedp.ByQuery),
+		chromedp.Nodes(`video`, &videoNode, chromedp.AtLeast(0), chromedp.ByQuery),
+		chromedp.Nodes(`.vc-status`, &statusNode, chromedp.AtLeast(0), chromedp.ByQuery),
+		chromedp.Nodes(`.account-disabled-page`, &disabledNode, chromedp.AtLeast(0), chromedp.ByQuery),
+		chromedp.Nodes(`.not-found-error`, &notFoundNode, chromedp.AtLeast(0), chromedp.ByQuery),
+	)
 	if err != nil {
-		Lerr("[%v] cannot send a query, %v", client.Addr, err)
+		Lerr("[%v] cannot open a page for model %s, %v", client.Addr, modelID, err)
 		return StatusUnknown
 	}
-	defer func() {
-		CheckErr(resp.Body.Close())
-	}()
-	if resp.StatusCode == 404 {
-		return StatusNotFound
-	}
-	buf := bytes.Buffer{}
-	_, err = buf.ReadFrom(resp.Body)
-	if err != nil {
-		Lerr("[%v] cannot read body for model %s, %v", client.Addr, modelID, err)
-		return StatusUnknown
-	}
-	copy := ioutil.NopCloser(bytes.NewReader(buf.Bytes()))
-	doc, err := html.Parse(copy)
-	if err != nil {
-		Lerr("[%v] cannot parse body for model %s, %v", client.Addr, modelID, err)
+	if len(videoNode) > 0 {
 		if dbg {
-			Ldbg("[%v] response:\n%s", client.Addr, buf.String())
+			Ldbg("video found")
 		}
-		return StatusUnknown
-	}
-
-	if viewCamPageMainTag.MatchFirst(doc) == nil {
-		Lerr("[%v] cannot parse a page for model %s", client.Addr, modelID)
-		if dbg {
-			Ldbg("[%v] response:\n%s", client.Addr, buf.String())
-		}
-		return StatusUnknown
-	}
-
-	if offlineDiv.MatchFirst(doc) != nil {
-		return StatusOffline
-	}
-
-	if disabledDiv.MatchFirst(doc) != nil {
-		return StatusDenied
-	}
-
-	if false ||
-		statusDiv.MatchFirst(doc) == nil ||
-		privateDiv.MatchFirst(doc) != nil ||
-		p2pStatusDiv.MatchFirst(doc) != nil ||
-		idleDiv.MatchFirst(doc) != nil ||
-		groupDiv.MatchFirst(doc) != nil {
-
 		return StatusOnline
 	}
-
-	Lerr("[%v] cannot determine status, response: %s", client.Addr, buf.String())
+	if len(notFoundNode) > 0 {
+		if dbg {
+			Ldbg(".not-found-error found")
+		}
+		return StatusNotFound
+	}
+	if len(disabledNode) > 0 {
+		if dbg {
+			Ldbg(".account-disabled-page found")
+		}
+		return StatusDenied
+	}
+	if len(statusNode) > 0 {
+		classes := strings.Split(statusNode[0].AttributeValue("class"), " ")
+		for _, c := range classes {
+			if statusesOffline[c] {
+				if dbg {
+					Ldbg("offline status found")
+				}
+				return StatusOffline
+			}
+			if statusesOnline[c] {
+				if dbg {
+					Ldbg("online status found")
+				}
+				return StatusOnline
+			}
+		}
+		Lerr("[%v] unknown status for model %s, %v", client.Addr, modelID, classes)
+	}
+	Lerr("[%v] unknown status for model %s", client.Addr, modelID)
 	return StatusUnknown
 }
 
+func sendUnknowns(output chan StatusUpdate, models []string) {
+	for _, modelID := range models {
+		output <- StatusUpdate{ModelID: modelID, Status: StatusUnknown}
+	}
+}
+
 // StartStripchatChecker starts a checker for Stripchat
-func StartStripchatChecker(clients []*Client, headers [][2]string, intervalMs int, debug bool) (input chan []string, output chan StatusUpdate, elapsed chan time.Duration) {
+func StartStripchatChecker(usersOnlineEndpoint string, clients []*Client, headers [][2]string, intervalMs int, dbg bool) (input chan []string, output chan StatusUpdate, elapsed chan time.Duration) {
 	input = make(chan []string)
 	output = make(chan StatusUpdate)
 	elapsed = make(chan time.Duration)
@@ -94,23 +113,61 @@ func StartStripchatChecker(clients []*Client, headers [][2]string, intervalMs in
 	go func() {
 		for models := range input {
 			start := time.Now()
-			for _, modelID := range models {
-				queryStart := time.Now()
-				newStatus := CheckModelStripchat(clients[clientIdx], modelID, headers, debug)
-				output <- StatusUpdate{ModelID: modelID, Status: newStatus}
-				queryElapsed := time.Since(queryStart) / time.Millisecond
-				if intervalMs != 0 {
-					sleep := intervalMs/len(clients) - int(queryElapsed)
-					if sleep > 0 {
-						time.Sleep(time.Duration(sleep) * time.Millisecond)
-					}
-				}
-				clientIdx++
-				if clientIdx == clientsNum {
-					clientIdx = 0
-				}
+			client := clients[clientIdx]
+
+			req, err := http.NewRequest("GET", usersOnlineEndpoint, nil)
+			CheckErr(err)
+			for _, h := range headers {
+				req.Header.Set(h[0], h[1])
 			}
+			resp, err := client.Client.Do(req)
 			elapsed <- time.Since(start)
+			if err != nil {
+				Lerr("[%v] cannot send a query, %v", client.Addr, err)
+				sendUnknowns(output, models)
+				continue
+			}
+			buf := bytes.Buffer{}
+			_, err = buf.ReadFrom(resp.Body)
+			if err != nil {
+				Lerr("[%v] cannot read response, %v", client.Addr, err)
+				sendUnknowns(output, models)
+				continue
+			}
+			CheckErr(resp.Body.Close())
+			if resp.StatusCode != 200 {
+				Lerr("query status: %d", resp.StatusCode)
+				sendUnknowns(output, models)
+				continue
+			}
+			decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
+			parsed := &stripchatResponse{}
+			err = decoder.Decode(parsed)
+			if err != nil {
+				Lerr("[%v] cannot parse response, %v", client.Addr, err)
+				if dbg {
+					Ldbg("response: %s", buf.String())
+				}
+				sendUnknowns(output, models)
+				continue
+			}
+
+			hash := map[string]bool{}
+			for _, m := range parsed.Models {
+				hash[strings.ToLower(m.Username)] = true
+			}
+
+			for _, modelID := range models {
+				newStatus := StatusOffline
+				if hash[modelID] {
+					newStatus = StatusOnline
+				}
+				output <- StatusUpdate{ModelID: modelID, Status: newStatus}
+			}
+			clientIdx++
+			if clientIdx == clientsNum {
+				clientIdx = 0
+			}
 		}
 	}()
 	return

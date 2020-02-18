@@ -10,6 +10,7 @@ const (
 	StatusOnline
 	StatusNotFound
 	StatusDenied
+	StatusExists
 )
 
 func (s StatusKind) String() string {
@@ -22,6 +23,8 @@ func (s StatusKind) String() string {
 		return "not found"
 	case StatusDenied:
 		return "denied"
+	case StatusExists:
+		return "exists"
 	}
 	return "unknown"
 }
