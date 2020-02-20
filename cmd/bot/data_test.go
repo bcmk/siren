@@ -2,7 +2,6 @@ package main
 
 import (
 	"database/sql"
-	"sync"
 
 	"github.com/bcmk/siren/lib"
 	tg "github.com/bcmk/telegram-bot-api"
@@ -64,7 +63,6 @@ func newTestWorker() *testWorker {
 			db:      db,
 			cfg:     &testConfig,
 			clients: nil,
-			mu:      &sync.Mutex{},
 			tr:      map[string]translations{"test": testTranslations},
 		},
 	}

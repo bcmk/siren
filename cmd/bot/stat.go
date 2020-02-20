@@ -10,7 +10,7 @@ type statistics struct {
 	ModelsToQueryOnEndpointCount   int    `json:"models_to_query_on_endpoint_count"`
 	ModelsToQueryTotalCount        int    `json:"models_to_query_total_count"`
 	OnlineModelsCount              int    `json:"online_models_count"`
-	QueriesDurationSeconds         int    `json:"queries_duration"`
+	QueriesDurationMilliseconds    int    `json:"queries_duration_milliseconds"`
 	ErrorRate                      [2]int `json:"error_rate"`
 	Rss                            int64  `json:"rss"`
 	MaxRss                         int64  `json:"max_rss"`

@@ -15,7 +15,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -41,7 +40,6 @@ type worker struct {
 	bots            map[string]*tg.BotAPI
 	db              *sql.DB
 	cfg             *config
-	mu              *sync.Mutex
 	elapsed         time.Duration
 	tr              map[string]translations
 	checkModel      func(client *lib.Client, modelID string, headers [][2]string, dbg bool) lib.StatusKind
@@ -100,7 +98,6 @@ func newWorker() *worker {
 		db:          db,
 		cfg:         cfg,
 		clients:     clients,
-		mu:          &sync.Mutex{},
 		tr:          loadAllTranslations(cfg),
 		senders:     senders,
 		unknowns:    make([]bool, cfg.errorDenominator),
@@ -805,7 +802,7 @@ func (w *worker) statStrings(endpoint string) []string {
 		fmt.Sprintf("Heavy: %d", stat.HeavyUsersCount),
 		fmt.Sprintf("Models: %d", stat.ModelsCount),
 		fmt.Sprintf("Models to query: %d", stat.ModelsToQueryOnEndpointCount),
-		fmt.Sprintf("Queries duration: %d s", stat.QueriesDurationSeconds),
+		fmt.Sprintf("Queries duration: %d ms", stat.QueriesDurationMilliseconds),
 		fmt.Sprintf("Error rate: %d/%d", stat.ErrorRate[0], stat.ErrorRate[1]),
 		fmt.Sprintf("Memory usage: %d KiB", stat.Rss),
 		fmt.Sprintf("Transactions: %d/%d", stat.TransactionsOnEndpointFinished, stat.TransactionsOnEndpointCount),
@@ -1208,10 +1205,6 @@ func getRss() (int64, error) {
 }
 
 func (w *worker) getStat(endpoint string) statistics {
-	w.mu.Lock()
-	elapsed := w.elapsed
-	w.mu.Unlock()
-
 	rss, err := getRss()
 	checkErr(err)
 	var rusage syscall.Rusage
@@ -1229,7 +1222,7 @@ func (w *worker) getStat(endpoint string) statistics {
 		OnlineModelsCount:              w.onlineModelsCount(endpoint),
 		TransactionsOnEndpointCount:    w.transactionsOnEndpoint(endpoint),
 		TransactionsOnEndpointFinished: w.transactionsOnEndpointFinished(endpoint),
-		QueriesDurationSeconds:         int(elapsed.Seconds()),
+		QueriesDurationMilliseconds:    int(w.elapsed.Milliseconds()),
 		ErrorRate:                      [2]int{w.unknownsNumber(), w.cfg.errorDenominator},
 		Rss:                            rss / 1024,
 		MaxRss:                         rusage.Maxrss,
