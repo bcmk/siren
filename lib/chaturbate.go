@@ -6,8 +6,13 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"time"
 )
+
+type chaturbateModel struct {
+	Username string `json:"username"`
+}
 
 type chaturbateResponse struct {
 	RoomStatus string `json:"room_status"`
@@ -80,7 +85,14 @@ func chaturbateStatus(roomStatus string) StatusKind {
 }
 
 // StartChaturbateChecker starts a checker for Chaturbate
-func StartChaturbateChecker(usersOnlineEndpoint string, clients []*Client, headers [][2]string, intervalMs int, debug bool) (input chan []string, output chan StatusUpdate, elapsed chan time.Duration) {
+func StartChaturbateChecker(
+	usersOnlineEndpoint string,
+	clients []*Client,
+	headers [][2]string,
+	intervalMs int,
+	dbg bool,
+) (input chan []string, output chan StatusUpdate, elapsed chan time.Duration) {
+
 	input = make(chan []string)
 	output = make(chan StatusUpdate)
 	elapsed = make(chan time.Duration)
@@ -89,23 +101,61 @@ func StartChaturbateChecker(usersOnlineEndpoint string, clients []*Client, heade
 	go func() {
 		for models := range input {
 			start := time.Now()
-			for _, modelID := range models {
-				queryStart := time.Now()
-				newStatus := CheckModelChaturbate(clients[clientIdx], modelID, headers, debug)
-				output <- StatusUpdate{ModelID: modelID, Status: newStatus}
-				queryElapsed := time.Since(queryStart) / time.Millisecond
-				if intervalMs != 0 {
-					sleep := intervalMs/len(clients) - int(queryElapsed)
-					if sleep > 0 {
-						time.Sleep(time.Duration(sleep) * time.Millisecond)
-					}
-				}
-				clientIdx++
-				if clientIdx == clientsNum {
-					clientIdx = 0
-				}
+			client := clients[clientIdx]
+
+			req, err := http.NewRequest("GET", usersOnlineEndpoint, nil)
+			CheckErr(err)
+			for _, h := range headers {
+				req.Header.Set(h[0], h[1])
 			}
+			resp, err := client.Client.Do(req)
 			elapsed <- time.Since(start)
+			if err != nil {
+				Lerr("[%v] cannot send a query, %v", client.Addr, err)
+				sendUnknowns(output, models)
+				continue
+			}
+			buf := bytes.Buffer{}
+			_, err = buf.ReadFrom(resp.Body)
+			if err != nil {
+				Lerr("[%v] cannot read response, %v", client.Addr, err)
+				sendUnknowns(output, models)
+				continue
+			}
+			CheckErr(resp.Body.Close())
+			if resp.StatusCode != 200 {
+				Lerr("query status: %d", resp.StatusCode)
+				sendUnknowns(output, models)
+				continue
+			}
+			decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
+			parsed := []chaturbateModel{}
+			err = decoder.Decode(&parsed)
+			if err != nil {
+				Lerr("[%v] cannot parse response, %v", client.Addr, err)
+				if dbg {
+					Ldbg("response: %s", buf.String())
+				}
+				sendUnknowns(output, models)
+				continue
+			}
+
+			hash := map[string]bool{}
+			for _, m := range parsed {
+				hash[strings.ToLower(m.Username)] = true
+			}
+
+			for _, modelID := range models {
+				newStatus := StatusOffline
+				if hash[modelID] {
+					newStatus = StatusOnline
+				}
+				output <- StatusUpdate{ModelID: modelID, Status: newStatus}
+			}
+			clientIdx++
+			if clientIdx == clientsNum {
+				clientIdx = 0
+			}
 		}
 	}()
 	return
