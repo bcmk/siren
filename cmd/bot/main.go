@@ -243,7 +243,8 @@ func (w *worker) createDatabase() {
 	w.mustExec(`
 		create table if not exists users (
 			chat_id integer primary key,
-			max_models integer not null default 0);`)
+			max_models integer not null default 0,
+			reports integer not null default 0);`)
 	w.mustExec(`
 		create table if not exists emails (
 			chat_id integer,
@@ -426,6 +427,8 @@ func (w *worker) reportStatus(endpoint string, chatID int64, modelID string, sta
 	case lib.StatusDenied:
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Denied, modelID)
 	}
+	w.addUser(endpoint, chatID)
+	w.mustExec("update users set reports=reports+1 where chat_id=?", chatID)
 }
 
 func singleInt(row *sql.Row) (result int) {
@@ -721,6 +724,10 @@ func (w *worker) referralsCount() int {
 	return singleInt(query)
 }
 
+func (w *worker) reports() int {
+	return singleInt(w.db.QueryRow("select sum(reports) from users"))
+}
+
 func (w *worker) usersCount(endpoint string) int {
 	query := w.db.QueryRow("select count(distinct chat_id) from signals where endpoint=?", endpoint)
 	return singleInt(query)
@@ -817,6 +824,8 @@ func (w *worker) statStrings(endpoint string) []string {
 		fmt.Sprintf("Error rate: %d/%d", stat.ErrorRate[0], stat.ErrorRate[1]),
 		fmt.Sprintf("Memory usage: %d KiB", stat.Rss),
 		fmt.Sprintf("Transactions: %d/%d", stat.TransactionsOnEndpointFinished, stat.TransactionsOnEndpointCount),
+		fmt.Sprintf("Reports: %d", stat.ReportsCount),
+		fmt.Sprintf("Referrals: %d", stat.ReferralsCount),
 	}
 }
 
@@ -1237,7 +1246,9 @@ func (w *worker) getStat(endpoint string) statistics {
 		ErrorRate:                      [2]int{w.unknownsNumber(), w.cfg.errorDenominator},
 		Rss:                            rss / 1024,
 		MaxRss:                         rusage.Maxrss,
-		ReferralsCount:                 w.referralsCount()}
+		ReferralsCount:                 w.referralsCount(),
+		ReportsCount:                   w.reports(),
+	}
 }
 
 func (w *worker) handleStat(endpoint string) func(writer http.ResponseWriter, r *http.Request) {

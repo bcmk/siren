@@ -17,4 +17,5 @@ type statistics struct {
 	TransactionsOnEndpointCount    int    `json:"transactions_on_endpoint_count"`
 	TransactionsOnEndpointFinished int    `json:"transactions_on_endpoint_finished"`
 	ReferralsCount                 int    `json:"referrals_count"`
+	ReportsCount                   int    `json:"reports_count"`
 }
