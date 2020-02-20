@@ -126,7 +126,7 @@ func StartStripchatChecker(
 				continue
 			}
 			if resp.StatusCode != 200 {
-				Lerr("query status: %d", resp.StatusCode)
+				Lerr("[%v] query status, %d", client.Addr, resp.StatusCode)
 				sendUnknowns(output, models)
 				continue
 			}

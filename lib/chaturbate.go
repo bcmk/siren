@@ -34,7 +34,7 @@ func CheckModelChaturbate(client *Client, modelID string, headers [][2]string, d
 		CheckErr(resp.Body.Close())
 	}()
 	if dbg {
-		Ldbg("query status for %s: %d", modelID, resp.StatusCode)
+		Ldbg("[%v] query status for %s: %d", client.Addr, modelID, resp.StatusCode)
 	}
 	if resp.StatusCode == 401 {
 		return StatusDenied
