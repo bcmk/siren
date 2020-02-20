@@ -110,68 +110,83 @@ func TestSql(t *testing.T) {
 func TestUpdateStatus(t *testing.T) {
 	w := newTestWorker()
 	w.createDatabase()
-	if w.updateStatus("a", lib.StatusOffline) {
+	if w.updateStatus("a", lib.StatusOffline, 10) {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusOnline) {
+	if w.updateStatus("a", lib.StatusOnline, 11) {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusNotFound) {
+	if w.updateStatus("a", lib.StatusNotFound, 12) {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusUnknown) {
+	if w.updateStatus("a", lib.StatusUnknown, 13) {
 		t.Error("unexpected status update")
 	}
 	w.mustExec("insert into statuses (model_id, status) values (?,?)", "a", lib.StatusOnline)
-	if w.updateStatus("a", lib.StatusOffline) {
+	if w.updateStatus("a", lib.StatusOffline, 14) {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusOnline) {
+	if w.updateStatus("a", lib.StatusOnline, 15) {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusNotFound) {
+	if w.updateStatus("a", lib.StatusNotFound, 16) {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusUnknown) {
+	if w.updateStatus("a", lib.StatusUnknown, 17) {
 		t.Error("unexpected status update")
 	}
 	w.mustExec("delete from statuses")
 	w.mustExec("insert into signals (chat_id, model_id) values (?,?)", 1, "a")
-	if !w.updateStatus("a", lib.StatusOnline) {
+	if !w.updateStatus("a", lib.StatusOnline, 18) {
 		t.Error("unexpected status update")
 	}
-	if !w.updateStatus("a", lib.StatusOffline) {
+	if w.updateStatus("a", lib.StatusOffline, 19) {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusOffline) {
+	if w.updateStatus("a", lib.StatusOffline, 20) {
 		t.Error("unexpected status update")
 	}
-	if !w.updateStatus("a", lib.StatusOnline) {
+	if w.updateStatus("a", lib.StatusOnline, 21) {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusOnline) {
+	if w.updateStatus("a", lib.StatusOnline, 22) {
 		t.Error("unexpected status update")
 	}
-	if !w.updateStatus("a", lib.StatusNotFound) {
+	if w.updateStatus("a", lib.StatusNotFound, 23) {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusNotFound) {
+	if w.updateStatus("a", lib.StatusNotFound, 24) {
 		t.Error("unexpected status update")
 	}
-	if !w.updateStatus("a", lib.StatusOnline) {
+	if !w.updateStatus("a", lib.StatusOnline, 30) {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusOnline) {
+	if w.updateStatus("a", lib.StatusOnline, 31) {
 		t.Error("unexpected status update")
 	}
-	if !w.updateStatus("a", lib.StatusUnknown) {
+	if w.updateStatus("a", lib.StatusUnknown, 32) {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusUnknown) {
+	if w.updateStatus("a", lib.StatusUnknown, 33) {
 		t.Error("unexpected status update")
 	}
-	w.updateStatus("a", lib.StatusOffline)
-	if w.updateStatus("a", lib.StatusNotFound) {
+	w.updateStatus("a", lib.StatusOffline, 34)
+	if w.updateStatus("a", lib.StatusNotFound, 35) {
+		t.Error("unexpected status update")
+	}
+	if w.updateStatus("a", lib.StatusOnline, 36) {
+		t.Error("unexpected status update")
+	}
+	if w.updateStatus("a", lib.StatusOffline, 37) {
+		t.Error("unexpected status update")
+	}
+	if w.updateStatus("a", lib.StatusOnline, 41) {
+		t.Error("unexpected status update")
+	}
+	if w.updateStatus("a", lib.StatusOffline, 42) {
+		t.Error("unexpected status update")
+	}
+	if !w.updateStatus("a", lib.StatusOnline, 48) {
 		t.Error("unexpected status update")
 	}
 	if w.notFound("a") {

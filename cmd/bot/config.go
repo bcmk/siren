@@ -68,6 +68,7 @@ type config struct {
 	ReferralBonus               int                 `json:"referral_bonus"`                 // number of emails for a referrer
 	FollowerBonus               int                 `json:"follower_bonus"`                 // number of emails for a new user registered by a referral link
 	UsersOnlineEndpoint         string              `json:"users_online_endpoint"`          // the endpoint to fetch online users
+	OfflineThresholdSeconds     int                 `json:"offline_threshold_seconds"`      // report online status only if model was offline longer than this threshold
 
 	errorThreshold   int
 	errorDenominator int
@@ -159,6 +160,9 @@ func checkConfig(cfg *config) error {
 	}
 	if cfg.FollowerBonus == 0 {
 		return errors.New("configure follower_bonus")
+	}
+	if cfg.OfflineThresholdSeconds == 0 {
+		return errors.New("configure offline_threshold_seconds")
 	}
 
 	if m := fractionRegexp.FindStringSubmatch(cfg.DangerousErrorRate); len(m) == 3 {

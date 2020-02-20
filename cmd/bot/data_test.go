@@ -8,10 +8,11 @@ import (
 )
 
 var testConfig = config{
-	MaxModels:         3,
-	AdminID:           1,
-	NotFoundThreshold: 2,
-	BlockThreshold:    10,
+	MaxModels:               3,
+	AdminID:                 1,
+	NotFoundThreshold:       2,
+	BlockThreshold:          10,
+	OfflineThresholdSeconds: 5,
 }
 
 var testTranslations = translations{

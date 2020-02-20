@@ -227,7 +227,8 @@ func (w *worker) createDatabase() {
 		create table if not exists statuses (
 			model_id text primary key,
 			status integer,
-			not_found integer not null default 0);`)
+			not_found integer not null default 0,
+			last_online integer not null default 0);`)
 	w.mustExec(`
 		create table if not exists feedback (
 			chat_id integer,
@@ -274,7 +275,7 @@ func (w *worker) createDatabase() {
 			referred_users integer not null default 0);`)
 }
 
-func (w *worker) updateStatus(modelID string, newStatus lib.StatusKind) bool {
+func (w *worker) updateStatus(modelID string, newStatus lib.StatusKind, timestamp int) bool {
 	if newStatus != lib.StatusNotFound {
 		w.mustExec("update statuses set not_found=0 where model_id=?", modelID)
 	} else {
@@ -285,18 +286,27 @@ func (w *worker) updateStatus(modelID string, newStatus lib.StatusKind) bool {
 	if singleInt(signalsQuery) == 0 {
 		return false
 	}
-	oldStatusQuery, err := w.db.Query("select status from statuses where model_id=?", modelID)
+	oldStatusQuery, err := w.db.Query("select status, last_online from statuses where model_id=?", modelID)
 	checkErr(err)
 	defer oldStatusQuery.Close()
 	if !oldStatusQuery.Next() {
-		w.mustExec("insert into statuses (model_id, status) values (?,?)", modelID, newStatus)
+		lastOnline := 0
+		if newStatus == lib.StatusOnline {
+			lastOnline = timestamp
+		}
+		w.mustExec("insert into statuses (model_id, status, last_online) values (?,?,?)", modelID, newStatus, lastOnline)
 		return true
 	}
 	var oldStatus lib.StatusKind
-	checkErr(oldStatusQuery.Scan(&oldStatus))
+	var lastOnline int
+	checkErr(oldStatusQuery.Scan(&oldStatus, &lastOnline))
 	checkErr(oldStatusQuery.Close())
-	w.mustExec("update statuses set status=? where model_id=?", newStatus, modelID)
-	return oldStatus != newStatus
+	report := oldStatus != lib.StatusOnline && newStatus == lib.StatusOnline && timestamp-lastOnline > w.cfg.OfflineThresholdSeconds
+	if newStatus == lib.StatusOnline {
+		lastOnline = timestamp
+	}
+	w.mustExec("update statuses set status=?, last_online=? where model_id=?", newStatus, lastOnline, modelID)
+	return report
 }
 
 func (w *worker) notFound(modelID string) bool {
@@ -481,8 +491,9 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) {
 	}
 	w.mustExec("insert into signals (chat_id, model_id, endpoint) values (?,?,?)", chatID, modelID, endpoint)
 	subscriptionsNumber++
+	timestamp := int(time.Now().Unix())
 	if status != lib.StatusExists {
-		w.updateStatus(modelID, status)
+		w.updateStatus(modelID, status, timestamp)
 	}
 	if status != lib.StatusDenied {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].ModelAdded, modelID)
@@ -1123,14 +1134,14 @@ func (w *worker) processPeriodic(statusRequests chan []string) {
 	}
 }
 
-func (w *worker) processStatusUpdate(statusUpdate lib.StatusUpdate) {
+func (w *worker) processStatusUpdate(statusUpdate lib.StatusUpdate, timestamp int) {
 	if statusUpdate.Status == lib.StatusNotFound {
 		if w.notFound(statusUpdate.ModelID) {
 			w.reportNotFound(statusUpdate.ModelID)
 			w.removeNotFound(statusUpdate.ModelID)
 		}
 	}
-	if statusUpdate.Status != lib.StatusUnknown && w.updateStatus(statusUpdate.ModelID, statusUpdate.Status) {
+	if statusUpdate.Status != lib.StatusUnknown && w.updateStatus(statusUpdate.ModelID, statusUpdate.Status, timestamp) {
 		if w.cfg.Debug {
 			ldbg("reporting status of the model %s", statusUpdate.ModelID)
 		}
@@ -1391,7 +1402,8 @@ func main() {
 			runtime.GC()
 			w.processPeriodic(statusRequests)
 		case statusUpdate := <-statusUpdates:
-			w.processStatusUpdate(statusUpdate)
+			timestamp := int(time.Now().Unix())
+			w.processStatusUpdate(statusUpdate, timestamp)
 		case u := <-incoming:
 			w.processTGUpdate(u)
 		case m := <-mail:
