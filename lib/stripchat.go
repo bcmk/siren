@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"net/http"
 	"strings"
 	"time"
 
@@ -97,44 +96,35 @@ func CheckModelStripchat(client *Client, modelID string, headers [][2]string, db
 	return StatusUnknown
 }
 
-func sendUnknowns(output chan StatusUpdate, models []string) {
-	for _, modelID := range models {
-		output <- StatusUpdate{ModelID: modelID, Status: StatusUnknown}
-	}
-}
-
 // StartStripchatChecker starts a checker for Stripchat
-func StartStripchatChecker(usersOnlineEndpoint string, clients []*Client, headers [][2]string, intervalMs int, dbg bool) (input chan []string, output chan StatusUpdate, elapsed chan time.Duration) {
+func StartStripchatChecker(
+	usersOnlineEndpoint string,
+	clients []*Client,
+	headers [][2]string,
+	intervalMs int,
+	dbg bool,
+) (input chan []string, output chan StatusUpdate, elapsedCh chan time.Duration) {
+
 	input = make(chan []string)
 	output = make(chan StatusUpdate)
-	elapsed = make(chan time.Duration)
+	elapsedCh = make(chan time.Duration)
 	clientIdx := 0
 	clientsNum := len(clients)
 	go func() {
 		for models := range input {
-			start := time.Now()
 			client := clients[clientIdx]
+			clientIdx++
+			if clientIdx == clientsNum {
+				clientIdx = 0
+			}
 
-			req, err := http.NewRequest("GET", usersOnlineEndpoint, nil)
-			CheckErr(err)
-			for _, h := range headers {
-				req.Header.Set(h[0], h[1])
-			}
-			resp, err := client.Client.Do(req)
-			elapsed <- time.Since(start)
+			resp, buf, elapsed, err := onlineQuery(usersOnlineEndpoint, client, headers)
+			elapsedCh <- elapsed
 			if err != nil {
+				sendUnknowns(output, models)
 				Lerr("[%v] cannot send a query, %v", client.Addr, err)
-				sendUnknowns(output, models)
 				continue
 			}
-			buf := bytes.Buffer{}
-			_, err = buf.ReadFrom(resp.Body)
-			if err != nil {
-				Lerr("[%v] cannot read response, %v", client.Addr, err)
-				sendUnknowns(output, models)
-				continue
-			}
-			CheckErr(resp.Body.Close())
 			if resp.StatusCode != 200 {
 				Lerr("query status: %d", resp.StatusCode)
 				sendUnknowns(output, models)
@@ -163,10 +153,6 @@ func StartStripchatChecker(usersOnlineEndpoint string, clients []*Client, header
 					newStatus = StatusOnline
 				}
 				output <- StatusUpdate{ModelID: modelID, Status: newStatus}
-			}
-			clientIdx++
-			if clientIdx == clientsNum {
-				clientIdx = 0
 			}
 		}
 	}()

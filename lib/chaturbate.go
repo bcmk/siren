@@ -91,40 +91,30 @@ func StartChaturbateChecker(
 	headers [][2]string,
 	intervalMs int,
 	dbg bool,
-) (input chan []string, output chan StatusUpdate, elapsed chan time.Duration) {
+) (input chan []string, output chan StatusUpdate, elapsedCh chan time.Duration) {
 
 	input = make(chan []string)
 	output = make(chan StatusUpdate)
-	elapsed = make(chan time.Duration)
+	elapsedCh = make(chan time.Duration)
 	clientIdx := 0
 	clientsNum := len(clients)
 	go func() {
 		for models := range input {
-			start := time.Now()
 			client := clients[clientIdx]
+			clientIdx++
+			if clientIdx == clientsNum {
+				clientIdx = 0
+			}
 
-			req, err := http.NewRequest("GET", usersOnlineEndpoint, nil)
-			CheckErr(err)
-			for _, h := range headers {
-				req.Header.Set(h[0], h[1])
-			}
-			resp, err := client.Client.Do(req)
-			elapsed <- time.Since(start)
+			resp, buf, elapsed, err := onlineQuery(usersOnlineEndpoint, client, headers)
+			elapsedCh <- elapsed
 			if err != nil {
+				sendUnknowns(output, models)
 				Lerr("[%v] cannot send a query, %v", client.Addr, err)
-				sendUnknowns(output, models)
 				continue
 			}
-			buf := bytes.Buffer{}
-			_, err = buf.ReadFrom(resp.Body)
-			if err != nil {
-				Lerr("[%v] cannot read response, %v", client.Addr, err)
-				sendUnknowns(output, models)
-				continue
-			}
-			CheckErr(resp.Body.Close())
 			if resp.StatusCode != 200 {
-				Lerr("query status: %d", resp.StatusCode)
+				Lerr("[%v] query status, %d", client.Addr, resp.StatusCode)
 				sendUnknowns(output, models)
 				continue
 			}
@@ -151,10 +141,6 @@ func StartChaturbateChecker(
 					newStatus = StatusOnline
 				}
 				output <- StatusUpdate{ModelID: modelID, Status: newStatus}
-			}
-			clientIdx++
-			if clientIdx == clientsNum {
-				clientIdx = 0
 			}
 		}
 	}()

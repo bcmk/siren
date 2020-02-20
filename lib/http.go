@@ -1,7 +1,9 @@
 package lib
 
 import (
+	"bytes"
 	"crypto/tls"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -46,4 +48,34 @@ func HTTPClientWithTimeoutAndAddress(timeoutSeconds int, address string, cookies
 		client.Jar = cookieJar
 	}
 	return &Client{Client: client, Addr: addr}
+}
+
+func onlineQuery(
+	usersOnlineEndpoint string,
+	client *Client,
+	headers [][2]string) (*http.Response, *bytes.Buffer, time.Duration, error) {
+
+	start := time.Now()
+	req, err := http.NewRequest("GET", usersOnlineEndpoint, nil)
+	CheckErr(err)
+	for _, h := range headers {
+		req.Header.Set(h[0], h[1])
+	}
+	resp, err := client.Client.Do(req)
+	if err != nil {
+		return nil, nil, time.Duration(0), fmt.Errorf("sending error, %w", err)
+	}
+	defer func() { CheckErr(resp.Body.Close()) }()
+	buf := bytes.Buffer{}
+	_, err = buf.ReadFrom(resp.Body)
+	if err != nil {
+		return nil, nil, time.Duration(0), fmt.Errorf("cannot read response, %w", err)
+	}
+	return resp, &buf, time.Since(start), nil
+}
+
+func sendUnknowns(output chan StatusUpdate, models []string) {
+	for _, modelID := range models {
+		output <- StatusUpdate{ModelID: modelID, Status: StatusUnknown}
+	}
 }
