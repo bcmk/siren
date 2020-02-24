@@ -698,7 +698,7 @@ func (w *worker) feedback(endpoint string, chatID int64, text string) {
 
 	w.mustExec("insert into feedback (endpoint, chat_id, text) values (?, ?, ?)", endpoint, chatID, text)
 	w.sendTr(endpoint, chatID, false, w.tr[endpoint].Feedback)
-	w.sendText(endpoint, w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Feedback: %s", text))
+	w.sendText(endpoint, w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Feedback from %d: %s", chatID, text))
 }
 
 func (w *worker) setLimit(chatID int64, maxModels int) {
