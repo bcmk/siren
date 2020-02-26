@@ -276,7 +276,7 @@ func (w *worker) createDatabase() {
 			referred_users integer not null default 0);`)
 }
 
-func (w *worker) updateStatus(modelID string, newStatus lib.StatusKind, timestamp int) bool {
+func (w *worker) updateStatus(modelID string, newStatus lib.StatusKind, timestamp int) (notify bool) {
 	if newStatus != lib.StatusNotFound {
 		w.mustExec("update statuses set not_found=0 where model_id=?", modelID)
 	} else {
@@ -302,12 +302,12 @@ func (w *worker) updateStatus(modelID string, newStatus lib.StatusKind, timestam
 	var lastOnline int
 	checkErr(oldStatusQuery.Scan(&oldStatus, &lastOnline))
 	checkErr(oldStatusQuery.Close())
-	report := oldStatus != lib.StatusOnline && newStatus == lib.StatusOnline && timestamp-lastOnline > w.cfg.OfflineThresholdSeconds
+	notify = oldStatus != lib.StatusOnline && newStatus == lib.StatusOnline && timestamp-lastOnline > w.cfg.OfflineThresholdSeconds
 	if newStatus == lib.StatusOnline {
 		lastOnline = timestamp
 	}
 	w.mustExec("update statuses set status=?, last_online=? where model_id=?", newStatus, lastOnline, modelID)
-	return report
+	return
 }
 
 func (w *worker) notFound(modelID string) bool {
