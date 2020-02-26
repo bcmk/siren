@@ -1,5 +1,5 @@
-github.com/bcmk/go-smtpd v0.0.0-20200205113150-cfd0cdaf6529 h1:coUZYvno+waJJQzx5fmqyeFAtJv/FL10QqTqBYekwlk=
-github.com/bcmk/go-smtpd v0.0.0-20200205113150-cfd0cdaf6529/go.mod h1:Pik9gBCuq3lkdq/TlUqS5pk/tNY80VCCaVFRxUGXDg0=
+github.com/bcmk/go-smtpd v0.0.0-20200226140049-a5c2db7f2555 h1:WTUyRApu5ekGVHrTqVr9ugH6qLb6DJKQGNBjFBjCmdw=
+github.com/bcmk/go-smtpd v0.0.0-20200226140049-a5c2db7f2555/go.mod h1:Pik9gBCuq3lkdq/TlUqS5pk/tNY80VCCaVFRxUGXDg0=
 github.com/bcmk/telegram-bot-api v4.6.5-0.20190301161735-871e8e1f4ace+incompatible h1:6VHIqFX28AMmnuimyGqUlrpZobJO9psqplwKbaXVaog=
 github.com/bcmk/telegram-bot-api v4.6.5-0.20190301161735-871e8e1f4ace+incompatible/go.mod h1:CG4AncPxrtNnO9nVdzhGS7rqEfBqyvfSefpZkHOHqtY=
 github.com/chromedp/cdproto v0.0.0-20200116234248-4da64dd111ac/go.mod h1:PfAWWKJqjlGFYJEidUM6aVIWPr0EpobeyVWEEmplX7g=
