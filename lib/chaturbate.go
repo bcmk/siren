@@ -85,7 +85,7 @@ func chaturbateStatus(roomStatus string) StatusKind {
 }
 
 // StartChaturbateChecker starts a checker for Chaturbate
-func StartChaturbateChecker(
+func StartChaturbateAPIChecker(
 	usersOnlineEndpoint string,
 	clients []*Client,
 	headers [][2]string,

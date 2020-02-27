@@ -69,6 +69,7 @@ type config struct {
 	FollowerBonus               int                 `json:"follower_bonus"`                 // number of emails for a new user registered by a referral link
 	UsersOnlineEndpoint         string              `json:"users_online_endpoint"`          // the endpoint to fetch online users
 	OfflineThresholdSeconds     int                 `json:"offline_threshold_seconds"`      // report online status only if model was offline longer than this threshold
+	OfflineNotifications        bool                `json:"offline_notifications"`          // enable offline notifications
 
 	errorThreshold   int
 	errorDenominator int

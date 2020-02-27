@@ -97,7 +97,7 @@ func CheckModelStripchat(client *Client, modelID string, headers [][2]string, db
 }
 
 // StartStripchatChecker starts a checker for Stripchat
-func StartStripchatChecker(
+func StartStripchatAPIChecker(
 	usersOnlineEndpoint string,
 	clients []*Client,
 	headers [][2]string,

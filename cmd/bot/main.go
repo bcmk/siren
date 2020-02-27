@@ -112,13 +112,13 @@ func newWorker() *worker {
 	switch cfg.Website {
 	case "bongacams":
 		w.checkModel = lib.CheckModelBongaCams
-		w.startChecker = lib.StartBongaCamsChecker
+		w.startChecker = lib.StartBongaCamsRedirChecker
 	case "chaturbate":
 		w.checkModel = lib.CheckModelChaturbate
-		w.startChecker = lib.StartChaturbateChecker
+		w.startChecker = lib.StartChaturbateAPIChecker
 	case "stripchat":
 		w.checkModel = lib.CheckModelStripchat
-		w.startChecker = lib.StartStripchatChecker
+		w.startChecker = lib.StartStripchatAPIChecker
 	default:
 		panic("wrong website")
 	}
@@ -302,7 +302,7 @@ func (w *worker) updateStatus(modelID string, newStatus lib.StatusKind, timestam
 	var lastOnline int
 	checkErr(oldStatusQuery.Scan(&oldStatus, &lastOnline))
 	checkErr(oldStatusQuery.Close())
-	notify = oldStatus != lib.StatusOnline && newStatus == lib.StatusOnline && timestamp-lastOnline > w.cfg.OfflineThresholdSeconds
+	notify = oldStatus != newStatus && (!w.cfg.OfflineNotifications || (oldStatus != lib.StatusOnline && newStatus == lib.StatusOnline)) && timestamp-lastOnline > w.cfg.OfflineThresholdSeconds
 	if newStatus == lib.StatusOnline {
 		lastOnline = timestamp
 	}
