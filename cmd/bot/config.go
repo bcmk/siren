@@ -162,9 +162,6 @@ func checkConfig(cfg *config) error {
 	if cfg.FollowerBonus == 0 {
 		return errors.New("configure follower_bonus")
 	}
-	if cfg.OfflineThresholdSeconds == 0 {
-		return errors.New("configure offline_threshold_seconds")
-	}
 
 	if m := fractionRegexp.FindStringSubmatch(cfg.DangerousErrorRate); len(m) == 3 {
 		errorThreshold, err := strconv.ParseInt(m[1], 10, 0)

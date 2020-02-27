@@ -302,7 +302,7 @@ func (w *worker) updateStatus(modelID string, newStatus lib.StatusKind, timestam
 	var lastOnline int
 	checkErr(oldStatusQuery.Scan(&oldStatus, &lastOnline))
 	checkErr(oldStatusQuery.Close())
-	notify = oldStatus != newStatus && (!w.cfg.OfflineNotifications || (oldStatus != lib.StatusOnline && newStatus == lib.StatusOnline)) && timestamp-lastOnline > w.cfg.OfflineThresholdSeconds
+	notify = oldStatus != newStatus && (!w.cfg.OfflineNotifications || (oldStatus != lib.StatusOnline && newStatus == lib.StatusOnline)) && timestamp-lastOnline >= w.cfg.OfflineThresholdSeconds
 	if newStatus == lib.StatusOnline {
 		lastOnline = timestamp
 	}
