@@ -174,7 +174,7 @@ func TestUpdateStatus(t *testing.T) {
 	if w.updateStatus("a", lib.StatusNotFound, 35) {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusOnline, 36) {
+	if !w.updateStatus("a", lib.StatusOnline, 37) {
 		t.Error("unexpected status update")
 	}
 	if w.updateStatus("a", lib.StatusOffline, 37) {
