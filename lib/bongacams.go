@@ -41,7 +41,7 @@ func CheckModelBongaCams(client *Client, modelID string, headers [][2]string, db
 	return StatusUnknown
 }
 
-// StartBongaCamsChecker starts a checker for Chaturbate
+// StartBongaCamsChecker starts a checker for BongaCams
 func StartBongaCamsChecker(
 	usersOnlineEndpoint string,
 	clients []*Client,
