@@ -70,17 +70,48 @@ offline:
   parse: raw
   str: '{{ .model }} не в сети'
 list:
-  parse: raw
+  parse: html
   str: |-
-    {{- range .list -}}
-      {{- if .Online -}}
-        {{- .Model }} в сети {{- print "\n" -}}
-      {{- else if .Denied -}}
-        {{- .Model }} заблокировала доступ из США, где находится этот бот {{- print "\n" -}}
-      {{- else -}}
-        {{- .Model }} не в сети {{- print "\n" -}}
+    {{- $printed := false -}}
+    {{- if .online -}}
+      {{- $printed = true -}}
+      <code>В СЕТИ</code>
+      {{- print "\n" -}}
+      {{- range .online -}}
+        {{- .Model -}}
+        {{- if .Begin }} {{ template "duration" .Begin }} {{- end -}}
+        {{- print "\n" -}}
       {{- end -}}
-    {{- else -}}
+    {{- end -}}
+
+    {{- if .offline -}}
+      {{- if $printed -}}
+        {{- print "\n" -}}
+      {{- end -}}
+      {{- $printed = true -}}
+      <code>НЕ В СЕТИ</code>
+      {{- print "\n" -}}
+      {{- range .offline -}}
+        {{- .Model -}}
+        {{- if .End }} была {{ template "duration" .End }} назад {{- end -}}
+        {{- print "\n" -}}
+      {{- end -}}
+    {{- end -}}
+
+    {{- if .denied -}}
+      {{- if $printed -}}
+        {{- print "\n" -}}
+      {{- end -}}
+      <code>ЗАБЛОКИРОВАНЫ ИЗ СТРАНЫ БОТА</code>
+      {{- print "\n" -}}
+      {{- range .denied -}}
+        {{- .Model -}}
+        {{- if .End }} была {{ template "duration" .End }} назад {{- end -}}
+        {{- print "\n" -}}
+      {{- end -}}
+    {{- end -}}
+
+    {{- if and (not .online) (not .offline) (not .denied) -}}
     Вы не подписаны ни на одну модель
     Чтобы подписаться, наберите
 
@@ -175,3 +206,16 @@ version:
 your_max_models:
   parse: raw
   str: 'Вы можете подписаться на {{ .max_models }} моделей'
+duration:
+  str: |-
+    {{- if and .Days (not .Hours) -}}
+      {{ .Days }}д
+    {{- else if .Days -}}
+      {{ .Days }}д {{ .Hours }}ч
+    {{- else if and .Hours (not .Minutes) -}}
+      {{ .Hours }}ч
+    {{- else if .Hours -}}
+      {{ .Hours }}ч {{ .Minutes }}м
+    {{- else -}}
+      {{ .Minutes }}м
+    {{- end -}}

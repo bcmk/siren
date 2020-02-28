@@ -30,20 +30,24 @@ func TestSql(t *testing.T) {
 	w.mustExec("insert into block (endpoint, chat_id, block) values (?,?,?)", "ep1", 6, w.cfg.BlockThreshold)
 	w.mustExec("insert into block (endpoint, chat_id, block) values (?,?,?)", "ep1", 7, w.cfg.BlockThreshold)
 	w.mustExec("insert into block (endpoint, chat_id, block) values (?,?,?)", "ep2", 7, w.cfg.BlockThreshold)
-	w.mustExec("insert into statuses (model_id, status) values (?,?)", "a", lib.StatusOnline)
-	w.mustExec("insert into statuses (model_id, status) values (?,?)", "b", lib.StatusOnline)
-	w.mustExec("insert into statuses (model_id, status) values (?,?)", "c", lib.StatusOnline)
-	w.mustExec("insert into statuses (model_id, status) values (?,?)", "c2", lib.StatusOnline)
-	models := w.models()
-	if !reflect.DeepEqual(models, []string{"a", "b", "d", "e", "g"}) {
+	w.mustExec("insert into models (model_id, status) values (?,?)", "a", lib.StatusOnline)
+	w.mustExec("insert into models (model_id, status) values (?,?)", "b", lib.StatusOnline)
+	w.mustExec("insert into models (model_id, status) values (?,?)", "c", lib.StatusOnline)
+	w.mustExec("insert into models (model_id, status) values (?,?)", "c2", lib.StatusOnline)
+	models := w.knownModels()
+	if !reflect.DeepEqual(models, []string{"a", "b", "c", "c2"}) {
+		t.Error("unexpected models result", models)
+	}
+	models = w.modelsToPoll()
+	if !reflect.DeepEqual(models, []string{"a", "d", "e", "g"}) {
 		t.Error("unexpected models result", models)
 	}
 	broadcastChats := w.broadcastChats("ep1")
-	if !reflect.DeepEqual(broadcastChats, []int64{1, 2, 4}) {
+	if !reflect.DeepEqual(broadcastChats, []int64{1, 2, 3, 4, 5, 6, 7}) {
 		t.Error("unexpected broadcast chats result", broadcastChats)
 	}
 	broadcastChats = w.broadcastChats("ep2")
-	if !reflect.DeepEqual(broadcastChats, []int64{6, 8}) {
+	if !reflect.DeepEqual(broadcastChats, []int64{6, 7, 8}) {
 		t.Error("unexpected broadcast chats result", broadcastChats)
 	}
 	chatsForModel, endpoints := w.chatsForModel("a")
@@ -58,19 +62,19 @@ func TestSql(t *testing.T) {
 		t.Error("unexpected chats for model result", chatsForModel)
 	}
 	chatsForModel, _ = w.chatsForModel("c")
-	if len(chatsForModel) > 0 {
+	if !reflect.DeepEqual(chatsForModel, []int64{3}) {
 		t.Error("unexpected chats for model result", chatsForModel)
 	}
 	chatsForModel, _ = w.chatsForModel("d")
-	if !reflect.DeepEqual(chatsForModel, []int64{4}) {
+	if !reflect.DeepEqual(chatsForModel, []int64{4, 5}) {
 		t.Error("unexpected chats for model result", chatsForModel)
 	}
 	chatsForModel, _ = w.chatsForModel("e")
-	if !reflect.DeepEqual(chatsForModel, []int64{6}) {
+	if !reflect.DeepEqual(chatsForModel, []int64{6, 6}) {
 		t.Error("unexpected chats for model result", chatsForModel)
 	}
 	chatsForModel, _ = w.chatsForModel("f")
-	if len(chatsForModel) != 0 {
+	if !reflect.DeepEqual(chatsForModel, []int64{7, 7}) {
 		t.Error("unexpected chats for model result", chatsForModel)
 	}
 	w.incrementBlock("ep1", 2)
@@ -110,96 +114,118 @@ func TestSql(t *testing.T) {
 func TestUpdateStatus(t *testing.T) {
 	w := newTestWorker()
 	w.createDatabase()
-	if w.updateStatus("a", lib.StatusOffline, 10) {
+	if n, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 18); n == 0 {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusOnline, 11) {
+	if n, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 19); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusNotFound, 12) {
+	if n, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 20); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusUnknown, 13) {
+	if n, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 21); n != 0 {
 		t.Error("unexpected status update")
 	}
-	w.mustExec("insert into statuses (model_id, status) values (?,?)", "a", lib.StatusOnline)
-	if w.updateStatus("a", lib.StatusOffline, 14) {
+	if w.onlineModelsCount() != 1 {
+		t.Error("wrong online models count")
+	}
+	if n, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 22); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusOnline, 15) {
+	if n, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusNotFound}}, 23); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusNotFound, 16) {
+	if w.onlineModelsCount() != 1 {
+		t.Error("wrong online models count")
+	}
+	if n, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusNotFound}}, 24); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusUnknown, 17) {
+	if w.confirmedStatus("a") != lib.StatusOnline {
+		t.Error("wrong active status")
+	}
+	if n, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusNotFound}}, 29); n == 0 {
 		t.Error("unexpected status update")
 	}
-	w.mustExec("delete from statuses")
-	w.mustExec("insert into signals (chat_id, model_id) values (?,?)", 1, "a")
-	if !w.updateStatus("a", lib.StatusOnline, 18) {
+	if w.confirmedStatus("a") != lib.StatusNotFound {
+		t.Error("wrong active status")
+	}
+	if n, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 30); n == 0 {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusOffline, 19) {
+	if n, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 31); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusOffline, 20) {
+	if n, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusUnknown}}, 32); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusOnline, 21) {
+	if n, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusUnknown}}, 33); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusOnline, 22) {
+	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 34)
+	if n, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusNotFound}}, 35); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusNotFound, 23) {
+	if n, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 37); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusNotFound, 24) {
+	if n, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 37); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if !w.updateStatus("a", lib.StatusOnline, 30) {
+	if n, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 41); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusOnline, 31) {
+	if n, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 42); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusUnknown, 32) {
+	if n, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 48); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusUnknown, 33) {
+	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusNotFound}}, 49)
+	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusNotFound}}, 50)
+	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 50)
+	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusNotFound}}, 52)
+	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "b", Status: lib.StatusOnline}}, 53)
+	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "b", Status: lib.StatusOffline}}, 54)
+	if w.confirmedStatus("b") != lib.StatusOnline {
+		t.Error("wrong active status")
+	}
+	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "b", Status: lib.StatusOnline}}, 55)
+	if w.confirmedStatus("b") != lib.StatusOnline {
+		t.Error("wrong active status")
+	}
+	if w.onlineModelsCount() != 2 {
+		t.Error("wrong online models count")
+	}
+	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 56)
+	if count := w.onlineModelsCount(); count != 2 {
+		t.Errorf("wrong online models count: %d", count)
+	}
+	w.cfg.OfflineNotifications = true
+	if n, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 57); n != 0 {
 		t.Error("unexpected status update")
 	}
-	w.updateStatus("a", lib.StatusOffline, 34)
-	if w.updateStatus("a", lib.StatusNotFound, 35) {
+	if w.confirmedStatus("a") != lib.StatusOnline {
+		t.Error("wrong active status")
+	}
+	if n, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 68); n == 0 {
 		t.Error("unexpected status update")
 	}
-	if !w.updateStatus("a", lib.StatusOnline, 37) {
+	if w.confirmedStatus("a") != lib.StatusOffline {
+		t.Error("wrong active status")
+	}
+}
+
+func TestUpdateStatusFromNotFoundToOnline(t *testing.T) {
+	w := newTestWorker()
+	w.createDatabase()
+	if n, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusNotFound}}, 18); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusOffline, 37) {
+	if n, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusNotFound}}, 24); n == 0 {
 		t.Error("unexpected status update")
 	}
-	if w.updateStatus("a", lib.StatusOnline, 41) {
+	if n, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 30); n == 0 {
 		t.Error("unexpected status update")
-	}
-	if w.updateStatus("a", lib.StatusOffline, 42) {
-		t.Error("unexpected status update")
-	}
-	if !w.updateStatus("a", lib.StatusOnline, 48) {
-		t.Error("unexpected status update")
-	}
-	if w.notFound("a") {
-		t.Error("unexpected result")
-	}
-	if w.notFound("a") {
-		t.Error("unexpected result")
-	}
-	if !w.notFound("a") {
-		t.Error("unexpected result")
-	}
-	w.removeNotFound("a")
-	if w.notFound("a") {
-		t.Error("unexpected result")
 	}
 }

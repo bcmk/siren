@@ -7,8 +7,8 @@ type statistics struct {
 	ActiveUsersTotalCount          int    `json:"active_users_total_count"`
 	HeavyUsersCount                int    `json:"heavy_users_count"`
 	ModelsCount                    int    `json:"models_count"`
-	ModelsToQueryOnEndpointCount   int    `json:"models_to_query_on_endpoint_count"`
-	ModelsToQueryTotalCount        int    `json:"models_to_query_total_count"`
+	ModelsToPollOnEndpointCount    int    `json:"models_to_poll_on_endpoint_count"`
+	ModelsToPollTotalCount         int    `json:"models_to_poll_total_count"`
 	OnlineModelsCount              int    `json:"online_models_count"`
 	QueriesDurationMilliseconds    int    `json:"queries_duration_milliseconds"`
 	ErrorRate                      [2]int `json:"error_rate"`

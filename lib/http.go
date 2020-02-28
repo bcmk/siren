@@ -72,9 +72,3 @@ func onlineQuery(
 	}
 	return resp, &buf, time.Since(start), nil
 }
-
-func sendUnknowns(output chan StatusUpdate, models []string) {
-	for _, modelID := range models {
-		output <- StatusUpdate{ModelID: modelID, Status: StatusUnknown}
-	}
-}
