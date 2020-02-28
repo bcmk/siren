@@ -79,17 +79,48 @@ online_list:
   parse: raw
   str: '{{ .model }} online'
 list:
-  parse: raw
+  parse: html
   str: |-
-    {{- range .list -}}
-      {{- if .Online -}}
-        {{- .Model }} online {{- print "\n" -}}
-      {{- else if .Denied -}}
-        {{- .Model }} has blocked an access from the USA, the location of this bot {{- print "\n" -}}
-      {{- else -}}
-        {{- .Model }} offline {{- print "\n" -}}
+    {{- $printed := false -}}
+    {{- if .online -}}
+      {{- $printed = true -}}
+      <code>ONLINE</code>
+      {{- print "\n" -}}
+      {{- range .online -}}
+        {{- .Model -}}
+        {{- if .Begin }} for {{ template "duration" .Begin }} {{- end -}}
+        {{- print "\n" -}}
       {{- end -}}
-    {{- else -}}
+    {{- end -}}
+
+    {{- if .offline -}}
+      {{- if $printed -}}
+        {{- print "\n" -}}
+      {{- end -}}
+      {{- $printed = true -}}
+      <code>OFFLINE</code>
+      {{- print "\n" -}}
+      {{- range .offline -}}
+        {{- .Model -}}
+        {{- if .End }}, last seen {{ template "duration" .End }} ago {{- end -}}
+        {{- print "\n" -}}
+      {{- end -}}
+    {{- end -}}
+
+    {{- if .denied -}}
+      {{- if $printed -}}
+        {{- print "\n" -}}
+      {{- end -}}
+      <code>BLOCKED FROM BOT'S COUNTRY</code>
+      {{- print "\n" -}}
+      {{- range .denied -}}
+        {{- .Model -}}
+        {{- if .End }}, last seen {{ template "duration" .End }} ago {{- end -}}
+        {{- print "\n" -}}
+      {{- end -}}
+    {{- end -}}
+
+    {{- if and (not .online) (not .offline) (not .denied) -}}
     You are not subscribed to any model
     To subscribe enter
 
@@ -184,3 +215,16 @@ version:
 your_max_models:
   parse: raw
   str: 'You can subscribe up to {{ .max_models }} models'
+duration:
+  str: |-
+    {{- if and .Days (not .Hours) -}}
+      {{ .Days }}d
+    {{- else if .Days -}}
+      {{ .Days }}d {{ .Hours }}h
+    {{- else if and .Hours (not .Minutes) -}}
+      {{ .Hours }}h
+    {{- else if .Hours -}}
+      {{ .Hours }}h {{ .Minutes }}m
+    {{- else -}}
+      {{ .Minutes }}m
+    {{- end -}}

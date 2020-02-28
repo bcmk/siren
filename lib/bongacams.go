@@ -50,15 +50,18 @@ func StartBongaCamsAPIChecker(
 	headers [][2]string,
 	intervalMs int,
 	dbg bool,
-) (input chan []string, output chan StatusUpdate, elapsedCh chan time.Duration) {
+) (
+	statusRequests chan StatusRequest,
+	statusUpdates chan []StatusUpdate,
+	elapsedCh chan time.Duration) {
 
-	input = make(chan []string)
-	output = make(chan StatusUpdate)
+	statusRequests = make(chan StatusRequest)
+	statusUpdates = make(chan []StatusUpdate)
 	elapsedCh = make(chan time.Duration)
 	clientIdx := 0
 	clientsNum := len(clients)
 	go func() {
-		for models := range input {
+		for request := range statusRequests {
 			client := clients[clientIdx]
 			clientIdx++
 			if clientIdx == clientsNum {
@@ -68,13 +71,13 @@ func StartBongaCamsAPIChecker(
 			resp, buf, elapsed, err := onlineQuery(usersOnlineEndpoint, client, headers)
 			elapsedCh <- elapsed
 			if err != nil {
-				sendUnknowns(output, models)
+				statusUpdates <- nil
 				Lerr("[%v] cannot send a query, %v", client.Addr, err)
 				continue
 			}
 			if resp.StatusCode != 200 {
 				Lerr("[%v] query status, %d", client.Addr, resp.StatusCode)
-				sendUnknowns(output, models)
+				statusUpdates <- nil
 				continue
 			}
 			decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
@@ -85,41 +88,54 @@ func StartBongaCamsAPIChecker(
 				if dbg {
 					Ldbg("response: %s", buf.String())
 				}
-				sendUnknowns(output, models)
+				statusUpdates <- nil
 				continue
 			}
 
 			hash := map[string]bool{}
+			updates := []StatusUpdate{}
 			for _, m := range parsed {
-				hash[strings.ToLower(m.Username)] = true
+				modelID := strings.ToLower(m.Username)
+				hash[modelID] = true
+				updates = append(updates, StatusUpdate{ModelID: modelID, Status: StatusOnline})
 			}
 
-			for _, modelID := range models {
-				newStatus := StatusOffline
-				if hash[modelID] {
-					newStatus = StatusOnline
+			for _, modelID := range request.KnownModels {
+				if !hash[modelID] {
+					updates = append(updates, StatusUpdate{ModelID: modelID, Status: StatusOffline})
 				}
-				output <- StatusUpdate{ModelID: modelID, Status: newStatus}
 			}
+			statusUpdates <- updates
 		}
 	}()
 	return
 }
 
-// StartBongaCamsRedirChecker starts a checker for BongaCams using redirection heuristic
-func StartBongaCamsRedirChecker(usersOnlineEndpoint string, clients []*Client, headers [][2]string, intervalMs int, debug bool) (input chan []string, output chan StatusUpdate, elapsed chan time.Duration) {
-	input = make(chan []string)
-	output = make(chan StatusUpdate)
+// StartBongaCamsPollingChecker starts a checker for BongaCams using redirection heuristic
+func StartBongaCamsPollingChecker(
+	usersOnlineEndpoint string,
+	clients []*Client,
+	headers [][2]string,
+	intervalMs int,
+	debug bool,
+) (
+	statusRequests chan StatusRequest,
+	output chan []StatusUpdate,
+	elapsed chan time.Duration) {
+
+	statusRequests = make(chan StatusRequest)
+	output = make(chan []StatusUpdate)
 	elapsed = make(chan time.Duration)
 	clientIdx := 0
 	clientsNum := len(clients)
 	go func() {
-		for models := range input {
+		for request := range statusRequests {
 			start := time.Now()
-			for _, modelID := range models {
+			updates := []StatusUpdate{}
+			for _, modelID := range request.ModelsToPoll {
 				queryStart := time.Now()
 				newStatus := CheckModelBongaCams(clients[clientIdx], modelID, headers, debug)
-				output <- StatusUpdate{ModelID: modelID, Status: newStatus}
+				updates = append(updates, StatusUpdate{ModelID: modelID, Status: newStatus})
 				queryElapsed := time.Since(queryStart) / time.Millisecond
 				if intervalMs != 0 {
 					sleep := intervalMs/len(clients) - int(queryElapsed)
@@ -133,6 +149,7 @@ func StartBongaCamsRedirChecker(usersOnlineEndpoint string, clients []*Client, h
 				}
 			}
 			elapsed <- time.Since(start)
+			output <- updates
 		}
 	}()
 	return

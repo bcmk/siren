@@ -43,34 +43,40 @@ type mailConfig struct {
 	CertificateKey string `json:"certificate_key"` // certificate key path for STARTTLS
 }
 
+type statusConfirmationSeconds struct {
+	Offline  int `json:"offline"`
+	Online   int `json:"online"`
+	NotFound int `json:"not_found"`
+	Denied   int `json:"denied"`
+}
+
 type config struct {
-	Website                     string              `json:"website"`                        // one of the following strings: "bongacams", "stripchat", "chaturbate"
-	PeriodSeconds               int                 `json:"period_seconds"`                 // the period of querying models statuses
-	MaxModels                   int                 `json:"max_models"`                     // maximum models per user
-	TimeoutSeconds              int                 `json:"timeout_seconds"`                // HTTP timeout
-	AdminID                     int64               `json:"admin_id"`                       // admin telegram ID
-	AdminEndpoint               string              `json:"admin_endpoint"`                 // admin endpoint
-	DBPath                      string              `json:"db_path"`                        // path to the database
-	NotFoundThreshold           int                 `json:"not_found_threshold"`            // remove a model after she is reported as not found this number of times
-	BlockThreshold              int                 `json:"block_threshold"`                // do not send a message to the user after being blocked by him this number of times
-	Debug                       bool                `json:"debug"`                          // debug mode
-	IntervalMs                  int                 `json:"interval_ms"`                    // queries interval per IP address for rate limited access
-	SourceIPAddresses           []string            `json:"source_ip_addresses"`            // source IP addresses for rate limited access
-	DangerousErrorRate          string              `json:"dangerous_error_rate"`           // dangerous error rate, warn admin if it is reached, format "1000/10000"
-	EnableCookies               bool                `json:"enable_cookies"`                 // enable cookies, it can be useful to mitigate rate limits
-	Headers                     [][2]string         `json:"headers"`                        // HTTP headers to make queries with
-	StatPassword                string              `json:"stat_password"`                  // password for statistics
-	ErrorReportingPeriodMinutes int                 `json:"error_reporting_period_minutes"` // the period of the error reports
-	Endpoints                   map[string]endpoint `json:"endpoints"`                      // the endpoints by simple name, used for the support of the bots in different languages accessing the same database
-	HeavyUserRemainder          int                 `json:"heavy_user_remainder"`           // the maximum remainder of models to treat an user as heavy
-	CoinPayments                *coinPaymentsConfig `json:"coin_payments"`                  // CoinPayments integration
-	Mail                        *mailConfig         `json:"mail"`                           // mail config
-	ReferralBonus               int                 `json:"referral_bonus"`                 // number of emails for a referrer
-	FollowerBonus               int                 `json:"follower_bonus"`                 // number of emails for a new user registered by a referral link
-	UsersOnlineEndpoint         string              `json:"users_online_endpoint"`          // the endpoint to fetch online users
-	OfflineThresholdSeconds     int                 `json:"offline_threshold_seconds"`      // report online status only if model was offline longer than this threshold
-	OfflineNotifications        bool                `json:"offline_notifications"`          // enable offline notifications
-	Checker                     string              `json:"checker"`                        // use specific checker, for example "api" or "redir" for BongaCams
+	Website                     string                    `json:"website"`                        // one of the following strings: "bongacams", "stripchat", "chaturbate"
+	PeriodSeconds               int                       `json:"period_seconds"`                 // the period of querying models statuses
+	MaxModels                   int                       `json:"max_models"`                     // maximum models per user
+	TimeoutSeconds              int                       `json:"timeout_seconds"`                // HTTP timeout
+	AdminID                     int64                     `json:"admin_id"`                       // admin telegram ID
+	AdminEndpoint               string                    `json:"admin_endpoint"`                 // admin endpoint
+	DBPath                      string                    `json:"db_path"`                        // path to the database
+	BlockThreshold              int                       `json:"block_threshold"`                // do not send a message to the user after being blocked by him this number of times
+	Debug                       bool                      `json:"debug"`                          // debug mode
+	IntervalMs                  int                       `json:"interval_ms"`                    // queries interval per IP address for rate limited access
+	SourceIPAddresses           []string                  `json:"source_ip_addresses"`            // source IP addresses for rate limited access
+	DangerousErrorRate          string                    `json:"dangerous_error_rate"`           // dangerous error rate, warn admin if it is reached, format "1000/10000"
+	EnableCookies               bool                      `json:"enable_cookies"`                 // enable cookies, it can be useful to mitigate rate limits
+	Headers                     [][2]string               `json:"headers"`                        // HTTP headers to make queries with
+	StatPassword                string                    `json:"stat_password"`                  // password for statistics
+	ErrorReportingPeriodMinutes int                       `json:"error_reporting_period_minutes"` // the period of the error reports
+	Endpoints                   map[string]endpoint       `json:"endpoints"`                      // the endpoints by simple name, used for the support of the bots in different languages accessing the same database
+	HeavyUserRemainder          int                       `json:"heavy_user_remainder"`           // the maximum remainder of models to treat an user as heavy
+	CoinPayments                *coinPaymentsConfig       `json:"coin_payments"`                  // CoinPayments integration
+	Mail                        *mailConfig               `json:"mail"`                           // mail config
+	ReferralBonus               int                       `json:"referral_bonus"`                 // number of emails for a referrer
+	FollowerBonus               int                       `json:"follower_bonus"`                 // number of emails for a new user registered by a referral link
+	UsersOnlineEndpoint         string                    `json:"users_online_endpoint"`          // the endpoint to fetch online users
+	StatusConfirmationSeconds   statusConfirmationSeconds `json:"status_confirmation_seconds"`    // a status is confirmed only if it lasts for at least this number of seconds
+	OfflineNotifications        bool                      `json:"offline_notifications"`          // enable offline notifications
+	Checker                     checkerKind               `json:"checker"`                        // use specific checker, for example "api" or "redir" for BongaCams
 
 	errorThreshold   int
 	errorDenominator int
@@ -138,9 +144,6 @@ func checkConfig(cfg *config) error {
 	}
 	if cfg.DBPath == "" {
 		return errors.New("configure db_path")
-	}
-	if cfg.NotFoundThreshold == 0 {
-		return errors.New("configure not_found_threshold")
 	}
 	if cfg.BlockThreshold == 0 {
 		return errors.New("configure block_threshold")
