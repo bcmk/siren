@@ -73,6 +73,9 @@ type translations struct {
 	MailReceived           *translation `json:"mail_received"`
 	BuyButton              *translation `json:"buy_button"`
 	ReferralLink           *translation `json:"referral_link"`
+	InvalidReferralLink    *translation `json:"invalid_referral_link"`
+	FollowerExists         *translation `json:"follower_exists"`
+	ReferralApplied        *translation `json:"referral_applied"`
 	OwnReferralLinkHit     *translation `json:"own_referral_link_hit"`
 	SubscriptionUsage      *translation `json:"subscription_usage"`
 	SubscriptionUsageAd    *translation `json:"subscription_usage_ad"`

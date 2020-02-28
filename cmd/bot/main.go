@@ -64,6 +64,14 @@ type email struct {
 	email    string
 }
 
+type appliedKind int
+
+const (
+	invalidReferral appliedKind = iota
+	followerExists
+	referralApplied
+)
+
 func newWorker() *worker {
 	if len(os.Args) != 2 {
 		panic("usage: siren <config>")
@@ -438,9 +446,14 @@ func singleInt(row *sql.Row) (result int) {
 	return result
 }
 
-func (w *worker) checkExists(endpoint string, chatID int64, modelID string) bool {
+func (w *worker) subscriptionExists(endpoint string, chatID int64, modelID string) bool {
 	duplicate := w.db.QueryRow("select count(*) from signals where chat_id=? and model_id=? and endpoint=?", chatID, modelID, endpoint)
 	count := singleInt(duplicate)
+	return count != 0
+}
+
+func (w *worker) userExists(chatID int64) bool {
+	count := singleInt(w.db.QueryRow("select count(*) from users where chat_id=?", chatID))
 	return count != 0
 }
 
@@ -478,7 +491,7 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) {
 
 	w.addUser(endpoint, chatID)
 
-	if w.checkExists(endpoint, chatID, modelID) {
+	if w.subscriptionExists(endpoint, chatID, modelID) {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].AlreadyAdded, modelID)
 		return
 	}
@@ -551,7 +564,7 @@ func (w *worker) removeModel(endpoint string, chatID int64, modelID string) {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, modelID)
 		return
 	}
-	if !w.checkExists(endpoint, chatID, modelID) {
+	if !w.subscriptionExists(endpoint, chatID, modelID) {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].ModelNotInList, modelID)
 		return
 	}
@@ -1026,17 +1039,15 @@ func (w *worker) newRandReferralID() (id string) {
 	return
 }
 
-func (w *worker) refer(followerChatID int64, referrer string) {
+func (w *worker) refer(followerChatID int64, referrer string) (applied appliedKind) {
 	referrerChatID := w.chatForReferralID(referrer)
 	if referrerChatID == nil {
-		return
+		return invalidReferral
 	}
-	w.mustExec(`
-		insert or replace into users (chat_id, max_models) values (?, ?)
-		on conflict(chat_id) do update set max_models=max_models+?`,
-		followerChatID,
-		w.cfg.MaxModels+w.cfg.FollowerBonus,
-		w.cfg.FollowerBonus)
+	if w.userExists(followerChatID) {
+		return followerExists
+	}
+	w.mustExec("insert into users (chat_id, max_models) values (?, ?)", followerChatID, w.cfg.MaxModels+w.cfg.FollowerBonus)
 	w.mustExec(`
 		insert or replace into users (chat_id, max_models) values (?, ?)
 		on conflict(chat_id) do update set max_models=max_models+?`,
@@ -1044,6 +1055,7 @@ func (w *worker) refer(followerChatID int64, referrer string) {
 		w.cfg.MaxModels+w.cfg.ReferralBonus,
 		w.cfg.ReferralBonus)
 	w.mustExec("update referrals set referred_users=referred_users+1 where chat_id=?", referrerChatID)
+	return referralApplied
 }
 
 func (w *worker) showReferral(endpoint string, chatID int64) {
@@ -1063,10 +1075,19 @@ func (w *worker) start(endpoint string, chatID int64, referrer string) {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].OwnReferralLinkHit)
 		return
 	}
-	if referralID == nil && chatID > 0 && referrer != "" {
-		w.refer(chatID, referrer)
-	}
 	w.sendTr(endpoint, chatID, false, w.tr[endpoint].Help)
+	if chatID > 0 && referrer != "" {
+		applied := w.refer(chatID, referrer)
+		switch applied {
+		case referralApplied:
+			w.sendTr(endpoint, chatID, false, w.tr[endpoint].ReferralApplied)
+		case invalidReferral:
+			w.sendTr(endpoint, chatID, false, w.tr[endpoint].InvalidReferralLink)
+		case followerExists:
+			w.sendTr(endpoint, chatID, false, w.tr[endpoint].FollowerExists)
+		}
+	}
+	w.addUser(endpoint, chatID)
 }
 
 func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, arguments string) {
