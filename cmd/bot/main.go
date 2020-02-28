@@ -1070,10 +1070,17 @@ func (w *worker) showReferral(endpoint string, chatID int64) {
 }
 
 func (w *worker) start(endpoint string, chatID int64, referrer string) {
-	referralID := w.referralID(chatID)
-	if referralID != nil && *referralID == referrer {
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].OwnReferralLinkHit)
-		return
+	modelID := ""
+	switch {
+	case strings.HasPrefix(referrer, "m-"):
+		modelID = referrer[2:]
+		referrer = ""
+	case referrer != "":
+		referralID := w.referralID(chatID)
+		if referralID != nil && *referralID == referrer {
+			w.sendTr(endpoint, chatID, false, w.tr[endpoint].OwnReferralLinkHit)
+			return
+		}
 	}
 	w.sendTr(endpoint, chatID, false, w.tr[endpoint].Help)
 	if chatID > 0 && referrer != "" {
@@ -1088,6 +1095,9 @@ func (w *worker) start(endpoint string, chatID int64, referrer string) {
 		}
 	}
 	w.addUser(endpoint, chatID)
+	if modelID != "" {
+		w.addModel(endpoint, chatID, modelID)
+	}
 }
 
 func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, arguments string) {
