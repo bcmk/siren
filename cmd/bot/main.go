@@ -797,7 +797,8 @@ func (w *worker) onlineModelsCount(endpoint string) int {
 		select count(distinct signals.model_id) from signals
 		join statuses on signals.model_id=statuses.model_id
 		left join block on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
-		where statuses.status=2 and (block.block is null or block.block < ?) and signals.endpoint=?`,
+		where statuses.status=? and (block.block is null or block.block < ?) and signals.endpoint=?`,
+		lib.StatusOnline,
 		w.cfg.BlockThreshold,
 		endpoint)
 	return singleInt(query)
