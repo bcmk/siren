@@ -502,7 +502,10 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) {
 		w.subscriptionUsage(endpoint, chatID, true)
 		return
 	}
-	status := w.checkModel(w.clients[0], modelID, w.cfg.Headers, w.cfg.Debug)
+	status := w.modelActiveStatus(modelID)
+	if status == lib.StatusUnknown {
+		status = w.checkModel(w.clients[0], modelID, w.cfg.Headers, w.cfg.Debug)
+	}
 	if status == lib.StatusUnknown || status == lib.StatusNotFound {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].AddError, modelID)
 		return
@@ -803,6 +806,25 @@ func (w *worker) onlineModelsCount(endpoint string) int {
 		w.cfg.BlockThreshold,
 		endpoint)
 	return singleInt(query)
+}
+
+func (w *worker) modelActiveStatus(modelID string) lib.StatusKind {
+	query, err := w.db.Query(`
+		select statuses.status from signals
+		join statuses on signals.model_id=statuses.model_id
+		left join block on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
+		where statuses.model_id=? and (block.block is null or block.block < ?)
+		limit 1`,
+		modelID,
+		w.cfg.BlockThreshold)
+	checkErr(err)
+	defer query.Close()
+	if !query.Next() {
+		return lib.StatusUnknown
+	}
+	var status lib.StatusKind
+	checkErr(query.Scan(&status))
+	return status
 }
 
 func (w *worker) heavyUsersCount(endpoint string) int {
