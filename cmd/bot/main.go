@@ -792,6 +792,7 @@ func (w *worker) modelsToQueryTotalCount() int {
 		w.cfg.BlockThreshold)
 	return singleInt(query)
 }
+
 func (w *worker) onlineModelsCount(endpoint string) int {
 	query := w.db.QueryRow(`
 		select count(distinct signals.model_id) from signals
