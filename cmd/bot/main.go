@@ -238,6 +238,10 @@ func (w *worker) createDatabase() {
 			not_found integer not null default 0,
 			last_online integer not null default 0);`)
 	w.mustExec(`
+		create table if not exists models (
+			model_id text primary key,
+			referred_users integer not null default 0);`)
+	w.mustExec(`
 		create table if not exists feedback (
 			chat_id integer,
 			text text,
@@ -478,29 +482,29 @@ func (w *worker) addUser(endpoint string, chatID int64) {
 	w.mustExec(`insert or ignore into emails (endpoint, chat_id, email) values (?, ?, ?)`, endpoint, chatID, uuid.New())
 }
 
-func (w *worker) addModel(endpoint string, chatID int64, modelID string) {
+func (w *worker) addModel(endpoint string, chatID int64, modelID string) bool {
 	if modelID == "" {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].SyntaxAdd)
-		return
+		return false
 	}
 	modelID = strings.ToLower(modelID)
 	if !lib.ModelIDRegexp.MatchString(modelID) {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, modelID)
-		return
+		return false
 	}
 
 	w.addUser(endpoint, chatID)
 
 	if w.subscriptionExists(endpoint, chatID, modelID) {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].AlreadyAdded, modelID)
-		return
+		return false
 	}
 	subscriptionsNumber := w.subscriptionsNumber(endpoint, chatID)
 	maxModels := w.maxModels(chatID)
 	if subscriptionsNumber >= maxModels {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].NotEnoughSubscriptions)
 		w.subscriptionUsage(endpoint, chatID, true)
-		return
+		return false
 	}
 	status := w.modelActiveStatus(modelID)
 	if status == lib.StatusUnknown {
@@ -508,7 +512,7 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) {
 	}
 	if status == lib.StatusUnknown || status == lib.StatusNotFound {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].AddError, modelID)
-		return
+		return false
 	}
 	w.mustExec("insert into signals (chat_id, model_id, endpoint) values (?,?,?)", chatID, modelID, endpoint)
 	subscriptionsNumber++
@@ -525,6 +529,7 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) {
 	if subscriptionsNumber >= maxModels-w.cfg.HeavyUserRemainder {
 		w.subscriptionUsage(endpoint, chatID, true)
 	}
+	return true
 }
 
 func (w *worker) subscriptionUsage(endpoint string, chatID int64, ad bool) {
@@ -737,13 +742,18 @@ func (w *worker) unknownsNumber() int {
 	return errors
 }
 
-func (w *worker) referralsCount() int {
-	query := w.db.QueryRow("select sum(referred_users) from referrals")
+func (w *worker) userReferralsCount() int {
+	query := w.db.QueryRow("select coalesce(sum(referred_users), 0) from referrals")
+	return singleInt(query)
+}
+
+func (w *worker) modelReferralsCount() int {
+	query := w.db.QueryRow("select coalesce(sum(referred_users), 0) from models")
 	return singleInt(query)
 }
 
 func (w *worker) reports() int {
-	return singleInt(w.db.QueryRow("select sum(reports) from users"))
+	return singleInt(w.db.QueryRow("select coalesce(sum(reports), 0) from users"))
 }
 
 func (w *worker) usersCount(endpoint string) int {
@@ -864,7 +874,8 @@ func (w *worker) statStrings(endpoint string) []string {
 		fmt.Sprintf("Memory usage: %d KiB", stat.Rss),
 		fmt.Sprintf("Transactions: %d/%d", stat.TransactionsOnEndpointFinished, stat.TransactionsOnEndpointCount),
 		fmt.Sprintf("Reports: %d", stat.ReportsCount),
-		fmt.Sprintf("Referrals: %d", stat.ReferralsCount),
+		fmt.Sprintf("User referrals: %d", stat.UserReferralsCount),
+		fmt.Sprintf("Model referrals: %d", stat.ModelReferralsCount),
 	}
 }
 
@@ -1120,7 +1131,10 @@ func (w *worker) start(endpoint string, chatID int64, referrer string) {
 	}
 	w.addUser(endpoint, chatID)
 	if modelID != "" {
-		w.addModel(endpoint, chatID, modelID)
+		if w.addModel(endpoint, chatID, modelID) {
+			w.mustExec("insert or ignore into models (model_id) values (?)", modelID)
+			w.mustExec("update models set referred_users=referred_users+1 where model_id=?", modelID)
+		}
 	}
 }
 
@@ -1136,7 +1150,7 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	switch command {
 	case "add":
 		arguments = strings.Replace(arguments, "—", "--", -1)
-		w.addModel(endpoint, chatID, arguments)
+		_ = w.addModel(endpoint, chatID, arguments)
 	case "remove":
 		arguments = strings.Replace(arguments, "—", "--", -1)
 		w.removeModel(endpoint, chatID, arguments)
@@ -1303,7 +1317,8 @@ func (w *worker) getStat(endpoint string) statistics {
 		ErrorRate:                      [2]int{w.unknownsNumber(), w.cfg.errorDenominator},
 		Rss:                            rss / 1024,
 		MaxRss:                         rusage.Maxrss,
-		ReferralsCount:                 w.referralsCount(),
+		UserReferralsCount:             w.userReferralsCount(),
+		ModelReferralsCount:            w.modelReferralsCount(),
 		ReportsCount:                   w.reports(),
 	}
 }
@@ -1344,7 +1359,7 @@ func (w *worker) handleIPN(writer http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.mustExec("update transactions set status=? where local_id=?", payments.StatusFinished, custom)
-		w.mustExec("update users set max_models = max_models + (select sum(model_number) from transactions where local_id=?)", custom)
+		w.mustExec("update users set max_models = max_models + (select coalesce(sum(model_number), 0) from transactions where local_id=?)", custom)
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].PaymentComplete, w.maxModels(chatID))
 		linf("payment %s is finished", custom)
 	case payments.StatusCanceled:
