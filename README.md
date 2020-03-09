@@ -55,7 +55,7 @@ It is the same as model name in Chaturbate and Stripchat.
 
 Recommended text: "Get a notification in Telegram whenever I'm online ___your link___".
 
-You can use these icons [icons](res/icons).
+You can use these [icons](res/icons).
 
 Write to sirenbot@protonmail.com in case of any questions.
 
