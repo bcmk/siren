@@ -1160,8 +1160,6 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		w.listOnlineModels(endpoint, chatID)
 	case "start", "help":
 		w.start(endpoint, chatID, arguments)
-	case "donate":
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Donation)
 	case "feedback":
 		w.feedback(endpoint, chatID, arguments)
 	case "source":

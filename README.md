@@ -27,7 +27,6 @@ Commands
 * __remove_all__ — Remove all models
 * __list__ — Your model subscriptions
 * __online__ — Your models online
-* __donate__ — Donation instructions
 * __feedback__ _text_ — Send feedback
 * __source__ — Show source code
 * __language__ — This bot in other languages

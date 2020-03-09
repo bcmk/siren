@@ -1,6 +1,6 @@
 {
     "help": {
-        "str": "The bot notifies you whenever your favorite BongaCams models are online.\n\nCommands\n\n<b>add</b> <i>model_ID</i> — Add model\n<b>remove</b> <i>model_ID</i> — Remove model\n<b>remove_all</b> — Remove all models\n<b>list</b> — Your subscriptions list\n<b>donate</b> — Donation instructions\n<b>feedback</b> <i>text</i> — Send feedback\n<b>source</b> — Show source code\n<b>language</b> — This bot in other languages\n<b>help</b> — Command list\n\nYou can find a model ID in an address line of your browser",
+        "str": "The bot notifies you whenever your favorite BongaCams models are online.\n\nCommands\n\n<b>add</b> <i>model_ID</i> — Add model\n<b>remove</b> <i>model_ID</i> — Remove model\n<b>remove_all</b> — Remove all models\n<b>list</b> — Your subscriptions list\n<b>feedback</b> <i>text</i> — Send feedback\n<b>source</b> — Show source code\n<b>language</b> — This bot in other languages\n<b>help</b> — Command list\n\nYou can find a model ID in an address line of your browser",
         "parse": "html"
     },
     "online": {
@@ -65,10 +65,6 @@
     },
     "model_removed": {
         "str": "Model %s removed successfully",
-        "parse": "raw"
-    },
-    "donation": {
-        "str": "Donation instructions",
         "parse": "raw"
     },
     "feedback": {

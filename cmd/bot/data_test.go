@@ -29,7 +29,6 @@ var testTranslations = translations{
 	ModelAdded:     &translation{Str: "ModelAdded %s", Parse: parseRaw},
 	ModelNotInList: &translation{Str: "ModelNotInList %s", Parse: parseRaw},
 	ModelRemoved:   &translation{Str: "ModelRemoved %s", Parse: parseRaw},
-	Donation:       &translation{Str: "Donation", Parse: parseRaw},
 	Feedback:       &translation{Str: "Feedback", Parse: parseRaw},
 	SourceCode:     &translation{Str: "SourceCode", Parse: parseRaw},
 	UnknownCommand: &translation{Str: "UnknownCommand", Parse: parseRaw},

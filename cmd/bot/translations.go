@@ -50,7 +50,6 @@ type translations struct {
 	ModelAdded             *translation `json:"model_added"`
 	ModelNotInList         *translation `json:"model_not_in_list"`
 	ModelRemoved           *translation `json:"model_removed"`
-	Donation               *translation `json:"donation"`
 	Feedback               *translation `json:"feedback"`
 	SourceCode             *translation `json:"source_code"`
 	UnknownCommand         *translation `json:"unknown_command"`
