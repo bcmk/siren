@@ -55,6 +55,8 @@ It is the same as model name in Chaturbate and Stripchat.
 
 Recommended text: "Get a notification in Telegram whenever I'm online ___your link___".
 
+You can use these icons [icons](res/icons).
+
 Write to sirenbot@protonmail.com in case of any questions.
 
 Running your own bot
@@ -70,7 +72,7 @@ The bot uses [webhooks](https://core.telegram.org/bots/webhooks) to receive upda
 
 Create JSON configuration and JSON translation files.
 A configuration is described in [config.go](cmd/bot/config.go).
-An example of translation is in [bongacams-translation.json.example](strings/bongacams-translation.json.example).
+An example of translation is in [bongacams.json.example](res/translations/bongacams.json.example).
 
 Build cmd/bot. Run this executable with a path to config file as an argument.
 
