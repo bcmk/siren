@@ -35,6 +35,26 @@ Commands
 
 You can find a model ID in an address line of your browser.
 
+For models
+----------
+
+A model can add a link on her or his profile page.
+A user clicking on it will automatically subscribe to this model.
+The user receives a notification whenever the model starts broadcasting.
+
+Format of models links:
+* English bot for Chaturbate: https://t.me/ChaturbateAlarmBot?start=m-model_id
+* English bot for Stripchat and xHamster Live: https://t.me/StripchatOnlineBot?start=m-model_id
+* English bot for BongaCams: https://t.me/BongacamsOnlineBot?start=m-model_id
+* Russian bot for Chaturbate: https://t.me/ChaturbateSirenBot?start=m-model_id
+* Russian bot for Stripchat and xHamster Live: https://t.me/StripchatSirenBot?start=m-model_id
+* Russian bot for BongaCams: https://t.me/BongacamsSirenBot?start=m-model_id
+
+A model must replace __model_id__ to her or his actual model ID.
+It is the same as model name in Chaturbate and Stripchat.
+
+Write to sirenbot@protonmail.com in case of any questions.
+
 Running your own bot
 --------------------
 
