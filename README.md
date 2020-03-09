@@ -53,6 +53,8 @@ Format of models links:
 A model must replace __model_id__ to her or his actual model ID.
 It is the same as model name in Chaturbate and Stripchat.
 
+Recommended text: "Get a notification in Telegram whenever I'm online __your link__".
+
 Write to sirenbot@protonmail.com in case of any questions.
 
 Running your own bot
