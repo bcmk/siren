@@ -50,10 +50,10 @@ Format of models links:
 * Russian bot for Stripchat and xHamster Live: https://t.me/StripchatSirenBot?start=m-model_id
 * Russian bot for BongaCams: https://t.me/BongacamsSirenBot?start=m-model_id
 
-A model must replace __model_id__ to her or his actual model ID.
+A model must replace _model_id_ to her or his actual model ID.
 It is the same as model name in Chaturbate and Stripchat.
 
-Recommended text: "Get a notification in Telegram whenever I'm online __your link__".
+Recommended text: "Get a notification in Telegram whenever I'm online ___your link___".
 
 Write to sirenbot@protonmail.com in case of any questions.
 

@@ -35,6 +35,32 @@ __[English](README.md)__
 
 Идентификатор модели можно посмотреть в адресной строке браузера.
 
+Для моделей
+-----------
+
+Модель может добавить ссылку в свой профиль.
+Пользователь, кликнувший по такой ссылке, автоматически подпишется на эту модель.
+Он будет получать оповещения, когда модель начинает трансляцию.
+
+Формат ссылок для моделей:
+* Английский бот для Chaturbate: https://t.me/ChaturbateAlarmBot?start=m-model_id
+* Английский бот для Stripchat и xHamster Live: https://t.me/StripchatOnlineBot?start=m-model_id
+* Английский бот для BongaCams: https://t.me/BongacamsOnlineBot?start=m-model_id
+* Русский бот для Chaturbate: https://t.me/ChaturbateSirenBot?start=m-model_id
+* Русский бот для Stripchat и xHamster Live: https://t.me/StripchatSirenBot?start=m-model_id
+* Русский бот для BongaCams: https://t.me/BongacamsSirenBot?start=m-model_id
+
+Модель должна заменить _model_id_ на её реальный идентификатор модели.
+Это то же самое, что и имя модели в Chaturbate и Stripchat.
+
+Рекомендованный текст для англоязычных пользователей: "Get a notification in Telegram whenever I'm online ___ваша ссылка___".
+
+Рекомендованный текст для русскоязычных пользователей: "Получай оповещение в Telegram, когда я начинаю трансляцию ___ваша ссылка___".
+
+Англоязычный бот отличается от русскоязычного по большому счёту только языком, на котором пользователь получает оповещения, например, "___имя модели___ в сети" и "___имя модели___ online".
+
+Пишите на sirenbot@protonmail.com, если у вас есть вопросы.
+
 Собственный бот
 ---------------
 
