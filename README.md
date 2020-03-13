@@ -46,17 +46,17 @@ The user receives a notification whenever the model starts broadcasting.
 
 Format of models links:
 * English bot for Chaturbate:  
-  https://t.me/ChaturbateAlarmBot?start=m-<b><i>model_id</i></b>
+  <pre>https://t.me/ChaturbateAlarmBot?start=m-<b><i>model_id</i></b></pre>
 * English bot for Stripchat and xHamster Live:  
-  https://t.me/StripchatOnlineBot?start=m-<b><i>model_id</i></b>
+  <pre>https://t.me/StripchatOnlineBot?start=m-<b><i>model_id</i></b></pre>
 * English bot for BongaCams:  
-  https://t.me/BongacamsOnlineBot?start=m-<b><i>model_id</i></b>
+  <pre>https://t.me/BongacamsOnlineBot?start=m-<b><i>model_id</i></b></pre>
 * Russian bot for Chaturbate:  
-  https://t.me/ChaturbateSirenBot?start=m-<b><i>model_id</i></b>
+  <pre>https://t.me/ChaturbateSirenBot?start=m-<b><i>model_id</i></b></pre>
 * Russian bot for Stripchat and xHamster Live:  
-  https://t.me/StripchatSirenBot?start=m-<b><i>model_id</i></b>
+  <pre>https://t.me/StripchatSirenBot?start=m-<b><i>model_id</i></b></pre>
 * Russian bot for BongaCams:  
-  https://t.me/BongacamsSirenBot?start=m-<b><i>model_id</i></b>
+  <pre>https://t.me/BongacamsSirenBot?start=m-<b><i>model_id</i></b></pre>
 
 A model must replace <b><i>model_id</i></b> to her or his actual model ID.
 It is the same as model name in Chaturbate and Stripchat.
