@@ -1,7 +1,7 @@
 __[English](README.md)__
 
-Бот для оповещения о статусе моделей BongaCams, Chaturbate, Stripchat и xHamster Live в Telegram
-================================================================================================
+О боте
+======
 
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
 [![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)
