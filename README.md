@@ -58,7 +58,7 @@ Format of models links:
 * Russian bot for BongaCams:  
   <pre>https://t.me/BongacamsSirenBot?start=m-<b><i>model_id</i></b></pre>
 
-A model must replace <b><i>model_id</i></b> to her or his actual model ID.
+A model must replace ___model_id___ to her or his actual model ID.
 It is the same as model name in Chaturbate and Stripchat.
 
 Recommended text: "Get a notification in Telegram whenever I'm online ___your link___".

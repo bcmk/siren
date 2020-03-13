@@ -58,7 +58,7 @@ __[English](README.md)__
 * Русский бот для BongaCams:  
   <pre>https://t.me/BongacamsSirenBot?start=m-<b><i>model_id</i></b></pre>
 
-Модель должна заменить <b><i>model_id</i></b> на её реальный идентификатор модели.
+Модель должна заменить ___model_id___ на её реальный идентификатор модели.
 Это то же самое, что и имя модели в Chaturbate и Stripchat.
 
 Рекомендованный текст для англоязычных пользователей: "Get a notification in Telegram whenever I'm online ___ваша ссылка___".
