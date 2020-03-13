@@ -46,19 +46,19 @@ __[English](README.md)__
 
 Формат ссылок для моделей:
 * Английский бот для Chaturbate:  
-  https://t.me/ChaturbateAlarmBot?start=m-model_id
+  https://t.me/ChaturbateAlarmBot?start=m-<b><i>model_id</i></b>
 * Английский бот для Stripchat и xHamster Live:  
-  https://t.me/StripchatOnlineBot?start=m-model_id
+  https://t.me/StripchatOnlineBot?start=m-<b><i>model_id</i></b>
 * Английский бот для BongaCams:  
-  https://t.me/BongacamsOnlineBot?start=m-model_id
+  https://t.me/BongacamsOnlineBot?start=m-<b><i>model_id</i></b>
 * Русский бот для Chaturbate:  
-  https://t.me/ChaturbateSirenBot?start=m-model_id
+  https://t.me/ChaturbateSirenBot?start=m-<b><i>model_id</i></b>
 * Русский бот для Stripchat и xHamster Live:  
-  https://t.me/StripchatSirenBot?start=m-model_id
+  https://t.me/StripchatSirenBot?start=m-<b><i>model_id</i></b>
 * Русский бот для BongaCams:  
-  https://t.me/BongacamsSirenBot?start=m-model_id
+  https://t.me/BongacamsSirenBot?start=m-<b><i>model_id</i></b>
 
-Модель должна заменить _model_id_ на её реальный идентификатор модели.
+Модель должна заменить <b><i>model_id</i></b> на её реальный идентификатор модели.
 Это то же самое, что и имя модели в Chaturbate и Stripchat.
 
 Рекомендованный текст для англоязычных пользователей: "Get a notification in Telegram whenever I'm online ___ваша ссылка___".

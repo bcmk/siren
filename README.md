@@ -46,19 +46,19 @@ The user receives a notification whenever the model starts broadcasting.
 
 Format of models links:
 * English bot for Chaturbate:  
-  https://t.me/ChaturbateAlarmBot?start=m-model_id
+  https://t.me/ChaturbateAlarmBot?start=m-<b><i>model_id</i></b>
 * English bot for Stripchat and xHamster Live:  
-  https://t.me/StripchatOnlineBot?start=m-model_id
+  https://t.me/StripchatOnlineBot?start=m-<b><i>model_id</i></b>
 * English bot for BongaCams:  
-  https://t.me/BongacamsOnlineBot?start=m-model_id
+  https://t.me/BongacamsOnlineBot?start=m-<b><i>model_id</i></b>
 * Russian bot for Chaturbate:  
-  https://t.me/ChaturbateSirenBot?start=m-model_id
+  https://t.me/ChaturbateSirenBot?start=m-<b><i>model_id</i></b>
 * Russian bot for Stripchat and xHamster Live:  
-  https://t.me/StripchatSirenBot?start=m-model_id
+  https://t.me/StripchatSirenBot?start=m-<b><i>model_id</i></b>
 * Russian bot for BongaCams:  
-  https://t.me/BongacamsSirenBot?start=m-model_id
+  https://t.me/BongacamsSirenBot?start=m-<b><i>model_id</i></b>
 
-A model must replace _model_id_ to her or his actual model ID.
+A model must replace <b><i>model_id</i></b> to her or his actual model ID.
 It is the same as model name in Chaturbate and Stripchat.
 
 Recommended text: "Get a notification in Telegram whenever I'm online ___your link___".
