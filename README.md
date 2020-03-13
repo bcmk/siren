@@ -56,7 +56,7 @@ It is the same as model name in Chaturbate and Stripchat.
 
 Recommended text: "Get a notification in Telegram whenever I'm online ___your link___".
 
-You can use these [icons](res/icons).
+You can use these [icons](https://github.com/bcmk/siren/tree/master/res/icons).
 
 Write to sirenbot@protonmail.com in case of any questions.
 
@@ -67,13 +67,12 @@ Create and setup your bot using [@BotFather](https://telegram.me/BotFather) bot.
 
 You need an SSL certificate and a key for your bot.
 You can obtain a certificate in Let's Encrypt or other certificate authority.
-Or you can build self-signed one using the script [buildkeys](scripts/buildkeys).
 
 The bot uses [webhooks](https://core.telegram.org/bots/webhooks) to receive updates.
 
 Create JSON configuration and JSON translation files.
-A configuration is described in [config.go](cmd/bot/config.go).
-An example of translation is in [bongacams.json.example](res/translations/bongacams.json.example).
+A configuration is described in [config.go](https://github.com/bcmk/siren/tree/master/cmd/bot/config.go).
+An example of translation is in [bongacams.json.example](https://github.com/bcmk/siren/tree/master/res/translations/bongacams.json.example).
 
 Build cmd/bot. Run this executable with a path to config file as an argument.
 
