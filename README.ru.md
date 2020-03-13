@@ -14,12 +14,12 @@ __[English](README.md)__
 Установка
 ---------
 
-* Русский бот для BongaCams: https://t.me/BongacamsSirenBot
-* Русский бот для Chaturbate: https://t.me/ChaturbateSirenBot
-* Русский бот для Stripchat и xHamster Live: https://t.me/StripchatSirenBot
-* Английский бот для BongaCams: https://t.me/BongacamsOnlineBot
-* Английский бот для Chaturbate: https://t.me/ChaturbateAlarmBot
-* Английский бот для Stripchat и xHamster Live: https://t.me/StripchatOnlineBot
+* Русский бот для BongaCams: [t.me/BongacamsSirenBot](https://t.me/BongacamsSirenBot)
+* Русский бот для Chaturbate: [t.me/ChaturbateSirenBot](https://t.me/ChaturbateSirenBot)
+* Русский бот для Stripchat и xHamster Live: [t.me/StripchatSirenBot](https://t.me/StripchatSirenBot)
+* Английский бот для BongaCams: [t.me/BongacamsOnlineBot](https://t.me/BongacamsOnlineBot)
+* Английский бот для Chaturbate: [t.me/ChaturbateAlarmBot](https://t.me/ChaturbateAlarmBot)
+* Английский бот для Stripchat и xHamster Live: [t.me/StripchatOnlineBot](https://t.me/StripchatOnlineBot)
 
 Команды
 -------
@@ -44,12 +44,18 @@ __[English](README.md)__
 Он будет получать оповещения, когда модель начинает трансляцию.
 
 Формат ссылок для моделей:
-* Английский бот для Chaturbate: https://t.me/ChaturbateAlarmBot?start=m-model_id
-* Английский бот для Stripchat и xHamster Live: https://t.me/StripchatOnlineBot?start=m-model_id
-* Английский бот для BongaCams: https://t.me/BongacamsOnlineBot?start=m-model_id
-* Русский бот для Chaturbate: https://t.me/ChaturbateSirenBot?start=m-model_id
-* Русский бот для Stripchat и xHamster Live: https://t.me/StripchatSirenBot?start=m-model_id
-* Русский бот для BongaCams: https://t.me/BongacamsSirenBot?start=m-model_id
+* Английский бот для Chaturbate:  
+  https://t.me/ChaturbateAlarmBot?start=m-model_id
+* Английский бот для Stripchat и xHamster Live:  
+  https://t.me/StripchatOnlineBot?start=m-model_id
+* Английский бот для BongaCams:  
+  https://t.me/BongacamsOnlineBot?start=m-model_id
+* Русский бот для Chaturbate:  
+  https://t.me/ChaturbateSirenBot?start=m-model_id
+* Русский бот для Stripchat и xHamster Live:  
+  https://t.me/StripchatSirenBot?start=m-model_id
+* Русский бот для BongaCams:  
+  https://t.me/BongacamsSirenBot?start=m-model_id
 
 Модель должна заменить _model_id_ на её реальный идентификатор модели.
 Это то же самое, что и имя модели в Chaturbate и Stripchat.

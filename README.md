@@ -14,12 +14,12 @@ The bot queries models statuses every minute.
 Installation
 ------------
 
-* English bot for Chaturbate: https://t.me/ChaturbateAlarmBot
-* English bot for Stripchat and xHamster Live: https://t.me/StripchatOnlineBot
-* English bot for BongaCams: https://t.me/BongacamsOnlineBot
-* Russian bot for Chaturbate: https://t.me/ChaturbateSirenBot
-* Russian bot for Stripchat and xHamster Live: https://t.me/StripchatSirenBot
-* Russian bot for BongaCams: https://t.me/BongacamsSirenBot
+* English bot for Chaturbate: [t.me/ChaturbateAlarmBot](https://t.me/ChaturbateAlarmBot)
+* English bot for Stripchat and xHamster Live: [t.me/StripchatOnlineBot](https://t.me/StripchatOnlineBot)
+* English bot for BongaCams: [t.me/BongacamsOnlineBot](https://t.me/BongacamsOnlineBot)
+* Russian bot for Chaturbate: [t.me/ChaturbateSirenBot](https://t.me/ChaturbateSirenBot)
+* Russian bot for Stripchat and xHamster Live: [t.me/StripchatSirenBot](https://t.me/StripchatSirenBot)
+* Russian bot for BongaCams: [t.me/BongacamsSirenBot](https://t.me/BongacamsSirenBot)
 
 Commands
 --------
@@ -44,12 +44,18 @@ A user clicking on it will automatically subscribe to this model.
 The user receives a notification whenever the model starts broadcasting.
 
 Format of models links:
-* English bot for Chaturbate: https://t.me/ChaturbateAlarmBot?start=m-model_id
-* English bot for Stripchat and xHamster Live: https://t.me/StripchatOnlineBot?start=m-model_id
-* English bot for BongaCams: https://t.me/BongacamsOnlineBot?start=m-model_id
-* Russian bot for Chaturbate: https://t.me/ChaturbateSirenBot?start=m-model_id
-* Russian bot for Stripchat and xHamster Live: https://t.me/StripchatSirenBot?start=m-model_id
-* Russian bot for BongaCams: https://t.me/BongacamsSirenBot?start=m-model_id
+* English bot for Chaturbate:  
+  https://t.me/ChaturbateAlarmBot?start=m-model_id
+* English bot for Stripchat and xHamster Live:  
+  https://t.me/StripchatOnlineBot?start=m-model_id
+* English bot for BongaCams:  
+  https://t.me/BongacamsOnlineBot?start=m-model_id
+* Russian bot for Chaturbate:  
+  https://t.me/ChaturbateSirenBot?start=m-model_id
+* Russian bot for Stripchat and xHamster Live:  
+  https://t.me/StripchatSirenBot?start=m-model_id
+* Russian bot for BongaCams:  
+  https://t.me/BongacamsSirenBot?start=m-model_id
 
 A model must replace _model_id_ to her or his actual model ID.
 It is the same as model name in Chaturbate and Stripchat.
