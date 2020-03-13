@@ -967,7 +967,7 @@ func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arg
 		w.direct(endpoint, arguments)
 		return true
 	case "set_max_models":
-		parts := strings.Split(arguments, " ")
+		parts := strings.Fields(arguments)
 		if len(parts) != 2 {
 			w.sendText(endpoint, chatID, false, parseRaw, "expecting two arguments")
 			return true
@@ -1247,7 +1247,7 @@ func (w *worker) processTGUpdate(p packet) {
 				}
 			}
 		} else if u.Message.IsCommand() {
-			w.processIncomingCommand(p.endpoint, u.Message.Chat.ID, u.Message.Command(), u.Message.CommandArguments())
+			w.processIncomingCommand(p.endpoint, u.Message.Chat.ID, u.Message.Command(), strings.TrimSpace(u.Message.CommandArguments()))
 		} else {
 			if u.Message.Text == "" {
 				return
@@ -1256,7 +1256,7 @@ func (w *worker) processTGUpdate(p packet) {
 			for len(parts) < 2 {
 				parts = append(parts, "")
 			}
-			w.processIncomingCommand(p.endpoint, u.Message.Chat.ID, parts[0], parts[1])
+			w.processIncomingCommand(p.endpoint, u.Message.Chat.ID, parts[0], strings.TrimSpace(parts[1]))
 		}
 	}
 	if u.CallbackQuery != nil {
