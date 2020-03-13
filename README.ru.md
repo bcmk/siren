@@ -6,6 +6,8 @@ __[English](README.md)__
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
 [![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)
 
+![](res/icons/megaphone128x128.png)
+
 Это бот для Telegram, он сообщит, когда твоя любимая модель появится в сети BongaCams, Chaturbate или Stripchat.
 Опрос статуса моделей происходит раз в минуту.
 

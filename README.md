@@ -6,6 +6,8 @@ Telegram bot notifying you whenever BongaCams, Chaturbate, Stripchat and xHamste
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
 [![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)
 
+![](res/icons/megaphone128x128.png)
+
 Telegram bot notifies you whenever your favorite BongaCams, Chaturbate or Stripchat models are online.
 The bot queries models statuses every minute.
 
