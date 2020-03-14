@@ -35,7 +35,9 @@ Commands
 * __language__ — This bot in other languages
 * __help__ — Command list
 
-You can find a model ID in an address line of your browser.
+Replace ___model_id___ by the actual model ID.
+It is the same as __model name__ in Chaturbate and Stripchat.
+For BongaCams you can find a model ID in the address line of your browser.
 
 For models
 ----------
