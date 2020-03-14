@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+    <title>siren</title>
+</head>
+
+<body>
+    <div class="container">
+        <p><strong><a href="index.html">English</a></strong></p>
+
+        <h1>siren</h1>
+        <p><img src="https://github.com/bcmk/siren/raw/master/res/icons/megaphone128x128.png" alt="" style="max-width:100%;"></p>
+        <p>
+            Это бот для Telegram, сообщающий вам, когда ваши любимые модели из <strong>Chaturbate</strong>, <strong>Stripchat</strong> и <strong>BongaCams</strong> выходят в сеть.
+            Вы просто подписываетесь на любимые модели командой <strong>/add</strong>.
+            После этого вы будуте получать оповещения каждый раз, когда они выходят в сеть.
+            Опрос статуса моделей происходит раз в минуту.
+        </p>
+
+        <h2>Установка</h2>
+
+        <ul>
+            <li>Русский бот для BongaCams: <a href="https://t.me/BongacamsSirenBot" rel="nofollow">t.me/BongacamsSirenBot</a></li>
+            <li>Русский бот для Chaturbate: <a href="https://t.me/ChaturbateSirenBot" rel="nofollow">t.me/ChaturbateSirenBot</a></li>
+            <li>Русский бот для Stripchat и xHamster Live: <a href="https://t.me/StripchatSirenBot" rel="nofollow">t.me/StripchatSirenBot</a></li>
+            <li>Английский бот для BongaCams: <a href="https://t.me/BongacamsOnlineBot" rel="nofollow">t.me/BongacamsOnlineBot</a></li>
+            <li>Английский бот для Chaturbate: <a href="https://t.me/ChaturbateAlarmBot" rel="nofollow">t.me/ChaturbateAlarmBot</a></li>
+            <li>Английский бот для Stripchat и xHamster Live: <a href="https://t.me/StripchatOnlineBot" rel="nofollow">t.me/StripchatOnlineBot</a></li>
+        </ul>
+
+        <h2>Команды</h2>
+
+        <ul>
+            <li><strong>add</strong> <em>идентификатор_модели</em> — Добавить модель</li>
+            <li><strong>remove</strong> <em>идентификатор_модели</em> — Удалить модель</li>
+            <li><strong>remove_all</strong> — Удалить всех моделей</li>
+            <li><strong>list</strong> — Ваши модели</li>
+            <li><strong>online</strong> — Ваши модели, которые сейчас в сети</li>
+            <li><strong>feedback</strong> <em>текст</em> — Обратная связь</li>
+            <li><strong>source</strong> — Исходный код</li>
+            <li><strong>language</strong> — Этот бот на других языках</li>
+            <li><strong>help</strong> — Список команд</li>
+        </ul>
+
+        <p>
+            Подставьте вместо <em><strong>идентификатор_модели</strong></em> реальный идентификатор модели.
+            Это то же самое, что и <strong>имя модели</strong> в Chaturbate и Stripchat.
+            Для BongaCams идентификатор модели можно посмотреть в адресной строке браузера.
+        </p>
+
+        <h2>Для моделей</h2>
+        <p>
+            Модель может добавить ссылку в свой профиль.
+            Пользователь, кликнувший по такой ссылке, автоматически подпишется на эту модель.
+            Он будет получать оповещения, когда модель начинает трансляцию.
+        </p>
+
+        <p>Формат ссылок для моделей:</p>
+
+        <ul>
+            <li>Английский бот для Chaturbate: <pre>https://t.me/ChaturbateAlarmBot?start=m-<b><i>model_id</i></b></pre></li>
+            <li>Английский бот для Stripchat и xHamster Live: <pre>https://t.me/StripchatOnlineBot?start=m-<b><i>model_id</i></b></pre></li>
+            <li>Английский бот для BongaCams: <pre>https://t.me/BongacamsOnlineBot?start=m-<b><i>model_id</i></b></pre></li>
+            <li>Русский бот для Chaturbate: <pre>https://t.me/ChaturbateSirenBot?start=m-<b><i>model_id</i></b></pre></li>
+            <li>Русский бот для Stripchat и xHamster Live: <pre>https://t.me/StripchatSirenBot?start=m-<b><i>model_id</i></b></pre></li>
+            <li>Русский бот для BongaCams: <pre>https://t.me/BongacamsSirenBot?start=m-<b><i>model_id</i></b></pre></li>
+        </ul>
+
+        <p>
+            Модель должна заменить <em><strong>model_id</strong></em> на её реальный идентификатор модели.
+            Это то же самое, что и имя модели в Chaturbate и Stripchat.
+        </p>
+
+        <p>Рекомендованный текст для англоязычных пользователей: "Get a notification in Telegram whenever I'm online <em><strong>ваша ссылка</strong></em>".</p>
+        <p>Рекомендованный текст для русскоязычных пользователей: "Получай оповещение в Telegram, когда я начинаю трансляцию <em><strong>ваша ссылка</strong></em>".</p>
+        <p>Англоязычный бот отличается от русскоязычного по большому счёту только языком, на котором пользователь получает оповещения, например, "<em><strong>имя модели</strong></em> в сети" и "<em><strong>имя модели</strong></em> online".</p>
+        <p>Вы можете использовать эти <a href="https://github.com/bcmk/siren/tree/master/res/icons">иконки</a>.</p>
+        <p>Пишите на <a href="mailto:sirenbot@protonmail.com">sirenbot@protonmail.com</a>, если у вас есть вопросы.</p>
+
+        <h2>Собственный бот</h2>
+        <p>Инструкции на <a href="index.html">английском</a></p>
+    </div>
+</body>
+</html>
