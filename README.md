@@ -1,4 +1,4 @@
-__[Русский](README.ru.md)__
+__[Русский](README-ru.md)__
 
 About bot
 =========
