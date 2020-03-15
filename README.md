@@ -43,7 +43,7 @@ For models
 ----------
 
 A model can add a link on her or his profile page.
-A user clicking on it will automatically subscribe to this model.
+The user clicking on it will automatically subscribe to this model.
 The user receives a notification whenever the model starts broadcasting.
 
 Format of models links:
