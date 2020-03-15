@@ -1,7 +1,7 @@
 __[Русский](README-ru.md)__
 
-About bot
-=========
+Telegram bot notifying you whenever BongaCams, Chaturbate, Stripchat and xHamster Live models are online
+========================================================================================================
 
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
 [![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)
