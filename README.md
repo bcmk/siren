@@ -6,7 +6,7 @@ Telegram bot notifying you whenever BongaCams, Chaturbate, Stripchat and xHamste
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
 [![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)
 
-![](res/icons/megaphone128x128.png)
+![](docs/icons/megaphone128x128.png)
 
 You just subscribe to your favorite models with __/add__ command.
 Then you receive a notification whenever they are online.
@@ -65,7 +65,7 @@ It is the same as model name in Chaturbate and Stripchat.
 
 Recommended text: "Get a notification in Telegram whenever I'm online ___your link___".
 
-You can use these [icons](https://github.com/bcmk/siren/tree/master/res/icons).
+You can use these [icons](https://github.com/bcmk/siren/tree/master/docs/icons).
 
 Write to sirenbot@protonmail.com in case of any questions.
 

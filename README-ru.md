@@ -6,7 +6,7 @@ __[English](README.md)__
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
 [![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)
 
-![](res/icons/megaphone128x128.png)
+![](docs/icons/megaphone128x128.png)
 
 Вы просто подписываетесь на любимые модели командой __/add__.
 После этого вы будуте получать оповещения каждый раз, когда они выходят в сеть.
@@ -69,7 +69,7 @@ __[English](README.md)__
 
 Англоязычный бот отличается от русскоязычного по большому счёту только языком, на котором пользователь получает оповещения, например, "___имя модели___ в сети" и "___имя модели___ online".
 
-Вы можете использовать эти [иконки](https://github.com/bcmk/siren/tree/master/res/icons).
+Вы можете использовать эти [иконки](https://github.com/bcmk/siren/tree/master/docs/icons).
 
 Пишите на sirenbot@protonmail.com, если у вас есть вопросы.
 
