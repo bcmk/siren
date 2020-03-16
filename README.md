@@ -84,3 +84,8 @@ A configuration is described in [config.go](https://github.com/bcmk/siren/tree/m
 An example of translation is in [bongacams.json.example](https://github.com/bcmk/siren/tree/master/res/translations/bongacams.json.example).
 
 Build cmd/bot. Run this executable with a path to config file as an argument.
+
+GitHub Pages
+------------
+
+[Pages](https://bcmk.github.io/siren)

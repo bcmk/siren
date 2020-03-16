@@ -77,3 +77,8 @@ __[English](README.md)__
 ---------------
 
 Инструкции на [английском](README.md)
+
+GitHub Pages
+------------
+
+[Pages](https://bcmk.github.io/siren/index-ru.html)
