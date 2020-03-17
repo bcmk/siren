@@ -82,3 +82,12 @@ GitHub Pages
 ------------
 
 [Pages](https://bcmk.github.io/siren/index-ru.html)
+
+Социальные сети
+---------------
+
+[Twitter](https://twitter.com/sirenbot2)
+
+[Instagram](https://instagram.com/sirenbot)
+
+[WeCamgirls](https://www.wecamgirls.com/users/sirenbot)
