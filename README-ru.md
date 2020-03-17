@@ -6,7 +6,7 @@ __[English](README.md)__
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
 [![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)
 
-![](docs/icons/megaphone128x128.png)
+![](docs/icons/megaphone-128x128.png)
 
 Вы просто подписываетесь на любимые модели командой __/add__.
 После этого вы будуте получать оповещения каждый раз, когда они выходят в сеть.

@@ -4,7 +4,8 @@ cur="$(dirname "$(readlink -f "$0")")"
 cd "$cur/../docs/icons"
 
 exp () {
-    inkscape -z --export-area-page --export-png=megaphone$1x$1.png --export-width=$1 --export-height=$1 megaphone.svg
+    inkscape -z --export-area-page --export-png=megaphone-$1x$1.png --export-width=$1 --export-height=$1 megaphone.svg
+    inkscape -z --export-area-drawing --export-png=megaphone-no-margins-$1x$1.png --export-width=$1 --export-height=$1 megaphone.svg
 }
 
 exp 32
