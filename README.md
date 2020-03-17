@@ -44,7 +44,7 @@ For models
 
 Add a link to your profile page or share it on Twitter, Instagram or other social media.
 Telegram users clicking it follow you in our bot.
-From that moment he receives a notification whenever you start broadcasting.
+From that moment they receive a notification whenever you start broadcasting.
 Use following links:
 
 * English bot for Chaturbate:  
