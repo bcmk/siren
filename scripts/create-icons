@@ -9,6 +9,7 @@ exp () {
     inkscape -z --export-area-drawing --export-png=megaphone-simple-$1x$1.png --export-width=$1 --export-height=$1 megaphone-simple.svg
 }
 
+exp 20
 exp 24
 exp 32
 exp 48
