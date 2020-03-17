@@ -25,8 +25,8 @@ Installation
 Commands
 --------
 
-* __add__ _model_ID_ — Add model
-* __remove__ _model_ID_ — Remove model
+* __add__ _MODEL_ID_ — Add model
+* __remove__ _MODEL_ID_ — Remove model
 * __remove_all__ — Remove all models
 * __list__ — Your model subscriptions
 * __online__ — Your models online
@@ -35,35 +35,35 @@ Commands
 * __language__ — This bot in other languages
 * __help__ — Command list
 
-Replace ___model_id___ by the actual model ID.
+Substitute ___MODEL_ID___ with the actual model ID.
 It is the same as __model name__ in Chaturbate and Stripchat.
 For BongaCams you can find a model ID in the address line of your browser.
 
 For models
 ----------
 
-A model can add a link on her or his profile page.
-The user clicking on it will automatically subscribe to this model.
-The user receives a notification whenever the model starts broadcasting.
+You can add a link to the profile page or share it on social media.
+Telegram users clicking it follow you in our bot.
+From that moment he receives a notification whenever you start broadcasting.
+Use following links:
 
-Format of models links:
 * English bot for Chaturbate:  
-  <pre>https://t.me/ChaturbateAlarmBot?start=m-<b><i>model_id</i></b></pre>
+  <pre>https://t.me/ChaturbateAlarmBot?start=m-<b><i>MODEL_ID</i></b></pre>
 * English bot for Stripchat and xHamster Live:  
-  <pre>https://t.me/StripchatOnlineBot?start=m-<b><i>model_id</i></b></pre>
+  <pre>https://t.me/StripchatOnlineBot?start=m-<b><i>MODEL_ID</i></b></pre>
 * English bot for BongaCams:  
-  <pre>https://t.me/BongacamsOnlineBot?start=m-<b><i>model_id</i></b></pre>
+  <pre>https://t.me/BongacamsOnlineBot?start=m-<b><i>MODEL_ID</i></b></pre>
 * Russian bot for Chaturbate:  
-  <pre>https://t.me/ChaturbateSirenBot?start=m-<b><i>model_id</i></b></pre>
+  <pre>https://t.me/ChaturbateSirenBot?start=m-<b><i>MODEL_ID</i></b></pre>
 * Russian bot for Stripchat and xHamster Live:  
-  <pre>https://t.me/StripchatSirenBot?start=m-<b><i>model_id</i></b></pre>
+  <pre>https://t.me/StripchatSirenBot?start=m-<b><i>MODEL_ID</i></b></pre>
 * Russian bot for BongaCams:  
-  <pre>https://t.me/BongacamsSirenBot?start=m-<b><i>model_id</i></b></pre>
+  <pre>https://t.me/BongacamsSirenBot?start=m-<b><i>MODEL_ID</i></b></pre>
 
-A model must replace ___model_id___ to her or his actual model ID.
+Substitute ___MODEL_ID___ with your actual model ID.
 It is the same as model name in Chaturbate and Stripchat.
 
-Recommended text: "Get a notification in Telegram whenever I'm online ___your link___".
+Recommended text: "Get a notification in Telegram whenever I'm online ___YOUR LINK___".
 
 You can use these [icons](https://github.com/bcmk/siren/tree/master/docs/icons).
 

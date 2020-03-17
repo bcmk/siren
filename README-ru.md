@@ -25,8 +25,8 @@ __[English](README.md)__
 Команды
 -------
 
-* __add__ _идентификатор_модели_ — Добавить модель
-* __remove__ _идентификатор_модели_ — Удалить модель
+* __add__ _МОДЕЛЬ_ — Добавить модель
+* __remove__ _МОДЕЛЬ_ — Удалить модель
 * __remove_all__ — Удалить всех моделей
 * __list__ — Ваши модели
 * __online__ — Ваши модели, которые сейчас в сети
@@ -35,32 +35,32 @@ __[English](README.md)__
 * __language__ — Этот бот на других языках
 * __help__ — Список команд
 
-Подставьте вместо ___идентификатор_модели___ реальный идентификатор модели.
+Подставьте вместо ___МОДЕЛЬ___ реальный идентификатор модели.
 Это то же самое, что и __имя модели__ в Chaturbate и Stripchat.
 Для BongaCams идентификатор модели можно посмотреть в адресной строке браузера.
 
 Для моделей
 -----------
 
-Модель может добавить ссылку в свой профиль.
-Пользователь, кликнувший по такой ссылке, автоматически подпишется на эту модель.
-Он будет получать оповещения, когда модель начинает трансляцию.
+Вы можете добавить ссылку в свой профиль или поделиться ей в Twitter, Instagram или других социальных медиа.
+Пользователь, кликнувший по такой ссылке, автоматически подпишется на вас.
+С этого момента он будет получать оповещения, когда вы начинаете трансляцию.
+Используйте следующие ссылки:
 
-Формат ссылок для моделей:
 * Английский бот для Chaturbate:  
-  <pre>https://t.me/ChaturbateAlarmBot?start=m-<b><i>model_id</i></b></pre>
+  <pre>https://t.me/ChaturbateAlarmBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
 * Английский бот для Stripchat и xHamster Live:  
-  <pre>https://t.me/StripchatOnlineBot?start=m-<b><i>model_id</i></b></pre>
+  <pre>https://t.me/StripchatOnlineBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
 * Английский бот для BongaCams:  
-  <pre>https://t.me/BongacamsOnlineBot?start=m-<b><i>model_id</i></b></pre>
+  <pre>https://t.me/BongacamsOnlineBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
 * Русский бот для Chaturbate:  
-  <pre>https://t.me/ChaturbateSirenBot?start=m-<b><i>model_id</i></b></pre>
+  <pre>https://t.me/ChaturbateSirenBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
 * Русский бот для Stripchat и xHamster Live:  
-  <pre>https://t.me/StripchatSirenBot?start=m-<b><i>model_id</i></b></pre>
+  <pre>https://t.me/StripchatSirenBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
 * Русский бот для BongaCams:  
-  <pre>https://t.me/BongacamsSirenBot?start=m-<b><i>model_id</i></b></pre>
+  <pre>https://t.me/BongacamsSirenBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
 
-Модель должна заменить ___model_id___ на её реальный идентификатор модели.
+Замените ___МОДЕЛЬ___ на ваш реальный идентификатор модели.
 Это то же самое, что и имя модели в Chaturbate и Stripchat.
 
 Рекомендованный текст для англоязычных пользователей: "Get a notification in Telegram whenever I'm online ___ваша ссылка___".
