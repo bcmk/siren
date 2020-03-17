@@ -42,7 +42,7 @@ For BongaCams you can find a model ID in the address line of your browser.
 For models
 ----------
 
-You can add a link to the profile page or share it on social media.
+Add a link to your profile page or share it on Twitter, Instagram or other social media.
 Telegram users clicking it follow you in our bot.
 From that moment he receives a notification whenever you start broadcasting.
 Use following links:
