@@ -30,7 +30,7 @@ Commands
 * __remove_all__ — Remove all models
 * __list__ — Your model subscriptions
 * __online__ — Your models online
-* __feedback__ _text_ — Send feedback
+* __feedback__ _YOUR_MESSAGE_ — Send feedback
 * __source__ — Show source code
 * __language__ — This bot in other languages
 * __help__ — Command list
