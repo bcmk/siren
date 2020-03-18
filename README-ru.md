@@ -81,7 +81,7 @@ __[English](README.md)__
 GitHub Pages
 ------------
 
-[Pages](https://bcmk.github.io/siren/index-ru.html)
+[Pages](https://bcmk.github.io/siren/ru.html)
 
 Социальные сети
 ---------------
