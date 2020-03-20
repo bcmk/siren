@@ -3,9 +3,13 @@
 cur="$(dirname "$(readlink -f "$0")")"
 cd "$cur/../docs/icons"
 
+single () {
+    inkscape -z --export-area-page --export-png="$3-$1x$2.png" --export-width=$1 --export-height=$2 "$3.svg"
+}
+
 exp () {
-    inkscape -z --export-area-page --export-png=siren-$1x$1.png --export-width=$1 --export-height=$1 siren.svg
-    inkscape -z --export-area-page --export-png=siren-round-$1x$1.png --export-width=$1 --export-height=$1 siren-round.svg
+    single $1 $1 siren
+    single $1 $1 siren-round
 }
 
 exp 20
@@ -18,3 +22,6 @@ exp 196
 exp 300
 exp 512
 exp 1024
+
+single 1024 410 siren-stripchat
+single 1024 465 siren-stripchat-round
