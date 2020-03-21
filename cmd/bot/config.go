@@ -17,7 +17,7 @@ type endpoint struct {
 	ListenPath         string `json:"listen_path"`          // the path excluding domain to listen to, the good choice is "/your-telegram-bot-token"
 	ListenAddress      string `json:"listen_address"`       // the address to listen to
 	WebhookDomain      string `json:"webhook_domain"`       // the domain listening to the webhook
-	CertificatePath    string `json:"certificate_path"`     // a path to your certificate, it is used to setup a webook and to setup this HTTP server
+	CertificatePath    string `json:"certificate_path"`     // a path to your certificate, it is used to setup a webhook and to setup this HTTP server
 	CertificateKeyPath string `json:"certificate_key_path"` // your certificate key, omit if under a proxy
 	BotToken           string `json:"bot_token"`            // your telegram bot token
 	Translation        string `json:"translation"`          // translation strings

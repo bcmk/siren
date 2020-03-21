@@ -33,7 +33,6 @@ func HTTPClientWithTimeoutAndAddress(timeoutSeconds int, address string, cookies
 				LocalAddr: addr,
 				Timeout:   time.Second * time.Duration(timeoutSeconds),
 				KeepAlive: 30 * time.Second,
-				DualStack: true,
 			}).DialContext,
 			ForceAttemptHTTP2:     true,
 			MaxIdleConns:          10,

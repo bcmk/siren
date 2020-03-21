@@ -26,9 +26,8 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-var version = "5.0"
-
 var (
+	version  = "5.0"
 	checkErr = lib.CheckErr
 	lerr     = lib.Lerr
 	linf     = lib.Linf
@@ -94,6 +93,7 @@ func newWorker() *worker {
 	bots := make(map[string]*tg.BotAPI)
 	senders := make(map[string]func(msg tg.Chattable) (tg.Message, error))
 	for n, p := range cfg.Endpoints {
+		//noinspection GoNilness
 		bot, err := tg.NewBotAPIWithClient(p.BotToken, clients[0].Client)
 		checkErr(err)
 		bots[n] = bot
@@ -174,7 +174,7 @@ func (w *worker) mustExec(query string, args ...interface{}) {
 	checkErr(err)
 	_, err = stmt.Exec(args...)
 	checkErr(err)
-	stmt.Close()
+	checkErr(stmt.Close())
 }
 
 func (w *worker) incrementBlock(endpoint string, chatID int64) {
@@ -301,7 +301,7 @@ func (w *worker) updateStatus(modelID string, newStatus lib.StatusKind, timestam
 	}
 	oldStatusQuery, err := w.db.Query("select status, last_online from statuses where model_id=?", modelID)
 	checkErr(err)
-	defer oldStatusQuery.Close()
+	defer checkErr(oldStatusQuery.Close())
 	if !oldStatusQuery.Next() {
 		lastOnline := 0
 		if newStatus == lib.StatusOnline {
@@ -356,7 +356,7 @@ func (w *worker) models() (models []string) {
 		order by model_id`,
 		w.cfg.BlockThreshold)
 	checkErr(err)
-	defer modelsQuery.Close()
+	defer checkErr(modelsQuery.Close())
 	for modelsQuery.Next() {
 		var modelID string
 		checkErr(modelsQuery.Scan(&modelID))
@@ -374,7 +374,7 @@ func (w *worker) chatsForModel(modelID string) (chats []int64, endpoints []strin
 		modelID,
 		w.cfg.BlockThreshold)
 	checkErr(err)
-	defer chatsQuery.Close()
+	defer checkErr(chatsQuery.Close())
 	for chatsQuery.Next() {
 		var chatID int64
 		var endpoint string
@@ -394,7 +394,7 @@ func (w *worker) broadcastChats(endpoint string) (chats []int64) {
 		w.cfg.BlockThreshold,
 		endpoint)
 	checkErr(err)
-	defer chatsQuery.Close()
+	defer checkErr(chatsQuery.Close())
 	for chatsQuery.Next() {
 		var chatID int64
 		checkErr(chatsQuery.Scan(&chatID))
@@ -410,7 +410,7 @@ func (w *worker) statusesForChat(endpoint string, chatID int64) []lib.StatusUpda
 		where signals.chat_id=? and signals.endpoint=?
 		order by statuses.model_id`, chatID, endpoint)
 	checkErr(err)
-	defer statusesQuery.Close()
+	defer checkErr(statusesQuery.Close())
 	var statuses []lib.StatusUpdate
 	for statusesQuery.Next() {
 		var modelID string
@@ -468,7 +468,7 @@ func (w *worker) subscriptionsNumber(endpoint string, chatID int64) int {
 func (w *worker) maxModels(chatID int64) int {
 	query, err := w.db.Query("select max_models from users where chat_id=?", chatID)
 	checkErr(err)
-	defer query.Close()
+	defer checkErr(query.Close())
 	if !query.Next() {
 		return w.cfg.MaxModels
 	}
@@ -588,7 +588,7 @@ func (w *worker) sureRemoveAll(endpoint string, chatID int64) {
 }
 
 func (w *worker) buy(endpoint string, chatID int64) {
-	buttons := [][]tg.InlineKeyboardButton{}
+	var buttons [][]tg.InlineKeyboardButton
 	for _, c := range w.cfg.CoinPayments.Currencies {
 		buttons = append(buttons, []tg.InlineKeyboardButton{tg.NewInlineKeyboardButtonData(c, "buy_with "+c)})
 	}
@@ -614,7 +614,7 @@ func (w *worker) email(endpoint string, chatID int64) string {
 func (w *worker) transaction(uuid string) (status payments.StatusKind, chatID int64, endpoint string) {
 	query, err := w.db.Query("select status, chat_id, endpoint from transactions where local_id=?", uuid)
 	checkErr(err)
-	defer query.Close()
+	defer checkErr(query.Close())
 	if !query.Next() {
 		return
 	}
@@ -733,13 +733,13 @@ func (w *worker) setLimit(chatID int64, maxModels int) {
 }
 
 func (w *worker) unknownsNumber() int {
-	var errors = 0
+	var unknownsCount = 0
 	for _, s := range w.unknowns {
 		if s {
-			errors += 1
+			unknownsCount += 1
 		}
 	}
-	return errors
+	return unknownsCount
 }
 
 func (w *worker) userReferralsCount() int {
@@ -828,7 +828,7 @@ func (w *worker) modelActiveStatus(modelID string) lib.StatusKind {
 		modelID,
 		w.cfg.BlockThreshold)
 	checkErr(err)
-	defer query.Close()
+	defer checkErr(query.Close())
 	if !query.Next() {
 		return lib.StatusUnknown
 	}
@@ -1001,7 +1001,7 @@ func splitAddress(a string) (string, string) {
 func (w *worker) recordForEmail(username string) *email {
 	modelsQuery, err := w.db.Query(`select chat_id, endpoint from emails where email=?`, username)
 	checkErr(err)
-	defer modelsQuery.Close()
+	defer checkErr(modelsQuery.Close())
 	if modelsQuery.Next() {
 		email := email{email: username}
 		checkErr(modelsQuery.Scan(&email.chatID, &email.endpoint))
@@ -1282,7 +1282,7 @@ func getRss() (int64, error) {
 
 	fields := strings.Split(string(buf), " ")
 	if len(fields) < 2 {
-		return 0, errors.New("Cannot parse statm")
+		return 0, errors.New("cannot parse statm")
 	}
 
 	rss, err := strconv.ParseInt(fields[1], 10, 64)
@@ -1393,7 +1393,7 @@ func (w *worker) incoming() chan packet {
 }
 
 func (w *worker) ourIDs() []int64 {
-	ids := []int64{}
+	var ids []int64
 	for _, e := range w.cfg.Endpoints {
 		if idx := strings.Index(e.BotToken, ":"); idx != -1 {
 			id, err := strconv.ParseInt(e.BotToken[:idx], 10, 64)
@@ -1417,7 +1417,7 @@ func loadTLS(certFile string, keyFile string) (*tls.Config, error) {
 func (w *worker) referralID(chatID int64) *string {
 	query, err := w.db.Query("select referral_id from referrals where chat_id=?", chatID)
 	checkErr(err)
-	defer query.Close()
+	defer checkErr(query.Close())
 	if !query.Next() {
 		return nil
 	}
@@ -1429,7 +1429,7 @@ func (w *worker) referralID(chatID int64) *string {
 func (w *worker) chatForReferralID(referralID string) *int64 {
 	query, err := w.db.Query("select chat_id from referrals where referral_id=?", referralID)
 	checkErr(err)
-	defer query.Close()
+	defer checkErr(query.Close())
 	if !query.Next() {
 		return nil
 	}

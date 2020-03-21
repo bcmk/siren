@@ -46,11 +46,11 @@ type testWorker struct {
 	sendError error
 }
 
-func (w *testWorker) testCheckModel(client *lib.Client, modelID string, headers [][2]string, dbg bool) lib.StatusKind {
+func (w *testWorker) testCheckModel(*lib.Client, string, [][2]string, bool) lib.StatusKind {
 	return w.status
 }
 
-func (w *testWorker) testSend(msg tg.Chattable) (tg.Message, error) {
+func (w *testWorker) testSend(tg.Chattable) (tg.Message, error) {
 	return w.message, w.sendError
 }
 

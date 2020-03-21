@@ -119,7 +119,7 @@ func StartChaturbateAPIChecker(
 				continue
 			}
 			decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
-			parsed := []chaturbateModel{}
+			var parsed []chaturbateModel
 			err = decoder.Decode(&parsed)
 			if err != nil {
 				Lerr("[%v] cannot parse response, %v", client.Addr, err)

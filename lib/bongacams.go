@@ -41,6 +41,7 @@ func CheckModelBongaCams(client *Client, modelID string, headers [][2]string, db
 	return StatusUnknown
 }
 
+var _ = StartBongaCamsAPIChecker
 // StartBongaCamsAPIChecker starts a checker for BongaCams
 func StartBongaCamsAPIChecker(
 	usersOnlineEndpoint string,
@@ -76,7 +77,7 @@ func StartBongaCamsAPIChecker(
 				continue
 			}
 			decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
-			parsed := []bongacamsModel{}
+			var parsed []bongacamsModel
 			err = decoder.Decode(&parsed)
 			if err != nil {
 				Lerr("[%v] cannot parse response, %v", client.Addr, err)

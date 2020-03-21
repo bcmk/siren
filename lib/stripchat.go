@@ -40,10 +40,10 @@ func CheckModelStripchat(client *Client, modelID string, headers [][2]string, db
 	ctx, cancel = context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
-	videoNode := []*cdp.Node{}
-	statusNode := []*cdp.Node{}
-	disabledNode := []*cdp.Node{}
-	notFoundNode := []*cdp.Node{}
+	var videoNode []*cdp.Node
+	var statusNode []*cdp.Node
+	var disabledNode []*cdp.Node
+	var notFoundNode []*cdp.Node
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(fmt.Sprintf("https://stripchat.com/%s", modelID)),
 		chromedp.WaitVisible(`video, .vc-status, .account-disabled-page, .not-found-error`, chromedp.ByQuery),
