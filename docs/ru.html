@@ -10,16 +10,18 @@
         background-position: center;
     }
 
-    h1 {
-        color: #c7152b
+    #h1 {
+        color: #c7152b;
+        line-height: 1 !important;
+        margin-block-end: 0 !important;
     }
 
     h2 {
-        color: #c7152b
+        color: #c7152b;
     }
 
     strong {
-        color: #c7152b
+        color: #c7152b;
     }
 </style>
 
@@ -39,10 +41,17 @@
 <body>
     <div class="container">
         <div class="px-3 py-3 pt-md-5 pb-md-4 mx-auto text-center">
-            <h1 class="display-4">
-                <img src="icons/siren-round.svg" alt="" style="max-width:100%;" width="72" height="72">
-                <span>SIREN</span>
-            </h1>
+            <table style="margin:0 auto;">
+                <tr>
+                    <td style="vertical-align:middle;">
+                        <img src="icons/siren-round.svg" alt="" style="max-width:100%;" width="76" height="76">
+                    </td>
+                    <td style="vertical-align:middle; padding-left: 15px;">
+                        <h1 id="h1" class="display-4">SIREN</h1>
+                        <small class="d-block mb-0 text-muted">Оповещения о вебкам-шоу<br>в Telegram</small>
+                    </td>
+                </tr>
+            </table>
         </div>
 
         <p class="lead">
@@ -127,7 +136,7 @@
         <footer class="pt-4 my-md-5 pt-md-5 border-top">
             <div class="row">
                 <div class="col-12 col-md">
-                    <img class="mb-2" src="icons/siren.svg" alt="" style="max-width:100%;" width="48" height="48">
+                    <img class="mb-2" src="icons/siren.svg" alt="" style="max-width:100%;" width="40" height="40">
                     <small class="d-block mb-0 text-muted">&copy; 2019-2020</small>
                     <small class="d-block mb-3 text-muted"><a href="mailto:sirenbot@protonmail.com">sirenbot@protonmail.com</a></small>
                 </div>
