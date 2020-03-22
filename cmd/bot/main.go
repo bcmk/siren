@@ -1053,6 +1053,7 @@ func envelopeFactory(ch chan *env) func(smtpd.Connection, smtpd.MailAddress, *in
 	}
 }
 
+//noinspection SpellCheckingInspection
 const letterBytes = "abcdefghijklmnopqrstuvwxyz"
 
 func randString(n int) string {
