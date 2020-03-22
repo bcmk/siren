@@ -71,8 +71,8 @@
         "str": "Thank you for your feedback!",
         "parse": "raw"
     },
-    "source_code": {
-        "str": "Source code: https://github.com/bcmk/siren",
+    "social": {
+        "str": "Your social media here",
         "parse": "raw"
     },
     "unknown_command": {

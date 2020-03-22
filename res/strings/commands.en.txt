@@ -6,7 +6,7 @@ list - Your model subscriptions
 online - Your models online
 buy - Buy additional subscriptions
 max_models - Show your subscription limit
-feedback - Send feedback
-source - Show source code
-language - This bot in other languages
+social - We in social media
 help - Command list
+language - This bot in other languages
+feedback - Send feedback

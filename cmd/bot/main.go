@@ -1162,8 +1162,8 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		w.start(endpoint, chatID, arguments)
 	case "feedback":
 		w.feedback(endpoint, chatID, arguments)
-	case "source":
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].SourceCode)
+	case "social":
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Social)
 	case "language":
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Languages)
 	case "version":

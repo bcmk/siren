@@ -30,10 +30,10 @@ Commands
 * __remove_all__ — Remove all models
 * __list__ — Your model subscriptions
 * __online__ — Your models online
-* __feedback__ _YOUR_MESSAGE_ — Send feedback
-* __source__ — Show source code
-* __language__ — This bot in other languages
+* __social__ — We in social media
 * __help__ — Command list
+* __language__ — This bot in other languages
+* __feedback__ _YOUR_MESSAGE_ — Send feedback
 
 Substitute ___MODEL_ID___ with the actual model ID.
 It is the same as __model name__ in Chaturbate and Stripchat.

@@ -51,7 +51,7 @@ type translations struct {
 	ModelNotInList         *translation `json:"model_not_in_list"`
 	ModelRemoved           *translation `json:"model_removed"`
 	Feedback               *translation `json:"feedback"`
-	SourceCode             *translation `json:"source_code"`
+	Social                 *translation `json:"social"`
 	UnknownCommand         *translation `json:"unknown_command"`
 	InvalidCommand         *translation `json:"invalid_command"`
 	Slash                  *translation `json:"slash"`
