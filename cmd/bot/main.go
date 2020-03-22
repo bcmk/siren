@@ -301,7 +301,7 @@ func (w *worker) updateStatus(modelID string, newStatus lib.StatusKind, timestam
 	}
 	oldStatusQuery, err := w.db.Query("select status, last_online from statuses where model_id=?", modelID)
 	checkErr(err)
-	defer checkErr(oldStatusQuery.Close())
+	defer func() { checkErr(oldStatusQuery.Close()) }()
 	if !oldStatusQuery.Next() {
 		lastOnline := 0
 		if newStatus == lib.StatusOnline {
@@ -356,7 +356,7 @@ func (w *worker) models() (models []string) {
 		order by model_id`,
 		w.cfg.BlockThreshold)
 	checkErr(err)
-	defer checkErr(modelsQuery.Close())
+	defer func() { checkErr(modelsQuery.Close()) }()
 	for modelsQuery.Next() {
 		var modelID string
 		checkErr(modelsQuery.Scan(&modelID))
@@ -374,7 +374,7 @@ func (w *worker) chatsForModel(modelID string) (chats []int64, endpoints []strin
 		modelID,
 		w.cfg.BlockThreshold)
 	checkErr(err)
-	defer checkErr(chatsQuery.Close())
+	defer func() { checkErr(chatsQuery.Close()) }()
 	for chatsQuery.Next() {
 		var chatID int64
 		var endpoint string
@@ -394,7 +394,7 @@ func (w *worker) broadcastChats(endpoint string) (chats []int64) {
 		w.cfg.BlockThreshold,
 		endpoint)
 	checkErr(err)
-	defer checkErr(chatsQuery.Close())
+	defer func() { checkErr(chatsQuery.Close()) }()
 	for chatsQuery.Next() {
 		var chatID int64
 		checkErr(chatsQuery.Scan(&chatID))
@@ -410,7 +410,7 @@ func (w *worker) statusesForChat(endpoint string, chatID int64) []lib.StatusUpda
 		where signals.chat_id=? and signals.endpoint=?
 		order by statuses.model_id`, chatID, endpoint)
 	checkErr(err)
-	defer checkErr(statusesQuery.Close())
+	defer func() { checkErr(statusesQuery.Close()) }()
 	var statuses []lib.StatusUpdate
 	for statusesQuery.Next() {
 		var modelID string
@@ -468,7 +468,7 @@ func (w *worker) subscriptionsNumber(endpoint string, chatID int64) int {
 func (w *worker) maxModels(chatID int64) int {
 	query, err := w.db.Query("select max_models from users where chat_id=?", chatID)
 	checkErr(err)
-	defer checkErr(query.Close())
+	defer func() { checkErr(query.Close()) }()
 	if !query.Next() {
 		return w.cfg.MaxModels
 	}
@@ -614,7 +614,7 @@ func (w *worker) email(endpoint string, chatID int64) string {
 func (w *worker) transaction(uuid string) (status payments.StatusKind, chatID int64, endpoint string) {
 	query, err := w.db.Query("select status, chat_id, endpoint from transactions where local_id=?", uuid)
 	checkErr(err)
-	defer checkErr(query.Close())
+	defer func() { checkErr(query.Close()) }()
 	if !query.Next() {
 		return
 	}
@@ -828,7 +828,7 @@ func (w *worker) modelActiveStatus(modelID string) lib.StatusKind {
 		modelID,
 		w.cfg.BlockThreshold)
 	checkErr(err)
-	defer checkErr(query.Close())
+	defer func() { checkErr(query.Close()) }()
 	if !query.Next() {
 		return lib.StatusUnknown
 	}
@@ -1001,7 +1001,7 @@ func splitAddress(a string) (string, string) {
 func (w *worker) recordForEmail(username string) *email {
 	modelsQuery, err := w.db.Query(`select chat_id, endpoint from emails where email=?`, username)
 	checkErr(err)
-	defer checkErr(modelsQuery.Close())
+	defer func() { checkErr(modelsQuery.Close()) }()
 	if modelsQuery.Next() {
 		email := email{email: username}
 		checkErr(modelsQuery.Scan(&email.chatID, &email.endpoint))
@@ -1417,7 +1417,7 @@ func loadTLS(certFile string, keyFile string) (*tls.Config, error) {
 func (w *worker) referralID(chatID int64) *string {
 	query, err := w.db.Query("select referral_id from referrals where chat_id=?", chatID)
 	checkErr(err)
-	defer checkErr(query.Close())
+	defer func() { checkErr(query.Close()) }()
 	if !query.Next() {
 		return nil
 	}
@@ -1429,7 +1429,7 @@ func (w *worker) referralID(chatID int64) *string {
 func (w *worker) chatForReferralID(referralID string) *int64 {
 	query, err := w.db.Query("select chat_id from referrals where referral_id=?", referralID)
 	checkErr(err)
-	defer checkErr(query.Close())
+	defer func() { checkErr(query.Close()) }()
 	if !query.Next() {
 		return nil
 	}
