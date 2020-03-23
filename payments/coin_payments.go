@@ -104,7 +104,8 @@ func (api *CoinPaymentsAPI) coinpaymentsMethod(method string, additionalParams [
 	return
 }
 
-type transaction struct {
+// Transaction represents CoinPayments transaction
+type Transaction struct {
 	Amount         decimal.Decimal `json:"amount"`
 	Address        string          `json:"address"`
 	DestTag        flex            `json:"dest_tag"`
@@ -122,7 +123,7 @@ type transactionResponse struct {
 }
 
 // CreateTransaction creates transaction object
-func (api *CoinPaymentsAPI) CreateTransaction(amount int, currency string, email string, transactionUUID string) (res *transaction, err error) {
+func (api *CoinPaymentsAPI) CreateTransaction(amount int, currency string, email string, transactionUUID string) (res *Transaction, err error) {
 	body, err := api.coinpaymentsMethod("create_transaction", []kv{
 		{"amount", strconv.Itoa(amount)},
 		{"currency1", "USD"},
@@ -143,9 +144,9 @@ func (api *CoinPaymentsAPI) CreateTransaction(amount int, currency string, email
 	if parse.Error != "ok" {
 		return nil, errors.New(parse.Error)
 	}
-	if parse.Result.transaction == nil {
+	if parse.Result.Transaction == nil {
 		return nil, fmt.Errorf(`cannot unmarshal "%s", %w`, string(body), err)
 	}
-	res = parse.Result.transaction
+	res = parse.Result.Transaction
 	return
 }

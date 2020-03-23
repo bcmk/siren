@@ -736,7 +736,7 @@ func (w *worker) unknownsNumber() int {
 	var unknownsCount = 0
 	for _, s := range w.unknowns {
 		if s {
-			unknownsCount += 1
+			unknownsCount++
 		}
 	}
 	return unknownsCount
@@ -1334,9 +1334,9 @@ func (w *worker) handleStat(endpoint string) func(writer http.ResponseWriter, r 
 		}
 		writer.WriteHeader(http.StatusOK)
 		writer.Header().Set("Content-Type", "application/json")
-		statJson, err := json.MarshalIndent(w.getStat(endpoint), "", "    ")
+		statJSON, err := json.MarshalIndent(w.getStat(endpoint), "", "    ")
 		checkErr(err)
-		_, err = writer.Write(statJson)
+		_, err = writer.Write(statJSON)
 		checkErr(err)
 	}
 }

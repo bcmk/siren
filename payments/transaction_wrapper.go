@@ -6,7 +6,7 @@ import (
 
 // CoinPayments API result is nonhomogeneous
 // It can be empty array or an object as result
-type transactionWrapper struct{ *transaction }
+type transactionWrapper struct{ *Transaction }
 
 func (w *transactionWrapper) UnmarshalJSON(b []byte) error {
 	if b[0] == '[' {
@@ -17,7 +17,7 @@ func (w *transactionWrapper) UnmarshalJSON(b []byte) error {
 		*w = transactionWrapper{}
 		return nil
 	}
-	var t transaction
+	var t Transaction
 	if err := json.Unmarshal(b, &t); err != nil {
 		return err
 	}

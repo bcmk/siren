@@ -42,6 +42,7 @@ func CheckModelBongaCams(client *Client, modelID string, headers [][2]string, db
 }
 
 var _ = StartBongaCamsAPIChecker
+
 // StartBongaCamsAPIChecker starts a checker for BongaCams
 func StartBongaCamsAPIChecker(
 	usersOnlineEndpoint string,
