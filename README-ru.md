@@ -1,15 +1,15 @@
 __[English](README.md)__
 
-Бот для оповещения о статусе моделей BongaCams, Chaturbate, Stripchat и xHamster Live в Telegram
-================================================================================================
+<img src="docs/icons/siren.svg" width="24" height="24">&ensp;SIREN
+==================================================================
+Бот в Telegram для оповещений о вебкам-шоу
 
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
 [![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)
 
-![](docs/icons/siren-128x128.png)
-
-Вы просто подписываетесь на любимые модели командой __/add__.
-После этого вы будуте получать оповещения каждый раз, когда они выходят в сеть.
+Это бот в Telegram для оповещений о вебкам-шоу на BongaCams, Chaturbate, Stripchat и xHamster Live.
+Вы просто подписываетесь на любимых моделей командой __/add__.
+После этого вы получате оповещения каждый раз, когда они выходят в сеть.
 Опрос статуса моделей происходит раз в минуту.
 
 Установка

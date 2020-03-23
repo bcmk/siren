@@ -1,14 +1,14 @@
 __[Русский](README-ru.md)__
 
-Telegram bot notifying you whenever BongaCams, Chaturbate, Stripchat and xHamster Live models are online
-========================================================================================================
+<img src="docs/icons/siren.svg" width="24" height="24">&ensp;SIREN
+==================================================================
+Telegram bot for adult webcasts alerts
 
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
 [![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)
 
-![](docs/icons/siren-128x128.png)
-
-You just subscribe to your favorite models with __/add__ command.
+This is telegram bot notifying you whenever BongaCams, Chaturbate, Stripchat and xHamster Live models are online.
+You just subscribe to your favorite webcam models with __/add__ command.
 Then you receive a notification whenever they are online.
 The bot queries models statuses every minute.
 
