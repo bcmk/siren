@@ -88,8 +88,6 @@ GitHub Pages
 
 [Twitter](https://twitter.com/sirenbot2)
 
-[Instagram](https://instagram.com/sirenbot)
-
 [Reddit](https://www.reddit.com/user/siren-bot)
 
 [WeCamgirls](https://www.wecamgirls.com/users/sirenbot)
