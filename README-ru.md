@@ -78,16 +78,14 @@ __[English](README.md)__
 
 Инструкции на [английском](README.md)
 
-GitHub Pages
-------------
-
-[Pages](https://bcmk.github.io/siren/ru.html)
-
-Социальные сети
----------------
+Ссылки
+------
 
 [Twitter](https://twitter.com/sirenbot2)
 
 [Reddit](https://www.reddit.com/user/siren-bot)
 
 [WeCamgirls](https://www.wecamgirls.com/users/sirenbot)
+
+[GitHub Pages](https://bcmk.github.io/siren/ru.html)
+

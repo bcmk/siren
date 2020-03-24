@@ -85,16 +85,13 @@ An example of translation is in [bongacams.json.example](https://github.com/bcmk
 
 Build cmd/bot. Run this executable with a path to config file as an argument.
 
-GitHub Pages
-------------
-
-[Pages](https://bcmk.github.io/siren)
-
-Social
-------
+Links
+-----
 
 [Twitter](https://twitter.com/sirenbot2)
 
 [Reddit](https://www.reddit.com/user/siren-bot)
 
 [WeCamgirls](https://www.wecamgirls.com/users/sirenbot)
+
+[GitHub Pages](https://bcmk.github.io/siren)
