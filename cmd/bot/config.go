@@ -70,6 +70,7 @@ type config struct {
 	UsersOnlineEndpoint         string              `json:"users_online_endpoint"`          // the endpoint to fetch online users
 	OfflineThresholdSeconds     int                 `json:"offline_threshold_seconds"`      // report online status only if model was offline longer than this threshold
 	OfflineNotifications        bool                `json:"offline_notifications"`          // enable offline notifications
+	Checker                     string              `json:"checker"`                        // use specific checker, for example "api" or "redir" for BongaCams
 
 	errorThreshold   int
 	errorDenominator int

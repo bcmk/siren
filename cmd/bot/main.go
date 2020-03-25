@@ -120,7 +120,14 @@ func newWorker() *worker {
 	switch cfg.Website {
 	case "bongacams":
 		w.checkModel = lib.CheckModelBongaCams
-		w.startChecker = lib.StartBongaCamsAPIChecker
+		switch w.cfg.Checker {
+		case "api":
+			w.startChecker = lib.StartBongaCamsAPIChecker
+		case "redir":
+			w.startChecker = lib.StartBongaCamsAPIChecker
+		default:
+			panic("specify checker")
+		}
 	case "chaturbate":
 		w.checkModel = lib.CheckModelChaturbate
 		w.startChecker = lib.StartChaturbateAPIChecker
