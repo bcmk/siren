@@ -124,7 +124,7 @@ func newWorker() *worker {
 		case "api":
 			w.startChecker = lib.StartBongaCamsAPIChecker
 		case "redir":
-			w.startChecker = lib.StartBongaCamsAPIChecker
+			w.startChecker = lib.StartBongaCamsRedirChecker
 		default:
 			panic("specify checker")
 		}
