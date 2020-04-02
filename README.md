@@ -85,6 +85,13 @@ An example of translation is in [bongacams.json.example](https://github.com/bcmk
 
 Build cmd/bot. Run this executable with a path to config file as an argument.
 
+Privacy policy
+--------------
+
+We do not store any sensitive personal information.
+We store only your Telegram chat ID that is essential for core functionality of the bot.
+Telegram chat ID is just a number which we use to send you notifications.
+
 Links
 -----
 
