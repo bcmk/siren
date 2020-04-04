@@ -10,6 +10,7 @@ single () {
 exp () {
     single $1 $1 siren
     single $1 $1 siren-round
+    single $1 $1 siren-white-background
 }
 
 exp 20
