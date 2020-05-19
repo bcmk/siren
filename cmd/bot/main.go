@@ -196,6 +196,7 @@ func (w *worker) resetBlock(endpoint string, chatID int64) {
 func (w *worker) sendText(endpoint string, chatID int64, notify bool, disablePreview bool, parse parseKind, text string) {
 	msg := tg.NewMessage(chatID, text)
 	msg.DisableNotification = !notify
+	msg.DisableWebPagePreview = disablePreview
 	switch parse {
 	case parseHTML, parseMarkdown:
 		msg.ParseMode = parse.String()
