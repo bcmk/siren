@@ -29,8 +29,9 @@ func (r parseKind) String() string {
 }
 
 type translation struct {
-	Str   string    `json:"str"`
-	Parse parseKind `json:"parse"`
+	Str            string    `json:"str"`
+	Parse          parseKind `json:"parse"`
+	DisablePreview bool      `json:"disable_preview"`
 }
 
 type translations struct {

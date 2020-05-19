@@ -193,7 +193,7 @@ func (w *worker) resetBlock(endpoint string, chatID int64) {
 	w.mustExec("update block set block=0 where endpoint=? and chat_id=?", endpoint, chatID)
 }
 
-func (w *worker) sendText(endpoint string, chatID int64, notify bool, parse parseKind, text string) {
+func (w *worker) sendText(endpoint string, chatID int64, notify bool, disablePreview bool, parse parseKind, text string) {
 	msg := tg.NewMessage(chatID, text)
 	msg.DisableNotification = !notify
 	switch parse {
@@ -227,7 +227,7 @@ func (w *worker) sendMessage(endpoint string, msg baseChattable) {
 
 func (w *worker) sendTr(endpoint string, chatID int64, notify bool, translation *translation, args ...interface{}) {
 	text := fmt.Sprintf(translation.Str, args...)
-	w.sendText(endpoint, chatID, notify, translation.Parse, text)
+	w.sendText(endpoint, chatID, notify, translation.DisablePreview, translation.Parse, text)
 }
 
 func (w *worker) createDatabase() {
@@ -703,7 +703,7 @@ func (w *worker) listModels(endpoint string, chatID int64) {
 	if len(lines) == 0 {
 		lines = append(lines, w.tr[endpoint].NoModels.Str)
 	}
-	w.sendText(endpoint, chatID, false, w.tr[endpoint].NoModels.Parse, strings.Join(lines, "\n"))
+	w.sendText(endpoint, chatID, false, true, w.tr[endpoint].NoModels.Parse, strings.Join(lines, "\n"))
 }
 
 func (w *worker) listOnlineModels(endpoint string, chatID int64) {
@@ -728,7 +728,7 @@ func (w *worker) feedback(endpoint string, chatID int64, text string) {
 
 	w.mustExec("insert into feedback (endpoint, chat_id, text) values (?, ?, ?)", endpoint, chatID, text)
 	w.sendTr(endpoint, chatID, false, w.tr[endpoint].Feedback)
-	w.sendText(endpoint, w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Feedback from %d: %s", chatID, text))
+	w.sendText(endpoint, w.cfg.AdminID, true, true, parseRaw, fmt.Sprintf("Feedback from %d: %s", chatID, text))
 }
 
 func (w *worker) setLimit(chatID int64, maxModels int) {
@@ -887,7 +887,7 @@ func (w *worker) statStrings(endpoint string) []string {
 }
 
 func (w *worker) stat(endpoint string) {
-	w.sendText(endpoint, w.cfg.AdminID, true, parseRaw, strings.Join(w.statStrings(endpoint), "\n"))
+	w.sendText(endpoint, w.cfg.AdminID, true, true, parseRaw, strings.Join(w.statStrings(endpoint), "\n"))
 }
 
 func (w *worker) broadcast(endpoint string, text string) {
@@ -899,28 +899,28 @@ func (w *worker) broadcast(endpoint string, text string) {
 	}
 	chats := w.broadcastChats(endpoint)
 	for _, chatID := range chats {
-		w.sendText(endpoint, chatID, true, parseRaw, text)
+		w.sendText(endpoint, chatID, true, false, parseRaw, text)
 	}
-	w.sendText(endpoint, w.cfg.AdminID, false, parseRaw, "OK")
+	w.sendText(endpoint, w.cfg.AdminID, false, true, parseRaw, "OK")
 }
 
 func (w *worker) direct(endpoint string, arguments string) {
 	parts := strings.SplitN(arguments, " ", 2)
 	if len(parts) < 2 {
-		w.sendText(endpoint, w.cfg.AdminID, false, parseRaw, "usage: /direct chatID text")
+		w.sendText(endpoint, w.cfg.AdminID, false, true, parseRaw, "usage: /direct chatID text")
 		return
 	}
 	whom, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
-		w.sendText(endpoint, w.cfg.AdminID, false, parseRaw, "first argument is invalid")
+		w.sendText(endpoint, w.cfg.AdminID, false, true, parseRaw, "first argument is invalid")
 		return
 	}
 	text := parts[1]
 	if text == "" {
 		return
 	}
-	w.sendText(endpoint, whom, true, parseRaw, text)
-	w.sendText(endpoint, w.cfg.AdminID, false, parseRaw, "OK")
+	w.sendText(endpoint, whom, true, false, parseRaw, text)
+	w.sendText(endpoint, w.cfg.AdminID, false, true, parseRaw, "OK")
 }
 
 func (w *worker) serveEndpoint(n string, p endpoint) {
@@ -956,7 +956,7 @@ func (w *worker) logConfig() {
 func (w *worker) myEmail(endpoint string) {
 	w.addUser(endpoint, w.cfg.AdminID)
 	email := w.email(endpoint, w.cfg.AdminID)
-	w.sendText(endpoint, w.cfg.AdminID, true, parseRaw, email)
+	w.sendText(endpoint, w.cfg.AdminID, true, true, parseRaw, email)
 }
 
 func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arguments string) bool {
@@ -976,21 +976,21 @@ func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arg
 	case "set_max_models":
 		parts := strings.Fields(arguments)
 		if len(parts) != 2 {
-			w.sendText(endpoint, chatID, false, parseRaw, "expecting two arguments")
+			w.sendText(endpoint, chatID, false, true, parseRaw, "expecting two arguments")
 			return true
 		}
 		who, err := strconv.ParseInt(parts[0], 10, 64)
 		if err != nil {
-			w.sendText(endpoint, chatID, false, parseRaw, "first argument is invalid")
+			w.sendText(endpoint, chatID, false, true, parseRaw, "first argument is invalid")
 			return true
 		}
 		maxModels, err := strconv.Atoi(parts[1])
 		if err != nil {
-			w.sendText(endpoint, chatID, false, parseRaw, "second argument is invalid")
+			w.sendText(endpoint, chatID, false, true, parseRaw, "second argument is invalid")
 			return true
 		}
 		w.setLimit(who, maxModels)
-		w.sendText(endpoint, chatID, false, parseRaw, "OK")
+		w.sendText(endpoint, chatID, false, true, parseRaw, "OK")
 		return true
 	}
 	return false
@@ -1209,7 +1209,7 @@ func (w *worker) processPeriodic(statusRequests chan []string) {
 	unknownsNumber := w.unknownsNumber()
 	now := time.Now()
 	if w.nextErrorReport.Before(now) && unknownsNumber > w.cfg.errorThreshold {
-		w.sendText(w.cfg.AdminEndpoint, w.cfg.AdminID, true, parseRaw, fmt.Sprintf("Dangerous error rate reached: %d/%d", unknownsNumber, w.cfg.errorDenominator))
+		w.sendText(w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, parseRaw, fmt.Sprintf("Dangerous error rate reached: %d/%d", unknownsNumber, w.cfg.errorDenominator))
 		w.nextErrorReport = now.Add(time.Minute * time.Duration(w.cfg.ErrorReportingPeriodMinutes))
 	}
 
