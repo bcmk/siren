@@ -15,28 +15,26 @@ var testConfig = config{
 	OfflineThresholdSeconds: 5,
 }
 
-var testTranslations = translations{
-	Help:           &translation{Str: "Help", Parse: parseRaw},
-	Online:         &translation{Str: "Online %s", Parse: parseRaw},
-	Offline:        &translation{Str: "Offline %s", Parse: parseRaw},
-	SyntaxAdd:      &translation{Str: "SyntaxAdd", Parse: parseRaw},
-	SyntaxRemove:   &translation{Str: "SyntaxRemove", Parse: parseRaw},
-	SyntaxFeedback: &translation{Str: "SyntaxFeedback", Parse: parseRaw},
-	InvalidSymbols: &translation{Str: "InvalidSymbols", Parse: parseRaw},
-	AlreadyAdded:   &translation{Str: "AlreadyAdded %s", Parse: parseRaw},
-	YourMaxModels:  &translation{Str: "YourMaxModels %d", Parse: parseRaw},
-	AddError:       &translation{Str: "AddError %s", Parse: parseRaw},
-	ModelAdded:     &translation{Str: "ModelAdded %s", Parse: parseRaw},
-	ModelNotInList: &translation{Str: "ModelNotInList %s", Parse: parseRaw},
-	ModelRemoved:   &translation{Str: "ModelRemoved %s", Parse: parseRaw},
-	Feedback:       &translation{Str: "Feedback", Parse: parseRaw},
-	Social:         &translation{Str: "Social", Parse: parseRaw},
-	UnknownCommand: &translation{Str: "UnknownCommand", Parse: parseRaw},
-	Slash:          &translation{Str: "Slash", Parse: parseRaw},
-	Languages:      &translation{Str: "Languages", Parse: parseRaw},
-	Version:        &translation{Str: "Version %s", Parse: parseRaw},
-	ProfileRemoved: &translation{Str: "ProfileRemoved %s", Parse: parseRaw},
-	NoModels:       &translation{Str: "NoModels", Parse: parseRaw},
+var testTranslations = lib.Translations{
+	Help:           &lib.Translation{Str: "Help", Parse: lib.ParseRaw},
+	Online:         &lib.Translation{Str: "Online %s", Parse: lib.ParseRaw},
+	Offline:        &lib.Translation{Str: "Offline %s", Parse: lib.ParseRaw},
+	SyntaxAdd:      &lib.Translation{Str: "SyntaxAdd", Parse: lib.ParseRaw},
+	SyntaxRemove:   &lib.Translation{Str: "SyntaxRemove", Parse: lib.ParseRaw},
+	SyntaxFeedback: &lib.Translation{Str: "SyntaxFeedback", Parse: lib.ParseRaw},
+	InvalidSymbols: &lib.Translation{Str: "InvalidSymbols", Parse: lib.ParseRaw},
+	AlreadyAdded:   &lib.Translation{Str: "AlreadyAdded %s", Parse: lib.ParseRaw},
+	YourMaxModels:  &lib.Translation{Str: "YourMaxModels %d", Parse: lib.ParseRaw},
+	AddError:       &lib.Translation{Str: "AddError %s", Parse: lib.ParseRaw},
+	ModelAdded:     &lib.Translation{Str: "ModelAdded %s", Parse: lib.ParseRaw},
+	ModelNotInList: &lib.Translation{Str: "ModelNotInList %s", Parse: lib.ParseRaw},
+	ModelRemoved:   &lib.Translation{Str: "ModelRemoved %s", Parse: lib.ParseRaw},
+	Feedback:       &lib.Translation{Str: "Feedback", Parse: lib.ParseRaw},
+	Social:         &lib.Translation{Str: "Social", Parse: lib.ParseRaw},
+	UnknownCommand: &lib.Translation{Str: "UnknownCommand", Parse: lib.ParseRaw},
+	Languages:      &lib.Translation{Str: "Languages", Parse: lib.ParseRaw},
+	Version:        &lib.Translation{Str: "Version %s", Parse: lib.ParseRaw},
+	ProfileRemoved: &lib.Translation{Str: "ProfileRemoved %s", Parse: lib.ParseRaw},
 }
 
 type testWorker struct {
@@ -63,7 +61,7 @@ func newTestWorker() *testWorker {
 			db:      db,
 			cfg:     &testConfig,
 			clients: nil,
-			tr:      map[string]translations{"test": testTranslations},
+			tr:      map[string]*lib.Translations{"test": &testTranslations},
 		},
 	}
 	w.checkModel = w.testCheckModel

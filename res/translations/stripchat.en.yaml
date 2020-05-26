@@ -1,0 +1,32 @@
+add_error:
+  parse: html
+  str: |-
+    Could not add the model {{ .model }}
+    Check the model username or try later
+    Syntax: /add <code>MODEL_USERNAME</code>
+help:
+  parse: html
+  str: |-
+    The bot notifies you whenever your favorite Stripchat models are online.
+
+    {{ template "commands" }}
+languages:
+  parse: raw
+  str: |-
+    This bot in other languages
+    Русский: t.me/StripchatSirenBot
+online:
+  parse: raw
+  str: |-
+    {{ .model }} online
+    www.stripchat.com/{{ .model }}
+syntax_add:
+  parse: html
+  str: |-
+    Enter
+
+    /add <code>MODEL_USERNAME</code>
+
+    Example
+
+    /add bbweb

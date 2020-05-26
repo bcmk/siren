@@ -1,0 +1,177 @@
+all_models_removed:
+  parse: raw
+  str: Все ваши подписки удалены
+already_added:
+  parse: raw
+  str: 'Модель {{ .model }} уже в вашем списке'
+buy_ad:
+  parse: raw
+  str: 'Заплати {{ .price }}$ один раз и получи {{ .number_of_subscriptions }} дополнительных моделей навсегда'
+buy_button:
+  parse: raw
+  str: 'Купить {{ .number_of_subscriptions }} моделей'
+denied:
+  parse: raw
+  str: '{{ .model }} заблокировала доступ из США, где находится этот бот'
+feedback:
+  parse: raw
+  str: Спасибо за отклик!
+follower_exists:
+  parse: raw
+  str: Реферальные ссылки работают только для новых пользователей
+commands:
+  parse: html
+  str: |-
+    Команды
+
+    <b>add</b> <code>МОДЕЛЬ</code> — Добавить модель
+    <b>remove</b> <code>МОДЕЛЬ</code> — Удалить модель
+    <b>remove_all</b> — Удалить всех моделей
+    <b>list</b> — Ваши модели
+    <b>online</b> — Ваши модели, которые сейчас в сети
+    <b>feedback</b> <code>ВАШЕ_СООБЩЕНИЕ</code> — Обратная связь
+    <b>source</b> — Исходный код
+    <b>language</b> — Этот бот на других языках
+    <b>help</b> — Список команд
+invalid_command:
+  parse: raw
+  str: Ошибка в команде
+invalid_referral_link:
+  parse: raw
+  str: Ваша реферальная ссылка неверна
+invalid_symbols:
+  parse: raw
+  str: 'Идентификатор модели {{ .model }} содержит неподдерживаемые символы'
+mail_received:
+  parse: raw
+  str: |-
+    Получено письмо
+    Тема: {{ .subject }}
+    От: {{ .from }}
+    {{ .text }}
+model_added:
+  parse: raw
+  str: |-
+    Модель {{ .model }} добавлена
+    Бот сообщит, когда она входит в сеть или выходит
+model_not_in_list:
+  parse: raw
+  str: 'Модель {{ .model }} не в вашем списке'
+model_removed:
+  parse: raw
+  str: 'Модель {{ .model }} удалена'
+no_online_models:
+  parse: raw
+  str: Не найдено моделей в сети, на которые вы подписаны
+not_enough_subscriptions:
+  parse: raw
+  str: У вас недостаточно подписок
+offline:
+  parse: raw
+  str: '{{ .model }} не в сети'
+list:
+  parse: raw
+  str: |-
+    {{- range .list -}}
+      {{- if .Online -}}
+        {{- .Model }} в сети {{- print "\n" -}}
+      {{- else if .Denied -}}
+        {{- .Model }} заблокировала доступ из США, где находится этот бот {{- print "\n" -}}
+      {{- else -}}
+        {{- .Model }} не в сети {{- print "\n" -}}
+      {{- end -}}
+    {{- else -}}
+    Вы не подписаны ни на одну модель
+    Чтобы подписаться, наберите
+
+    /add <code>МОДЕЛЬ</code>
+    {{- end -}}
+own_referral_link_hit:
+  parse: raw
+  str: Вы только что кликнули по собственной реферальной ссылке
+pay_this:
+  parse: raw
+  str: |-
+    Пожалуйста, оплатите этот счёт на {{ .price }} {{ .currency }}
+    Имейте в виду, обработка платежа CoinPayments может занять некоторое время после того, как он отображается, как оплаченный
+    {{ .link }}
+payment_complete:
+  parse: raw
+  str: |-
+    Платёж проведён
+    Теперь вы можете подписаться на {{ .max_models }} моделей
+profile_removed:
+  parse: raw
+  str: 'Модель {{ .model }} вероятно удалила свой профиль'
+referral_applied:
+  parse: raw
+  str: Поздравляем! Вы только что получили дополнительные подписки по реферальной ссылке!
+referral_link:
+  disable_preview: true
+  parse: raw
+  str: |-
+    Зарабатывайте дополнительные подписки, делясь реферальной ссылкой!
+    {{ .link }}
+
+    Вы получите по {{ .referral_bonus }} дополнительные модели за каждого зарегистрировавшегося пользователя
+    Новый пользователь получит {{ .follower_bonus }} дополнительные модели
+remove_all:
+  parse: raw
+  str: |-
+    Если вы действительно хотите удалить всех моделей, наберите
+
+    /sure_remove_all
+select_currency:
+  parse: raw
+  str: |-
+    Заплати один раз и получи {{ .number_of_subscriptions }} дополнительных моделей навсегда
+    Всего у вас будет {{ .total_subscriptions }} подписок
+    Вам нужно будет оплатить {{ .dollars }}$
+    Пожалуйста, выберете криптовалюту для оплаты
+social:
+  disable_preview: true
+  parse: raw
+  str: |-
+    Twitter: https://twitter.com/sirenbot2
+    Reddit: https://reddit.com/u/siren-bot
+    GitHub: https://github.com/bcmk/siren
+    Telegram: https://t.me/siren_telegram_bot
+subscription_usage:
+  parse: raw
+  str: 'Использовано подписок: {{ .subscriptions_used }}/{{ .total_subscriptions }}'
+subscription_usage_ad:
+  parse: raw
+  str: |-
+    Использовано подписок: {{ .subscriptions_used }}/{{ .total_subscriptions }}
+    Хотите больше подписок? Наберите
+
+    /want_more
+syntax_feedback:
+  parse: html
+  str: |-
+    Наберите
+
+    /feedback <code>ВАШЕ_СООБЩЕНИЕ</code>
+syntax_remove:
+  parse: html
+  str: |-
+    Наберите
+
+    /remove <code>МОДЕЛЬ</code>
+try_to_buy_later:
+  parse: raw
+  str: |-
+    Ваш платёжный запрос не может быть обработан
+    Попробуйте позже
+unknown_command:
+  parse: raw
+  str: Такой команде не обучен
+unknown_currency:
+  parse: raw
+  str: Указанная валюта не поддерживается
+version:
+  parse: raw
+  str: 'Версия: {{ .version }}'
+your_max_models:
+  parse: raw
+  str: 'Вы можете подписаться на {{ .max_models }} моделей'

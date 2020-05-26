@@ -1,0 +1,44 @@
+add_error:
+  parse: html
+  str: |-
+    Не получилось добавить модель {{ .model }}
+    Проверьте идентификатор модели или попробуйте позже
+    Формат команды: /add <code>МОДЕЛЬ</code>
+    Идентификатор модели можно посмотреть в адресной строке браузера
+help:
+  parse: html
+  str: |-
+    Бот сообщит, когда твоя любимая модель появится в сети BongaCams.
+
+    {{ template "commands" }}
+
+    Идентификатор модели можно посмотреть в адресной строке браузера
+languages:
+  parse: raw
+  str: |-
+    Этот бот на других языках
+    English: t.me/BongacamsOnlineBot
+online:
+  parse: raw
+  str: |-
+    {{ .model }} в сети
+    www.bongacams.com/{{ .model }}
+syntax_add:
+  parse: html
+  str: |-
+    Наберите
+
+    /add <code>МОДЕЛЬ</code>
+
+    Идентификатор модели можно посмотреть в адресной строке браузера
+
+    Пример
+
+    /add bbbweb
+syntax_remove:
+  parse: html
+  str: |-
+    Наберите
+
+    /remove <code>МОДЕЛЬ</code>
+    Идентификатор модели можно посмотреть в адресной строке браузера

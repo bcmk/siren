@@ -1,0 +1,44 @@
+add_error:
+  parse: html
+  str: |-
+    Could not add the model {{ .model }}
+    Check the model username or try later
+    Syntax: /add <code>MODEL_USERNAME</code>
+    You can find a model username in an address line of your browser
+help:
+  parse: html
+  str: |-
+    The bot notifies you whenever your favorite BongaCams models are online.
+
+    {{ template "commands" }}
+
+    You can find a model username in an address line of your browser
+languages:
+  parse: raw
+  str: |-
+    This bot in other languages
+    Русский: t.me/BongacamsSirenBot
+online:
+  parse: raw
+  str: |-
+    {{ .model }} online
+    www.bongacams.com/{{ .model }}
+syntax_add:
+  parse: html
+  str: |-
+    Enter
+
+    /add <code>MODEL_USERNAME</code>
+
+    You can find a model username in an address line of your browser
+
+    Example
+
+    /add bbbweb
+syntax_remove:
+  parse: html
+  str: |-
+    Enter
+
+    /remove <code>MODEL_USERNAME</code>
+    You can find a model username in an address line of your browser

@@ -10,6 +10,8 @@ require (
 	github.com/mattn/go-sqlite3 v1.10.0
 	github.com/shopspring/decimal v0.0.0-20200105231215-408a2507e114
 	github.com/technoweenie/multipartstreamer v1.0.1 // indirect
+	gopkg.in/yaml.v2 v2.3.0
+	gopkg.in/yaml.v3 v3.0.0-20200506231410-2ff61e1afc86
 )
 
 go 1.13

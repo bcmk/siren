@@ -1,0 +1,32 @@
+add_error:
+  parse: html
+  str: |-
+    Не получилось добавить модель {{ .model }}
+    Проверьте ник модели или попробуйте позже
+    Формат команды: /add <code>МОДЕЛЬ</code>
+help:
+  parse: html
+  str: |-
+    Бот сообщит, когда твоя любимая модель появится в сети Stripchat.
+
+    {{ template "commands" }}
+languages:
+  parse: raw
+  str: |-
+    Этот бот на других языках
+    English: t.me/StripchatOnlineBot
+online:
+  parse: raw
+  str: |-
+    {{ .model }} в сети
+    www.stripchat.com/{{ .model }}
+syntax_add:
+  parse: html
+  str: |-
+    Наберите
+
+    /add <code>МОДЕЛЬ</code>
+
+    Пример
+
+    /add bbweb
