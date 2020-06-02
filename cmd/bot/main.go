@@ -60,15 +60,16 @@ type statusChange struct {
 }
 
 type worker struct {
-	clients      []*lib.Client
-	bots         map[string]*tg.BotAPI
-	db           *sql.DB
-	cfg          *config
-	elapsed      time.Duration
-	tr           map[string]*lib.Translations
-	tpl          map[string]*template.Template
-	checkModel   func(client *lib.Client, modelID string, headers [][2]string, dbg bool) lib.StatusKind
-	startChecker func(
+	clients         []*lib.Client
+	bots            map[string]*tg.BotAPI
+	db              *sql.DB
+	cfg             *config
+	queriesDuration time.Duration
+	updatesDuration time.Duration
+	tr              map[string]*lib.Translations
+	tpl             map[string]*template.Template
+	checkModel      func(client *lib.Client, modelID string, headers [][2]string, dbg bool) lib.StatusKind
+	startChecker    func(
 		usersOnlineEndpoint string,
 		clients []*lib.Client,
 		headers [][2]string,
@@ -1057,6 +1058,7 @@ func (w *worker) statStrings(endpoint string) []string {
 		fmt.Sprintf("Models to poll total: %d", stat.ModelsToPollTotalCount),
 		fmt.Sprintf("Status changes: %d", stat.StatusChangesCount),
 		fmt.Sprintf("Queries duration: %d ms", stat.QueriesDurationMilliseconds),
+		fmt.Sprintf("Updates duration: %d ms", stat.UpdatesDurationMilliseconds),
 		fmt.Sprintf("Error rate: %d/%d", stat.ErrorRate[0], stat.ErrorRate[1]),
 		fmt.Sprintf("Memory usage: %d KiB", stat.Rss),
 		fmt.Sprintf("Transactions: %d/%d", stat.TransactionsOnEndpointFinished, stat.TransactionsOnEndpointCount),
@@ -1559,7 +1561,8 @@ func (w *worker) getStat(endpoint string) statistics {
 		StatusChangesCount:             w.statusChangesCount(),
 		TransactionsOnEndpointCount:    w.transactionsOnEndpoint(endpoint),
 		TransactionsOnEndpointFinished: w.transactionsOnEndpointFinished(endpoint),
-		QueriesDurationMilliseconds:    int(w.elapsed.Milliseconds()),
+		QueriesDurationMilliseconds:    int(w.queriesDuration.Milliseconds()),
+		UpdatesDurationMilliseconds:    int(w.updatesDuration.Milliseconds()),
 		ErrorRate:                      [2]int{w.unsuccessfulRequestsCount(), w.cfg.errorDenominator},
 		Rss:                            rss / 1024,
 		MaxRss:                         rusage.Maxrss,
@@ -1726,7 +1729,7 @@ func main() {
 	for {
 		select {
 		case e := <-elapsed:
-			w.elapsed = e
+			w.queriesDuration = e
 		case <-periodicTimer.C:
 			runtime.GC()
 			w.processPeriodic(statusRequestsChan)
@@ -1735,6 +1738,7 @@ func main() {
 			w.successfulRequestsPos = (w.successfulRequestsPos + 1) % w.cfg.errorDenominator
 			now := int(time.Now().Unix())
 			_, notifications, elapsed := w.processStatusUpdates(statusUpdates, now)
+			w.updatesDuration = elapsed
 			for _, n := range notifications {
 				w.notifyOfStatus(n.endpoint, n.chatID, n.modelID, n.status)
 			}
