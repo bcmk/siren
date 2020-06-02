@@ -340,33 +340,15 @@ func (w *worker) createDatabase() {
 			endpoint text not null default '',
 			primary key (chat_id, model_id, endpoint));`)
 	w.mustExec(`
-		create index if not exists idx_signals_model_id
-		on signals(model_id);`)
-	w.mustExec(`
-		create index if not exists idx_signals_chat_id
-		on signals(chat_id);`)
-	w.mustExec(`
-		create index if not exists idx_signals_endpoint
-		on signals(endpoint);`)
-	w.mustExec(`
 		create table if not exists status_changes (
 			model_id text,
 			status integer not null default 0,
 			timestamp integer not null default 0);`)
 	w.mustExec(`
-		create index if not exists idx_status_changes_timestamp
-		on status_changes(timestamp);`)
-	w.mustExec(`
-		create index if not exists idx_status_changes_model_id
-		on status_changes(model_id);`)
-	w.mustExec(`
 		create table if not exists models (
 			model_id text primary key,
 			status integer not null default 0,
 			referred_users integer not null default 0);`)
-	w.mustExec(`
-		create index if not exists idx_models_model_id
-		on models(model_id);`)
 	w.mustExec(`
 		create table if not exists feedback (
 			chat_id integer,
@@ -378,12 +360,6 @@ func (w *worker) createDatabase() {
 			block integer not null default 0,
 			endpoint text not null default '',
 			primary key(chat_id, endpoint));`)
-	w.mustExec(`
-		create index if not exists idx_block_chat_id
-		on block(chat_id);`)
-	w.mustExec(`
-		create index if not exists idx_block_endpoint
-		on block(endpoint);`)
 	w.mustExec(`
 		create table if not exists users (
 			chat_id integer primary key,
@@ -1465,7 +1441,9 @@ func (w *worker) processStatusUpdates(
 ) (
 	confirmedChangesCount int,
 	notifications []notification,
+	elapsed time.Duration,
 ) {
+	start := time.Now()
 	lastStatusChanges := w.lastStatusChanges()
 	confirmedStatuses := w.confirmedStatuses()
 	chatsForModels, endpointsForModels := w.chatsForModels()
@@ -1494,6 +1472,7 @@ func (w *worker) processStatusUpdates(
 		}
 	}
 	w.mustExec("end")
+	elapsed = time.Since(start)
 	return
 }
 
@@ -1755,9 +1734,12 @@ func main() {
 			w.unsuccessfulRequests[w.successfulRequestsPos] = statusUpdates == nil
 			w.successfulRequestsPos = (w.successfulRequestsPos + 1) % w.cfg.errorDenominator
 			now := int(time.Now().Unix())
-			_, notifications := w.processStatusUpdates(statusUpdates, now)
+			_, notifications, elapsed := w.processStatusUpdates(statusUpdates, now)
 			for _, n := range notifications {
 				w.notifyOfStatus(n.endpoint, n.chatID, n.modelID, n.status)
+			}
+			if w.cfg.Debug {
+				ldbg("status updates processed in %v", elapsed)
 			}
 		case u := <-incoming:
 			w.processTGUpdate(u)
