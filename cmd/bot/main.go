@@ -1029,6 +1029,11 @@ func (w *worker) onlineModelsCount() int {
 	return singleInt(query)
 }
 
+func (w *worker) statusChangesCount() int {
+	query := w.db.QueryRow("select count(*) from status_changes")
+	return singleInt(query)
+}
+
 func (w *worker) confirmedStatus(modelID string) lib.StatusKind {
 	query, err := w.db.Query(`select status from models where model_id=?`, modelID)
 	checkErr(err)
@@ -1074,6 +1079,7 @@ func (w *worker) statStrings(endpoint string) []string {
 		fmt.Sprintf("Models: %d", stat.ModelsCount),
 		fmt.Sprintf("Models to poll: %d", stat.ModelsToPollOnEndpointCount),
 		fmt.Sprintf("Models to poll total: %d", stat.ModelsToPollTotalCount),
+		fmt.Sprintf("Status changes: %d", stat.StatusChangesCount),
 		fmt.Sprintf("Queries duration: %d ms", stat.QueriesDurationMilliseconds),
 		fmt.Sprintf("Error rate: %d/%d", stat.ErrorRate[0], stat.ErrorRate[1]),
 		fmt.Sprintf("Memory usage: %d KiB", stat.Rss),
@@ -1571,6 +1577,7 @@ func (w *worker) getStat(endpoint string) statistics {
 		ModelsToPollOnEndpointCount:    w.modelsToPollOnEndpointCount(endpoint),
 		ModelsToPollTotalCount:         w.modelsToPollTotalCount(),
 		OnlineModelsCount:              w.onlineModelsCount(),
+		StatusChangesCount:             w.statusChangesCount(),
 		TransactionsOnEndpointCount:    w.transactionsOnEndpoint(endpoint),
 		TransactionsOnEndpointFinished: w.transactionsOnEndpointFinished(endpoint),
 		QueriesDurationMilliseconds:    int(w.elapsed.Milliseconds()),
