@@ -334,6 +334,9 @@ func (w *worker) sendTr(endpoint string, chatID int64, notify bool, translation 
 
 func (w *worker) createDatabase() {
 	linf("creating database if needed...")
+	if w.cfg.SQLPrelude != "" {
+		w.mustExec(w.cfg.SQLPrelude)
+	}
 	w.mustExec(`
 		create table if not exists signals (
 			chat_id integer,

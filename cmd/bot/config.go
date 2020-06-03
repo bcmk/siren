@@ -77,6 +77,7 @@ type config struct {
 	StatusConfirmationSeconds   statusConfirmationSeconds `json:"status_confirmation_seconds"`    // a status is confirmed only if it lasts for at least this number of seconds
 	OfflineNotifications        bool                      `json:"offline_notifications"`          // enable offline notifications
 	Checker                     checkerKind               `json:"checker"`                        // use specific checker, for example "api" or "redir" for BongaCams
+	SQLPrelude                  string                    `json:"sql_prelude"`                    // run these SQL commands before any other
 
 	errorThreshold   int
 	errorDenominator int
