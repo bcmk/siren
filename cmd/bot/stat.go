@@ -21,4 +21,6 @@ type statistics struct {
 	UserReferralsCount             int    `json:"user_referrals_count"`
 	ModelReferralsCount            int    `json:"model_referrals_count"`
 	ReportsCount                   int    `json:"reports_count"`
+	ChangesInPeriod                int    `json:"changes_in_period"`
+	ConfirmedChangesInPeriod       int    `json:"confirmed_changes_in_period"`
 }

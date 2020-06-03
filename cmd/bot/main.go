@@ -60,16 +60,18 @@ type statusChange struct {
 }
 
 type worker struct {
-	clients         []*lib.Client
-	bots            map[string]*tg.BotAPI
-	db              *sql.DB
-	cfg             *config
-	queriesDuration time.Duration
-	updatesDuration time.Duration
-	tr              map[string]*lib.Translations
-	tpl             map[string]*template.Template
-	checkModel      func(client *lib.Client, modelID string, headers [][2]string, dbg bool) lib.StatusKind
-	startChecker    func(
+	clients                  []*lib.Client
+	bots                     map[string]*tg.BotAPI
+	db                       *sql.DB
+	cfg                      *config
+	queriesDuration          time.Duration
+	updatesDuration          time.Duration
+	changesInPeriod          int
+	confirmedChangesInPeriod int
+	tr                       map[string]*lib.Translations
+	tpl                      map[string]*template.Template
+	checkModel               func(client *lib.Client, modelID string, headers [][2]string, dbg bool) lib.StatusKind
+	startChecker             func(
 		usersOnlineEndpoint string,
 		clients []*lib.Client,
 		headers [][2]string,
@@ -1068,6 +1070,8 @@ func (w *worker) statStrings(endpoint string) []string {
 		fmt.Sprintf("Reports: %d", stat.ReportsCount),
 		fmt.Sprintf("User referrals: %d", stat.UserReferralsCount),
 		fmt.Sprintf("Model referrals: %d", stat.ModelReferralsCount),
+		fmt.Sprintf("Changes in period: %d", stat.ChangesInPeriod),
+		fmt.Sprintf("Confirmed changes in period: %d", stat.ConfirmedChangesInPeriod),
 	}
 }
 
@@ -1444,6 +1448,7 @@ func (w *worker) processStatusUpdates(
 	statusUpdates []lib.StatusUpdate,
 	now int,
 ) (
+	changesCount int,
 	confirmedChangesCount int,
 	notifications []notification,
 	elapsed time.Duration,
@@ -1459,6 +1464,9 @@ func (w *worker) processStatusUpdates(
 			confirmedStatus := confirmedStatuses[u.ModelID]
 			statusChange := statusChange{ModelID: u.ModelID, Status: u.Status, Timestamp: now}
 			changeConfirmed := w.updateStatus(statusChange, lastStatusChange, confirmedStatus)
+			if lastStatusChange.Status != statusChange.Status {
+				changesCount++
+			}
 			if changeConfirmed {
 				confirmedChangesCount++
 			}
@@ -1572,6 +1580,8 @@ func (w *worker) getStat(endpoint string) statistics {
 		UserReferralsCount:             w.userReferralsCount(),
 		ModelReferralsCount:            w.modelReferralsCount(),
 		ReportsCount:                   w.reports(),
+		ChangesInPeriod:                w.changesInPeriod,
+		ConfirmedChangesInPeriod:       w.confirmedChangesInPeriod,
 	}
 }
 
@@ -1740,8 +1750,10 @@ func main() {
 			w.unsuccessfulRequests[w.successfulRequestsPos] = statusUpdates == nil
 			w.successfulRequestsPos = (w.successfulRequestsPos + 1) % w.cfg.errorDenominator
 			now := int(time.Now().Unix())
-			_, notifications, elapsed := w.processStatusUpdates(statusUpdates, now)
+			changesInPeriod, confirmedChangesInPeriod, notifications, elapsed := w.processStatusUpdates(statusUpdates, now)
 			w.updatesDuration = elapsed
+			w.changesInPeriod = changesInPeriod
+			w.confirmedChangesInPeriod = confirmedChangesInPeriod
 			for _, n := range notifications {
 				w.notifyOfStatus(n.endpoint, n.chatID, n.modelID, n.status)
 			}
