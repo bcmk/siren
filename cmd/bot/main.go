@@ -225,18 +225,18 @@ func (w *worker) cleanStatuses() {
 		checkErr(query.Scan(&modelID))
 		models = append(models, modelID)
 	}
-	w.mustExec("begin")
+	tx, err := w.db.Begin()
 	for _, modelID := range models {
-		w.mustExec("update models set status=? where model_id=?", lib.StatusUnknown, modelID)
+		mustExecInTx(tx, "update models set status=? where model_id=?", lib.StatusUnknown, modelID)
 		w.confirmedStatuses[modelID] = lib.StatusUnknown
-		w.mustExecPrepared(w.prepared.insertStatusChange, modelID, lib.StatusUnknown, now)
+		w.mustExecPrepared(tx.Stmt(w.prepared.insertStatusChange), modelID, lib.StatusUnknown, now)
 		w.lastStatusChanges[modelID] = statusChange{
 			ModelID:   modelID,
 			Status:    lib.StatusUnknown,
 			Timestamp: now,
 		}
 	}
-	w.mustExec("end")
+	checkErr(tx.Commit())
 }
 
 func trsByEndpoint(cfg *config) map[string][]string {
@@ -284,6 +284,14 @@ func (w *worker) removeWebhook() {
 
 func (w *worker) mustExec(query string, args ...interface{}) {
 	stmt, err := w.db.Prepare(query)
+	checkErr(err)
+	_, err = stmt.Exec(args...)
+	checkErr(err)
+	checkErr(stmt.Close())
+}
+
+func mustExecInTx(tx *sql.Tx, query string, args ...interface{}) {
+	stmt, err := tx.Prepare(query)
 	checkErr(err)
 	_, err = stmt.Exec(args...)
 	checkErr(err)
@@ -480,13 +488,14 @@ func (w *worker) confirmationSeconds(status lib.StatusKind) int {
 }
 
 func (w *worker) updateStatus(
+	tx *sql.Tx,
 	statusChange statusChange,
 ) (
 	changeConfirmed bool,
 ) {
 	lastStatusChange := w.lastStatusChanges[statusChange.ModelID]
 	if statusChange.Status != lastStatusChange.Status {
-		w.mustExecPrepared(w.prepared.insertStatusChange, statusChange.ModelID, statusChange.Status, statusChange.Timestamp)
+		w.mustExecPrepared(tx.Stmt(w.prepared.insertStatusChange), statusChange.ModelID, statusChange.Status, statusChange.Timestamp)
 		w.lastStatusChanges[statusChange.ModelID] = statusChange
 	}
 	confirmationSeconds := w.confirmationSeconds(statusChange.Status)
@@ -494,7 +503,7 @@ func (w *worker) updateStatus(
 		confirmationSeconds == 0 ||
 		(statusChange.Status == lastStatusChange.Status && statusChange.Timestamp-lastStatusChange.Timestamp >= confirmationSeconds)
 	if w.confirmedStatuses[statusChange.ModelID] != statusChange.Status && durationConfirmed {
-		w.mustExecPrepared(w.prepared.updateModelStatus, statusChange.ModelID, statusChange.Status)
+		w.mustExecPrepared(tx.Stmt(w.prepared.updateModelStatus), statusChange.ModelID, statusChange.Status)
 		w.confirmedStatuses[statusChange.ModelID] = statusChange.Status
 		return true
 	}
@@ -687,7 +696,10 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) bool {
 	subscriptionsNumber++
 	if newStatus != lib.StatusExists {
 		statusChange := statusChange{ModelID: modelID, Status: newStatus, Timestamp: int(time.Now().Unix())}
-		_ = w.updateStatus(statusChange)
+		tx, err := w.db.Begin()
+		checkErr(err)
+		_ = w.updateStatus(tx, statusChange)
+		checkErr(tx.Commit())
 	}
 	if newStatus != lib.StatusDenied {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].ModelAdded, tplData{"model": modelID})
@@ -1458,14 +1470,15 @@ func (w *worker) processStatusUpdates(
 ) {
 	start := time.Now()
 	chatsForModels, endpointsForModels := w.chatsForModels()
-	w.mustExec("begin")
+	tx, err := w.db.Begin()
+	checkErr(err)
 	for _, u := range statusUpdates {
 		if u.Status != lib.StatusUnknown {
 			statusChange := statusChange{ModelID: u.ModelID, Status: u.Status, Timestamp: now}
 			if w.lastStatusChanges[u.ModelID].Status != statusChange.Status {
 				changesCount++
 			}
-			changeConfirmed := w.updateStatus(statusChange)
+			changeConfirmed := w.updateStatus(tx, statusChange)
 			if changeConfirmed {
 				confirmedChangesCount++
 			}
@@ -1483,7 +1496,7 @@ func (w *worker) processStatusUpdates(
 			}
 		}
 	}
-	w.mustExec("end")
+	checkErr(tx.Commit())
 	elapsed = time.Since(start)
 	return
 }

@@ -54,7 +54,7 @@ func (w *testWorker) testSend(tg.Chattable) (tg.Message, error) {
 }
 
 func newTestWorker() *testWorker {
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open("sqlite3", "file:memdb1?mode=memory&cache=shared")
 	checkErr(err)
 	w := &testWorker{
 		worker: worker{

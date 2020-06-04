@@ -109,6 +109,7 @@ func TestSql(t *testing.T) {
 		{ModelID: "c2", Status: lib.StatusOnline}}) {
 		t.Error("unexpected statuses", statuses)
 	}
+	w.db.Close()
 }
 
 func TestUpdateStatus(t *testing.T) {
@@ -214,6 +215,7 @@ func TestUpdateStatus(t *testing.T) {
 	if w.confirmedStatuses["a"] != lib.StatusOffline {
 		t.Error("wrong active status")
 	}
+	w.db.Close()
 }
 
 func TestUpdateStatusFromNotFoundToOnline(t *testing.T) {
@@ -228,4 +230,5 @@ func TestUpdateStatusFromNotFoundToOnline(t *testing.T) {
 	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 30); n == 0 {
 		t.Error("unexpected status update")
 	}
+	w.db.Close()
 }
