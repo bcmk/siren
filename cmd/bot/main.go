@@ -733,9 +733,11 @@ func (w *worker) wantMore(endpoint string, chatID int64) {
 		return
 	}
 
-	text := fmt.Sprintf(w.tr[endpoint].BuyAd.Str,
-		w.cfg.CoinPayments.subscriptionPacketPrice,
-		w.cfg.CoinPayments.subscriptionPacketModelNumber)
+	tpl := w.tpl[endpoint]
+	text := templateToString(tpl, w.tr[endpoint].BuyAd.Key, tplData{
+		"price":                   w.cfg.CoinPayments.subscriptionPacketPrice,
+		"number_of_subscriptions": w.cfg.CoinPayments.subscriptionPacketModelNumber,
+	})
 
 	buttonText := fmt.Sprintf(w.tr[endpoint].BuyButton.Str, w.cfg.CoinPayments.subscriptionPacketModelNumber)
 	buttons := [][]tg.InlineKeyboardButton{{tg.NewInlineKeyboardButtonData(buttonText, "buy")}}
