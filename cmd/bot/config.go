@@ -255,11 +255,5 @@ func checkMailConfig(cfg *mailConfig) error {
 	if cfg.ListenAddress == "" {
 		return errors.New("configure listen_address")
 	}
-	if cfg.Certificate == "" {
-		return errors.New("configure certificate")
-	}
-	if cfg.CertificateKey == "" {
-		return errors.New("configure certificate_key")
-	}
 	return nil
 }

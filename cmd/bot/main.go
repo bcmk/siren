@@ -146,7 +146,7 @@ func newWorker() *worker {
 	var err error
 	var mailTLS *tls.Config
 
-	if cfg.Mail != nil {
+	if cfg.Mail != nil && cfg.Mail.Certificate != "" {
 		mailTLS, err = loadTLS(cfg.Mail.Certificate, cfg.Mail.CertificateKey)
 		checkErr(err)
 	}
