@@ -79,7 +79,7 @@ list:
       {{- print "\n" -}}
       {{- range .online -}}
         {{- .Model -}}
-        {{- if .Begin }} {{ template "duration" .Begin }} {{- end -}}
+        {{- if .Begin }} <i>{{ template "duration" .Begin }}</i> {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
     {{- end -}}
@@ -93,7 +93,7 @@ list:
       {{- print "\n" -}}
       {{- range .offline -}}
         {{- .Model -}}
-        {{- if .End }} была {{ template "duration" .End }} назад {{- end -}}
+        {{- if .End }} <i>была {{ template "duration" .End }} назад</i> {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
     {{- end -}}
@@ -106,7 +106,7 @@ list:
       {{- print "\n" -}}
       {{- range .denied -}}
         {{- .Model -}}
-        {{- if .End }} была {{ template "duration" .End }} назад {{- end -}}
+        {{- if .End }} <i>была {{ template "duration" .End }} назад</i> {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
     {{- end -}}
