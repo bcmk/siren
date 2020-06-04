@@ -786,7 +786,14 @@ func (w *worker) buy(endpoint string, chatID int64) {
 	additional := w.cfg.CoinPayments.subscriptionPacketModelNumber
 	overall := current + additional
 	usd := w.cfg.CoinPayments.subscriptionPacketPrice
-	text := fmt.Sprintf(w.tr[endpoint].SelectCurrency.Str, additional, overall, usd)
+
+	tpl := w.tpl[endpoint]
+	text := templateToString(tpl, w.tr[endpoint].SelectCurrency.Key, tplData{
+		"price":                   usd,
+		"number_of_subscriptions": additional,
+		"total_subscriptions":     overall,
+	})
+
 	msg := tg.NewMessage(chatID, text)
 	msg.ReplyMarkup = keyboard
 	w.sendMessage(endpoint, &messageConfig{msg})
