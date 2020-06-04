@@ -166,7 +166,7 @@ select_currency:
   str: |-
     Pay once and get {{ .number_of_subscriptions }} additional models forever
     There will be {{ .total_subscriptions }} total subscriptions
-    You will be charged an equivalent of {{ .dollars }}$
+    You will be charged {{ .dollars }}$ in crypto
     Please select a cryptocurrency to pay with
 social:
   disable_preview: true
