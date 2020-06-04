@@ -59,6 +59,11 @@ type statusChange struct {
 	Timestamp int
 }
 
+type prepared struct {
+	insertStatusChange *sql.Stmt
+	updateModelStatus  *sql.Stmt
+}
+
 type worker struct {
 	clients                  []*lib.Client
 	bots                     map[string]*tg.BotAPI
@@ -89,6 +94,7 @@ type worker struct {
 	coinPaymentsAPI       *payments.CoinPaymentsAPI
 	ipnServeMux           *http.ServeMux
 	mailTLS               *tls.Config
+	prepared              prepared
 }
 
 type packet struct {
@@ -404,6 +410,16 @@ func (w *worker) createDatabase() {
 			chat_id integer primary key,
 			referral_id text not null default '',
 			referred_users integer not null default 0);`)
+	var err error
+	w.prepared.insertStatusChange, err = w.db.Prepare("insert into status_changes (model_id, status, timestamp) values (?,?,?)")
+	checkErr(err)
+	w.prepared.updateModelStatus, err = w.db.Prepare("insert into models (model_id, status) values (?,?) on conflict(model_id) do update set status=excluded.status")
+	checkErr(err)
+}
+
+func (w *worker) unprepare() {
+	checkErr(w.prepared.insertStatusChange.Close())
+	checkErr(w.prepared.updateModelStatus.Close())
 }
 
 func (w *worker) lastStatusChange(modelID string) statusChange {
@@ -465,39 +481,22 @@ func (w *worker) confirmationSeconds(status lib.StatusKind) int {
 	}
 }
 
-var insChangeQuery = "insert into status_changes (model_id, status, timestamp) values (?,?,?)"
-var insConfChangeQuery = "insert into models (model_id, status) values (?,?) on conflict(model_id) do update set status=excluded.status"
-
 func (w *worker) updateStatus(
 	statusChange statusChange,
 	lastStatusChange statusChange,
 	lastConfirmedStatus lib.StatusKind,
-	insertStatusChange *sql.Stmt,
-	insertConfirmedChange *sql.Stmt,
 ) (
 	changeConfirmed bool,
 ) {
-	if insertStatusChange == nil {
-		stmt, err := w.db.Prepare(insChangeQuery)
-		checkErr(err)
-		insertStatusChange = stmt
-		defer func() { checkErr(stmt.Close()) }()
-	}
-	if insertConfirmedChange == nil {
-		stmt, err := w.db.Prepare(insConfChangeQuery)
-		checkErr(err)
-		insertConfirmedChange = stmt
-		defer func() { checkErr(stmt.Close()) }()
-	}
 	if statusChange.Status != lastStatusChange.Status {
-		w.mustExecPrepared(insertStatusChange, statusChange.ModelID, statusChange.Status, statusChange.Timestamp)
+		w.mustExecPrepared(w.prepared.insertStatusChange, statusChange.ModelID, statusChange.Status, statusChange.Timestamp)
 	}
 	confirmationSeconds := w.confirmationSeconds(statusChange.Status)
 	durationConfirmed := false ||
 		confirmationSeconds == 0 ||
 		(statusChange.Status == lastStatusChange.Status && statusChange.Timestamp-lastStatusChange.Timestamp >= confirmationSeconds)
 	if lastConfirmedStatus != statusChange.Status && durationConfirmed {
-		w.mustExecPrepared(insertConfirmedChange, statusChange.ModelID, statusChange.Status)
+		w.mustExecPrepared(w.prepared.updateModelStatus, statusChange.ModelID, statusChange.Status)
 		return true
 	}
 	return false
@@ -689,7 +688,7 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) bool {
 	if newStatus != lib.StatusExists {
 		lastStatusChange := w.lastStatusChange(modelID)
 		statusChange := statusChange{ModelID: modelID, Status: newStatus, Timestamp: int(time.Now().Unix())}
-		_ = w.updateStatus(statusChange, lastStatusChange, confirmedStatus, nil, nil)
+		_ = w.updateStatus(statusChange, lastStatusChange, confirmedStatus)
 	}
 	if newStatus != lib.StatusDenied {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].ModelAdded, tplData{"model": modelID})
@@ -1474,19 +1473,13 @@ func (w *worker) processStatusUpdates(
 	lastStatusChanges := w.lastStatusChanges()
 	confirmedStatuses := w.confirmedStatuses()
 	chatsForModels, endpointsForModels := w.chatsForModels()
-	insertChange, err := w.db.Prepare(insChangeQuery)
-	checkErr(err)
-	defer func() { checkErr(insertChange.Close()) }()
-	insertConfChange, err := w.db.Prepare(insConfChangeQuery)
-	checkErr(err)
-	defer func() { checkErr(insertConfChange.Close()) }()
 	w.mustExec("begin")
 	for _, u := range statusUpdates {
 		if u.Status != lib.StatusUnknown {
 			lastStatusChange := lastStatusChanges[u.ModelID]
 			confirmedStatus := confirmedStatuses[u.ModelID]
 			statusChange := statusChange{ModelID: u.ModelID, Status: u.Status, Timestamp: now}
-			changeConfirmed := w.updateStatus(statusChange, lastStatusChange, confirmedStatus, insertChange, insertConfChange)
+			changeConfirmed := w.updateStatus(statusChange, lastStatusChange, confirmedStatus)
 			if lastStatusChange.Status != statusChange.Status {
 				changesCount++
 			}
@@ -1789,6 +1782,7 @@ func main() {
 			w.mailReceived(m)
 		case s := <-signals:
 			linf("got signal %v", s)
+			w.unprepare()
 			w.removeWebhook()
 			return
 		}
