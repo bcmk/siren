@@ -226,6 +226,7 @@ func (w *worker) cleanStatuses() {
 		models = append(models, modelID)
 	}
 	tx, err := w.db.Begin()
+	checkErr(err)
 	for _, modelID := range models {
 		mustExecInTx(tx, "update models set status=? where model_id=?", lib.StatusUnknown, modelID)
 		w.confirmedStatuses[modelID] = lib.StatusUnknown
@@ -738,8 +739,10 @@ func (w *worker) wantMore(endpoint string, chatID int64) {
 		"price":                   w.cfg.CoinPayments.subscriptionPacketPrice,
 		"number_of_subscriptions": w.cfg.CoinPayments.subscriptionPacketModelNumber,
 	})
+	buttonText := templateToString(tpl, w.tr[endpoint].BuyButton.Key, tplData{
+		"number_of_subscriptions": w.cfg.CoinPayments.subscriptionPacketModelNumber,
+	})
 
-	buttonText := fmt.Sprintf(w.tr[endpoint].BuyButton.Str, w.cfg.CoinPayments.subscriptionPacketModelNumber)
 	buttons := [][]tg.InlineKeyboardButton{{tg.NewInlineKeyboardButtonData(buttonText, "buy")}}
 	keyboard := tg.NewInlineKeyboardMarkup(buttons...)
 	msg := tg.NewMessage(chatID, text)
