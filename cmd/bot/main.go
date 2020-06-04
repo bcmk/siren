@@ -789,7 +789,7 @@ func (w *worker) buy(endpoint string, chatID int64) {
 
 	tpl := w.tpl[endpoint]
 	text := templateToString(tpl, w.tr[endpoint].SelectCurrency.Key, tplData{
-		"price":                   usd,
+		"dollars":                 usd,
 		"number_of_subscriptions": additional,
 		"total_subscriptions":     overall,
 	})

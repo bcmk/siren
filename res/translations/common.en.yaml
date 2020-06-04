@@ -164,7 +164,7 @@ remove_all:
 select_currency:
   parse: raw
   str: |-
-    Pay once and you will get {{ .number_of_subscriptions }} additional models forever
+    Pay once and get {{ .number_of_subscriptions }} additional models forever
     There will be {{ .total_subscriptions }} total subscriptions
     You will be charged an equivalent of {{ .dollars }}$
     Please select a cryptocurrency to pay with
