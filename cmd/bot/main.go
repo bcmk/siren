@@ -95,6 +95,8 @@ type worker struct {
 	ipnServeMux           *http.ServeMux
 	mailTLS               *tls.Config
 	prepared              prepared
+	lastStatusChanges     map[string]statusChange
+	confirmedStatuses     map[string]lib.StatusKind
 }
 
 type packet struct {
@@ -226,7 +228,13 @@ func (w *worker) cleanStatuses() {
 	w.mustExec("begin")
 	for _, modelID := range models {
 		w.mustExec("update models set status=? where model_id=?", lib.StatusUnknown, modelID)
-		w.mustExec("insert into status_changes (model_id, status, timestamp) values (?,?,?)", modelID, lib.StatusUnknown, now)
+		w.confirmedStatuses[modelID] = lib.StatusUnknown
+		w.mustExecPrepared(w.prepared.insertStatusChange, modelID, lib.StatusUnknown, now)
+		w.lastStatusChanges[modelID] = statusChange{
+			ModelID:   modelID,
+			Status:    lib.StatusUnknown,
+			Timestamp: now,
+		}
 	}
 	w.mustExec("end")
 }
@@ -415,23 +423,13 @@ func (w *worker) createDatabase() {
 	checkErr(err)
 	w.prepared.updateModelStatus, err = w.db.Prepare("insert into models (model_id, status) values (?,?) on conflict(model_id) do update set status=excluded.status")
 	checkErr(err)
+	w.lastStatusChanges = w.queryLastStatusChanges()
+	w.confirmedStatuses = w.queryConfirmedStatuses()
 }
 
 func (w *worker) unprepare() {
 	checkErr(w.prepared.insertStatusChange.Close())
 	checkErr(w.prepared.updateModelStatus.Close())
-}
-
-func (w *worker) lastStatusChange(modelID string) statusChange {
-	query, err := w.db.Query("select status, timestamp from status_changes where model_id=? order by timestamp desc limit 1", modelID)
-	checkErr(err)
-	defer query.Close()
-	if !query.Next() {
-		return statusChange{ModelID: modelID, Status: lib.StatusUnknown, Timestamp: 0}
-	}
-	var statusChange statusChange
-	checkErr(query.Scan(&statusChange.Status, &statusChange.Timestamp))
-	return statusChange
 }
 
 func (w *worker) lastSeenInfo(modelID string, now int) (begin int, end int, prevStatus lib.StatusKind) {
@@ -483,20 +481,21 @@ func (w *worker) confirmationSeconds(status lib.StatusKind) int {
 
 func (w *worker) updateStatus(
 	statusChange statusChange,
-	lastStatusChange statusChange,
-	lastConfirmedStatus lib.StatusKind,
 ) (
 	changeConfirmed bool,
 ) {
+	lastStatusChange := w.lastStatusChanges[statusChange.ModelID]
 	if statusChange.Status != lastStatusChange.Status {
 		w.mustExecPrepared(w.prepared.insertStatusChange, statusChange.ModelID, statusChange.Status, statusChange.Timestamp)
+		w.lastStatusChanges[statusChange.ModelID] = statusChange
 	}
 	confirmationSeconds := w.confirmationSeconds(statusChange.Status)
 	durationConfirmed := false ||
 		confirmationSeconds == 0 ||
 		(statusChange.Status == lastStatusChange.Status && statusChange.Timestamp-lastStatusChange.Timestamp >= confirmationSeconds)
-	if lastConfirmedStatus != statusChange.Status && durationConfirmed {
+	if w.confirmedStatuses[statusChange.ModelID] != statusChange.Status && durationConfirmed {
 		w.mustExecPrepared(w.prepared.updateModelStatus, statusChange.ModelID, statusChange.Status)
+		w.confirmedStatuses[statusChange.ModelID] = statusChange.Status
 		return true
 	}
 	return false
@@ -673,7 +672,7 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) bool {
 		w.subscriptionUsage(endpoint, chatID, true)
 		return false
 	}
-	confirmedStatus := w.confirmedStatus(modelID)
+	confirmedStatus := w.confirmedStatuses[modelID]
 	newStatus := confirmedStatus
 	if newStatus == lib.StatusUnknown {
 		newStatus = w.checkModel(w.clients[0], modelID, w.cfg.Headers, w.cfg.Debug)
@@ -684,11 +683,11 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) bool {
 	}
 	w.mustExec("insert into signals (chat_id, model_id, endpoint) values (?,?,?)", chatID, modelID, endpoint)
 	w.mustExec("insert or ignore into models (model_id, status) values (?,?)", modelID, newStatus)
+	w.confirmedStatuses[modelID] = newStatus
 	subscriptionsNumber++
 	if newStatus != lib.StatusExists {
-		lastStatusChange := w.lastStatusChange(modelID)
 		statusChange := statusChange{ModelID: modelID, Status: newStatus, Timestamp: int(time.Now().Unix())}
-		_ = w.updateStatus(statusChange, lastStatusChange, confirmedStatus)
+		_ = w.updateStatus(statusChange)
 	}
 	if newStatus != lib.StatusDenied {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].ModelAdded, tplData{"model": modelID})
@@ -1028,18 +1027,6 @@ func (w *worker) onlineModelsCount() int {
 func (w *worker) statusChangesCount() int {
 	query := w.db.QueryRow("select count(*) from status_changes")
 	return singleInt(query)
-}
-
-func (w *worker) confirmedStatus(modelID string) lib.StatusKind {
-	query, err := w.db.Query(`select status from models where model_id=?`, modelID)
-	checkErr(err)
-	defer func() { checkErr(query.Close()) }()
-	if !query.Next() {
-		return lib.StatusUnknown
-	}
-	var status lib.StatusKind
-	checkErr(query.Scan(&status))
-	return status
 }
 
 func (w *worker) heavyUsersCount(endpoint string) int {
@@ -1427,7 +1414,7 @@ func (w *worker) processPeriodic(statusRequests chan lib.StatusRequest) {
 	}
 }
 
-func (w *worker) lastStatusChanges() map[string]statusChange {
+func (w *worker) queryLastStatusChanges() map[string]statusChange {
 	query, err := w.db.Query(`
 		select model_id, status, timestamp
 		from (
@@ -1446,7 +1433,7 @@ func (w *worker) lastStatusChanges() map[string]statusChange {
 	return statusChanges
 }
 
-func (w *worker) confirmedStatuses() map[string]lib.StatusKind {
+func (w *worker) queryConfirmedStatuses() map[string]lib.StatusKind {
 	query, err := w.db.Query("select model_id, status from models")
 	checkErr(err)
 	defer query.Close()
@@ -1470,19 +1457,15 @@ func (w *worker) processStatusUpdates(
 	elapsed time.Duration,
 ) {
 	start := time.Now()
-	lastStatusChanges := w.lastStatusChanges()
-	confirmedStatuses := w.confirmedStatuses()
 	chatsForModels, endpointsForModels := w.chatsForModels()
 	w.mustExec("begin")
 	for _, u := range statusUpdates {
 		if u.Status != lib.StatusUnknown {
-			lastStatusChange := lastStatusChanges[u.ModelID]
-			confirmedStatus := confirmedStatuses[u.ModelID]
 			statusChange := statusChange{ModelID: u.ModelID, Status: u.Status, Timestamp: now}
-			changeConfirmed := w.updateStatus(statusChange, lastStatusChange, confirmedStatus)
-			if lastStatusChange.Status != statusChange.Status {
+			if w.lastStatusChanges[u.ModelID].Status != statusChange.Status {
 				changesCount++
 			}
+			changeConfirmed := w.updateStatus(statusChange)
 			if changeConfirmed {
 				confirmedChangesCount++
 			}

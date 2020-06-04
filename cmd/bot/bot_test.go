@@ -141,13 +141,13 @@ func TestUpdateStatus(t *testing.T) {
 	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusNotFound}}, 24); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if w.confirmedStatus("a") != lib.StatusOnline {
+	if w.confirmedStatuses["a"] != lib.StatusOnline {
 		t.Error("wrong active status")
 	}
 	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusNotFound}}, 29); n == 0 {
 		t.Error("unexpected status update")
 	}
-	if w.confirmedStatus("a") != lib.StatusNotFound {
+	if w.confirmedStatuses["a"] != lib.StatusNotFound {
 		t.Error("wrong active status")
 	}
 	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 30); n == 0 {
@@ -187,11 +187,11 @@ func TestUpdateStatus(t *testing.T) {
 	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusNotFound}}, 52)
 	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "b", Status: lib.StatusOnline}}, 53)
 	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "b", Status: lib.StatusOffline}}, 54)
-	if w.confirmedStatus("b") != lib.StatusOnline {
+	if w.confirmedStatuses["b"] != lib.StatusOnline {
 		t.Error("wrong active status")
 	}
 	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "b", Status: lib.StatusOnline}}, 55)
-	if w.confirmedStatus("b") != lib.StatusOnline {
+	if w.confirmedStatuses["b"] != lib.StatusOnline {
 		t.Error("wrong active status")
 	}
 	if w.onlineModelsCount() != 2 {
@@ -205,13 +205,13 @@ func TestUpdateStatus(t *testing.T) {
 	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 57); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if w.confirmedStatus("a") != lib.StatusOnline {
+	if w.confirmedStatuses["a"] != lib.StatusOnline {
 		t.Error("wrong active status")
 	}
 	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 68); n == 0 {
 		t.Error("unexpected status update")
 	}
-	if w.confirmedStatus("a") != lib.StatusOffline {
+	if w.confirmedStatuses["a"] != lib.StatusOffline {
 		t.Error("wrong active status")
 	}
 }
