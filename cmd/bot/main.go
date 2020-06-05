@@ -1648,11 +1648,17 @@ func (w *worker) handleIPN(writer http.ResponseWriter, r *http.Request) {
 		w.mustExec("update users set max_models = max_models + (select coalesce(sum(model_number), 0) from transactions where local_id=?)", custom)
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].PaymentComplete, tplData{"max_models": w.maxModels(chatID)})
 		linf("payment %s is finished", custom)
+		text := fmt.Sprintf("payment %s is finished", custom)
+		w.sendText(w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, text)
 	case payments.StatusCanceled:
 		w.mustExec("update transactions set status=? where local_id=?", payments.StatusCanceled, custom)
 		linf("payment %s is canceled", custom)
+		text := fmt.Sprintf("payment %s is cancelled", custom)
+		w.sendText(w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, text)
 	default:
 		linf("payment %s is still pending", custom)
+		text := fmt.Sprintf("payment %s is still pending", custom)
+		w.sendText(w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, text)
 	}
 }
 
