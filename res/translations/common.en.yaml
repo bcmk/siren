@@ -201,7 +201,7 @@ syntax_remove:
 try_to_buy_later:
   parse: raw
   str: |-
-    You payment request cannot be processed
+    Your payment request cannot be processed
     Please try later
 unknown_command:
   parse: raw
