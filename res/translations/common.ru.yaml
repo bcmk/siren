@@ -72,7 +72,7 @@ offline:
   str: '{{ .model }} не в сети'
 zero_subscriptions:
   parse: html
-  parse: |-
+  str: |-
     Вы не подписаны ни на одну модель
     Чтобы подписаться, наберите
 

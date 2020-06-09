@@ -81,7 +81,7 @@ online_list:
   str: '{{ .model }} online'
 zero_subscriptions:
   parse: html
-  parse: |-
+  str: |-
     You are not subscribed to any model
     To subscribe enter
 
