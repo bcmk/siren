@@ -45,7 +45,7 @@ syntax_remove:
     You can find a model username in an address line of your browser
 zero_subscriptions:
   parse: html
-  parse: |-
+  str: |-
     You are not subscribed to any model
     To subscribe enter
 
