@@ -82,6 +82,7 @@ type Translations struct {
 	SubscriptionUsage      *Translation `yaml:"subscription_usage"`
 	SubscriptionUsageAd    *Translation `yaml:"subscription_usage_ad"`
 	NotEnoughSubscriptions *Translation `yaml:"not_enough_subscriptions"`
+	Week                   *Translation `yaml:"week"`
 }
 
 func LoadEndpointTranslations(files []string) (*Translations, AllTranslations) {
@@ -102,6 +103,7 @@ func LoadEndpointTranslations(files []string) (*Translations, AllTranslations) {
 func setupTemplates(trs AllTranslations) *template.Template {
 	tpl := template.New("")
 	tpl.Funcs(template.FuncMap{"mod": func(i, j int) int { return i % j }})
+	tpl.Funcs(template.FuncMap{"add": func(i, j int) int { return i + j }})
 	for k, v := range trs {
 		template.Must(tpl.New(k).Parse(v.Str))
 	}

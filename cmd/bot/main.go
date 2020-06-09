@@ -583,6 +583,25 @@ func (w *worker) broadcastChats(endpoint string) (chats []int64) {
 	return
 }
 
+func (w *worker) modelsForChat(endpoint string, chatID int64) []string {
+	query, err := w.db.Query(`
+		select model_id
+		from signals
+		where chat_id=? and endpoint=?
+		order by model_id`,
+		chatID,
+		endpoint)
+	checkErr(err)
+	defer func() { checkErr(query.Close()) }()
+	var models []string
+	for query.Next() {
+		var modelID string
+		checkErr(query.Scan(&modelID))
+		models = append(models, modelID)
+	}
+	return models
+}
+
 func (w *worker) statusesForChat(endpoint string, chatID int64) []lib.StatusUpdate {
 	statusesQuery, err := w.db.Query(`
 		select models.model_id, models.status
@@ -656,6 +675,31 @@ func (w *worker) maxModels(chatID int64) int {
 func (w *worker) addUser(endpoint string, chatID int64) {
 	w.mustExec(`insert or ignore into users (chat_id, max_models) values (?, ?)`, chatID, w.cfg.MaxModels)
 	w.mustExec(`insert or ignore into emails (endpoint, chat_id, email) values (?, ?, ?)`, endpoint, chatID, uuid.New())
+}
+
+func (w *worker) showWeek(endpoint string, chatID int64, modelID string) {
+	if modelID != "" {
+		w.showWeekForModel(endpoint, chatID, modelID)
+		return
+	}
+	models := w.modelsForChat(endpoint, chatID)
+	for _, m := range models {
+		w.showWeekForModel(endpoint, chatID, m)
+	}
+}
+
+func (w *worker) showWeekForModel(endpoint string, chatID int64, modelID string) {
+	modelID = strings.ToLower(modelID)
+	if !lib.ModelIDRegexp.MatchString(modelID) {
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"model": modelID})
+		return
+	}
+	hours, start := w.week(modelID)
+	w.sendTr(endpoint, chatID, false, w.tr[endpoint].Week, tplData{
+		"hours":   hours,
+		"weekday": int(start.UTC().Weekday()),
+		"model":   modelID,
+	})
 }
 
 func (w *worker) addModel(endpoint string, chatID int64, modelID string) bool {
@@ -944,6 +988,57 @@ func (w *worker) listOnlineModels(endpoint string, chatID int64) {
 	if online == 0 {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].NoOnlineModels, nil)
 	}
+}
+
+func (w *worker) week(modelID string) ([]bool, time.Time) {
+	now := time.Now()
+	nowTimestamp := int(now.Unix())
+	today := now.Truncate(24 * time.Hour)
+	start := today.Add(-6 * 24 * time.Hour)
+	weekTimestamp := int(start.Unix())
+	query, err := w.db.Query(`
+		select status, timestamp, prev_status, prev_timestamp
+		from(
+			select
+				*,
+				lag(status) over (order by timestamp) as prev_status,
+				lag(timestamp) over (order by timestamp) as prev_timestamp
+			from status_changes
+			where model_id=?)
+		where timestamp>=?
+		order by timestamp`,
+		modelID,
+		weekTimestamp)
+	checkErr(err)
+	var changes []statusChange
+	first := true
+	for query.Next() {
+		var change statusChange
+		var firstStatus *lib.StatusKind
+		var firstTimestamp *int
+		checkErr(query.Scan(&change.Status, &change.Timestamp, &firstStatus, &firstTimestamp))
+		if first && firstStatus != nil && firstTimestamp != nil {
+			changes = append(changes, statusChange{Status: *firstStatus, Timestamp: *firstTimestamp})
+			first = false
+		}
+		changes = append(changes, change)
+	}
+
+	changes = append(changes, statusChange{Timestamp: nowTimestamp})
+	hours := make([]bool, (nowTimestamp-weekTimestamp+3599)/3600)
+	for i, c := range changes[:len(changes)-1] {
+		if c.Status == lib.StatusOnline {
+			begin := (c.Timestamp - weekTimestamp) / 3600
+			if begin < 0 {
+				begin = 0
+			}
+			end := (changes[i+1].Timestamp - weekTimestamp + 3599) / 3600
+			for j := begin; j < end; j++ {
+				hours[j] = true
+			}
+		}
+	}
+	return hours, start
 }
 
 func (w *worker) feedback(endpoint string, chatID int64, text string) {
@@ -1373,6 +1468,8 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		return
 	}
 
+	unknown := func() { w.sendTr(endpoint, chatID, false, w.tr[endpoint].UnknownCommand, nil) }
+
 	switch command {
 	case "add":
 		arguments = strings.Replace(arguments, "—", "--", -1)
@@ -1403,13 +1500,13 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		w.wantMore(endpoint, chatID)
 	case "buy":
 		if w.cfg.CoinPayments == nil || w.cfg.Mail == nil {
-			w.sendTr(endpoint, chatID, false, w.tr[endpoint].UnknownCommand, nil)
+			unknown()
 			return
 		}
 		w.buy(endpoint, chatID)
 	case "buy_with":
 		if w.cfg.CoinPayments == nil || w.cfg.Mail == nil {
-			w.sendTr(endpoint, chatID, false, w.tr[endpoint].UnknownCommand, nil)
+			unknown()
 			return
 		}
 		w.buyWith(endpoint, chatID, arguments)
@@ -1417,8 +1514,14 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].YourMaxModels, tplData{"max_models": w.maxModels(chatID)})
 	case "referral":
 		w.showReferral(endpoint, chatID)
+	case "week":
+		if !w.cfg.EnableWeek {
+			unknown()
+			return
+		}
+		w.showWeek(endpoint, chatID, arguments)
 	default:
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].UnknownCommand, nil)
+		unknown()
 	}
 }
 

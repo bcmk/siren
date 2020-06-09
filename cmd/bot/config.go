@@ -78,6 +78,7 @@ type config struct {
 	OfflineNotifications        bool                      `json:"offline_notifications"`          // enable offline notifications
 	Checker                     checkerKind               `json:"checker"`                        // use specific checker, for example "api" or "redir" for BongaCams
 	SQLPrelude                  string                    `json:"sql_prelude"`                    // run these SQL commands before any other
+	EnableWeek                  bool                      `json:"enable_week"`                    // enable week command
 
 	errorThreshold   int
 	errorDenominator int

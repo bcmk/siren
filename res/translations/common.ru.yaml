@@ -219,3 +219,34 @@ duration:
     {{- else -}}
       {{ .Minutes }}м
     {{- end -}}
+week:
+  parse: html
+  str: |-
+    Неделя {{ .model }} (UTC)
+    {{- print "\n\n" -}}
+    <code>
+    {{- printf "    00     06     12     18\n" -}}
+    {{- $i := 0 -}}
+    {{- $j := .weekday -}}
+    {{- range .hours -}}
+      {{- if eq (mod $i 24) 0 -}}
+        {{- if ne $i 0 -}}{{- print "\n" -}}{{- end -}}
+        {{- template "weekday" $j -}}:
+        {{- $j = mod (add $j 1) 7 -}}
+      {{- end -}}
+      {{- if eq (mod $i 6) 0 -}}
+        {{- printf " " -}}
+      {{- end -}}
+      {{- if . -}}#{{- else -}}-{{- end -}}
+      {{- $i = add $i 1 -}}
+    {{- end -}}
+    </code>
+weekday:
+  str: |-
+    {{- if eq . 0 -}}Вс{{- end -}}
+    {{- if eq . 1 -}}Пн{{- end -}}
+    {{- if eq . 2 -}}Вт{{- end -}}
+    {{- if eq . 3 -}}Ср{{- end -}}
+    {{- if eq . 4 -}}Чт{{- end -}}
+    {{- if eq . 5 -}}Пт{{- end -}}
+    {{- if eq . 6 -}}Сб{{- end -}}

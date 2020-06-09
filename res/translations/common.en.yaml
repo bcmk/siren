@@ -228,3 +228,34 @@ duration:
     {{- else -}}
       {{ .Minutes }}m
     {{- end -}}
+week:
+  parse: html
+  str: |-
+    {{ .model }}'s week
+    {{- print "\n\n" -}}
+    <code>
+    {{- printf "    00     06     12     18\n" -}}
+    {{- $i := 0 -}}
+    {{- $j := .weekday -}}
+    {{- range .hours -}}
+      {{- if eq (mod $i 24) 0 -}}
+        {{- if ne $i 0 -}}{{- print "\n" -}}{{- end -}}
+        {{- template "weekday" $j -}}:
+        {{- $j = mod (add $j 1) 7 -}}
+      {{ end }}
+      {{- if eq (mod $i 6) 0 -}}
+        {{- print " " -}}
+      {{- end -}}
+      {{- if . -}}#{{- else -}}-{{- end -}}
+      {{- $i = add $i 1 -}}
+    {{- end -}}
+    </code>
+weekday:
+  str: |-
+    {{- if eq . 0 -}}Su{{- end -}}
+    {{- if eq . 1 -}}Mo{{- end -}}
+    {{- if eq . 2 -}}Tu{{- end -}}
+    {{- if eq . 3 -}}We{{- end -}}
+    {{- if eq . 4 -}}Th{{- end -}}
+    {{- if eq . 5 -}}Fr{{- end -}}
+    {{- if eq . 6 -}}Sa{{- end -}}
