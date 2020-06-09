@@ -236,7 +236,7 @@ duration:
 week:
   parse: html
   str: |-
-    {{ .model }}'s week
+    {{ .model }}'s week (UTC)
     {{- print "\n\n" -}}
     <code>
     {{- printf "    00     06     12     18\n" -}}
