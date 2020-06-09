@@ -31,6 +31,7 @@ Commands
 * __remove_all__ — Remove all models
 * __list__ — Your model subscriptions
 * __online__ — Your models online
+* __week__ [_MODEL_ID_] — Show working hours in the previous 7 days
 * __social__ — We in social media
 * __help__ — Command list
 * __language__ — This bot in other languages

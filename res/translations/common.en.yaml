@@ -32,6 +32,7 @@ commands:
     <b>remove_all</b> — Remove all models
     <b>list</b> — Your model subscriptions
     <b>online</b> — Your models online
+    <b>week</b> [<code>MODEL_USERNAME</code>] — Show working hours in the previous 7 days
     <b>feedback</b> <code>YOUR_MESSAGE</code> — Send feedback
     <b>source</b> — Show source code
     <b>language</b> — This bot in other languages
