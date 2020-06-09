@@ -79,6 +79,13 @@ offline_list:
 online_list:
   parse: raw
   str: '{{ .model }} online'
+zero_subscriptions:
+  parse: html
+  parse: |-
+    You are not subscribed to any model
+    To subscribe enter
+
+    /add <code>MODEL_USERNAME</code>
 list:
   parse: html
   str: |-
@@ -122,10 +129,7 @@ list:
     {{- end -}}
 
     {{- if and (not .online) (not .offline) (not .denied) -}}
-    You are not subscribed to any model
-    To subscribe enter
-
-    /add <code>MODEL_USERNAME</code>
+      {{- template "zero_subscriptions" -}}
     {{- end -}}
 own_referral_link_hit:
   parse: raw

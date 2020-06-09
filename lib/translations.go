@@ -83,6 +83,7 @@ type Translations struct {
 	SubscriptionUsageAd    *Translation `yaml:"subscription_usage_ad"`
 	NotEnoughSubscriptions *Translation `yaml:"not_enough_subscriptions"`
 	Week                   *Translation `yaml:"week"`
+	ZeroSubscriptions      *Translation `yaml:"zero_subscriptions"`
 }
 
 func LoadEndpointTranslations(files []string) (*Translations, AllTranslations) {

@@ -41,4 +41,14 @@ syntax_remove:
     Enter
 
     /remove <code>MODEL_USERNAME</code>
+
+    You can find a model username in an address line of your browser
+zero_subscriptions:
+  parse: html
+  parse: |-
+    You are not subscribed to any model
+    To subscribe enter
+
+    /add <code>MODEL_USERNAME</code>
+
     You can find a model username in an address line of your browser

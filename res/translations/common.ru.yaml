@@ -70,6 +70,13 @@ not_enough_subscriptions:
 offline:
   parse: raw
   str: '{{ .model }} не в сети'
+zero_subscriptions:
+  parse: html
+  parse: |-
+    Вы не подписаны ни на одну модель
+    Чтобы подписаться, наберите
+
+    /add <code>МОДЕЛЬ</code>
 list:
   parse: html
   str: |-
@@ -113,10 +120,7 @@ list:
     {{- end -}}
 
     {{- if and (not .online) (not .offline) (not .denied) -}}
-    Вы не подписаны ни на одну модель
-    Чтобы подписаться, наберите
-
-    /add <code>МОДЕЛЬ</code>
+      {{- template "zero_subscriptions" -}}
     {{- end -}}
 own_referral_link_hit:
   parse: raw

@@ -686,6 +686,10 @@ func (w *worker) showWeek(endpoint string, chatID int64, modelID string) {
 	for _, m := range models {
 		w.showWeekForModel(endpoint, chatID, m)
 	}
+	if len(models) == 0 {
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].ZeroSubscriptions, nil)
+	}
+
 }
 
 func (w *worker) showWeekForModel(endpoint string, chatID int64, modelID string) {
