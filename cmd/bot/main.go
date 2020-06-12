@@ -1487,7 +1487,7 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].FAQ, tplData{
 			"dollars":                 w.cfg.CoinPayments.subscriptionPacketPrice,
 			"number_of_subscriptions": w.cfg.CoinPayments.subscriptionPacketModelNumber,
-			"max_models":              w.maxModels(chatID),
+			"max_models":              w.cfg.MaxModels,
 		})
 
 	case "feedback":
