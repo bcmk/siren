@@ -830,16 +830,11 @@ func (w *worker) buy(endpoint string, chatID int64) {
 	}
 
 	keyboard := tg.NewInlineKeyboardMarkup(buttons...)
-	current := w.maxModels(chatID)
-	additional := w.cfg.CoinPayments.subscriptionPacketModelNumber
-	overall := current + additional
-	usd := w.cfg.CoinPayments.subscriptionPacketPrice
-
 	tpl := w.tpl[endpoint]
 	text := templateToString(tpl, w.tr[endpoint].SelectCurrency.Key, tplData{
-		"dollars":                 usd,
-		"number_of_subscriptions": additional,
-		"total_subscriptions":     overall,
+		"dollars":                 w.cfg.CoinPayments.subscriptionPacketPrice,
+		"number_of_subscriptions": w.cfg.CoinPayments.subscriptionPacketModelNumber,
+		"total_subscriptions":     w.maxModels(chatID) + w.cfg.CoinPayments.subscriptionPacketModelNumber,
 	})
 
 	msg := tg.NewMessage(chatID, text)
@@ -1488,6 +1483,13 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		w.listOnlineModels(endpoint, chatID)
 	case "start", "help":
 		w.start(endpoint, chatID, arguments)
+	case "faq":
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].FAQ, tplData{
+			"dollars":                 w.cfg.CoinPayments.subscriptionPacketPrice,
+			"number_of_subscriptions": w.cfg.CoinPayments.subscriptionPacketModelNumber,
+			"max_models":              w.maxModels(chatID),
+		})
+
 	case "feedback":
 		w.feedback(endpoint, chatID, arguments)
 	case "social":

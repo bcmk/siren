@@ -30,3 +30,27 @@ syntax_add:
     Example
 
     /add bbweb
+faq_no_notifications:
+  parse: html
+  str: >
+    <b>I've subscribed to a model but I don't receive notifications</b>
+
+    Some models banned some countries from viewing them.
+    We get a list of online models visible from Netherlands or USA.
+    If both countries are banned we are unable to determine if the model is online.
+faq_direct_subscriptions:
+  parse: html
+  str: >
+    <b>It would be nice if I can subscribe to models directly from their profile pages</b>
+
+    Actually models can provide a link in their profile pages exacly for this purpose.
+    You can tell a model about this feature.
+    A model can write to siren.telegram@gmail.com and we will help her to do it.
+faq:
+  parse: html
+  str: |-
+    {{ template "faq_no_notifications" }}
+
+    {{ template "faq_pricing" . }}
+
+    {{ template "direct_subscriptions"}}

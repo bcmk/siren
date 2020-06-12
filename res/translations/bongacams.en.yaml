@@ -52,3 +52,17 @@ zero_subscriptions:
     /add <code>MODEL_USERNAME</code>
 
     You can find a model username in an address line of your browser
+faq_no_notifications:
+  parse: html
+  str: >
+    <b>I've subscribed to a model but I don't receive notifications</b>
+
+    We use the same list of online models as affiliate sites use for advertisements.
+    Some models decided to not appear there so we cannot know when they are online.
+    You can tell a model about this bot and a model may probably change her or his mind on this setting.
+faq:
+  parse: html
+  str: |-
+    {{ template "faq_no_notifications" }}
+
+    {{ template "faq_pricing" . }}
