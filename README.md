@@ -69,7 +69,7 @@ Recommended text: "Get a notification in Telegram whenever I'm online ___YOUR LI
 
 You can use these [icons](https://github.com/bcmk/siren/tree/master/docs/icons).
 
-Write to sirenbot@protonmail.com in case of any questions.
+Write to siren.telegram@gmail.com in case of any questions.
 
 Running your own bot
 --------------------

@@ -72,7 +72,7 @@ __[English](README.md)__
 
 Вы можете использовать эти [иконки](https://github.com/bcmk/siren/tree/master/docs/icons).
 
-Пишите на sirenbot@protonmail.com, если у вас есть вопросы.
+Пишите на siren.telegram@gmail.com, если у вас есть вопросы.
 
 Собственный бот
 ---------------
