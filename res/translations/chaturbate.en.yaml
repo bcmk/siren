@@ -54,4 +54,4 @@ faq:
 
     {{ template "faq_pricing" . }}
 
-    {{ template "direct_subscriptions"}}
+    {{ template "faq_direct_subscriptions"}}
