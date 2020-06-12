@@ -73,7 +73,7 @@ type config struct {
 	Mail                        *mailConfig               `json:"mail"`                           // mail config
 	ReferralBonus               int                       `json:"referral_bonus"`                 // number of emails for a referrer
 	FollowerBonus               int                       `json:"follower_bonus"`                 // number of emails for a new user registered by a referral link
-	UsersOnlineEndpoint         string                    `json:"users_online_endpoint"`          // the endpoint to fetch online users
+	UsersOnlineEndpoint         []string                  `json:"users_online_endpoint"`          // the endpoint to fetch online users
 	StatusConfirmationSeconds   statusConfirmationSeconds `json:"status_confirmation_seconds"`    // a status is confirmed only if it lasts for at least this number of seconds
 	OfflineNotifications        bool                      `json:"offline_notifications"`          // enable offline notifications
 	Checker                     checkerKind               `json:"checker"`                        // use specific checker, for example "api" or "redir" for BongaCams

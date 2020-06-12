@@ -77,7 +77,7 @@ type worker struct {
 	tpl                      map[string]*template.Template
 	checkModel               func(client *lib.Client, modelID string, headers [][2]string, dbg bool) lib.StatusKind
 	startChecker             func(
-		usersOnlineEndpoint string,
+		usersOnlineEndpoint []string,
 		clients []*lib.Client,
 		headers [][2]string,
 		intervalMs int,

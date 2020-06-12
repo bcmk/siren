@@ -45,7 +45,7 @@ var _ = StartBongaCamsAPIChecker
 
 // StartBongaCamsAPIChecker starts a checker for BongaCams
 func StartBongaCamsAPIChecker(
-	usersOnlineEndpoint string,
+	usersOnlineEndpoint []string,
 	clients []*Client,
 	headers [][2]string,
 	intervalMs int,
@@ -62,44 +62,47 @@ func StartBongaCamsAPIChecker(
 	clientsNum := len(clients)
 	go func() {
 		for request := range statusRequests {
-			client := clients[clientIdx]
-			clientIdx++
-			if clientIdx == clientsNum {
-				clientIdx = 0
-			}
-
-			resp, buf, elapsed, err := onlineQuery(usersOnlineEndpoint, client, headers)
-			elapsedCh <- elapsed
-			if err != nil {
-				statusUpdates <- nil
-				Lerr("[%v] cannot send a query, %v", client.Addr, err)
-				continue
-			}
-			if resp.StatusCode != 200 {
-				Lerr("[%v] query status, %d", client.Addr, resp.StatusCode)
-				statusUpdates <- nil
-				continue
-			}
-			decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
-			var parsed []bongacamsModel
-			err = decoder.Decode(&parsed)
-			if err != nil {
-				Lerr("[%v] cannot parse response, %v", client.Addr, err)
-				if dbg {
-					Ldbg("response: %s", buf.String())
-				}
-				statusUpdates <- nil
-				continue
-			}
-
 			hash := map[string]bool{}
 			updates := []StatusUpdate{}
-			for _, m := range parsed {
-				modelID := strings.ToLower(m.Username)
-				hash[modelID] = true
+			for _, endpoint := range usersOnlineEndpoint {
+				client := clients[clientIdx]
+				clientIdx++
+				if clientIdx == clientsNum {
+					clientIdx = 0
+				}
+
+				resp, buf, elapsed, err := onlineQuery(endpoint, client, headers)
+				elapsedCh <- elapsed
+				if err != nil {
+					statusUpdates <- nil
+					Lerr("[%v] cannot send a query, %v", client.Addr, err)
+					continue
+				}
+				if resp.StatusCode != 200 {
+					Lerr("[%v] query status, %d", client.Addr, resp.StatusCode)
+					statusUpdates <- nil
+					continue
+				}
+				decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
+				var parsed []bongacamsModel
+				err = decoder.Decode(&parsed)
+				if err != nil {
+					Lerr("[%v] cannot parse response, %v", client.Addr, err)
+					if dbg {
+						Ldbg("response: %s", buf.String())
+					}
+					statusUpdates <- nil
+					continue
+				}
+
+				for _, m := range parsed {
+					modelID := strings.ToLower(m.Username)
+					hash[modelID] = true
+				}
+			}
+			for modelID := range hash {
 				updates = append(updates, StatusUpdate{ModelID: modelID, Status: StatusOnline})
 			}
-
 			for _, modelID := range request.KnownModels {
 				if !hash[modelID] {
 					updates = append(updates, StatusUpdate{ModelID: modelID, Status: StatusOffline})
@@ -113,7 +116,7 @@ func StartBongaCamsAPIChecker(
 
 // StartBongaCamsPollingChecker starts a checker for BongaCams using redirection heuristic
 func StartBongaCamsPollingChecker(
-	usersOnlineEndpoint string,
+	usersOnlineEndpoint []string,
 	clients []*Client,
 	headers [][2]string,
 	intervalMs int,

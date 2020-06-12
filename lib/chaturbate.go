@@ -86,7 +86,7 @@ func chaturbateStatus(roomStatus string) StatusKind {
 
 // StartChaturbateAPIChecker starts a checker for Chaturbate
 func StartChaturbateAPIChecker(
-	usersOnlineEndpoint string,
+	usersOnlineEndpoint []string,
 	clients []*Client,
 	headers [][2]string,
 	intervalMs int,
@@ -103,44 +103,47 @@ func StartChaturbateAPIChecker(
 	clientsNum := len(clients)
 	go func() {
 		for request := range statusRequests {
-			client := clients[clientIdx]
-			clientIdx++
-			if clientIdx == clientsNum {
-				clientIdx = 0
-			}
-
-			resp, buf, elapsed, err := onlineQuery(usersOnlineEndpoint, client, headers)
-			elapsedCh <- elapsed
-			if err != nil {
-				Lerr("[%v] cannot send a query, %v", client.Addr, err)
-				output <- nil
-				continue
-			}
-			if resp.StatusCode != 200 {
-				Lerr("[%v] query status, %d", client.Addr, resp.StatusCode)
-				output <- nil
-				continue
-			}
-			decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
-			var parsed []chaturbateModel
-			err = decoder.Decode(&parsed)
-			if err != nil {
-				Lerr("[%v] cannot parse response, %v", client.Addr, err)
-				if dbg {
-					Ldbg("response: %s", buf.String())
-				}
-				output <- nil
-				continue
-			}
-
 			hash := map[string]bool{}
 			updates := []StatusUpdate{}
-			for _, m := range parsed {
-				modelID := strings.ToLower(m.Username)
-				hash[modelID] = true
+			for _, endpoint := range usersOnlineEndpoint {
+				client := clients[clientIdx]
+				clientIdx++
+				if clientIdx == clientsNum {
+					clientIdx = 0
+				}
+
+				resp, buf, elapsed, err := onlineQuery(endpoint, client, headers)
+				elapsedCh <- elapsed
+				if err != nil {
+					Lerr("[%v] cannot send a query, %v", client.Addr, err)
+					output <- nil
+					continue
+				}
+				if resp.StatusCode != 200 {
+					Lerr("[%v] query status, %d", client.Addr, resp.StatusCode)
+					output <- nil
+					continue
+				}
+				decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
+				var parsed []chaturbateModel
+				err = decoder.Decode(&parsed)
+				if err != nil {
+					Lerr("[%v] cannot parse response, %v", client.Addr, err)
+					if dbg {
+						Ldbg("response: %s", buf.String())
+					}
+					output <- nil
+					continue
+				}
+
+				for _, m := range parsed {
+					modelID := strings.ToLower(m.Username)
+					hash[modelID] = true
+				}
+			}
+			for modelID := range hash {
 				updates = append(updates, StatusUpdate{ModelID: modelID, Status: StatusOnline})
 			}
-
 			for _, modelID := range request.KnownModels {
 				if !hash[modelID] {
 					updates = append(updates, StatusUpdate{ModelID: modelID, Status: StatusOffline})
