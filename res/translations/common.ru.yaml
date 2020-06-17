@@ -31,7 +31,7 @@ commands:
     <b>online</b> — Ваши модели, которые сейчас в сети
     <b>week</b> [<code>МОДЕЛЬ</code>] — Рабочие часы в предыдущие 7 дней
     <b>feedback</b> <code>ВАШЕ_СООБЩЕНИЕ</code> — Обратная связь
-    <b>source</b> — Исходный код
+    <b>social</b> — Соцсети
     <b>language</b> — Этот бот на других языках
     <b>help</b> — Список команд
 invalid_command:

@@ -34,7 +34,7 @@ commands:
     <b>online</b> — Your models online
     <b>week</b> [<code>USERNAME</code>] — Working hours in the previous 7 days
     <b>feedback</b> <code>YOUR_MESSAGE</code> — Send feedback
-    <b>source</b> — Show source code
+    <b>social</b> — Show social media
     <b>language</b> — This bot in other languages
     <b>help</b> — Command list
 invalid_command:
