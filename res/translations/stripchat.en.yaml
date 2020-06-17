@@ -3,7 +3,7 @@ add_error:
   str: |-
     Could not add the model {{ .model }}
     Check the model username or try later
-    Syntax: /add <code>MODEL_USERNAME</code>
+    Syntax: /add <code>USERNAME</code>
 help:
   parse: html
   str: |-
@@ -25,7 +25,7 @@ syntax_add:
   str: |-
     Enter
 
-    /add <code>MODEL_USERNAME</code>
+    /add <code>USERNAME</code>
 
     Example
 

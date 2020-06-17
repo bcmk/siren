@@ -27,12 +27,12 @@ commands:
   str: |-
     Commands
 
-    <b>add</b> <code>MODEL_USERNAME</code> — Add model
-    <b>remove</b> <code>MODEL_USERNAME</code> — Remove model
+    <b>add</b> <code>USERNAME</code> — Add model
+    <b>remove</b> <code>USERNAME</code> — Remove model
     <b>remove_all</b> — Remove all models
     <b>list</b> — Your model subscriptions
     <b>online</b> — Your models online
-    <b>week</b> [<code>MODEL_USERNAME</code>] — Show working hours in the previous 7 days
+    <b>week</b> [<code>USERNAME</code>] — Working hours in the previous 7 days
     <b>feedback</b> <code>YOUR_MESSAGE</code> — Send feedback
     <b>source</b> — Show source code
     <b>language</b> — This bot in other languages
@@ -85,7 +85,7 @@ zero_subscriptions:
     You are not subscribed to any model
     To subscribe enter
 
-    /add <code>MODEL_USERNAME</code>
+    /add <code>USERNAME</code>
 list:
   parse: html
   str: |-
@@ -202,7 +202,7 @@ syntax_remove:
   str: |-
     Enter
 
-    /remove <code>MODEL_USERNAME</code>
+    /remove <code>USERNAME</code>
 try_to_buy_later:
   parse: raw
   str: |-

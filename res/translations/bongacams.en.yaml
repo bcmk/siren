@@ -3,7 +3,7 @@ add_error:
   str: |-
     Could not add the model {{ .model }}
     Check the model username or try later
-    Syntax: /add <code>MODEL_USERNAME</code>
+    Syntax: /add <code>USERNAME</code>
     You can find a model username in an address line of your browser
 help:
   parse: html
@@ -28,7 +28,7 @@ syntax_add:
   str: |-
     Enter
 
-    /add <code>MODEL_USERNAME</code>
+    /add <code>USERNAME</code>
 
     You can find a model username in an address line of your browser
 
@@ -40,7 +40,7 @@ syntax_remove:
   str: |-
     Enter
 
-    /remove <code>MODEL_USERNAME</code>
+    /remove <code>USERNAME</code>
 
     You can find a model username in an address line of your browser
 zero_subscriptions:
@@ -49,7 +49,7 @@ zero_subscriptions:
     You are not subscribed to any model
     To subscribe enter
 
-    /add <code>MODEL_USERNAME</code>
+    /add <code>USERNAME</code>
 
     You can find a model username in an address line of your browser
 faq_no_notifications:
