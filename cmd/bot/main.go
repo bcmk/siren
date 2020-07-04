@@ -456,7 +456,7 @@ func (w *worker) lastSeenInfo(modelID string, now int) (begin int, end int, prev
 		modelID,
 		lib.StatusOnline)
 	checkErr(err)
-	defer query.Close()
+	defer func() { checkErr(query.Close()) }()
 	if !query.Next() {
 		return 0, 0, lib.StatusUnknown
 	}
@@ -1557,7 +1557,7 @@ func (w *worker) queryLastStatusChanges() map[string]statusChange {
 		)
 		where row = 1`)
 	checkErr(err)
-	defer query.Close()
+	defer func() { checkErr(query.Close()) }()
 	statusChanges := map[string]statusChange{}
 	for query.Next() {
 		var statusChange statusChange
@@ -1570,7 +1570,7 @@ func (w *worker) queryLastStatusChanges() map[string]statusChange {
 func (w *worker) queryConfirmedStatuses() map[string]lib.StatusKind {
 	query, err := w.db.Query("select model_id, status from models")
 	checkErr(err)
-	defer query.Close()
+	defer func() { checkErr(query.Close()) }()
 	statuses := map[string]lib.StatusKind{}
 	for query.Next() {
 		var modelID string
