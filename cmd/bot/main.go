@@ -160,7 +160,8 @@ func newWorker() *worker {
 	senders := make(map[string]func(msg tg.Chattable) (tg.Message, error))
 	for n, p := range cfg.Endpoints {
 		//noinspection GoNilness
-		bot, err := tg.NewBotAPIWithClient(p.BotToken, clients[0].Client)
+		var bot *tg.BotAPI
+		bot, err = tg.NewBotAPIWithClient(p.BotToken, clients[0].Client)
 		checkErr(err)
 		bots[n] = bot
 		senders[n] = bot.Send

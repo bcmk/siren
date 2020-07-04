@@ -10,12 +10,16 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ParseKind specifies Telegram message parsing method
 //go:generate yamlenums -type=ParseKind
 type ParseKind int
 
 const (
+	// ParseRaw parses Telegram message as a raw text
 	ParseRaw ParseKind = iota
+	// ParseHTML parses Telegram message as HTML
 	ParseHTML
+	// ParseMarkdown parses Telegram message as Markdown
 	ParseMarkdown
 )
 
@@ -31,6 +35,7 @@ func (r ParseKind) String() string {
 	return "unknown"
 }
 
+// Translation represents a translated text for a Telegram message
 type Translation struct {
 	Key            string    `yaml:"-"`
 	Str            string    `yaml:"str"`
@@ -38,8 +43,10 @@ type Translation struct {
 	DisablePreview bool      `yaml:"disable_preview"`
 }
 
+// AllTranslations represents a collection of translated texts in all supported languages
 type AllTranslations map[string]*Translation
 
+// Translations represents a collection of translated texts for Telegram messages
 type Translations struct {
 	Help                   *Translation `yaml:"help"`
 	Online                 *Translation `yaml:"online"`
@@ -87,6 +94,7 @@ type Translations struct {
 	FAQ                    *Translation `yaml:"faq"`
 }
 
+// LoadEndpointTranslations loads translations for a specific endpoint
 func LoadEndpointTranslations(files []string) (*Translations, AllTranslations) {
 	tr := &Translations{}
 	allTr := AllTranslations{}
@@ -102,17 +110,7 @@ func LoadEndpointTranslations(files []string) (*Translations, AllTranslations) {
 	return tr, allTr
 }
 
-func setupTemplates(trs AllTranslations) *template.Template {
-	tpl := template.New("")
-	tpl.Funcs(template.FuncMap{"mod": func(i, j int) int { return i % j }})
-	tpl.Funcs(template.FuncMap{"add": func(i, j int) int { return i + j }})
-	for k, v := range trs {
-		template.Must(tpl.New(k).Parse(v.Str))
-	}
-
-	return tpl
-}
-
+// LoadAllTranslations loads all translations
 func LoadAllTranslations(files map[string][]string) (trans map[string]*Translations, tpl map[string]*template.Template) {
 	trans = make(map[string]*Translations)
 	tpl = make(map[string]*template.Template)
@@ -122,6 +120,17 @@ func LoadAllTranslations(files map[string][]string) (trans map[string]*Translati
 		tpl[e] = setupTemplates(allTr)
 	}
 	return
+}
+
+func setupTemplates(trs AllTranslations) *template.Template {
+	tpl := template.New("")
+	tpl.Funcs(template.FuncMap{"mod": func(i, j int) int { return i % j }})
+	tpl.Funcs(template.FuncMap{"add": func(i, j int) int { return i + j }})
+	for k, v := range trs {
+		template.Must(tpl.New(k).Parse(v.Str))
+	}
+
+	return tpl
 }
 
 func copy(from AllTranslations, to *Translations) {

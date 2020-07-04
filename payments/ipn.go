@@ -26,7 +26,7 @@ func ParseIPN(r *http.Request, ipnSecret string, debug bool) (StatusKind, string
 		ldbg("IPN body: %s", string(body))
 	}
 
-	if err := r.ParseForm(); err != nil {
+	if err = r.ParseForm(); err != nil {
 		return StatusUnknown, "", errors.New("cannot parse IPN data")
 	}
 
