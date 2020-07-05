@@ -20,16 +20,9 @@ online:
   str: |-
     {{ .model }} в сети
     www.stripchat.com/{{ .model }}
-syntax_add:
+add_example:
   parse: html
-  str: |-
-    Наберите
-
-    /add <code>МОДЕЛЬ</code>
-
-    Пример
-
-    /add bbweb
+  str: /add bbweb
 faq_no_notifications:
   parse: html
   str: >

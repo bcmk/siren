@@ -27,12 +27,12 @@ commands:
   str: |-
     Commands
 
-    <b>add</b> <code>USERNAME</code> — Add model
-    <b>remove</b> <code>USERNAME</code> — Remove model
+    <b>add</b> <code>CAMNAME</code> — Add model
+    <b>remove</b> <code>CAMNAME</code> — Remove model
     <b>remove_all</b> — Remove all models
     <b>list</b> — Your model subscriptions
     <b>online</b> — Your models online
-    <b>week</b> <code>USERNAME</code> — Working hours in the previous 7 days
+    <b>week</b> <code>CAMNAME</code> — Working hours in the previous 7 days
     <b>feedback</b> <code>YOUR_MESSAGE</code> — Send feedback
     <b>social</b> — Show social media
     <b>language</b> — This bot in other languages
@@ -45,7 +45,7 @@ invalid_referral_link:
   str: Your referral link is invalid
 invalid_symbols:
   parse: raw
-  str: 'Model username {{ .model }} has invalid symbols'
+  str: 'Camname {{ .model }} has invalid symbols'
 mail_received:
   parse: raw
   str: |-
@@ -85,7 +85,7 @@ zero_subscriptions:
     You are not subscribed to any model
     To subscribe enter
 
-    /add <code>USERNAME</code>
+    /add <code>CAMNAME</code>
 list:
   parse: html
   str: |-
@@ -197,20 +197,37 @@ syntax_feedback:
     Enter
 
     /feedback <code>YOUR_MESSAGE</code>
+syntax_add:
+  parse: html
+  str: |-
+    Enter
+
+    /add <code>CAMNAME</code>
+
+    Example
+
+    {{ template "add_example" }}
 syntax_remove:
   parse: html
   str: |-
     Enter
 
-    /remove <code>USERNAME</code>
+    /remove <code>CAMNAME</code>
 try_to_buy_later:
   parse: raw
   str: |-
     Your payment request cannot be processed
     Please try later
 unknown_command:
-  parse: raw
-  str: Unknown command
+  parse: html
+  str: |-
+    Unknown command. To subscribe to a model enter
+
+    /add <code>CAMNAME</code>
+
+    Example
+
+    {{ template "add_example" }}
 unknown_currency:
   parse: raw
   str: Specified currency is not supported

@@ -2,9 +2,9 @@ add_error:
   parse: html
   str: |-
     Could not add the model {{ .model }}
-    Check the model username or try later
-    Syntax: /add <code>USERNAME</code>
-    You can find a model username in an address line of your browser
+    Check the camname or try later
+    Syntax: /add <code>CAMNAME</code>
+    {{ template "address_line" }}
 help:
   parse: html
   str: |-
@@ -12,7 +12,7 @@ help:
 
     {{ template "commands" }}
 
-    You can find a model username in an address line of your browser
+    {{ template "address_line" }}
 languages:
   parse: raw
   str: |-
@@ -23,35 +23,53 @@ online:
   str: |-
     {{ .model }} online
     www.bongacams.com/{{ .model }}
+add_example:
+  parse: html
+  str: /add bbbweb
+address_line:
+  parse: html
+  str: Use the camname from an address line of your browser
 syntax_add:
   parse: html
   str: |-
     Enter
 
-    /add <code>USERNAME</code>
+    /add <code>CAMNAME</code>
 
-    You can find a model username in an address line of your browser
+    {{ template "address_line" }}
 
     Example
 
-    /add bbbweb
+    {{ template "add_example" }}
 syntax_remove:
   parse: html
   str: |-
     Enter
 
-    /remove <code>USERNAME</code>
+    /remove <code>CAMNAME</code>
 
-    You can find a model username in an address line of your browser
+    {{ template "address_line" }}
+unknown_command:
+  parse: html
+  str: |-
+    Unknown command. To subscribe to a model enter
+
+    /add <code>CAMNAME</code>
+
+    {{ template "address_line" }}
+
+    Example
+
+    {{ template "add_example" }}
 zero_subscriptions:
   parse: html
   str: |-
     You are not subscribed to any model
     To subscribe enter
 
-    /add <code>USERNAME</code>
+    /add <code>CAMNAME</code>
 
-    You can find a model username in an address line of your browser
+    {{ template "address_line" }}
 faq_no_notifications:
   parse: html
   str: >

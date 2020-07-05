@@ -188,6 +188,16 @@ syntax_feedback:
     Наберите
 
     /feedback <code>ВАШЕ_СООБЩЕНИЕ</code>
+syntax_add:
+  parse: html
+  str: |-
+    Наберите
+
+    /add <code>МОДЕЛЬ</code>
+
+    Пример
+
+    {{ template "add_example" }}
 syntax_remove:
   parse: html
   str: |-
@@ -200,8 +210,15 @@ try_to_buy_later:
     Ваш платёжный запрос не может быть обработан
     Попробуйте позже
 unknown_command:
-  parse: raw
-  str: Такой команде не обучен
+  parse: html
+  str: |-
+    Такой команде не обучен. Чтобы подписаться на модель, наберите
+
+    /add <code>МОДЕЛЬ</code>
+
+    Пример
+
+    {{ template "add_example" }}
 unknown_currency:
   parse: raw
   str: Указанная валюта не поддерживается

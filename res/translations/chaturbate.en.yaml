@@ -2,8 +2,8 @@ add_error:
   parse: html
   str: |-
     Could not add the model {{ .model }}
-    Check the model username or try later
-    Syntax: /add <code>USERNAME</code>
+    Check the model camname or try later
+    Syntax: /add <code>CAMNAME</code>
 help:
   parse: html
   str: |-
@@ -20,16 +20,9 @@ online:
   str: |-
     {{ .model }} online
     www.chaturbate.com/{{ .model }}
-syntax_add:
+add_example:
   parse: html
-  str: |-
-    Enter
-
-    /add <code>USERNAME</code>
-
-    Example
-
-    /add bbwebcam
+  str: /add bbwebcam
 faq_no_notifications:
   parse: html
   str: >

@@ -4,7 +4,7 @@ add_error:
     Не получилось добавить модель {{ .model }}
     Проверьте идентификатор модели или попробуйте позже
     Формат команды: /add <code>МОДЕЛЬ</code>
-    Идентификатор модели можно посмотреть в адресной строке браузера
+    {{ template "address_line" }}
 help:
   parse: html
   str: |-
@@ -12,7 +12,7 @@ help:
 
     {{ template "commands" }}
 
-    Идентификатор модели можно посмотреть в адресной строке браузера
+    {{ template "address_line" }}
 languages:
   parse: raw
   str: |-
@@ -23,6 +23,12 @@ online:
   str: |-
     {{ .model }} в сети
     www.bongacams.com/{{ .model }}
+add_example:
+  parse: html
+  str: /add bbbweb
+address_line:
+  parse: html
+  str: Используйте идентификатор модели из адресной строки браузера
 syntax_add:
   parse: html
   str: |-
@@ -30,7 +36,7 @@ syntax_add:
 
     /add <code>МОДЕЛЬ</code>
 
-    Идентификатор модели можно посмотреть в адресной строке браузера
+    {{ template "address_line" }}
 
     Пример
 
@@ -42,7 +48,19 @@ syntax_remove:
 
     /remove <code>МОДЕЛЬ</code>
 
-    Идентификатор модели можно посмотреть в адресной строке браузера
+    {{ template "address_line" }}
+unknown_command:
+  parse: html
+  str: |-
+    Такой команде не обучен. Чтобы подписаться на модель, наберите
+
+    /add <code>МОДЕЛЬ</code>
+
+    {{ template "address_line" }}
+
+    Пример
+
+    {{ template "add_example" }}
 zero_subscriptions:
   parse: html
   str: |-
@@ -51,7 +69,7 @@ zero_subscriptions:
 
     /add <code>МОДЕЛЬ</code>
 
-    Идентификатор модели можно посмотреть в адресной строке браузера
+    {{ template "address_line" }}
 faq_no_notifications:
   parse: html
   str: >
