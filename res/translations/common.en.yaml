@@ -70,9 +70,13 @@ no_online_models:
 not_enough_subscriptions:
   parse: raw
   str: You have not enough available subscriptions
+online:
+  parse: html
+  str: '{{ template "affiliate_link" .model }} online'
 offline:
-  parse: raw
-  str: '{{ .model }} offline'
+  parse: html
+  disable_preview: true
+  str: '{{ template "affiliate_link" .model }} offline'
 offline_list:
   parse: raw
   str: '{{ .model }} offline'

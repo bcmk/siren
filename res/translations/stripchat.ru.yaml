@@ -15,11 +15,6 @@ languages:
   str: |-
     Этот бот на других языках
     English: t.me/StripchatOnlineBot
-online:
-  parse: raw
-  str: |-
-    {{ .model }} в сети
-    www.stripchat.com/{{ .model }}
 add_example:
   parse: html
   str: /add bbweb

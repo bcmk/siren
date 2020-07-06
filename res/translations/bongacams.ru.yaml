@@ -18,11 +18,6 @@ languages:
   str: |-
     Этот бот на других языках
     English: t.me/BongacamsOnlineBot
-online:
-  parse: raw
-  str: |-
-    {{ .model }} в сети
-    www.bongacams.com/{{ .model }}
 add_example:
   parse: html
   str: /add bbbweb
