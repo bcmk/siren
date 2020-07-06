@@ -575,6 +575,16 @@ func (w *worker) chatsForModel(modelID string) (chats []int64, endpoints []strin
 	return
 }
 
+func (w *worker) model(modelID string) (status lib.StatusKind, referredUsers int) {
+	row := w.db.QueryRow("select status, referred_users from models where model_id=?", modelID)
+	err := row.Scan(&status, &referredUsers)
+	if err == sql.ErrNoRows {
+		return lib.StatusUnknown, 0
+	}
+	checkErr(err)
+	return
+}
+
 func (w *worker) broadcastChats(endpoint string) (chats []int64) {
 	chatsQuery, err := w.db.Query(`select distinct chat_id from signals where endpoint=? order by chat_id`, endpoint)
 	checkErr(err)
@@ -745,7 +755,6 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) bool {
 	}
 	w.mustExec("insert into signals (chat_id, model_id, endpoint) values (?,?,?)", chatID, modelID, endpoint)
 	w.mustExec("insert or ignore into models (model_id, status) values (?,?)", modelID, newStatus)
-	w.confirmedStatuses[modelID] = newStatus
 	subscriptionsNumber++
 	if newStatus != lib.StatusExists {
 		statusChange := statusChange{ModelID: modelID, Status: newStatus, Timestamp: int(time.Now().Unix())}

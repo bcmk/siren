@@ -230,5 +230,9 @@ func TestUpdateStatusFromNotFoundToOnline(t *testing.T) {
 	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 30); n == 0 {
 		t.Error("unexpected status update")
 	}
+	status, _ := w.model("a")
+	if status != lib.StatusOnline {
+		t.Errorf("unexpected status %v", status)
+	}
 	_ = w.db.Close()
 }
