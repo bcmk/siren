@@ -88,6 +88,7 @@ zero_subscriptions:
     /add <code>CAMNAME</code>
 list:
   parse: html
+  disable_preview: true
   str: |-
     {{- $printed := false -}}
     {{- if .online -}}
@@ -95,7 +96,7 @@ list:
       <code>ONLINE</code>
       {{- print "\n" -}}
       {{- range .online -}}
-        {{- .Model -}}
+        {{- template "affiliate_link" .Model -}}
         {{- if .Begin }}  <i>for {{ template "duration" .Begin }}</i> {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
@@ -109,7 +110,7 @@ list:
       <code>OFFLINE</code>
       {{- print "\n" -}}
       {{- range .offline -}}
-        {{- .Model -}}
+        {{- template "affiliate_link" .Model -}}
         {{- if .End }}  <i>last seen {{ template "duration" .End }}</i> ago {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
@@ -122,7 +123,7 @@ list:
       <code>BLOCKED FROM BOT'S COUNTRY</code>
       {{- print "\n" -}}
       {{- range .denied -}}
-        {{- .Model -}}
+        {{- template "affiliate_link" .Model -}}
         {{- if .End }}  <i>last seen {{ template "duration" .End }}</i> ago {{- end -}}
         {{- print "\n" -}}
       {{- end -}}

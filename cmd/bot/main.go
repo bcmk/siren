@@ -169,6 +169,9 @@ func newWorker() *worker {
 	db, err := sql.Open("sqlite3", cfg.DBPath)
 	checkErr(err)
 	tr, tpl := lib.LoadAllTranslations(trsByEndpoint(cfg))
+	for _, t := range tpl {
+		template.Must(t.New("affiliate_link").Parse(cfg.AffiliateLink))
+	}
 	w := &worker{
 		bots:                 bots,
 		db:                   db,

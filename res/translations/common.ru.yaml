@@ -79,6 +79,7 @@ zero_subscriptions:
     /add <code>МОДЕЛЬ</code>
 list:
   parse: html
+  disable_preview: true
   str: |-
     {{- $printed := false -}}
     {{- if .online -}}
@@ -86,7 +87,7 @@ list:
       <code>В СЕТИ</code>
       {{- print "\n" -}}
       {{- range .online -}}
-        {{- .Model -}}
+        {{- template "affiliate_link" .Model -}}
         {{- if .Begin }}  <i>{{ template "duration" .Begin }}</i> {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
@@ -100,7 +101,7 @@ list:
       <code>НЕ В СЕТИ</code>
       {{- print "\n" -}}
       {{- range .offline -}}
-        {{- .Model -}}
+        {{- template "affiliate_link" .Model -}}
         {{- if .End }}  <i>была {{ template "duration" .End }} назад</i> {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
@@ -113,7 +114,7 @@ list:
       <code>ЗАБЛОКИРОВАНЫ ИЗ СТРАНЫ БОТА</code>
       {{- print "\n" -}}
       {{- range .denied -}}
-        {{- .Model -}}
+        {{- template "affiliate_link" .Model -}}
         {{- if .End }}  <i>была {{ template "duration" .End }} назад</i> {{- end -}}
         {{- print "\n" -}}
       {{- end -}}

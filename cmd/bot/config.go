@@ -79,6 +79,7 @@ type config struct {
 	Checker                     checkerKind               `json:"checker"`                        // use specific checker, for example "api" or "redir" for BongaCams
 	SQLPrelude                  string                    `json:"sql_prelude"`                    // run these SQL commands before any other
 	EnableWeek                  bool                      `json:"enable_week"`                    // enable week command
+	AffiliateLink               string                    `json:"affiliate_link"`                 // affiliate link template
 
 	errorThreshold   int
 	errorDenominator int
@@ -167,6 +168,9 @@ func checkConfig(cfg *config) error {
 	}
 	if cfg.FollowerBonus == 0 {
 		return errors.New("configure follower_bonus")
+	}
+	if cfg.AffiliateLink == "" {
+		cfg.AffiliateLink = "{{ . }}"
 	}
 
 	if m := fractionRegexp.FindStringSubmatch(cfg.DangerousErrorRate); len(m) == 3 {
