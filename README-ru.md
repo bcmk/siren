@@ -89,7 +89,7 @@ __[English](README.md)__
 Ссылки
 ------
 
-[Twitter](https://twitter.com/sirenbot2)
+[Twitter](https://twitter.com/siren_tlg)
 
 [Reddit](https://www.reddit.com/user/siren-bot)
 

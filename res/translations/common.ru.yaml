@@ -168,7 +168,7 @@ social:
   disable_preview: true
   parse: raw
   str: |-
-    Twitter: https://twitter.com/sirenbot2
+    Twitter: https://twitter.com/siren_tlg
     Reddit: https://reddit.com/u/siren-bot
     GitHub: https://github.com/bcmk/siren
     Telegram: https://t.me/siren_telegram_bot

@@ -97,7 +97,7 @@ Telegram chat ID is just a number which we use to send you notifications.
 Links
 -----
 
-[Twitter](https://twitter.com/sirenbot2)
+[Twitter](https://twitter.com/siren_tlg)
 
 [Reddit](https://www.reddit.com/user/siren-bot)
 
