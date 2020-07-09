@@ -451,7 +451,7 @@ func (w *worker) initCache() {
 	w.lastStatusChanges = w.queryLastStatusChanges()
 	w.confirmedStatuses = w.queryConfirmedStatuses()
 	elapsed := time.Since(start)
-	linf("cache initialized in %d ms", elapsed.Milliseconds)
+	linf("cache initialized in %d ms", elapsed.Milliseconds())
 }
 
 func (w *worker) lastSeenInfo(modelID string, now int) (begin int, end int, prevStatus lib.StatusKind) {
