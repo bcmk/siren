@@ -431,18 +431,27 @@ func (w *worker) createDatabase() {
 			chat_id integer primary key,
 			referral_id text not null default '',
 			referred_users integer not null default 0);`)
+}
+
+func (w *worker) prepare() {
 	var err error
 	w.prepared.insertStatusChange, err = w.db.Prepare("insert into status_changes (model_id, status, timestamp) values (?,?,?)")
 	checkErr(err)
 	w.prepared.updateModelStatus, err = w.db.Prepare("insert into models (model_id, status) values (?,?) on conflict(model_id) do update set status=excluded.status")
 	checkErr(err)
-	w.lastStatusChanges = w.queryLastStatusChanges()
-	w.confirmedStatuses = w.queryConfirmedStatuses()
 }
 
 func (w *worker) unprepare() {
 	checkErr(w.prepared.insertStatusChange.Close())
 	checkErr(w.prepared.updateModelStatus.Close())
+}
+
+func (w *worker) initCache() {
+	start := time.Now()
+	w.lastStatusChanges = w.queryLastStatusChanges()
+	w.confirmedStatuses = w.queryConfirmedStatuses()
+	elapsed := time.Since(start)
+	linf("cache initialized in %d ms", elapsed.Milliseconds)
 }
 
 func (w *worker) lastSeenInfo(modelID string, now int) (begin int, end int, prevStatus lib.StatusKind) {
@@ -1861,6 +1870,8 @@ func main() {
 	w.logConfig()
 	w.setWebhook()
 	w.createDatabase()
+	w.prepare()
+	w.initCache()
 
 	incoming := w.incoming()
 	w.handleStatEndpoints()
