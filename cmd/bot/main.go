@@ -60,8 +60,9 @@ type statusChange struct {
 }
 
 type prepared struct {
-	insertStatusChange *sql.Stmt
-	updateModelStatus  *sql.Stmt
+	insertStatusChange     *sql.Stmt
+	updateLastStatusChange *sql.Stmt
+	updateModelStatus      *sql.Stmt
 }
 
 type worker struct {
@@ -235,6 +236,7 @@ func (w *worker) cleanStatuses() {
 		mustExecInTx(tx, "update models set status=? where model_id=?", lib.StatusUnknown, modelID)
 		w.confirmedStatuses[modelID] = lib.StatusUnknown
 		w.mustExecPrepared(tx.Stmt(w.prepared.insertStatusChange), modelID, lib.StatusUnknown, now)
+		w.mustExecPrepared(tx.Stmt(w.prepared.updateLastStatusChange), modelID, lib.StatusUnknown, now)
 		w.lastStatusChanges[modelID] = statusChange{
 			ModelID:   modelID,
 			Status:    lib.StatusUnknown,
@@ -383,6 +385,11 @@ func (w *worker) createDatabase() {
 			status integer not null default 0,
 			timestamp integer not null default 0);`)
 	w.mustExec(`
+		create table if not exists last_status_changes (
+			model_id text primary key,
+			status integer not null default 0,
+			timestamp integer not null default 0);`)
+	w.mustExec(`
 		create table if not exists models (
 			model_id text primary key,
 			status integer not null default 0,
@@ -437,12 +444,21 @@ func (w *worker) prepare() {
 	var err error
 	w.prepared.insertStatusChange, err = w.db.Prepare("insert into status_changes (model_id, status, timestamp) values (?,?,?)")
 	checkErr(err)
-	w.prepared.updateModelStatus, err = w.db.Prepare("insert into models (model_id, status) values (?,?) on conflict(model_id) do update set status=excluded.status")
+	w.prepared.updateLastStatusChange, err = w.db.Prepare(`
+		insert into last_status_changes (model_id, status, timestamp)
+		values (?,?,?)
+		on conflict(model_id) do update set status=excluded.status, timestamp=excluded.timestamp`)
+	checkErr(err)
+	w.prepared.updateModelStatus, err = w.db.Prepare(`
+		insert into models (model_id, status)
+		values (?,?)
+		on conflict(model_id) do update set status=excluded.status`)
 	checkErr(err)
 }
 
 func (w *worker) unprepare() {
 	checkErr(w.prepared.insertStatusChange.Close())
+	checkErr(w.prepared.updateLastStatusChange.Close())
 	checkErr(w.prepared.updateModelStatus.Close())
 }
 
@@ -510,6 +526,7 @@ func (w *worker) updateStatus(
 	lastStatusChange := w.lastStatusChanges[statusChange.ModelID]
 	if statusChange.Status != lastStatusChange.Status {
 		w.mustExecPrepared(tx.Stmt(w.prepared.insertStatusChange), statusChange.ModelID, statusChange.Status, statusChange.Timestamp)
+		w.mustExecPrepared(tx.Stmt(w.prepared.updateLastStatusChange), statusChange.ModelID, statusChange.Status, statusChange.Timestamp)
 		w.lastStatusChanges[statusChange.ModelID] = statusChange
 	}
 	confirmationSeconds := w.confirmationSeconds(statusChange.Status)
@@ -1570,13 +1587,7 @@ func (w *worker) processPeriodic(statusRequests chan lib.StatusRequest) {
 }
 
 func (w *worker) queryLastStatusChanges() map[string]statusChange {
-	query, err := w.db.Query(`
-		select model_id, status, timestamp
-		from (
-			select *, row_number() over (partition by model_id order by timestamp desc) as row
-			from status_changes
-		)
-		where row = 1`)
+	query, err := w.db.Query(`select model_id, status, timestamp from last_status_changes`)
 	checkErr(err)
 	defer func() { checkErr(query.Close()) }()
 	statusChanges := map[string]statusChange{}
