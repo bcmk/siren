@@ -11,6 +11,8 @@ func TestSql(t *testing.T) {
 	linf = func(string, ...interface{}) {}
 	w := newTestWorker()
 	w.createDatabase()
+	w.prepare()
+	w.initCache()
 	w.mustExec("insert into signals (endpoint, chat_id, model_id) values (?,?,?)", "ep1", 1, "a")
 	w.mustExec("insert into signals (endpoint, chat_id, model_id) values (?,?,?)", "ep1", 2, "b")
 	w.mustExec("insert into signals (endpoint, chat_id, model_id) values (?,?,?)", "ep1", 3, "c")
@@ -115,6 +117,8 @@ func TestSql(t *testing.T) {
 func TestUpdateStatus(t *testing.T) {
 	w := newTestWorker()
 	w.createDatabase()
+	w.prepare()
+	w.initCache()
 	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 18); n == 0 {
 		t.Error("unexpected status update")
 	}
@@ -221,6 +225,8 @@ func TestUpdateStatus(t *testing.T) {
 func TestUpdateStatusFromNotFoundToOnline(t *testing.T) {
 	w := newTestWorker()
 	w.createDatabase()
+	w.prepare()
+	w.initCache()
 	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusNotFound}}, 18); n != 0 {
 		t.Error("unexpected status update")
 	}
