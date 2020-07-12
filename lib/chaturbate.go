@@ -12,6 +12,7 @@ import (
 
 type chaturbateModel struct {
 	Username string `json:"username"`
+	ImageURL string `json:"image_url"`
 }
 
 type chaturbateResponse struct {
@@ -103,7 +104,7 @@ func StartChaturbateAPIChecker(
 	clientsNum := len(clients)
 	go func() {
 		for request := range statusRequests {
-			hash := map[string]bool{}
+			hash := map[string]StatusUpdate{}
 			updates := []StatusUpdate{}
 			for _, endpoint := range usersOnlineEndpoint {
 				client := clients[clientIdx]
@@ -135,17 +136,16 @@ func StartChaturbateAPIChecker(
 					output <- nil
 					continue
 				}
-
 				for _, m := range parsed {
 					modelID := strings.ToLower(m.Username)
-					hash[modelID] = true
+					hash[modelID] = StatusUpdate{ModelID: modelID, Status: StatusOnline, Image: m.ImageURL}
 				}
 			}
-			for modelID := range hash {
-				updates = append(updates, StatusUpdate{ModelID: modelID, Status: StatusOnline})
+			for _, statusUpdate := range hash {
+				updates = append(updates, statusUpdate)
 			}
 			for _, modelID := range request.KnownModels {
-				if !hash[modelID] {
+				if _, ok := hash[modelID]; !ok {
 					updates = append(updates, StatusUpdate{ModelID: modelID, Status: StatusOffline})
 				}
 			}

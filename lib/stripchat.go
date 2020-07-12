@@ -14,7 +14,8 @@ import (
 )
 
 type stripchatModel struct {
-	Username string `json:"username"`
+	Username    string `json:"username"`
+	SnapshotURL string `json:"snapshot_url"`
 }
 
 type stripchatResponse struct {
@@ -115,7 +116,7 @@ func StartStripchatAPIChecker(
 	clientsNum := len(clients)
 	go func() {
 		for request := range statusRequests {
-			hash := map[string]bool{}
+			hash := map[string]StatusUpdate{}
 			updates := []StatusUpdate{}
 			for _, endpoint := range usersOnlineEndpoint {
 				client := clients[clientIdx]
@@ -147,17 +148,16 @@ func StartStripchatAPIChecker(
 					output <- nil
 					continue
 				}
-
 				for _, m := range parsed.Models {
 					modelID := strings.ToLower(m.Username)
-					hash[modelID] = true
+					hash[modelID] = StatusUpdate{ModelID: modelID, Status: StatusOnline, Image: m.SnapshotURL}
 				}
 			}
-			for modelID := range hash {
-				updates = append(updates, StatusUpdate{ModelID: modelID, Status: StatusOnline})
+			for _, statusUpdate := range hash {
+				updates = append(updates, statusUpdate)
 			}
 			for _, modelID := range request.KnownModels {
-				if !hash[modelID] {
+				if _, ok := hash[modelID]; !ok {
 					updates = append(updates, StatusUpdate{ModelID: modelID, Status: StatusOffline})
 				}
 			}

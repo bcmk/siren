@@ -72,6 +72,9 @@ var migrations = []func(w *worker){
 				referral_id text not null default '',
 				referred_users integer not null default 0);`)
 	},
+	func(w *worker) {
+		w.mustExec("create index ix_status_changes_model_id on status_changes(model_id);")
+	},
 }
 
 func (w *worker) applyMigrations() {

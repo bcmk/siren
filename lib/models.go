@@ -15,4 +15,5 @@ type StatusRequest struct {
 type StatusUpdate struct {
 	ModelID string
 	Status  StatusKind
+	Image   string
 }

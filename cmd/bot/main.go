@@ -98,6 +98,7 @@ type worker struct {
 	prepared              prepared
 	lastStatusChanges     map[string]statusChange
 	confirmedStatuses     map[string]lib.StatusKind
+	images                map[string]string
 }
 
 type packet struct {
@@ -184,6 +185,7 @@ func newWorker() *worker {
 		unsuccessfulRequests: make([]bool, cfg.errorDenominator),
 		ipnServeMux:          http.NewServeMux(),
 		mailTLS:              mailTLS,
+		images:               map[string]string{},
 	}
 
 	if cp := cfg.CoinPayments; cp != nil {
@@ -333,6 +335,18 @@ func (w *worker) sendText(endpoint string, chatID int64, notify bool, disablePre
 	w.sendMessage(endpoint, &messageConfig{msg})
 }
 
+func (w *worker) sendImage(endpoint string, chatID int64, notify bool, parse lib.ParseKind, text string, image []byte) {
+	fileBytes := tg.FileBytes{Name: "preview", Bytes: image}
+	msg := tg.NewPhotoUpload(chatID, fileBytes)
+	msg.Caption = text
+	msg.DisableNotification = !notify
+	switch parse {
+	case lib.ParseHTML, lib.ParseMarkdown:
+		msg.ParseMode = parse.String()
+	}
+	w.sendMessage(endpoint, &photoConfig{msg})
+}
+
 func (w *worker) sendMessage(endpoint string, msg baseChattable) {
 	chatID := msg.baseChat().ChatID
 	if _, err := w.bots[endpoint].Send(msg); err != nil {
@@ -366,6 +380,12 @@ func (w *worker) sendTr(endpoint string, chatID int64, notify bool, translation 
 	tpl := w.tpl[endpoint]
 	text := templateToString(tpl, translation.Key, data)
 	w.sendText(endpoint, chatID, notify, translation.DisablePreview, translation.Parse, text)
+}
+
+func (w *worker) sendTrImage(endpoint string, chatID int64, notify bool, translation *lib.Translation, data map[string]interface{}, image []byte) {
+	tpl := w.tpl[endpoint]
+	text := templateToString(tpl, translation.Key, data)
+	w.sendImage(endpoint, chatID, notify, translation.Parse, text, image)
 }
 
 func (w *worker) createDatabase() {
@@ -951,12 +971,33 @@ func (w *worker) listModels(endpoint string, chatID int64, now int) {
 	w.sendTr(endpoint, chatID, false, w.tr[endpoint].List, tplData{"online": online, "offline": offline, "denied": denied})
 }
 
+func (w *worker) download(url string) []byte {
+	resp, err := w.clients[0].Client.Get(url)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(resp.Body)
+	return buf.Bytes()
+}
+
 func (w *worker) listOnlineModels(endpoint string, chatID int64) {
 	statuses := w.statusesForChat(endpoint, chatID)
 	online := 0
 	for _, s := range statuses {
 		if s.Status == lib.StatusOnline {
-			w.sendTr(endpoint, chatID, false, w.tr[endpoint].Online, tplData{"model": s.ModelID})
+			imageURL := w.images[s.ModelID]
+			var image []byte
+			if imageURL != "" {
+				image = w.download(imageURL)
+				linf("image download, URL: %s, result: %v", w.images[s.ModelID], image != nil)
+			}
+			if image == nil {
+				w.sendTr(endpoint, chatID, false, w.tr[endpoint].Online, tplData{"model": s.ModelID})
+			} else {
+				w.sendTrImage(endpoint, chatID, false, w.tr[endpoint].Online, tplData{"model": s.ModelID}, image)
+			}
 			online++
 		}
 	}
@@ -1572,6 +1613,11 @@ func (w *worker) processStatusUpdates(
 			changeConfirmed := w.updateStatus(tx, statusChange)
 			if changeConfirmed {
 				confirmedChangesCount++
+			}
+			if u.Image != "" {
+				w.images[u.ModelID] = u.Image
+			} else {
+				delete(w.images, u.ModelID)
 			}
 			if changeConfirmed && (w.cfg.OfflineNotifications || u.Status != lib.StatusOffline) {
 				chats := chatsForModels[u.ModelID]
