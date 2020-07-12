@@ -100,7 +100,7 @@ func StartBongaCamsAPIChecker(
 
 				for _, m := range parsed {
 					modelID := strings.ToLower(m.Username)
-					hash[modelID] = StatusUpdate{ModelID: modelID, Status: StatusOnline, Image: m.ProfileImages.ThumbnailImageMediumLive}
+					hash[modelID] = StatusUpdate{ModelID: modelID, Status: StatusOnline, Image: "https:" + m.ProfileImages.ThumbnailImageMediumLive}
 				}
 			}
 			for _, statusUpdate := range hash {
