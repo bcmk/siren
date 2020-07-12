@@ -620,21 +620,41 @@ func (w *worker) statusesForChat(endpoint string, chatID int64) []lib.StatusUpda
 	return statuses
 }
 
-func (w *worker) notifyOfStatus(endpoint string, chatID int64, modelID string, status lib.StatusKind) {
+func (w *worker) notifyOfStatuses(notifications []notification) {
+	models := map[string]bool{}
+	for _, n := range notifications {
+		models[n.modelID] = true
+	}
+	images := map[string][]byte{}
+	for m := range models {
+		if url := w.images[m]; url != "" {
+			images[m] = w.download(url)
+		}
+	}
+	for _, n := range notifications {
+		w.notifyOfStatus(n, images[n.modelID])
+	}
+}
+
+func (w *worker) notifyOfStatus(n notification, image []byte) {
 	if w.cfg.Debug {
-		ldbg("notifying of status of the model %s", modelID)
+		ldbg("notifying of status of the model %s", n.modelID)
 	}
-	data := tplData{"model": modelID}
-	switch status {
+	data := tplData{"model": n.modelID}
+	switch n.status {
 	case lib.StatusOnline:
-		w.sendTr(endpoint, chatID, true, w.tr[endpoint].Online, data)
+		if image == nil {
+			w.sendTr(n.endpoint, n.chatID, true, w.tr[n.endpoint].Online, data)
+		} else {
+			w.sendTrImage(n.endpoint, n.chatID, true, w.tr[n.endpoint].Online, data, image)
+		}
 	case lib.StatusOffline:
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Offline, data)
+		w.sendTr(n.endpoint, n.chatID, false, w.tr[n.endpoint].Offline, data)
 	case lib.StatusDenied:
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Denied, data)
+		w.sendTr(n.endpoint, n.chatID, false, w.tr[n.endpoint].Denied, data)
 	}
-	w.addUser(endpoint, chatID)
-	w.mustExec("update users set reports=reports+1 where chat_id=?", chatID)
+	w.addUser(n.endpoint, n.chatID)
+	w.mustExec("update users set reports=reports+1 where chat_id=?", n.chatID)
 }
 
 func singleInt(row *sql.Row) (result int) {
@@ -750,7 +770,11 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) bool {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].ModelAdded, tplData{"model": modelID})
 	}
 	if newStatus != lib.StatusExists {
-		w.notifyOfStatus(endpoint, chatID, modelID, newStatus)
+		w.notifyOfStatuses([]notification{{
+			endpoint: endpoint,
+			chatID:   chatID,
+			modelID:  modelID,
+			status:   newStatus}})
 	}
 	if subscriptionsNumber >= maxModels-w.cfg.HeavyUserRemainder {
 		w.subscriptionUsage(endpoint, chatID, true)
@@ -1911,9 +1935,7 @@ func main() {
 			w.updatesDuration = elapsed
 			w.changesInPeriod = changesInPeriod
 			w.confirmedChangesInPeriod = confirmedChangesInPeriod
-			for _, n := range notifications {
-				w.notifyOfStatus(n.endpoint, n.chatID, n.modelID, n.status)
-			}
+			w.notifyOfStatuses(notifications)
 			if w.cfg.Debug {
 				ldbg("status updates processed in %v", elapsed)
 			}
