@@ -11,8 +11,10 @@ import (
 )
 
 type bongacamsModel struct {
-	Username                 string `json:"username"`
-	ThumbnailImageMediumLive string `json:"thumbnail_image_medium_live"`
+	Username      string `json:"username"`
+	ProfileImages struct {
+		ThumbnailImageMediumLive string `json:"thumbnail_image_medium_live"`
+	} `json:"profile_images"`
 }
 
 // CheckModelBongaCams checks BongaCams model status
@@ -98,7 +100,7 @@ func StartBongaCamsAPIChecker(
 
 				for _, m := range parsed {
 					modelID := strings.ToLower(m.Username)
-					hash[modelID] = StatusUpdate{ModelID: modelID, Status: StatusOnline, Image: m.ThumbnailImageMediumLive}
+					hash[modelID] = StatusUpdate{ModelID: modelID, Status: StatusOnline, Image: m.ProfileImages.ThumbnailImageMediumLive}
 				}
 			}
 			for _, statusUpdate := range hash {
