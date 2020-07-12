@@ -15,7 +15,7 @@ import (
 
 type stripchatModel struct {
 	Username    string `json:"username"`
-	SnapshotURL string `json:"snapshot_url"`
+	SnapshotURL string `json:"snapshotUrl"`
 }
 
 type stripchatResponse struct {
