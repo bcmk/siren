@@ -7,7 +7,7 @@ Telegram bot for adult webcasts alerts
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
 [![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)
 
-This is telegram bot notifying you whenever BongaCams, Chaturbate, Stripchat and xHamster Live models are online.
+This is the Telegram bot notifying you whenever BongaCams, Chaturbate, Stripchat and xHamster Live models are online.
 You just subscribe to your favorite webcam models with __/add__ command.
 Then you receive a notification whenever they are online.
 The bot queries models statuses every minute.
@@ -30,8 +30,8 @@ Commands
 * __remove__ _MODEL_ID_ — Remove model
 * __remove_all__ — Remove all models
 * __list__ — Your model subscriptions
-* __online__ — Your models online
-* __week__ _MODEL_ID_ — Show working hours in the previous 7 days
+* __pics__ — Pictures of your models online
+* __week__ _MODEL_ID_ — Working hours in the previous 7 days
 * __social__ — We in social media
 * __help__ — Command list
 * __language__ — This bot in other languages

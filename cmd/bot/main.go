@@ -1520,7 +1520,7 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	case "list":
 		now := int(time.Now().Unix())
 		w.listModels(endpoint, chatID, now)
-	case "online":
+	case "pics", "online":
 		w.listOnlineModels(endpoint, chatID)
 	case "start", "help":
 		w.start(endpoint, chatID, arguments)

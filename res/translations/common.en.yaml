@@ -31,7 +31,7 @@ commands:
     <b>remove</b> <code>CAMNAME</code> — Remove model
     <b>remove_all</b> — Remove all models
     <b>list</b> — Your model subscriptions
-    <b>online</b> — Your models online
+    <b>pics</b> — Pictures of your models online
     <b>week</b> <code>CAMNAME</code> — Working hours in the previous 7 days
     <b>feedback</b> <code>YOUR_MESSAGE</code> — Send feedback
     <b>social</b> — Show social media

@@ -3,8 +3,8 @@ add - Add model
 remove - Remove model
 remove_all - Remove all models
 list - Your model subscriptions
-online - Your models online
-week - Show working hours in the previous 7 days
+pics - Pictures of your models online
+week - Working hours in the previous 7 days
 buy - Buy additional subscriptions
 max_models - Show your subscription limit
 social - We in social media
