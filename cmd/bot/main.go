@@ -65,6 +65,13 @@ type prepared struct {
 	updateModelStatus      *sql.Stmt
 }
 
+type statCommand struct {
+	endpoint string
+	writer   http.ResponseWriter
+	request  *http.Request
+	done     chan bool
+}
+
 type worker struct {
 	clients                  []*lib.Client
 	bots                     map[string]*tg.BotAPI
@@ -1000,9 +1007,12 @@ func (w *worker) download(url string) []byte {
 	if err != nil {
 		return nil
 	}
-	defer resp.Body.Close()
+	defer func() { checkErr(resp.Body.Close()) }()
 	buf := new(bytes.Buffer)
-	buf.ReadFrom(resp.Body)
+	_, err = buf.ReadFrom(resp.Body)
+	if err != nil {
+		return nil
+	}
 	return buf.Bytes()
 }
 
@@ -1758,22 +1768,36 @@ func (w *worker) getStat(endpoint string) statistics {
 	}
 }
 
-func (w *worker) handleStat(endpoint string) func(writer http.ResponseWriter, r *http.Request) {
+func (w *worker) handleStat(endpoint string, statCommands chan statCommand) func(writer http.ResponseWriter, r *http.Request) {
 	return func(writer http.ResponseWriter, r *http.Request) {
-		passwords, ok := r.URL.Query()["password"]
-		if !ok || len(passwords[0]) < 1 {
-			return
+		command := statCommand{
+			endpoint: endpoint,
+			writer:   writer,
+			request:  r,
+			done:     make(chan bool),
 		}
-		password := passwords[0]
-		if password != w.cfg.StatPassword {
-			return
-		}
-		writer.WriteHeader(http.StatusOK)
-		writer.Header().Set("Content-Type", "application/json")
-		statJSON, err := json.MarshalIndent(w.getStat(endpoint), "", "    ")
-		checkErr(err)
-		_, err = writer.Write(statJSON)
-		checkErr(err)
+		statCommands <- command
+		<-command.done
+	}
+}
+
+func (w *worker) processStatCommand(endpoint string, writer http.ResponseWriter, r *http.Request, done chan bool) {
+	defer func() { done <- true }()
+	passwords, ok := r.URL.Query()["password"]
+	if !ok || len(passwords[0]) < 1 {
+		return
+	}
+	password := passwords[0]
+	if password != w.cfg.StatPassword {
+		return
+	}
+	writer.WriteHeader(http.StatusOK)
+	writer.Header().Set("Content-Type", "application/json")
+	statJSON, err := json.MarshalIndent(w.getStat(endpoint), "", "    ")
+	checkErr(err)
+	_, err = writer.Write(statJSON)
+	if err != nil {
+		lerr("error on processing stat command, %v", err)
 	}
 }
 
@@ -1811,9 +1835,9 @@ func (w *worker) handleIPN(writer http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (w *worker) handleStatEndpoints() {
+func (w *worker) handleStatEndpoints(statCommands chan statCommand) {
 	for n, p := range w.cfg.Endpoints {
-		http.HandleFunc(p.WebhookDomain+"/stat", w.handleStat(n))
+		http.HandleFunc(p.WebhookDomain+"/stat", w.handleStat(n, statCommands))
 	}
 }
 
@@ -1892,7 +1916,8 @@ func main() {
 	w.initCache()
 
 	incoming := w.incoming()
-	w.handleStatEndpoints()
+	statCommands := make(chan statCommand)
+	w.handleStatEndpoints(statCommands)
 	w.serveEndpoints()
 
 	if w.cfg.CoinPayments != nil {
@@ -1943,6 +1968,8 @@ func main() {
 			w.processTGUpdate(u)
 		case m := <-mail:
 			w.mailReceived(m)
+		case s := <-statCommands:
+			w.processStatCommand(s.endpoint, s.writer, s.request, s.done)
 		case s := <-signals:
 			linf("got signal %v", s)
 			w.unprepare()
