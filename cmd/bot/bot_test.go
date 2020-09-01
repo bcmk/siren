@@ -81,28 +81,23 @@ func TestSql(t *testing.T) {
 	}
 	w.incrementBlock("ep1", 2)
 	w.incrementBlock("ep1", 2)
-	block := w.db.QueryRow("select block from block where chat_id=? and endpoint=?", 2, "ep1")
-	if singleInt(block) != 2 {
+	if w.mustInt("select block from block where chat_id=? and endpoint=?", 2, "ep1") != 2 {
 		t.Error("unexpected block for model result", chatsForModel)
 	}
 	w.incrementBlock("ep2", 2)
-	block = w.db.QueryRow("select block from block where chat_id=? and endpoint=?", 2, "ep2")
-	if singleInt(block) != 1 {
+	if w.mustInt("select block from block where chat_id=? and endpoint=?", 2, "ep2") != 1 {
 		t.Error("unexpected block for model result", chatsForModel)
 	}
 	w.resetBlock("ep1", 2)
-	block = w.db.QueryRow("select block from block where chat_id=? and endpoint=?", 2, "ep1")
-	if singleInt(block) != 0 {
+	if w.mustInt("select block from block where chat_id=? and endpoint=?", 2, "ep1") != 0 {
 		t.Error("unexpected block for model result", chatsForModel)
 	}
-	block = w.db.QueryRow("select block from block where chat_id=? and endpoint=?", 2, "ep2")
-	if singleInt(block) != 1 {
+	if w.mustInt("select block from block where chat_id=? and endpoint=?", 2, "ep2") != 1 {
 		t.Error("unexpected block for model result", chatsForModel)
 	}
 	w.incrementBlock("ep1", 1)
 	w.incrementBlock("ep1", 1)
-	block = w.db.QueryRow("select block from block where chat_id=?", 1)
-	if singleInt(block) != 2 {
+	if w.mustInt("select block from block where chat_id=?", 1) != 2 {
 		t.Error("unexpected block for model result", chatsForModel)
 	}
 	statuses := w.statusesForChat("ep1", 3)

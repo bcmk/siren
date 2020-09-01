@@ -228,11 +228,10 @@ func (w *worker) cleanStatuses() {
 		return
 	}
 	now := int(time.Now().Unix())
-	query, err := w.db.Query(`
+	query := w.mustQuery(`
 		select model_id from models
 		where status != ? and not exists(select * from signals where signals.model_id = models.model_id)`,
 		lib.StatusUnknown)
-	checkErr(err)
 	var models []string
 	for query.Next() {
 		var modelID string
@@ -414,7 +413,7 @@ func (w *worker) initCache() {
 }
 
 func (w *worker) lastSeenInfo(modelID string, now int) (begin int, end int, prevStatus lib.StatusKind) {
-	query, err := w.db.Query(`
+	query := w.mustQuery(`
 		select timestamp, end, prev_status from (
 			select
 				*,
@@ -426,7 +425,6 @@ func (w *worker) lastSeenInfo(modelID string, now int) (begin int, end int, prev
 		order by timestamp desc limit 1`,
 		modelID,
 		lib.StatusOnline)
-	checkErr(err)
 	defer func() { checkErr(query.Close()) }()
 	if !query.Next() {
 		return 0, 0, lib.StatusUnknown
@@ -485,8 +483,7 @@ func (w *worker) updateStatus(
 }
 
 func (w *worker) knownModels() (models []string) {
-	modelsQuery, err := w.db.Query("select model_id from models order by model_id")
-	checkErr(err)
+	modelsQuery := w.mustQuery("select model_id from models order by model_id")
 	defer func() { checkErr(modelsQuery.Close()) }()
 	for modelsQuery.Next() {
 		var modelID string
@@ -497,13 +494,12 @@ func (w *worker) knownModels() (models []string) {
 }
 
 func (w *worker) modelsToPoll() (models []string) {
-	modelsQuery, err := w.db.Query(`
+	modelsQuery := w.mustQuery(`
 		select distinct model_id from signals
 		left join block on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
 		where block.block is null or block.block<?
 		order by model_id`,
 		w.cfg.BlockThreshold)
-	checkErr(err)
 	defer func() { checkErr(modelsQuery.Close()) }()
 	for modelsQuery.Next() {
 		var modelID string
@@ -516,8 +512,7 @@ func (w *worker) modelsToPoll() (models []string) {
 func (w *worker) chatsForModels() (chats map[string][]int64, endpoints map[string][]string) {
 	chats = make(map[string][]int64)
 	endpoints = make(map[string][]string)
-	chatsQuery, err := w.db.Query(`select model_id, chat_id, endpoint from signals`)
-	checkErr(err)
+	chatsQuery := w.mustQuery(`select model_id, chat_id, endpoint from signals`)
 	defer func() { checkErr(chatsQuery.Close()) }()
 	for chatsQuery.Next() {
 		var modelID string
@@ -531,8 +526,7 @@ func (w *worker) chatsForModels() (chats map[string][]int64, endpoints map[strin
 }
 
 func (w *worker) chatsForModel(modelID string) (chats []int64, endpoints []string) {
-	chatsQuery, err := w.db.Query(`select chat_id, endpoint from signals where model_id=? order by chat_id`, modelID)
-	checkErr(err)
+	chatsQuery := w.mustQuery(`select chat_id, endpoint from signals where model_id=? order by chat_id`, modelID)
 	defer func() { checkErr(chatsQuery.Close()) }()
 	for chatsQuery.Next() {
 		var chatID int64
@@ -545,18 +539,14 @@ func (w *worker) chatsForModel(modelID string) (chats []int64, endpoints []strin
 }
 
 func (w *worker) model(modelID string) (status lib.StatusKind, referredUsers int) {
-	row := w.db.QueryRow("select status, referred_users from models where model_id=?", modelID)
-	err := row.Scan(&status, &referredUsers)
-	if err == sql.ErrNoRows {
-		return lib.StatusUnknown, 0
-	}
-	checkErr(err)
+	_ = w.maybeRecord("select status, referred_users from models where model_id=?",
+		queryParams{modelID},
+		record{&status, &referredUsers})
 	return
 }
 
 func (w *worker) broadcastChats(endpoint string) (chats []int64) {
-	chatsQuery, err := w.db.Query(`select distinct chat_id from signals where endpoint=? order by chat_id`, endpoint)
-	checkErr(err)
+	chatsQuery := w.mustQuery(`select distinct chat_id from signals where endpoint=? order by chat_id`, endpoint)
 	defer func() { checkErr(chatsQuery.Close()) }()
 	for chatsQuery.Next() {
 		var chatID int64
@@ -567,14 +557,13 @@ func (w *worker) broadcastChats(endpoint string) (chats []int64) {
 }
 
 func (w *worker) modelsForChat(endpoint string, chatID int64) []string {
-	query, err := w.db.Query(`
+	query := w.mustQuery(`
 		select model_id
 		from signals
 		where chat_id=? and endpoint=?
 		order by model_id`,
 		chatID,
 		endpoint)
-	checkErr(err)
 	defer func() { checkErr(query.Close()) }()
 	var models []string
 	for query.Next() {
@@ -586,7 +575,7 @@ func (w *worker) modelsForChat(endpoint string, chatID int64) []string {
 }
 
 func (w *worker) statusesForChat(endpoint string, chatID int64) []lib.StatusUpdate {
-	statusesQuery, err := w.db.Query(`
+	statusesQuery := w.mustQuery(`
 		select models.model_id, models.status
 		from models
 		join signals on signals.model_id=models.model_id
@@ -594,7 +583,6 @@ func (w *worker) statusesForChat(endpoint string, chatID int64) []lib.StatusUpda
 		order by models.model_id`,
 		chatID,
 		endpoint)
-	checkErr(err)
 	defer func() { checkErr(statusesQuery.Close()) }()
 	var statuses []lib.StatusUpdate
 	for statusesQuery.Next() {
@@ -643,29 +631,22 @@ func (w *worker) notifyOfStatus(n notification, image []byte) {
 	w.mustExec("update users set reports=reports+1 where chat_id=?", n.chatID)
 }
 
-func singleInt(row *sql.Row) (result int) {
-	checkErr(row.Scan(&result))
-	return result
-}
-
 func (w *worker) subscriptionExists(endpoint string, chatID int64, modelID string) bool {
-	duplicate := w.db.QueryRow("select count(*) from signals where chat_id=? and model_id=? and endpoint=?", chatID, modelID, endpoint)
-	count := singleInt(duplicate)
+	count := w.mustInt("select count(*) from signals where chat_id=? and model_id=? and endpoint=?", chatID, modelID, endpoint)
 	return count != 0
 }
 
 func (w *worker) userExists(chatID int64) bool {
-	count := singleInt(w.db.QueryRow("select count(*) from users where chat_id=?", chatID))
+	count := w.mustInt("select count(*) from users where chat_id=?", chatID)
 	return count != 0
 }
 
 func (w *worker) subscriptionsNumber(endpoint string, chatID int64) int {
-	return singleInt(w.db.QueryRow("select count(*) from signals where chat_id=? and endpoint=?", chatID, endpoint))
+	return w.mustInt("select count(*) from signals where chat_id=? and endpoint=?", chatID, endpoint)
 }
 
 func (w *worker) maxModels(chatID int64) int {
-	query, err := w.db.Query("select max_models from users where chat_id=?", chatID)
-	checkErr(err)
+	query := w.mustQuery("select max_models from users where chat_id=?", chatID)
 	defer func() { checkErr(query.Close()) }()
 	if !query.Next() {
 		return w.cfg.MaxModels
@@ -849,20 +830,14 @@ func (w *worker) buy(endpoint string, chatID int64) {
 }
 
 func (w *worker) email(endpoint string, chatID int64) string {
-	row := w.db.QueryRow("select email from emails where endpoint=? and chat_id=?", endpoint, chatID)
-	var result string
-	checkErr(row.Scan(&result))
-	return result + "@" + w.cfg.Mail.Host
+	username := w.mustString("select email from emails where endpoint=? and chat_id=?", endpoint, chatID)
+	return username + "@" + w.cfg.Mail.Host
 }
 
 func (w *worker) transaction(uuid string) (status payments.StatusKind, chatID int64, endpoint string) {
-	query, err := w.db.Query("select status, chat_id, endpoint from transactions where local_id=?", uuid)
-	checkErr(err)
-	defer func() { checkErr(query.Close()) }()
-	if !query.Next() {
-		return
-	}
-	checkErr(query.Scan(&status, &chatID, &endpoint))
+	_ = w.maybeRecord("select status, chat_id, endpoint from transactions where local_id=?",
+		queryParams{uuid},
+		record{&status, &chatID, &endpoint})
 	return
 }
 
@@ -1025,7 +1000,7 @@ func (w *worker) week(modelID string) ([]bool, time.Time) {
 	today := now.Truncate(24 * time.Hour)
 	start := today.Add(-6 * 24 * time.Hour)
 	weekTimestamp := int(start.Unix())
-	query, err := w.db.Query(`
+	query := w.mustQuery(`
 		select status, timestamp, prev_status, prev_timestamp
 		from(
 			select
@@ -1038,7 +1013,6 @@ func (w *worker) week(modelID string) ([]bool, time.Time) {
 		order by timestamp`,
 		modelID,
 		weekTimestamp)
-	checkErr(err)
 	var changes []statusChange
 	first := true
 	for query.Next() {
@@ -1100,85 +1074,75 @@ func (w *worker) unsuccessfulRequestsCount() int {
 }
 
 func (w *worker) userReferralsCount() int {
-	query := w.db.QueryRow("select coalesce(sum(referred_users), 0) from referrals")
-	return singleInt(query)
+	return w.mustInt("select coalesce(sum(referred_users), 0) from referrals")
 }
 
 func (w *worker) modelReferralsCount() int {
-	query := w.db.QueryRow("select coalesce(sum(referred_users), 0) from models")
-	return singleInt(query)
+	return w.mustInt("select coalesce(sum(referred_users), 0) from models")
 }
 
 func (w *worker) reports() int {
-	return singleInt(w.db.QueryRow("select coalesce(sum(reports), 0) from users"))
+	return w.mustInt("select coalesce(sum(reports), 0) from users")
 }
 
 func (w *worker) usersCount(endpoint string) int {
-	query := w.db.QueryRow("select count(distinct chat_id) from signals where endpoint=?", endpoint)
-	return singleInt(query)
+	return w.mustInt("select count(distinct chat_id) from signals where endpoint=?", endpoint)
 }
 
 func (w *worker) groupsCount(endpoint string) int {
-	query := w.db.QueryRow("select count(distinct chat_id) from signals where endpoint=? and chat_id < 0", endpoint)
-	return singleInt(query)
+	return w.mustInt("select count(distinct chat_id) from signals where endpoint=? and chat_id < 0", endpoint)
 }
 
 func (w *worker) activeUsersOnEndpointCount(endpoint string) int {
-	query := w.db.QueryRow(`
+	return w.mustInt(`
 		select count(distinct signals.chat_id)
 		from signals
 		left join block on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
-		where (block.block is null or block.block = 0) and signals.endpoint=?`, endpoint)
-	return singleInt(query)
+		where (block.block is null or block.block = 0) and signals.endpoint=?`,
+		endpoint)
 }
 
 func (w *worker) activeUsersTotalCount() int {
-	query := w.db.QueryRow(`
+	return w.mustInt(`
 		select count(distinct signals.chat_id)
 		from signals
 		left join block on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
 		where (block.block is null or block.block = 0)`)
-	return singleInt(query)
 }
 
 func (w *worker) modelsCount(endpoint string) int {
-	query := w.db.QueryRow("select count(distinct model_id) from signals where endpoint=?", endpoint)
-	return singleInt(query)
+	return w.mustInt("select count(distinct model_id) from signals where endpoint=?", endpoint)
 }
 
 func (w *worker) modelsToPollOnEndpointCount(endpoint string) int {
-	query := w.db.QueryRow(`
+	return w.mustInt(`
 		select count(distinct signals.model_id)
 		from signals
 		left join block on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
 		where (block.block is null or block.block < ?) and signals.endpoint=?`,
 		w.cfg.BlockThreshold,
 		endpoint)
-	return singleInt(query)
 }
 
 func (w *worker) modelsToPollTotalCount() int {
-	query := w.db.QueryRow(`
+	return w.mustInt(`
 		select count(distinct signals.model_id)
 		from signals
 		left join block on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
 		where (block.block is null or block.block < ?)`,
 		w.cfg.BlockThreshold)
-	return singleInt(query)
 }
 
 func (w *worker) onlineModelsCount() int {
-	query := w.db.QueryRow("select count(*) from models where models.status=?", lib.StatusOnline)
-	return singleInt(query)
+	return w.mustInt("select count(*) from models where models.status=?", lib.StatusOnline)
 }
 
 func (w *worker) statusChangesCount() int {
-	query := w.db.QueryRow("select count(*) from status_changes")
-	return singleInt(query)
+	return w.mustInt("select count(*) from status_changes")
 }
 
 func (w *worker) heavyUsersCount(endpoint string) int {
-	query := w.db.QueryRow(`
+	return w.mustInt(`
 		select count(*) from (
 			select 1 from signals
 			left join block on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
@@ -1187,17 +1151,14 @@ func (w *worker) heavyUsersCount(endpoint string) int {
 			having count(*) >= ?);`,
 		endpoint,
 		w.cfg.MaxModels-w.cfg.HeavyUserRemainder)
-	return singleInt(query)
 }
 
 func (w *worker) transactionsOnEndpoint(endpoint string) int {
-	query := w.db.QueryRow("select count(*) from transactions where endpoint=?", endpoint)
-	return singleInt(query)
+	return w.mustInt("select count(*) from transactions where endpoint=?", endpoint)
 }
 
 func (w *worker) transactionsOnEndpointFinished(endpoint string) int {
-	query := w.db.QueryRow("select count(*) from transactions where endpoint=? and status=?", endpoint, payments.StatusFinished)
-	return singleInt(query)
+	return w.mustInt("select count(*) from transactions where endpoint=? and status=?", endpoint, payments.StatusFinished)
 }
 
 func (w *worker) statStrings(endpoint string) []string {
@@ -1344,8 +1305,7 @@ func splitAddress(a string) (string, string) {
 }
 
 func (w *worker) recordForEmail(username string) *email {
-	modelsQuery, err := w.db.Query(`select chat_id, endpoint from emails where email=?`, username)
-	checkErr(err)
+	modelsQuery := w.mustQuery(`select chat_id, endpoint from emails where email=?`, username)
 	defer func() { checkErr(modelsQuery.Close()) }()
 	if modelsQuery.Next() {
 		email := email{email: username}
@@ -1412,8 +1372,7 @@ func randString(n int) string {
 func (w *worker) newRandReferralID() (id string) {
 	for {
 		id = randString(5)
-		exists := w.db.QueryRow("select count(*) from referrals where referral_id=?", id)
-		if singleInt(exists) == 0 {
+		if w.mustInt("select count(*) from referrals where referral_id=?", id) == 0 {
 			break
 		}
 	}
@@ -1578,8 +1537,7 @@ func (w *worker) processPeriodic(statusRequests chan lib.StatusRequest) {
 }
 
 func (w *worker) queryLastStatusChanges() map[string]statusChange {
-	query, err := w.db.Query(`select model_id, status, timestamp from last_status_changes`)
-	checkErr(err)
+	query := w.mustQuery(`select model_id, status, timestamp from last_status_changes`)
 	defer func() { checkErr(query.Close()) }()
 	statusChanges := map[string]statusChange{}
 	for query.Next() {
@@ -1591,8 +1549,7 @@ func (w *worker) queryLastStatusChanges() map[string]statusChange {
 }
 
 func (w *worker) queryConfirmedStatuses() map[string]lib.StatusKind {
-	query, err := w.db.Query("select model_id, status from models")
-	checkErr(err)
+	query := w.mustQuery("select model_id, status from models")
 	defer func() { checkErr(query.Close()) }()
 	statuses := map[string]lib.StatusKind{}
 	for query.Next() {
@@ -1861,26 +1818,18 @@ func loadTLS(certFile string, keyFile string) (*tls.Config, error) {
 }
 
 func (w *worker) referralID(chatID int64) *string {
-	query, err := w.db.Query("select referral_id from referrals where chat_id=?", chatID)
-	checkErr(err)
-	defer func() { checkErr(query.Close()) }()
-	if !query.Next() {
+	var referralID string
+	if !w.maybeRecord("select referral_id from referrals where chat_id=?", queryParams{chatID}, record{&referralID}) {
 		return nil
 	}
-	var referralID string
-	checkErr(query.Scan(&referralID))
 	return &referralID
 }
 
 func (w *worker) chatForReferralID(referralID string) *int64 {
-	query, err := w.db.Query("select chat_id from referrals where referral_id=?", referralID)
-	checkErr(err)
-	defer func() { checkErr(query.Close()) }()
-	if !query.Next() {
+	var chatID int64
+	if !w.maybeRecord("select chat_id from referrals where referral_id=?", queryParams{referralID}, record{&chatID}) {
 		return nil
 	}
-	var chatID int64
-	checkErr(query.Scan(&chatID))
 	return &chatID
 }
 
