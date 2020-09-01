@@ -1753,6 +1753,10 @@ func (w *worker) handleIPN(writer http.ResponseWriter, r *http.Request) {
 			lerr("transaction is already finished")
 			return
 		}
+		if oldStatus == payments.StatusUnknown {
+			lerr("unknown transaction ID")
+			return
+		}
 		w.mustExec("update transactions set status=? where local_id=?", payments.StatusFinished, custom)
 		w.mustExec("update users set max_models = max_models + (select coalesce(sum(model_number), 0) from transactions where local_id=?)", custom)
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].PaymentComplete, tplData{"max_models": w.maxModels(chatID)})
