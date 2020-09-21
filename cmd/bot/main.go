@@ -1196,7 +1196,6 @@ func (w *worker) sqlStat(endpoint string) {
 	sort.SliceStable(queries, func(i, j int) bool {
 		return durations[queries[i]].total() > durations[queries[j]].total()
 	})
-	var entries []string
 	for _, x := range queries {
 		lines := []string{
 			fmt.Sprintf("<b>Query</b>: %s", html.EscapeString(x)),
@@ -1204,10 +1203,9 @@ func (w *worker) sqlStat(endpoint string) {
 			fmt.Sprintf("<b>Avg</b>: %f", durations[x].avg),
 			fmt.Sprintf("<b>Count</b>: %d", durations[x].count),
 		}
-		entries = append(entries, strings.Join(lines, "\n"))
+		entry := strings.Join(lines, "\n")
+		w.sendText(endpoint, w.cfg.AdminID, false, true, lib.ParseHTML, entry)
 	}
-	result := strings.Join(entries, "\n\n")
-	w.sendText(endpoint, w.cfg.AdminID, false, true, lib.ParseHTML, result)
 }
 
 func (w *worker) broadcast(endpoint string, text string) {
