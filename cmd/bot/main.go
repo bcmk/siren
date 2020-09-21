@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"os/signal"
 	"path"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -59,12 +61,6 @@ type statusChange struct {
 	Timestamp int
 }
 
-type prepared struct {
-	insertStatusChange     *sql.Stmt
-	updateLastStatusChange *sql.Stmt
-	updateModelStatus      *sql.Stmt
-}
-
 type statCommand struct {
 	endpoint string
 	writer   http.ResponseWriter
@@ -72,12 +68,17 @@ type statCommand struct {
 	done     chan bool
 }
 
+type queryDurationsData struct {
+	avg   float64
+	count int
+}
+
 type worker struct {
 	clients                  []*lib.Client
 	bots                     map[string]*tg.BotAPI
 	db                       *sql.DB
 	cfg                      *config
-	queriesDuration          time.Duration
+	httpQueriesDuration      time.Duration
 	updatesDuration          time.Duration
 	changesInPeriod          int
 	confirmedChangesInPeriod int
@@ -102,10 +103,10 @@ type worker struct {
 	coinPaymentsAPI       *payments.CoinPaymentsAPI
 	ipnServeMux           *http.ServeMux
 	mailTLS               *tls.Config
-	prepared              prepared
 	lastStatusChanges     map[string]statusChange
 	confirmedStatuses     map[string]lib.StatusKind
 	images                map[string]string
+	sqlQueryDurations     map[string]queryDurationsData
 }
 
 type packet struct {
@@ -193,6 +194,7 @@ func newWorker() *worker {
 		ipnServeMux:          http.NewServeMux(),
 		mailTLS:              mailTLS,
 		images:               map[string]string{},
+		sqlQueryDurations:    map[string]queryDurationsData{},
 	}
 
 	if cp := cfg.CoinPayments; cp != nil {
@@ -227,6 +229,7 @@ func (w *worker) cleanStatuses() {
 	if w.cfg.Checker != checkerPolling {
 		return
 	}
+
 	now := int(time.Now().Unix())
 	query := w.mustQuery(`
 		select model_id from models
@@ -240,17 +243,24 @@ func (w *worker) cleanStatuses() {
 	}
 	tx, err := w.db.Begin()
 	checkErr(err)
+	insertStatusChangeStmt, err := tx.Prepare(insertStatusChange)
+	checkErr(err)
+	updateLastStatusChangeStmt, err := tx.Prepare(updateLastStatusChange)
+	checkErr(err)
 	for _, modelID := range models {
-		mustExecInTx(tx, "update models set status=? where model_id=?", lib.StatusUnknown, modelID)
+		w.mustExecInTx(tx, "update models set status=? where model_id=?", lib.StatusUnknown, modelID)
 		w.confirmedStatuses[modelID] = lib.StatusUnknown
-		w.mustExecPrepared(tx.Stmt(w.prepared.insertStatusChange), modelID, lib.StatusUnknown, now)
-		w.mustExecPrepared(tx.Stmt(w.prepared.updateLastStatusChange), modelID, lib.StatusUnknown, now)
+		w.mustExecPrepared(insertStatusChange, insertStatusChangeStmt, modelID, lib.StatusUnknown, now)
+		w.mustExecPrepared(updateLastStatusChange, updateLastStatusChangeStmt, modelID, lib.StatusUnknown, now)
 		w.lastStatusChanges[modelID] = statusChange{
 			ModelID:   modelID,
 			Status:    lib.StatusUnknown,
 			Timestamp: now,
 		}
 	}
+	defer w.measure("commit -- clean statuses")()
+	checkErr(insertStatusChangeStmt.Close())
+	checkErr(updateLastStatusChangeStmt.Close())
 	checkErr(tx.Commit())
 }
 
@@ -382,28 +392,6 @@ func (w *worker) createDatabase() {
 	w.applyMigrations()
 }
 
-func (w *worker) prepare() {
-	var err error
-	w.prepared.insertStatusChange, err = w.db.Prepare("insert into status_changes (model_id, status, timestamp) values (?,?,?)")
-	checkErr(err)
-	w.prepared.updateLastStatusChange, err = w.db.Prepare(`
-		insert into last_status_changes (model_id, status, timestamp)
-		values (?,?,?)
-		on conflict(model_id) do update set status=excluded.status, timestamp=excluded.timestamp`)
-	checkErr(err)
-	w.prepared.updateModelStatus, err = w.db.Prepare(`
-		insert into models (model_id, status)
-		values (?,?)
-		on conflict(model_id) do update set status=excluded.status`)
-	checkErr(err)
-}
-
-func (w *worker) unprepare() {
-	checkErr(w.prepared.insertStatusChange.Close())
-	checkErr(w.prepared.updateLastStatusChange.Close())
-	checkErr(w.prepared.updateModelStatus.Close())
-}
-
 func (w *worker) initCache() {
 	start := time.Now()
 	w.lastStatusChanges = w.queryLastStatusChanges()
@@ -459,15 +447,15 @@ func (w *worker) confirmationSeconds(status lib.StatusKind) int {
 }
 
 func (w *worker) updateStatus(
-	tx *sql.Tx,
+	insertStatusChangeStmt, updateLastStatusChangeStmt, updateModelStatusStmt *sql.Stmt,
 	statusChange statusChange,
 ) (
 	changeConfirmed bool,
 ) {
 	lastStatusChange := w.lastStatusChanges[statusChange.ModelID]
 	if statusChange.Status != lastStatusChange.Status {
-		w.mustExecPrepared(tx.Stmt(w.prepared.insertStatusChange), statusChange.ModelID, statusChange.Status, statusChange.Timestamp)
-		w.mustExecPrepared(tx.Stmt(w.prepared.updateLastStatusChange), statusChange.ModelID, statusChange.Status, statusChange.Timestamp)
+		w.mustExecPrepared(insertStatusChange, insertStatusChangeStmt, statusChange.ModelID, statusChange.Status, statusChange.Timestamp)
+		w.mustExecPrepared(updateLastStatusChange, updateLastStatusChangeStmt, statusChange.ModelID, statusChange.Status, statusChange.Timestamp)
 		w.lastStatusChanges[statusChange.ModelID] = statusChange
 	}
 	confirmationSeconds := w.confirmationSeconds(statusChange.Status)
@@ -475,10 +463,11 @@ func (w *worker) updateStatus(
 		confirmationSeconds == 0 ||
 		(statusChange.Status == lastStatusChange.Status && statusChange.Timestamp-lastStatusChange.Timestamp >= confirmationSeconds)
 	if w.confirmedStatuses[statusChange.ModelID] != statusChange.Status && durationConfirmed {
-		w.mustExecPrepared(tx.Stmt(w.prepared.updateModelStatus), statusChange.ModelID, statusChange.Status)
+		w.mustExecPrepared(updateModelStatus, updateModelStatusStmt, statusChange.ModelID, statusChange.Status)
 		w.confirmedStatuses[statusChange.ModelID] = statusChange.Status
 		return true
 	}
+
 	return false
 }
 
@@ -730,7 +719,16 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) bool {
 		statusChange := statusChange{ModelID: modelID, Status: newStatus, Timestamp: int(time.Now().Unix())}
 		tx, err := w.db.Begin()
 		checkErr(err)
-		_ = w.updateStatus(tx, statusChange)
+		insertStatusChangeStmt, err := tx.Prepare(insertStatusChange)
+		checkErr(err)
+		updateLastStatusChangeStmt, err := tx.Prepare(updateLastStatusChange)
+		checkErr(err)
+		updateModelStatusStmt, err := tx.Prepare(updateModelStatus)
+		checkErr(err)
+		_ = w.updateStatus(insertStatusChangeStmt, updateLastStatusChangeStmt, updateModelStatusStmt, statusChange)
+		checkErr(insertStatusChangeStmt.Close())
+		checkErr(updateLastStatusChangeStmt.Close())
+		checkErr(updateModelStatusStmt.Close())
 		checkErr(tx.Commit())
 	}
 	if newStatus != lib.StatusDenied {
@@ -1189,6 +1187,29 @@ func (w *worker) stat(endpoint string) {
 	w.sendText(endpoint, w.cfg.AdminID, true, true, lib.ParseRaw, strings.Join(w.statStrings(endpoint), "\n"))
 }
 
+func (w *worker) sqlStat(endpoint string) {
+	durations := w.sqlQueryDurations
+	var queries []string
+	for x := range durations {
+		queries = append(queries, x)
+	}
+	sort.SliceStable(queries, func(i, j int) bool {
+		return durations[queries[i]].total() > durations[queries[j]].total()
+	})
+	var entries []string
+	for _, x := range queries {
+		lines := []string{
+			fmt.Sprintf("<b>Query</b>: %s", html.EscapeString(x)),
+			fmt.Sprintf("<b>Total</b>: %f", durations[x].avg*float64(durations[x].count)),
+			fmt.Sprintf("<b>Avg</b>: %f", durations[x].avg),
+			fmt.Sprintf("<b>Count</b>: %d", durations[x].count),
+		}
+		entries = append(entries, strings.Join(lines, "\n"))
+	}
+	result := strings.Join(entries, "\n\n")
+	w.sendText(endpoint, w.cfg.AdminID, false, true, lib.ParseHTML, result)
+}
+
 func (w *worker) broadcast(endpoint string, text string) {
 	if text == "" {
 		return
@@ -1262,6 +1283,9 @@ func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arg
 	switch command {
 	case "stat":
 		w.stat(endpoint)
+		return true
+	case "sql_stat":
+		w.sqlStat(endpoint)
 		return true
 	case "email":
 		w.myEmail(endpoint)
@@ -1574,13 +1598,21 @@ func (w *worker) processStatusUpdates(
 	chatsForModels, endpointsForModels := w.chatsForModels()
 	tx, err := w.db.Begin()
 	checkErr(err)
+
+	insertStatusChangeStmt, err := tx.Prepare(insertStatusChange)
+	checkErr(err)
+	updateLastStatusChangeStmt, err := tx.Prepare(updateLastStatusChange)
+	checkErr(err)
+	updateModelStatusStmt, err := tx.Prepare(updateModelStatus)
+	checkErr(err)
+
 	for _, u := range statusUpdates {
 		if u.Status != lib.StatusUnknown {
 			statusChange := statusChange{ModelID: u.ModelID, Status: u.Status, Timestamp: now}
 			if w.lastStatusChanges[u.ModelID].Status != statusChange.Status {
 				changesCount++
 			}
-			changeConfirmed := w.updateStatus(tx, statusChange)
+			changeConfirmed := w.updateStatus(insertStatusChangeStmt, updateLastStatusChangeStmt, updateModelStatusStmt, statusChange)
 			if changeConfirmed {
 				confirmedChangesCount++
 			}
@@ -1603,6 +1635,11 @@ func (w *worker) processStatusUpdates(
 			}
 		}
 	}
+
+	defer w.measure("commit -- update statuses")()
+	checkErr(insertStatusChangeStmt.Close())
+	checkErr(updateLastStatusChangeStmt.Close())
+	checkErr(updateModelStatusStmt.Close())
 	checkErr(tx.Commit())
 	elapsed = time.Since(start)
 	return
@@ -1691,7 +1728,7 @@ func (w *worker) getStat(endpoint string) statistics {
 		StatusChangesCount:             w.statusChangesCount(),
 		TransactionsOnEndpointCount:    w.transactionsOnEndpoint(endpoint),
 		TransactionsOnEndpointFinished: w.transactionsOnEndpointFinished(endpoint),
-		QueriesDurationMilliseconds:    int(w.queriesDuration.Milliseconds()),
+		QueriesDurationMilliseconds:    int(w.httpQueriesDuration.Milliseconds()),
 		UpdatesDurationMilliseconds:    int(w.updatesDuration.Milliseconds()),
 		ErrorRate:                      [2]int{w.unsuccessfulRequestsCount(), w.cfg.errorDenominator},
 		Rss:                            rss / 1024,
@@ -1837,6 +1874,10 @@ func (w *worker) chatForReferralID(referralID string) *int64 {
 	return &chatID
 }
 
+func (q queryDurationsData) total() float64 {
+	return q.avg * float64(q.count)
+}
+
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
@@ -1844,7 +1885,6 @@ func main() {
 	w.logConfig()
 	w.setWebhook()
 	w.createDatabase()
-	w.prepare()
 	w.initCache()
 
 	incoming := w.incoming()
@@ -1880,7 +1920,7 @@ func main() {
 	for {
 		select {
 		case e := <-elapsed:
-			w.queriesDuration = e
+			w.httpQueriesDuration = e
 		case <-periodicTimer.C:
 			runtime.GC()
 			w.processPeriodic(statusRequestsChan)
@@ -1904,7 +1944,6 @@ func main() {
 			w.processStatCommand(s.endpoint, s.writer, s.request, s.done)
 		case s := <-signals:
 			linf("got signal %v", s)
-			w.unprepare()
 			w.removeWebhook()
 			return
 		}

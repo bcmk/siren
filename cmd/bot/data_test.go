@@ -58,11 +58,12 @@ func newTestWorker() *testWorker {
 	checkErr(err)
 	w := &testWorker{
 		worker: worker{
-			bots:    nil,
-			db:      db,
-			cfg:     &testConfig,
-			clients: nil,
-			tr:      map[string]*lib.Translations{"test": &testTranslations},
+			bots:              nil,
+			db:                db,
+			cfg:               &testConfig,
+			clients:           nil,
+			tr:                map[string]*lib.Translations{"test": &testTranslations},
+			sqlQueryDurations: map[string]queryDurationsData{},
 		},
 	}
 	w.checkModel = w.testCheckModel
