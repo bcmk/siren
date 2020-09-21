@@ -1136,7 +1136,7 @@ func (w *worker) onlineModelsCount() int {
 }
 
 func (w *worker) statusChangesCount() int {
-	return w.mustInt("select count(*) from status_changes")
+	return w.mustInt("select max(_rowid_) from status_changes")
 }
 
 func (w *worker) heavyUsersCount(endpoint string) int {
