@@ -77,12 +77,6 @@ offline:
   parse: html
   disable_preview: true
   str: '{{ template "affiliate_link" .model }} offline'
-offline_list:
-  parse: raw
-  str: '{{ .model }} offline'
-online_list:
-  parse: raw
-  str: '{{ .model }} online'
 zero_subscriptions:
   parse: html
   str: |-
