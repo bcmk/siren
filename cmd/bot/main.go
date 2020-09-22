@@ -61,11 +61,17 @@ type statusChange struct {
 	Timestamp int
 }
 
-type statCommand struct {
+type statRequest struct {
 	endpoint string
 	writer   http.ResponseWriter
 	request  *http.Request
 	done     chan bool
+}
+
+type ipnRequest struct {
+	writer  http.ResponseWriter
+	request *http.Request
+	done    chan bool
 }
 
 type queryDurationsData struct {
@@ -1739,15 +1745,15 @@ func (w *worker) getStat(endpoint string) statistics {
 	}
 }
 
-func (w *worker) handleStat(endpoint string, statCommands chan statCommand) func(writer http.ResponseWriter, r *http.Request) {
+func (w *worker) handleStat(endpoint string, statRequests chan statRequest) func(writer http.ResponseWriter, r *http.Request) {
 	return func(writer http.ResponseWriter, r *http.Request) {
-		command := statCommand{
+		command := statRequest{
 			endpoint: endpoint,
 			writer:   writer,
 			request:  r,
 			done:     make(chan bool),
 		}
-		statCommands <- command
+		statRequests <- command
 		<-command.done
 	}
 }
@@ -1772,7 +1778,21 @@ func (w *worker) processStatCommand(endpoint string, writer http.ResponseWriter,
 	}
 }
 
-func (w *worker) handleIPN(writer http.ResponseWriter, r *http.Request) {
+func (w *worker) handleIPN(ipnRequests chan ipnRequest) func(writer http.ResponseWriter, r *http.Request) {
+	return func(writer http.ResponseWriter, r *http.Request) {
+		command := ipnRequest{
+			writer:  writer,
+			request: r,
+			done:    make(chan bool),
+		}
+		ipnRequests <- command
+		<-command.done
+	}
+}
+
+func (w *worker) processIPN(writer http.ResponseWriter, r *http.Request, done chan bool) {
+	defer func() { done <- true }()
+
 	linf("got IPN data")
 
 	newStatus, custom, err := payments.ParseIPN(r, w.cfg.CoinPayments.IPNSecret, w.cfg.Debug)
@@ -1810,14 +1830,14 @@ func (w *worker) handleIPN(writer http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (w *worker) handleStatEndpoints(statCommands chan statCommand) {
+func (w *worker) handleStatEndpoints(statRequests chan statRequest) {
 	for n, p := range w.cfg.Endpoints {
-		http.HandleFunc(p.WebhookDomain+"/stat", w.handleStat(n, statCommands))
+		http.HandleFunc(p.WebhookDomain+"/stat", w.handleStat(n, statRequests))
 	}
 }
 
-func (w *worker) handleIPNEndpoint() {
-	w.ipnServeMux.HandleFunc(w.cfg.CoinPayments.IPNListenURL, w.handleIPN)
+func (w *worker) handleIPNEndpoint(ipnRequests chan ipnRequest) {
+	w.ipnServeMux.HandleFunc(w.cfg.CoinPayments.IPNListenURL, w.handleIPN(ipnRequests))
 }
 
 func (w *worker) incoming() chan packet {
@@ -1886,12 +1906,13 @@ func main() {
 	w.initCache()
 
 	incoming := w.incoming()
-	statCommands := make(chan statCommand)
-	w.handleStatEndpoints(statCommands)
+	statRequests := make(chan statRequest)
+	w.handleStatEndpoints(statRequests)
 	w.serveEndpoints()
 
+	ipnRequests := make(chan ipnRequest)
 	if w.cfg.CoinPayments != nil {
-		w.handleIPNEndpoint()
+		w.handleIPNEndpoint(ipnRequests)
 		w.serveIPN()
 	}
 
@@ -1938,8 +1959,10 @@ func main() {
 			w.processTGUpdate(u)
 		case m := <-mail:
 			w.mailReceived(m)
-		case s := <-statCommands:
+		case s := <-statRequests:
 			w.processStatCommand(s.endpoint, s.writer, s.request, s.done)
+		case s := <-ipnRequests:
+			w.processIPN(s.writer, s.request, s.done)
 		case s := <-signals:
 			linf("got signal %v", s)
 			w.removeWebhook()
