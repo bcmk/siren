@@ -31,7 +31,6 @@ commands:
     <b>pics</b> — Кадры трансляций в этот момент
     <b>week</b> <code>МОДЕЛЬ</code> — Рабочие часы в предыдущие 7 дней
     <b>feedback</b> <code>ВАШЕ_СООБЩЕНИЕ</code> — Обратная связь
-    <b>social</b> — Соцсети
     <b>language</b> — Этот бот на других языках
     <b>help</b> — Список команд
 invalid_command:
