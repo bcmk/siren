@@ -69,11 +69,17 @@ not_enough_subscriptions:
   str: У вас недостаточно подписок
 online:
   parse: html
-  str: '{{ template "affiliate_link" .model }} в сети'
+  str: |-
+    {{- template "affiliate_link" .model -}}
+    {{- print " " -}}
+    <i>в сети {{- if .begin -}} {{- template "duration" .begin -}} {{- end -}}</i>
 offline:
   parse: html
   disable_preview: true
-  str: '{{ template "affiliate_link" .model }} не в сети'
+  str: |-
+    {{ template "affiliate_link" .model }}
+    {{- print " " -}}
+    <i>не в сети {{- if .end -}}>, была {{ template "duration" .end }} назад {{- end -}}</i>
 zero_subscriptions:
   parse: html
   str: |-

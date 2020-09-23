@@ -72,11 +72,17 @@ not_enough_subscriptions:
   str: You have not enough available subscriptions
 online:
   parse: html
-  str: '{{ template "affiliate_link" .model }} online'
+  str: |-
+    {{- template "affiliate_link" .model }}
+    {{- print " " -}}
+    <i>online {{- if .begin }} for {{ template "duration" .begin }} {{- end -}}</i>
 offline:
   parse: html
   disable_preview: true
-  str: '{{ template "affiliate_link" .model }} offline'
+  str: |-
+    {{- template "affiliate_link" .model }}
+    {{- print " " -}}
+    <i>offline {{- if .end }}, last seen {{ template "duration" .end }} ago {{- end -}}</i>
 zero_subscriptions:
   parse: html
   str: |-
