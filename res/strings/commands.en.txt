@@ -7,7 +7,6 @@ pics - Pictures of your models online
 week - Working hours in the previous 7 days
 buy - Buy additional subscriptions
 max_models - Show your subscription limit
-social - We in social media
 help - Command list
 language - This bot in other languages
 feedback - Send feedback
