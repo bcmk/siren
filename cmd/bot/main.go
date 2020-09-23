@@ -955,12 +955,12 @@ func (w *worker) listModels(endpoint string, chatID int64, now int) {
 
 func (w *worker) modelTimeDiff(modelID string, now int) *timeDiff {
 	begin, end, prevStatus := w.lastSeenInfo(modelID, now)
-	if begin != 0 && prevStatus != lib.StatusUnknown {
-		timeDiff := calcTimeDiff(time.Unix(int64(begin), 0), time.Unix(int64(now), 0))
-		return &timeDiff
-	}
 	if end != 0 {
 		timeDiff := calcTimeDiff(time.Unix(int64(end), 0), time.Unix(int64(now), 0))
+		return &timeDiff
+	}
+	if begin != 0 && prevStatus != lib.StatusUnknown {
+		timeDiff := calcTimeDiff(time.Unix(int64(begin), 0), time.Unix(int64(now), 0))
 		return &timeDiff
 	}
 	return nil
