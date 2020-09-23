@@ -79,7 +79,7 @@ offline:
   str: |-
     {{ template "affiliate_link" .model }}
     {{- print " " -}}
-    <i>не в сети {{- if .time_diff -}}>, была {{ template "duration" .time_diff }} назад {{- end -}}</i>
+    <i>не в сети {{- if .time_diff -}}, была {{ template "duration" .time_diff }} назад {{- end -}}</i>
 zero_subscriptions:
   parse: html
   str: |-
