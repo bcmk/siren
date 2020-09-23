@@ -610,7 +610,7 @@ func (w *worker) notifyOfStatus(n notification, image []byte) {
 	if w.cfg.Debug {
 		ldbg("notifying of status of the model %s", n.modelID)
 	}
-	data := tplData{"model": n.modelID}
+	data := tplData{"model": n.modelID, "time_diff": n.timeDiff}
 	switch n.status {
 	case lib.StatusOnline:
 		if image == nil {
