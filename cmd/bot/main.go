@@ -686,7 +686,7 @@ func (w *worker) showWeekForModel(endpoint string, chatID int64, modelID string)
 	})
 }
 
-func (w *worker) addModel(endpoint string, chatID int64, modelID string) bool {
+func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int) bool {
 	if modelID == "" {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].SyntaxAdd, nil)
 		return false
@@ -746,7 +746,8 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string) bool {
 			endpoint: endpoint,
 			chatID:   chatID,
 			modelID:  modelID,
-			status:   newStatus}})
+			status:   newStatus,
+			timeDiff: w.modelTimeDiff(modelID, now)}})
 	}
 	if subscriptionsNumber >= maxModels-w.cfg.HeavyUserRemainder {
 		w.subscriptionUsage(endpoint, chatID, true)
@@ -1457,7 +1458,7 @@ func (w *worker) showReferral(endpoint string, chatID int64) {
 	})
 }
 
-func (w *worker) start(endpoint string, chatID int64, referrer string) {
+func (w *worker) start(endpoint string, chatID int64, referrer string, now int) {
 	modelID := ""
 	switch {
 	case strings.HasPrefix(referrer, "m-"):
@@ -1484,14 +1485,14 @@ func (w *worker) start(endpoint string, chatID int64, referrer string) {
 	}
 	w.addUser(endpoint, chatID)
 	if modelID != "" {
-		if w.addModel(endpoint, chatID, modelID) {
+		if w.addModel(endpoint, chatID, modelID, now) {
 			w.mustExec("insert or ignore into models (model_id) values (?)", modelID)
 			w.mustExec("update models set referred_users=referred_users+1 where model_id=?", modelID)
 		}
 	}
 }
 
-func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, arguments string) {
+func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, arguments string, now int) {
 	w.resetBlock(endpoint, chatID)
 	command = strings.ToLower(command)
 	linf("chat: %d, command: %s %s", chatID, command, arguments)
@@ -1505,18 +1506,16 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	switch command {
 	case "add":
 		arguments = strings.Replace(arguments, "—", "--", -1)
-		_ = w.addModel(endpoint, chatID, arguments)
+		_ = w.addModel(endpoint, chatID, arguments, now)
 	case "remove":
 		arguments = strings.Replace(arguments, "—", "--", -1)
 		w.removeModel(endpoint, chatID, arguments)
 	case "list":
-		now := int(time.Now().Unix())
 		w.listModels(endpoint, chatID, now)
 	case "pics", "online":
-		now := int(time.Now().Unix())
 		w.listOnlineModels(endpoint, chatID, now)
 	case "start", "help":
-		w.start(endpoint, chatID, arguments)
+		w.start(endpoint, chatID, arguments, now)
 	case "faq":
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].FAQ, tplData{
 			"dollars":                 w.cfg.CoinPayments.subscriptionPacketPrice,
@@ -1667,6 +1666,7 @@ func (w *worker) processStatusUpdates(
 }
 
 func (w *worker) processTGUpdate(p packet) {
+	now := int(time.Now().Unix())
 	u := p.message
 	if u.Message != nil && u.Message.Chat != nil {
 		if newMembers := u.Message.NewChatMembers; newMembers != nil && len(*newMembers) > 0 {
@@ -1681,7 +1681,7 @@ func (w *worker) processTGUpdate(p packet) {
 				}
 			}
 		} else if u.Message.IsCommand() {
-			w.processIncomingCommand(p.endpoint, u.Message.Chat.ID, u.Message.Command(), strings.TrimSpace(u.Message.CommandArguments()))
+			w.processIncomingCommand(p.endpoint, u.Message.Chat.ID, u.Message.Command(), strings.TrimSpace(u.Message.CommandArguments()), now)
 		} else {
 			if u.Message.Text == "" {
 				return
@@ -1693,7 +1693,7 @@ func (w *worker) processTGUpdate(p packet) {
 			for len(parts) < 2 {
 				parts = append(parts, "")
 			}
-			w.processIncomingCommand(p.endpoint, u.Message.Chat.ID, parts[0], strings.TrimSpace(parts[1]))
+			w.processIncomingCommand(p.endpoint, u.Message.Chat.ID, parts[0], strings.TrimSpace(parts[1]), now)
 		}
 	}
 	if u.CallbackQuery != nil {
@@ -1707,7 +1707,7 @@ func (w *worker) processTGUpdate(p packet) {
 		if len(data) < 2 {
 			data = append(data, "")
 		}
-		w.processIncomingCommand(p.endpoint, chatID, data[0], data[1])
+		w.processIncomingCommand(p.endpoint, chatID, data[0], data[1], now)
 	}
 }
 
