@@ -183,7 +183,6 @@ social:
   parse: raw
   str: |-
     Twitter: https://twitter.com/siren_tlg
-    Reddit: https://reddit.com/u/siren-bot
     GitHub: https://github.com/bcmk/siren
     Telegram: https://t.me/siren_telegram_bot
 subscription_usage:

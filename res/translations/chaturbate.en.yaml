@@ -6,10 +6,13 @@ add_error:
     Syntax: /add <code>CAMNAME</code>
 help:
   parse: html
+  disable_preview: true
   str: |-
     The bot notifies you whenever your favorite Chaturbate models are online.
 
     {{ template "commands" }}
+
+    {{ template "social" }}
 languages:
   parse: raw
   str: |-

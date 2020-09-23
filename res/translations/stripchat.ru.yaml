@@ -6,10 +6,13 @@ add_error:
     Формат команды: /add <code>МОДЕЛЬ</code>
 help:
   parse: html
+  disable_preview: true
   str: |-
     Бот сообщит, когда твоя любимая модель появится в сети Stripchat.
 
     {{ template "commands" }}
+
+    {{ template "social" }}
 languages:
   parse: raw
   str: |-
