@@ -75,14 +75,14 @@ online:
   str: |-
     {{- template "affiliate_link" .model }}
     {{- print " " -}}
-    <i>online {{- if .begin }} for {{ template "duration" .begin }} {{- end -}}</i>
+    <i>online {{- if .time_diff }} for {{ template "duration" .time_diff }} {{- end -}}</i>
 offline:
   parse: html
   disable_preview: true
   str: |-
     {{- template "affiliate_link" .model }}
     {{- print " " -}}
-    <i>offline {{- if .end }}, last seen {{ template "duration" .end }} ago {{- end -}}</i>
+    <i>offline {{- if .time_diff }}, last seen {{ template "duration" .time_diff }} ago {{- end -}}</i>
 zero_subscriptions:
   parse: html
   str: |-
@@ -101,7 +101,7 @@ list:
       {{- print "\n" -}}
       {{- range .online -}}
         {{- template "affiliate_link" .Model -}}
-        {{- if .Begin }}  <i>for {{ template "duration" .Begin }}</i> {{- end -}}
+        {{- if .TimeDiff }}  <i>for {{ template "duration" .TimeDiff }}</i> {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
     {{- end -}}
@@ -115,7 +115,7 @@ list:
       {{- print "\n" -}}
       {{- range .offline -}}
         {{- template "affiliate_link" .Model -}}
-        {{- if .End }}  <i>last seen {{ template "duration" .End }}</i> ago {{- end -}}
+        {{- if .TimeDiff }}  <i>last seen {{ template "duration" .TimeDiff }}</i> ago {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
     {{- end -}}

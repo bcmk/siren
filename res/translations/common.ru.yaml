@@ -72,14 +72,14 @@ online:
   str: |-
     {{- template "affiliate_link" .model -}}
     {{- print " " -}}
-    <i>в сети {{- if .begin -}} {{- template "duration" .begin -}} {{- end -}}</i>
+    <i>в сети {{- if .time_diff -}} {{- template "duration" .time_diff -}} {{- end -}}</i>
 offline:
   parse: html
   disable_preview: true
   str: |-
     {{ template "affiliate_link" .model }}
     {{- print " " -}}
-    <i>не в сети {{- if .end -}}>, была {{ template "duration" .end }} назад {{- end -}}</i>
+    <i>не в сети {{- if .time_diff -}}>, была {{ template "duration" .time_diff }} назад {{- end -}}</i>
 zero_subscriptions:
   parse: html
   str: |-
@@ -98,7 +98,7 @@ list:
       {{- print "\n" -}}
       {{- range .online -}}
         {{- template "affiliate_link" .Model -}}
-        {{- if .Begin }}  <i>{{ template "duration" .Begin }}</i> {{- end -}}
+        {{- if .TimeDiff }}  <i>{{ template "duration" .TimeDiff }}</i> {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
     {{- end -}}
@@ -112,7 +112,7 @@ list:
       {{- print "\n" -}}
       {{- range .offline -}}
         {{- template "affiliate_link" .Model -}}
-        {{- if .End }}  <i>была {{ template "duration" .End }} назад</i> {{- end -}}
+        {{- if .TimeDiff }}  <i>была {{ template "duration" .TimeDiff }} назад</i> {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
     {{- end -}}

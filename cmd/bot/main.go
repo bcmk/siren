@@ -53,6 +53,7 @@ type notification struct {
 	chatID   int64
 	modelID  string
 	status   lib.StatusKind
+	timeDiff *timeDiff
 }
 
 type statusChange struct {
@@ -929,24 +930,15 @@ func calcTimeDiff(t1, t2 time.Time) timeDiff {
 
 func (w *worker) listModels(endpoint string, chatID int64, now int) {
 	type data struct {
-		Model string
-		Begin *timeDiff
-		End   *timeDiff
+		Model    string
+		TimeDiff *timeDiff
 	}
 	statuses := w.statusesForChat(endpoint, chatID)
 	var online, offline, denied []data
 	for _, s := range statuses {
 		data := data{
-			Model: s.ModelID,
-		}
-		begin, end, prevStatus := w.lastSeenInfo(s.ModelID, now)
-		if begin != 0 && prevStatus != lib.StatusUnknown {
-			timeDiff := calcTimeDiff(time.Unix(int64(begin), 0), time.Unix(int64(now), 0))
-			data.Begin = &timeDiff
-		}
-		if end != 0 {
-			timeDiff := calcTimeDiff(time.Unix(int64(end), 0), time.Unix(int64(now), 0))
-			data.End = &timeDiff
+			Model:    s.ModelID,
+			TimeDiff: w.modelTimeDiff(s.ModelID, now),
 		}
 		switch s.Status {
 		case lib.StatusOnline:
@@ -958,6 +950,19 @@ func (w *worker) listModels(endpoint string, chatID int64, now int) {
 		}
 	}
 	w.sendTr(endpoint, chatID, false, w.tr[endpoint].List, tplData{"online": online, "offline": offline, "denied": denied})
+}
+
+func (w *worker) modelTimeDiff(modelID string, now int) *timeDiff {
+	begin, end, prevStatus := w.lastSeenInfo(modelID, now)
+	if begin != 0 && prevStatus != lib.StatusUnknown {
+		timeDiff := calcTimeDiff(time.Unix(int64(begin), 0), time.Unix(int64(now), 0))
+		return &timeDiff
+	}
+	if end != 0 {
+		timeDiff := calcTimeDiff(time.Unix(int64(end), 0), time.Unix(int64(now), 0))
+		return &timeDiff
+	}
+	return nil
 }
 
 func (w *worker) download(url string) []byte {
@@ -974,7 +979,7 @@ func (w *worker) download(url string) []byte {
 	return buf.Bytes()
 }
 
-func (w *worker) listOnlineModels(endpoint string, chatID int64) {
+func (w *worker) listOnlineModels(endpoint string, chatID int64, now int) {
 	statuses := w.statusesForChat(endpoint, chatID)
 	online := 0
 	for _, s := range statuses {
@@ -986,9 +991,20 @@ func (w *worker) listOnlineModels(endpoint string, chatID int64) {
 				linf("image download, URL: %s, result: %v", w.images[s.ModelID], image != nil)
 			}
 			if image == nil {
-				w.sendTr(endpoint, chatID, false, w.tr[endpoint].Online, tplData{"model": s.ModelID})
+				w.sendTr(
+					endpoint,
+					chatID,
+					false,
+					w.tr[endpoint].Online,
+					tplData{"model": s.ModelID, "time_diff": w.modelTimeDiff(s.ModelID, now)})
 			} else {
-				w.sendTrImage(endpoint, chatID, false, w.tr[endpoint].Online, tplData{"model": s.ModelID}, image)
+				w.sendTrImage(
+					endpoint,
+					chatID,
+					false,
+					w.tr[endpoint].Online,
+					tplData{"model": s.ModelID, "time_diff": w.modelTimeDiff(s.ModelID, now)},
+					image)
 			}
 			online++
 		}
@@ -1497,7 +1513,8 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		now := int(time.Now().Unix())
 		w.listModels(endpoint, chatID, now)
 	case "pics", "online":
-		w.listOnlineModels(endpoint, chatID)
+		now := int(time.Now().Unix())
+		w.listOnlineModels(endpoint, chatID, now)
 	case "start", "help":
 		w.start(endpoint, chatID, arguments)
 	case "faq":
