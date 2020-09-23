@@ -93,5 +93,5 @@ Telegram-бот для оповещений о вебкам-шоу
 
 [WeCamgirls](https://www.wecamgirls.com/users/sirenbot)
 
-[GitHub Pages](https://bcmk.github.io/siren/ru.html)
+[GitHub Pages](https://siren.chat/ru.html)
 

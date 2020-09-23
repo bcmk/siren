@@ -81,9 +81,9 @@ You can obtain a certificate in Let's Encrypt or other certificate authority.
 
 The bot uses [webhooks](https://core.telegram.org/bots/webhooks) to receive updates.
 
-Create JSON configuration and JSON translation files.
+Create JSON configuration and YAML translation files.
 A configuration is described in [config.go](https://github.com/bcmk/siren/tree/master/cmd/bot/config.go).
-An example of translation is in [bongacams.json.example](https://github.com/bcmk/siren/tree/master/res/translations/bongacams.json.example).
+An example of translation are in [common.en.yaml](https://github.com/bcmk/siren/tree/master/res/translations/common.en.yaml) and [chaturbate.en.yaml](https://github.com/bcmk/siren/tree/master/res/translations/chaturbate.en.yaml).
 
 Build cmd/bot. Run this executable with a path to config file as an argument.
 
@@ -101,4 +101,4 @@ Links
 
 [WeCamgirls](https://www.wecamgirls.com/users/sirenbot)
 
-[GitHub Pages](https://bcmk.github.io/siren)
+[GitHub Pages](https://siren.chat)
