@@ -2,7 +2,7 @@ __[English](README.md)__
 
 <img src="docs/icons/siren.svg" width="24" height="24">&ensp;SIREN
 ==================================================================
-Бот в Telegram для оповещений о вебкам-шоу
+Telegram-бот для оповещений о вебкам-шоу
 
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
 [![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)
@@ -72,7 +72,7 @@ __[English](README.md)__
 
 Вы можете использовать эти [иконки](https://github.com/bcmk/siren/tree/master/docs/icons).
 
-Пишите на siren.telegram@gmail.com, если у вас есть вопросы.
+Пишите на siren.chat@gmail.com, если у вас есть вопросы.
 
 Собственный бот
 ---------------
@@ -90,8 +90,6 @@ __[English](README.md)__
 ------
 
 [Twitter](https://twitter.com/siren_tlg)
-
-[Reddit](https://www.reddit.com/user/siren-bot)
 
 [WeCamgirls](https://www.wecamgirls.com/users/sirenbot)
 
