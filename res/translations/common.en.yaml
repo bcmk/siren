@@ -44,6 +44,7 @@ invalid_referral_link:
   str: Your referral link is invalid
 invalid_symbols:
   parse: raw
+  disable_preview: true
   str: 'Camname {{ .model }} has invalid symbols'
 mail_received:
   parse: raw
