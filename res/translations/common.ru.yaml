@@ -71,7 +71,7 @@ online:
   str: |-
     {{- template "affiliate_link" .model -}}
     {{- print " " -}}
-    <i>в сети {{- if .time_diff -}} {{- template "duration" .time_diff -}} {{- end -}}</i>
+    <i>в сети {{- if .time_diff -}} {{ template "duration" .time_diff -}} {{- end -}}</i>
 offline:
   parse: html
   disable_preview: true
