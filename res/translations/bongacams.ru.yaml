@@ -16,11 +16,21 @@ help:
     {{ template "address_line" }}
 
     {{ template "social" }}
+
+    {{ template "languages" }}
+
+    {{ template "sites" }}
 languages:
   parse: raw
   str: |-
     Этот бот на других языках
     English: t.me/BongacamsOnlineBot
+sites:
+  parse: raw
+  str: |-
+    Этот бот для других сайтов
+    Chaturbate: t.me/ChaturbateSirenBot
+    Stripchat: t.me/StripchatSirenBot
 add_example:
   parse: html
   str: /add bbbweb

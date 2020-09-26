@@ -13,11 +13,21 @@ help:
     {{ template "commands" }}
 
     {{ template "social" }}
+
+    {{ template "languages" }}
+
+    {{ template "sites" }}
 languages:
   parse: raw
   str: |-
     Этот бот на других языках
     English: t.me/ChaturbateAlarmBot
+sites:
+  parse: raw
+  str: |-
+    Этот бот для других сайтов
+    BongaCams: t.me/BongaCamsSirenBot
+    Stripchat: t.me/StripchatSirenBot
 add_example:
   parse: html
   str: /add bbwebcam

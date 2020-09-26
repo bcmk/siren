@@ -8,5 +8,4 @@ week - Working hours in the previous 7 days
 buy - Buy additional subscriptions
 max_models - Show your subscription limit
 help - Command list
-language - This bot in other languages
 feedback - Send feedback

@@ -1516,8 +1516,6 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		w.feedback(endpoint, chatID, arguments)
 	case "social":
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Social, nil)
-	case "language":
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Languages, nil)
 	case "version":
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Version, tplData{"version": version})
 	case "remove_all", "stop":
