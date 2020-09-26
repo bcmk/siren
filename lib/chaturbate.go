@@ -144,7 +144,7 @@ func StartChaturbateAPIChecker(
 			for _, statusUpdate := range hash {
 				updates = append(updates, statusUpdate)
 			}
-			for _, modelID := range request.KnownModels {
+			for modelID := range request.KnownModels {
 				if _, ok := hash[modelID]; !ok {
 					updates = append(updates, StatusUpdate{ModelID: modelID, Status: StatusOffline})
 				}

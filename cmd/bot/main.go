@@ -478,17 +478,6 @@ func (w *worker) updateStatus(
 	return false
 }
 
-func (w *worker) knownModels() (models []string) {
-	modelsQuery := w.mustQuery("select model_id from models order by model_id")
-	defer func() { checkErr(modelsQuery.Close()) }()
-	for modelsQuery.Next() {
-		var modelID string
-		checkErr(modelsQuery.Scan(&modelID))
-		models = append(models, modelID)
-	}
-	return
-}
-
 func (w *worker) modelsToPoll() (models []string) {
 	modelsQuery := w.mustQuery(`
 		select distinct model_id from signals
@@ -1574,7 +1563,7 @@ func (w *worker) processPeriodic(statusRequests chan lib.StatusRequest) {
 	}
 
 	select {
-	case statusRequests <- lib.StatusRequest{KnownModels: w.knownModels(), ModelsToPoll: w.modelsToPoll()}:
+	case statusRequests <- lib.StatusRequest{KnownModels: w.confirmedStatuses, ModelsToPoll: w.modelsToPoll()}:
 	default:
 		linf("the queue is full")
 	}
@@ -1951,7 +1940,7 @@ func main() {
 
 	var periodicTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
 	statusRequestsChan, statusUpdatesChan, elapsed := w.startChecker(w.cfg.UsersOnlineEndpoint, w.clients, w.cfg.Headers, w.cfg.IntervalMs, w.cfg.Debug)
-	statusRequestsChan <- lib.StatusRequest{KnownModels: w.knownModels(), ModelsToPoll: w.modelsToPoll()}
+	statusRequestsChan <- lib.StatusRequest{KnownModels: w.confirmedStatuses, ModelsToPoll: w.modelsToPoll()}
 	signals := make(chan os.Signal, 16)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT)
 	for {
