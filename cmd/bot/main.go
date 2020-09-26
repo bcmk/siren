@@ -1746,6 +1746,7 @@ func (w *worker) getStat(endpoint string) statistics {
 		ModelsToPollOnEndpointCount:    w.modelsToPollOnEndpointCount(endpoint),
 		ModelsToPollTotalCount:         w.modelsToPollTotalCount(),
 		OnlineModelsCount:              w.onlineModelsCount(),
+		KnownModelsCount:               len(w.confirmedStatuses),
 		StatusChangesCount:             w.statusChangesCount(),
 		TransactionsOnEndpointCount:    w.transactionsOnEndpoint(endpoint),
 		TransactionsOnEndpointFinished: w.transactionsOnEndpointFinished(endpoint),

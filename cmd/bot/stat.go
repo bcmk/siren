@@ -10,6 +10,7 @@ type statistics struct {
 	ModelsToPollOnEndpointCount    int    `json:"models_to_poll_on_endpoint_count"`
 	ModelsToPollTotalCount         int    `json:"models_to_poll_total_count"`
 	OnlineModelsCount              int    `json:"online_models_count"`
+	KnownModelsCount               int    `json:"known_models_count"`
 	StatusChangesCount             int    `json:"status_changes_count"`
 	QueriesDurationMilliseconds    int    `json:"queries_duration_milliseconds"`
 	UpdatesDurationMilliseconds    int    `json:"updates_duration_milliseconds"`
