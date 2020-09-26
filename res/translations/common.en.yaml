@@ -19,6 +19,20 @@ feedback:
 follower_exists:
   parse: raw
   str: Referral links only work for new users
+raw_commands:
+  parse: raw
+  str: |-
+    referral - Your referral link
+    add - Add model
+    remove - Remove model
+    remove_all - Remove all models
+    list - Your model subscriptions
+    pics - Pictures of your models online
+    week - Working hours in the previous 7 days
+    buy - Buy additional subscriptions
+    max_models - Show your subscription limit
+    help - Command list
+    feedback - Send feedback
 commands:
   parse: html
   str: |-

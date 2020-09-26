@@ -92,6 +92,7 @@ type Translations struct {
 	Week                   *Translation `yaml:"week"`
 	ZeroSubscriptions      *Translation `yaml:"zero_subscriptions"`
 	FAQ                    *Translation `yaml:"faq"`
+	RawCommands            *Translation `yaml:"raw_commands"`
 }
 
 // LoadEndpointTranslations loads translations for a specific endpoint

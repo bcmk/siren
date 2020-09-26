@@ -178,7 +178,7 @@ func newWorker() *worker {
 	for n, p := range cfg.Endpoints {
 		//noinspection GoNilness
 		var bot *tg.BotAPI
-		bot, err = tg.NewBotAPIWithClient(p.BotToken, clients[0].Client)
+		bot, err = tg.NewBotAPIWithClient(p.BotToken, tg.APIEndpoint, clients[0].Client)
 		checkErr(err)
 		bots[n] = bot
 		senders[n] = bot.Send
@@ -302,13 +302,35 @@ func (w *worker) setWebhook() {
 		}
 		linf("OK")
 	}
-
 }
 
 func (w *worker) removeWebhook() {
 	for n := range w.cfg.Endpoints {
 		linf("removing webhook for endpoint %s...", n)
 		_, err := w.bots[n].RemoveWebhook()
+		checkErr(err)
+		linf("OK")
+	}
+}
+
+func (w *worker) setCommands() {
+	for n, _ := range w.cfg.Endpoints {
+		text := templateToString(w.tpl[n], w.tr[n].RawCommands.Key, nil)
+		lines := strings.Split(text, "\n")
+		var commands []tg.BotCommand
+		for _, l := range lines {
+			pair := strings.SplitN(l, "-", 2)
+			if len(pair) != 2 {
+				checkErr(fmt.Errorf("unexpected command pair %q", l))
+			}
+			pair[0], pair[1] = strings.TrimSpace(pair[0]), strings.TrimSpace(pair[1])
+			commands = append(commands, tg.BotCommand{Command: pair[0], Description: pair[1]})
+			if w.cfg.Debug {
+				ldbg("command %s - %s", pair[0], pair[1])
+			}
+		}
+		linf("setting commands for endpoint %s...", n)
+		err := w.bots[n].SetMyCommands(commands)
 		checkErr(err)
 		linf("OK")
 	}
@@ -1907,6 +1929,7 @@ func main() {
 	w := newWorker()
 	w.logConfig()
 	w.setWebhook()
+	w.setCommands()
 	w.createDatabase()
 	w.initCache()
 

@@ -35,11 +35,7 @@ func TestSql(t *testing.T) {
 	w.mustExec("insert into models (model_id, status) values (?,?)", "b", lib.StatusOnline)
 	w.mustExec("insert into models (model_id, status) values (?,?)", "c", lib.StatusOnline)
 	w.mustExec("insert into models (model_id, status) values (?,?)", "c2", lib.StatusOnline)
-	models := w.knownModels()
-	if !reflect.DeepEqual(models, []string{"a", "b", "c", "c2"}) {
-		t.Error("unexpected models result", models)
-	}
-	models = w.modelsToPoll()
+	models := w.modelsToPoll()
 	if !reflect.DeepEqual(models, []string{"a", "d", "e", "g"}) {
 		t.Error("unexpected models result", models)
 	}
