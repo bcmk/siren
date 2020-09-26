@@ -13,9 +13,6 @@ buy_button:
 denied:
   parse: raw
   str: '{{ .model }} has blocked an access from the USA, the location of this bot'
-denied_list:
-  parse: raw
-  str: '{{ .model }} has blocked an access from the USA, the location of this bot'
 feedback:
   parse: raw
   str: Thank you for your feedback!
@@ -25,7 +22,7 @@ follower_exists:
 commands:
   parse: html
   str: |-
-    Commands
+    <b>Commands</b>
 
     <b>add</b> <code>CAMNAME</code> — Add model
     <b>remove</b> <code>CAMNAME</code> — Remove model

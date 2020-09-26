@@ -22,7 +22,7 @@ follower_exists:
 commands:
   parse: html
   str: |-
-    Команды
+    <b>Команды</b>
 
     <b>add</b> <code>МОДЕЛЬ</code> — Добавить модель
     <b>remove</b> <code>МОДЕЛЬ</code> — Удалить модель

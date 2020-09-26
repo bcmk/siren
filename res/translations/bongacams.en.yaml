@@ -15,20 +15,20 @@ help:
 
     {{ template "address_line" }}
 
-    {{ template "social" }}
-
     {{ template "languages" }}
 
     {{ template "sites" }}
+
+    {{ template "social" }}
 languages:
-  parse: raw
+  parse: html
   str: |-
-    This bot in other languages
+    <b>This bot in other languages</b>
     Русский: t.me/BongacamsSirenBot
 sites:
-  parse: raw
+  parse: html
   str: |-
-    This bot for other sites
+    <b>This bot for other sites</b>
     Chaturbate: t.me/ChaturbateAlarmBot
     Stripchat: t.me/StripchatOnlineBot
 add_example:

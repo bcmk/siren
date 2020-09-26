@@ -12,20 +12,20 @@ help:
 
     {{ template "commands" }}
 
-    {{ template "social" }}
-
     {{ template "languages" }}
 
     {{ template "sites" }}
+
+    {{ template "social" }}
 languages:
-  parse: raw
+  parse: html
   str: |-
-    Этот бот на других языках
+    <b>Этот бот на других языках</b>
     English: t.me/StripchatOnlineBot
 sites:
-  parse: raw
+  parse: html
   str: |-
-    Этот бот для других сайтов
+    <b>Этот бот для других сайтов</b>
     Chaturbate: t.me/ChaturbateSirenBot
     BongaCams: t.me/BongaCamsSirenBot
 add_example:
