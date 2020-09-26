@@ -27,7 +27,7 @@ sites:
   str: |-
     Этот бот для других сайтов
     Chaturbate: t.me/ChaturbateSirenBot
-    BongaCams: t.me/BongaCamsOnlineBot
+    BongaCams: t.me/BongaCamsSirenBot
 add_example:
   parse: html
   str: /add bbweb
