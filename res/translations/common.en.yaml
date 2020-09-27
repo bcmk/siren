@@ -1,3 +1,9 @@
+add_error:
+  parse: html
+  str: |-
+    Could not add the model {{ .model }}
+    Check the camname or try later
+    Syntax: /add <code>CAMNAME</code>
 all_models_removed:
   parse: raw
   str: All your subscriptions removed

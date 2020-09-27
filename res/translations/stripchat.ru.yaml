@@ -1,9 +1,3 @@
-add_error:
-  parse: html
-  str: |-
-    Не получилось добавить модель {{ .model }}
-    Проверьте ник модели или попробуйте позже
-    Формат команды: /add <code>МОДЕЛЬ</code>
 help:
   parse: html
   disable_preview: true
@@ -28,6 +22,7 @@ sites:
     <b>Этот бот для других сайтов</b>
     Chaturbate: t.me/ChaturbateSirenBot
     BongaCams: t.me/BongaCamsSirenBot
+    LiveJasmin: t.me/RuLiveJasminSirenBot
 add_example:
   parse: html
   str: /add bbweb

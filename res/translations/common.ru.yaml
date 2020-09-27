@@ -1,3 +1,9 @@
+add_error:
+  parse: html
+  str: |-
+    Не получилось добавить модель {{ .model }}
+    Проверьте ник модели или попробуйте позже
+    Формат команды: /add <code>МОДЕЛЬ</code>
 all_models_removed:
   parse: raw
   str: Все ваши подписки удалены
