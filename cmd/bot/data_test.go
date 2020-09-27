@@ -45,7 +45,7 @@ type testWorker struct {
 	sendError error
 }
 
-func (w *testWorker) testCheckModel(*lib.Client, string, [][2]string, bool) lib.StatusKind {
+func (w *testWorker) testCheckModel(*lib.Client, string, [][2]string, bool, map[string]string) lib.StatusKind {
 	return w.status
 }
 

@@ -318,7 +318,7 @@ func (w *worker) removeWebhook() {
 }
 
 func (w *worker) setCommands() {
-	for n, _ := range w.cfg.Endpoints {
+	for n := range w.cfg.Endpoints {
 		text := templateToString(w.tpl[n], w.tr[n].RawCommands.Key, nil)
 		lines := strings.Split(text, "\n")
 		var commands []tg.BotCommand
@@ -728,42 +728,27 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 	confirmedStatus := w.confirmedStatuses[modelID]
 	newStatus := confirmedStatus
 	if newStatus == lib.StatusUnknown {
-		newStatus = w.checkModel(w.clients[0], modelID, w.cfg.Headers, w.cfg.Debug, w.cfg.SpecificConfig)
-	}
-	if newStatus == lib.StatusUnknown || newStatus == lib.StatusNotFound {
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].AddError, tplData{"model": modelID})
-		return false
+		checkedStatus := w.checkModel(w.clients[0], modelID, w.cfg.Headers, w.cfg.Debug, w.cfg.SpecificConfig)
+		if checkedStatus == lib.StatusUnknown || checkedStatus == lib.StatusNotFound {
+			w.sendTr(endpoint, chatID, false, w.tr[endpoint].AddError, tplData{"model": modelID})
+			return false
+		}
+		if w.cfg.Checker == checkerAPI {
+			newStatus = lib.StatusOffline
+		}
 	}
 	w.mustExec("insert into signals (chat_id, model_id, endpoint) values (?,?,?)", chatID, modelID, endpoint)
 	w.mustExec("insert or ignore into models (model_id, status) values (?,?)", modelID, newStatus)
 	subscriptionsNumber++
-	if newStatus != lib.StatusExists {
-		statusChange := statusChange{ModelID: modelID, Status: newStatus, Timestamp: int(time.Now().Unix())}
-		tx, err := w.db.Begin()
-		checkErr(err)
-		insertStatusChangeStmt, err := tx.Prepare(insertStatusChange)
-		checkErr(err)
-		updateLastStatusChangeStmt, err := tx.Prepare(updateLastStatusChange)
-		checkErr(err)
-		updateModelStatusStmt, err := tx.Prepare(updateModelStatus)
-		checkErr(err)
-		_ = w.updateStatus(insertStatusChangeStmt, updateLastStatusChangeStmt, updateModelStatusStmt, statusChange)
-		checkErr(insertStatusChangeStmt.Close())
-		checkErr(updateLastStatusChangeStmt.Close())
-		checkErr(updateModelStatusStmt.Close())
-		checkErr(tx.Commit())
-	}
 	if newStatus != lib.StatusDenied {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].ModelAdded, tplData{"model": modelID})
 	}
-	if newStatus != lib.StatusExists {
-		w.notifyOfStatuses([]notification{{
-			endpoint: endpoint,
-			chatID:   chatID,
-			modelID:  modelID,
-			status:   newStatus,
-			timeDiff: w.modelTimeDiff(modelID, now)}})
-	}
+	w.notifyOfStatuses([]notification{{
+		endpoint: endpoint,
+		chatID:   chatID,
+		modelID:  modelID,
+		status:   newStatus,
+		timeDiff: w.modelTimeDiff(modelID, now)}})
 	if subscriptionsNumber >= maxModels-w.cfg.HeavyUserRemainder {
 		w.subscriptionUsage(endpoint, chatID, true)
 	}
