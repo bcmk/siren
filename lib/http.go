@@ -52,8 +52,13 @@ func HTTPClientWithTimeoutAndAddress(timeoutSeconds int, address string, cookies
 func onlineQuery(
 	usersOnlineEndpoint string,
 	client *Client,
-	headers [][2]string) (*http.Response, *bytes.Buffer, time.Duration, error) {
-
+	headers [][2]string,
+) (
+	*http.Response,
+	*bytes.Buffer,
+	time.Duration,
+	error,
+) {
 	start := time.Now()
 	req, err := http.NewRequest("GET", usersOnlineEndpoint, nil)
 	CheckErr(err)

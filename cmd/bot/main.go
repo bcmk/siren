@@ -91,13 +91,14 @@ type worker struct {
 	confirmedChangesInPeriod int
 	tr                       map[string]*lib.Translations
 	tpl                      map[string]*template.Template
-	checkModel               func(client *lib.Client, modelID string, headers [][2]string, dbg bool) lib.StatusKind
+	checkModel               func(client *lib.Client, modelID string, headers [][2]string, dbg bool, config map[string]string) lib.StatusKind
 	startChecker             func(
 		usersOnlineEndpoint []string,
 		clients []*lib.Client,
 		headers [][2]string,
 		intervalMs int,
 		debug bool,
+		config map[string]string,
 	) (
 		requests chan lib.StatusRequest,
 		output chan []lib.StatusUpdate,
@@ -225,6 +226,9 @@ func newWorker() *worker {
 	case "stripchat":
 		w.checkModel = lib.CheckModelStripchat
 		w.startChecker = lib.StartStripchatAPIChecker
+	case "livejasmin":
+		w.checkModel = lib.CheckModelLiveJasmin
+		w.startChecker = lib.StartLiveJasminAPIChecker
 	default:
 		panic("wrong website")
 	}
@@ -724,7 +728,7 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 	confirmedStatus := w.confirmedStatuses[modelID]
 	newStatus := confirmedStatus
 	if newStatus == lib.StatusUnknown {
-		newStatus = w.checkModel(w.clients[0], modelID, w.cfg.Headers, w.cfg.Debug)
+		newStatus = w.checkModel(w.clients[0], modelID, w.cfg.Headers, w.cfg.Debug, w.cfg.SpecificConfig)
 	}
 	if newStatus == lib.StatusUnknown || newStatus == lib.StatusNotFound {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].AddError, tplData{"model": modelID})
@@ -1960,7 +1964,13 @@ func main() {
 	}
 
 	var periodicTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
-	statusRequestsChan, statusUpdatesChan, elapsed := w.startChecker(w.cfg.UsersOnlineEndpoint, w.clients, w.cfg.Headers, w.cfg.IntervalMs, w.cfg.Debug)
+	statusRequestsChan, statusUpdatesChan, elapsed := w.startChecker(
+		w.cfg.UsersOnlineEndpoint,
+		w.clients,
+		w.cfg.Headers,
+		w.cfg.IntervalMs,
+		w.cfg.Debug,
+		w.cfg.SpecificConfig)
 	statusRequestsChan <- lib.StatusRequest{KnownModels: w.confirmedStatuses, ModelsToPoll: w.modelsToPoll()}
 	signals := make(chan os.Signal, 16)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT)

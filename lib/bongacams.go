@@ -18,7 +18,7 @@ type bongacamsModel struct {
 }
 
 // CheckModelBongaCams checks BongaCams model status
-func CheckModelBongaCams(client *Client, modelID string, headers [][2]string, dbg bool) StatusKind {
+func CheckModelBongaCams(client *Client, modelID string, headers [][2]string, dbg bool, _ map[string]string) StatusKind {
 	req, err := http.NewRequest("GET", fmt.Sprintf("https://en.bongacams.com/%s", modelID), nil)
 	CheckErr(err)
 	for _, h := range headers {
@@ -53,6 +53,7 @@ func StartBongaCamsAPIChecker(
 	headers [][2]string,
 	intervalMs int,
 	dbg bool,
+	_ map[string]string,
 ) (
 	statusRequests chan StatusRequest,
 	statusUpdates chan []StatusUpdate,
@@ -124,6 +125,7 @@ func StartBongaCamsPollingChecker(
 	headers [][2]string,
 	intervalMs int,
 	debug bool,
+	_ map[string]string,
 ) (
 	statusRequests chan StatusRequest,
 	output chan []StatusUpdate,
@@ -140,7 +142,7 @@ func StartBongaCamsPollingChecker(
 			updates := []StatusUpdate{}
 			for _, modelID := range request.ModelsToPoll {
 				queryStart := time.Now()
-				newStatus := CheckModelBongaCams(clients[clientIdx], modelID, headers, debug)
+				newStatus := CheckModelBongaCams(clients[clientIdx], modelID, headers, debug, nil)
 				updates = append(updates, StatusUpdate{ModelID: modelID, Status: newStatus})
 				queryElapsed := time.Since(queryStart) / time.Millisecond
 				if intervalMs != 0 {

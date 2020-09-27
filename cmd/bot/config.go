@@ -51,7 +51,7 @@ type statusConfirmationSeconds struct {
 }
 
 type config struct {
-	Website                     string                    `json:"website"`                        // one of the following strings: "bongacams", "stripchat", "chaturbate"
+	Website                     string                    `json:"website"`                        // one of the following strings: "bongacams", "stripchat", "chaturbate", "livejasmin"
 	PeriodSeconds               int                       `json:"period_seconds"`                 // the period of querying models statuses
 	MaxModels                   int                       `json:"max_models"`                     // maximum models per user
 	TimeoutSeconds              int                       `json:"timeout_seconds"`                // HTTP timeout
@@ -80,6 +80,7 @@ type config struct {
 	SQLPrelude                  string                    `json:"sql_prelude"`                    // run these SQL commands before any other
 	EnableWeek                  bool                      `json:"enable_week"`                    // enable week command
 	AffiliateLink               string                    `json:"affiliate_link"`                 // affiliate link template
+	SpecificConfig              map[string]string         `json:"specific_config"`                // the config for specific website
 
 	errorThreshold   int
 	errorDenominator int
@@ -153,6 +154,14 @@ func checkConfig(cfg *config) error {
 	}
 	if cfg.Website == "" {
 		return errors.New("configure website")
+	}
+	if cfg.Website == "livejasmin" {
+		if cfg.SpecificConfig["ps_id"] == "" {
+			return errors.New("configure specific_config/ps_id")
+		}
+		if cfg.SpecificConfig["access_key"] == "" {
+			return errors.New("configure specific_config/website")
+		}
 	}
 	if cfg.StatPassword == "" {
 		return errors.New("configure stat_password")

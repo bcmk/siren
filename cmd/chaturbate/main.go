@@ -29,5 +29,5 @@ func main() {
 		return
 	}
 	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
-	fmt.Println(lib.CheckModelChaturbate(client, modelID, nil, *verbose))
+	fmt.Println(lib.CheckModelChaturbate(client, modelID, nil, *verbose, nil))
 }

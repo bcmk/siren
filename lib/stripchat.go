@@ -34,7 +34,7 @@ var statusesOnline = map[string]bool{
 }
 
 // CheckModelStripchat checks Stripchat model status
-func CheckModelStripchat(client *Client, modelID string, headers [][2]string, dbg bool) StatusKind {
+func CheckModelStripchat(client *Client, modelID string, headers [][2]string, dbg bool, _ map[string]string) StatusKind {
 	ctx, cancel := chromedp.NewContext(context.Background(), chromedp.WithLogf(Ldbg))
 	defer cancel()
 
@@ -104,6 +104,7 @@ func StartStripchatAPIChecker(
 	headers [][2]string,
 	intervalMs int,
 	dbg bool,
+	_ map[string]string,
 ) (
 	statusRequests chan StatusRequest,
 	output chan []StatusUpdate,

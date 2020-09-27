@@ -39,5 +39,5 @@ func main() {
 		return
 	}
 	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
-	fmt.Println(lib.CheckModelStripchat(client, modelID, headers, *verbose))
+	fmt.Println(lib.CheckModelStripchat(client, modelID, headers, *verbose, nil))
 }

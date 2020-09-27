@@ -10,18 +10,28 @@ import (
 	"time"
 )
 
-type chaturbateModel struct {
-	Username string `json:"username"`
-	ImageURL string `json:"image_url"`
+type liveJasminModel struct {
+	PerformerID       string `json:"performerId"`
+	Status            string `json:"status"`
+	ProfilePictureURL struct {
+		Size896x503 string `json:"size896x504"`
+	} `json:"profilePictureUrl"`
 }
 
-type chaturbateResponse struct {
-	RoomStatus string `json:"room_status"`
+type liveJasminResponse struct {
+	Status    string `json:"status"`
+	ErrorCode int    `json:"errorCode"`
+	Data      struct {
+		Models []liveJasminModel `json:"models"`
+	} `json:"data"`
 }
 
-// CheckModelChaturbate checks Chaturbate model status
-func CheckModelChaturbate(client *Client, modelID string, headers [][2]string, dbg bool, _ map[string]string) StatusKind {
-	req, err := http.NewRequest("GET", fmt.Sprintf("https://en.chaturbate.com/api/chatvideocontext/%s/", modelID), nil)
+// CheckModelLiveJasmin checks LiveJasmin model status
+func CheckModelLiveJasmin(client *Client, modelID string, headers [][2]string, dbg bool, config map[string]string) StatusKind {
+	psID := config["ps_id"]
+	accessKey := config["access_key"]
+	url := fmt.Sprintf("https://pt.potawe.com/api/model/status?performerId=%s&psId=%s&accessKey=%s&legacyRedirect=1", modelID, psID, accessKey)
+	req, err := http.NewRequest("GET", url, nil)
 	CheckErr(err)
 	for _, h := range headers {
 		req.Header.Set(h[0], h[1])
@@ -49,55 +59,39 @@ func CheckModelChaturbate(client *Client, modelID string, headers [][2]string, d
 		Lerr("[%v] cannot read response for model %s, %v", client.Addr, modelID, err)
 		return StatusUnknown
 	}
-	decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
-	parsed := &chaturbateResponse{}
-	err = decoder.Decode(parsed)
-	if err != nil {
-		Lerr("[%v] cannot parse response for model %s, %v", client.Addr, modelID, err)
-		if dbg {
-			Ldbg("response: %s", buf.String())
-		}
-		return StatusUnknown
-	}
-	return chaturbateStatus(parsed.RoomStatus)
+	return liveJasminStatus(buf.String())
 }
 
-func chaturbateStatus(roomStatus string) StatusKind {
+func liveJasminStatus(roomStatus string) StatusKind {
 	switch roomStatus {
-	case "public":
+	case "free_chat":
 		return StatusOnline
-	case "private":
+	case "member_chat":
 		return StatusOnline
-	case "group":
+	case "members_only":
 		return StatusOnline
-	case "hidden":
-		return StatusOnline
-	case "connecting":
-		return StatusOnline
-	case "password protected":
-		return StatusOnline
-	case "away":
-		return StatusOffline
 	case "offline":
 		return StatusOffline
+	case "invalid":
+		return StatusNotFound
 	}
 	Lerr("cannot parse room status \"%s\"", roomStatus)
 	return StatusUnknown
 }
 
-// StartChaturbateAPIChecker starts a checker for Chaturbate
-func StartChaturbateAPIChecker(
+// StartLiveJasminAPIChecker starts a checker for LiveJasmin
+func StartLiveJasminAPIChecker(
 	usersOnlineEndpoint []string,
 	clients []*Client,
 	headers [][2]string,
 	intervalMs int,
 	dbg bool,
-	_ map[string]string,
+	config map[string]string,
 ) (
 	statusRequests chan StatusRequest,
 	output chan []StatusUpdate,
-	elapsedCh chan time.Duration) {
-
+	elapsedCh chan time.Duration,
+) {
 	statusRequests = make(chan StatusRequest)
 	output = make(chan []StatusUpdate)
 	elapsedCh = make(chan time.Duration)
@@ -127,7 +121,7 @@ func StartChaturbateAPIChecker(
 					continue
 				}
 				decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
-				var parsed []chaturbateModel
+				var parsed liveJasminResponse
 				err = decoder.Decode(&parsed)
 				if err != nil {
 					Lerr("[%v] cannot parse response, %v", client.Addr, err)
@@ -137,9 +131,17 @@ func StartChaturbateAPIChecker(
 					output <- nil
 					continue
 				}
-				for _, m := range parsed {
-					modelID := strings.ToLower(m.Username)
-					hash[modelID] = StatusUpdate{ModelID: modelID, Status: StatusOnline, Image: m.ImageURL}
+				if parsed.Status != "OK" {
+					Lerr("[%v] cannot query a list of models, %d", client.Addr, parsed.ErrorCode)
+					if dbg {
+						Ldbg("response: %s", buf.String())
+					}
+					output <- nil
+					continue
+				}
+				for _, m := range parsed.Data.Models {
+					modelID := strings.ToLower(m.PerformerID)
+					hash[modelID] = StatusUpdate{ModelID: modelID, Status: StatusOnline, Image: "https:" + m.ProfilePictureURL.Size896x503}
 				}
 			}
 			for _, statusUpdate := range hash {
