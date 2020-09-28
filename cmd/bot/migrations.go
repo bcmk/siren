@@ -75,6 +75,9 @@ var migrations = []func(w *worker){
 	func(w *worker) {
 		w.mustExec("create index ix_status_changes_model_id on status_changes(model_id);")
 	},
+	func(w *worker) {
+		w.mustExec("alter table users add blacklist integer not null default 0;")
+	},
 }
 
 func (w *worker) applyMigrations() {

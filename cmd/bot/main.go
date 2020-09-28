@@ -80,6 +80,13 @@ type queryDurationsData struct {
 	count int
 }
 
+type user struct {
+	chatID    int64
+	maxModels int
+	reports   int
+	blacklist bool
+}
+
 type worker struct {
 	clients                  []*lib.Client
 	bots                     map[string]*tg.BotAPI
@@ -657,14 +664,18 @@ func (w *worker) subscriptionsNumber(endpoint string, chatID int64) int {
 }
 
 func (w *worker) maxModels(chatID int64) int {
-	query := w.mustQuery("select max_models from users where chat_id=?", chatID)
-	defer func() { checkErr(query.Close()) }()
-	if !query.Next() {
+	user, found := w.user(chatID)
+	if !found {
 		return w.cfg.MaxModels
 	}
-	var result int
-	checkErr(query.Scan(&result))
-	return result
+	return user.maxModels
+}
+
+func (w *worker) user(chatID int64) (user user, found bool) {
+	found = w.maybeRecord("select chat_id, max_models, reports, blacklist from users where chat_id=?",
+		queryParams{chatID},
+		record{&user.chatID, &user.maxModels, &user.reports, &user.blacklist})
+	return
 }
 
 func (w *worker) addUser(endpoint string, chatID int64) {
@@ -1070,10 +1081,12 @@ func (w *worker) feedback(endpoint string, chatID int64, text string) {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].SyntaxFeedback, nil)
 		return
 	}
-
 	w.mustExec("insert into feedback (endpoint, chat_id, text) values (?, ?, ?)", endpoint, chatID, text)
 	w.sendTr(endpoint, chatID, false, w.tr[endpoint].Feedback, nil)
-	w.sendText(endpoint, w.cfg.AdminID, true, true, lib.ParseRaw, fmt.Sprintf("Feedback from %d: %s", chatID, text))
+	user, _ := w.user(chatID)
+	if !user.blacklist {
+		w.sendText(endpoint, w.cfg.AdminID, true, true, lib.ParseRaw, fmt.Sprintf("Feedback from %d: %s", chatID, text))
+	}
 }
 
 func (w *worker) setLimit(chatID int64, maxModels int) {
@@ -1264,6 +1277,16 @@ func (w *worker) direct(endpoint string, arguments string) {
 	w.sendText(endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
 }
 
+func (w *worker) blacklist(endpoint string, arguments string) {
+	whom, err := strconv.ParseInt(arguments, 10, 64)
+	if err != nil {
+		w.sendText(endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "first argument is invalid")
+		return
+	}
+	w.mustExec("update users set blacklist=1 where chat_id=?", whom)
+	w.sendText(endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
+}
+
 func (w *worker) serveEndpoint(n string, p endpoint) {
 	linf("serving endpoint %s...", n)
 	var err error
@@ -1316,6 +1339,9 @@ func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arg
 		return true
 	case "direct":
 		w.direct(endpoint, arguments)
+		return true
+	case "blacklist":
+		w.blacklist(endpoint, arguments)
 		return true
 	case "set_max_models":
 		parts := strings.Fields(arguments)
