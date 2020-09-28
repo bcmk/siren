@@ -19,9 +19,11 @@ Installation
 * English bot for Chaturbate #2: [t.me/ChaturbateAlertsBot](https://t.me/ChaturbateAlertsBot)
 * English bot for Stripchat and xHamster Live: [t.me/StripchatOnlineBot](https://t.me/StripchatOnlineBot)
 * English bot for BongaCams: [t.me/BongacamsOnlineBot](https://t.me/BongacamsOnlineBot)
+* English bot for LiveJasmin: [t.me/LiveJasminSirenBot](https://t.me/LiveJasminSirenBot)
 * Russian bot for Chaturbate: [t.me/ChaturbateSirenBot](https://t.me/ChaturbateSirenBot)
 * Russian bot for Stripchat and xHamster Live: [t.me/StripchatSirenBot](https://t.me/StripchatSirenBot)
 * Russian bot for BongaCams: [t.me/BongacamsSirenBot](https://t.me/BongacamsSirenBot)
+* Russian bot for LiveJasmin: [t.me/RuLiveJasminSirenBot](https://t.me/RuLiveJasminSirenBot)
 
 Commands
 --------
@@ -55,12 +57,16 @@ Use following links:
   <pre>https://t.me/StripchatOnlineBot?start=m-<b><i>MODEL_ID</i></b></pre>
 * English bot for BongaCams:  
   <pre>https://t.me/BongacamsOnlineBot?start=m-<b><i>MODEL_ID</i></b></pre>
+* English bot for LiveJasmin:  
+  <pre>https://t.me/LiveJasminSirenBot?start=m-<b><i>MODEL_ID</i></b></pre>
 * Russian bot for Chaturbate:  
   <pre>https://t.me/ChaturbateSirenBot?start=m-<b><i>MODEL_ID</i></b></pre>
 * Russian bot for Stripchat and xHamster Live:  
   <pre>https://t.me/StripchatSirenBot?start=m-<b><i>MODEL_ID</i></b></pre>
 * Russian bot for BongaCams:  
   <pre>https://t.me/BongacamsSirenBot?start=m-<b><i>MODEL_ID</i></b></pre>
+* Russian bot for LiveJasmin:  
+  <pre>https://t.me/RuLiveJasminSirenBot?start=m-<b><i>MODEL_ID</i></b></pre>
 
 Substitute ___MODEL_ID___ with your actual model ID.
 It is the same as model name in Chaturbate and Stripchat.
