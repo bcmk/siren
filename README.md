@@ -34,9 +34,7 @@ Commands
 * __list__ — Your model subscriptions
 * __pics__ — Pictures of your models online
 * __week__ _MODEL_ID_ — Working hours in the previous 7 days
-* __social__ — We in social media
 * __help__ — Command list
-* __language__ — This bot in other languages
 * __feedback__ _YOUR_MESSAGE_ — Send feedback
 
 Substitute ___MODEL_ID___ with the actual model ID.
