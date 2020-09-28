@@ -57,9 +57,9 @@ type notification struct {
 }
 
 type statusChange struct {
-	ModelID   string
-	Status    lib.StatusKind
-	Timestamp int
+	modelID   string
+	status    lib.StatusKind
+	timestamp int
 }
 
 type statRequest struct {
@@ -271,9 +271,9 @@ func (w *worker) cleanStatuses() {
 		w.mustExecPrepared(insertStatusChange, insertStatusChangeStmt, modelID, lib.StatusUnknown, now)
 		w.mustExecPrepared(updateLastStatusChange, updateLastStatusChangeStmt, modelID, lib.StatusUnknown, now)
 		w.lastStatusChanges[modelID] = statusChange{
-			ModelID:   modelID,
-			Status:    lib.StatusUnknown,
-			Timestamp: now,
+			modelID:   modelID,
+			status:    lib.StatusUnknown,
+			timestamp: now,
 		}
 	}
 	defer w.measure("commit -- clean statuses")()
@@ -492,19 +492,19 @@ func (w *worker) updateStatus(
 ) (
 	changeConfirmed bool,
 ) {
-	lastStatusChange := w.lastStatusChanges[statusChange.ModelID]
-	if statusChange.Status != lastStatusChange.Status {
-		w.mustExecPrepared(insertStatusChange, insertStatusChangeStmt, statusChange.ModelID, statusChange.Status, statusChange.Timestamp)
-		w.mustExecPrepared(updateLastStatusChange, updateLastStatusChangeStmt, statusChange.ModelID, statusChange.Status, statusChange.Timestamp)
-		w.lastStatusChanges[statusChange.ModelID] = statusChange
+	lastStatusChange := w.lastStatusChanges[statusChange.modelID]
+	if statusChange.status != lastStatusChange.status {
+		w.mustExecPrepared(insertStatusChange, insertStatusChangeStmt, statusChange.modelID, statusChange.status, statusChange.timestamp)
+		w.mustExecPrepared(updateLastStatusChange, updateLastStatusChangeStmt, statusChange.modelID, statusChange.status, statusChange.timestamp)
+		w.lastStatusChanges[statusChange.modelID] = statusChange
 	}
-	confirmationSeconds := w.confirmationSeconds(statusChange.Status)
+	confirmationSeconds := w.confirmationSeconds(statusChange.status)
 	durationConfirmed := false ||
 		confirmationSeconds == 0 ||
-		(statusChange.Status == lastStatusChange.Status && statusChange.Timestamp-lastStatusChange.Timestamp >= confirmationSeconds)
-	if w.confirmedStatuses[statusChange.ModelID] != statusChange.Status && durationConfirmed {
-		w.mustExecPrepared(updateModelStatus, updateModelStatusStmt, statusChange.ModelID, statusChange.Status)
-		w.confirmedStatuses[statusChange.ModelID] = statusChange.Status
+		(statusChange.status == lastStatusChange.status && statusChange.timestamp-lastStatusChange.timestamp >= confirmationSeconds)
+	if w.confirmedStatuses[statusChange.modelID] != statusChange.status && durationConfirmed {
+		w.mustExecPrepared(updateModelStatus, updateModelStatusStmt, statusChange.modelID, statusChange.status)
+		w.confirmedStatuses[statusChange.modelID] = statusChange.status
 		return true
 	}
 
@@ -1051,23 +1051,23 @@ func (w *worker) week(modelID string) ([]bool, time.Time) {
 		var change statusChange
 		var firstStatus *lib.StatusKind
 		var firstTimestamp *int
-		checkErr(query.Scan(&change.Status, &change.Timestamp, &firstStatus, &firstTimestamp))
+		checkErr(query.Scan(&change.status, &change.timestamp, &firstStatus, &firstTimestamp))
 		if first && firstStatus != nil && firstTimestamp != nil {
-			changes = append(changes, statusChange{Status: *firstStatus, Timestamp: *firstTimestamp})
+			changes = append(changes, statusChange{status: *firstStatus, timestamp: *firstTimestamp})
 			first = false
 		}
 		changes = append(changes, change)
 	}
 
-	changes = append(changes, statusChange{Timestamp: nowTimestamp})
+	changes = append(changes, statusChange{timestamp: nowTimestamp})
 	hours := make([]bool, (nowTimestamp-weekTimestamp+3599)/3600)
 	for i, c := range changes[:len(changes)-1] {
-		if c.Status == lib.StatusOnline {
-			begin := (c.Timestamp - weekTimestamp) / 3600
+		if c.status == lib.StatusOnline {
+			begin := (c.timestamp - weekTimestamp) / 3600
 			if begin < 0 {
 				begin = 0
 			}
-			end := (changes[i+1].Timestamp - weekTimestamp + 3599) / 3600
+			end := (changes[i+1].timestamp - weekTimestamp + 3599) / 3600
 			for j := begin; j < end; j++ {
 				hours[j] = true
 			}
@@ -1610,8 +1610,8 @@ func (w *worker) queryLastStatusChanges() map[string]statusChange {
 	statusChanges := map[string]statusChange{}
 	for query.Next() {
 		var statusChange statusChange
-		checkErr(query.Scan(&statusChange.ModelID, &statusChange.Status, &statusChange.Timestamp))
-		statusChanges[statusChange.ModelID] = statusChange
+		checkErr(query.Scan(&statusChange.modelID, &statusChange.status, &statusChange.timestamp))
+		statusChanges[statusChange.modelID] = statusChange
 	}
 	return statusChanges
 }
@@ -1652,8 +1652,8 @@ func (w *worker) processStatusUpdates(
 
 	for _, u := range statusUpdates {
 		if u.Status != lib.StatusUnknown {
-			statusChange := statusChange{ModelID: u.ModelID, Status: u.Status, Timestamp: now}
-			if w.lastStatusChanges[u.ModelID].Status != statusChange.Status {
+			statusChange := statusChange{modelID: u.ModelID, status: u.Status, timestamp: now}
+			if w.lastStatusChanges[u.ModelID].status != statusChange.status {
 				changesCount++
 			}
 			changeConfirmed := w.updateStatus(insertStatusChangeStmt, updateLastStatusChangeStmt, updateModelStatusStmt, statusChange)
