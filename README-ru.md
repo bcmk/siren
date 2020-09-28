@@ -7,7 +7,7 @@ Telegram-бот для оповещений о вебкам-шоу
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
 [![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)
 
-Это бот в Telegram для оповещений о вебкам-шоу на BongaCams, Chaturbate, Stripchat и xHamster Live.
+Это бот в Telegram для оповещений о вебкам-шоу на BongaCams, Chaturbate, Stripchat, xHamster Live и LiveJasmin.
 Вы просто подписываетесь на любимых моделей командой __/add__.
 После этого вы получате оповещения каждый раз, когда они выходят в сеть.
 Опрос статуса моделей происходит раз в минуту.
