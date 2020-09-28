@@ -34,7 +34,7 @@ raw_commands:
     remove_all - Remove all models
     list - Your model subscriptions
     pics - Pictures of your models online
-    week - Working hours in the previous 7 days
+    week - Camming hours in the previous 7 days
     buy - Buy additional subscriptions
     max_models - Show your subscription limit
     help - Command list
@@ -49,7 +49,7 @@ commands:
     <b>remove_all</b> — Remove all models
     <b>list</b> — Your model subscriptions
     <b>pics</b> — Pictures of your models online
-    <b>week</b> <code>CAMNAME</code> — Working hours in the previous 7 days
+    <b>week</b> <code>CAMNAME</code> — Camming hours in the previous 7 days
     <b>feedback</b> <code>YOUR_MESSAGE</code> — Send feedback
     <b>help</b> — Command list
 invalid_command:
@@ -272,8 +272,9 @@ duration:
     {{- end -}}
 week:
   parse: html
+  disable_preview: true
   str: |-
-    {{ .model }}'s week (UTC)
+    {{- template "affiliate_link" .model }}'s week (UTC)
     {{- print "\n\n" -}}
     <code>
     {{- printf "    00     06     12     18\n" -}}
