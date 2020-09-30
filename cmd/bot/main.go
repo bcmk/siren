@@ -114,7 +114,7 @@ type worker struct {
 	senders               map[string]func(msg tg.Chattable) (tg.Message, error)
 	unsuccessfulRequests  []bool
 	successfulRequestsPos int
-	downloadResults       []bool
+	downloadErrors        []bool
 	downloadResultsPos    int
 	nextErrorReport       time.Time
 	coinPaymentsAPI       *payments.CoinPaymentsAPI
@@ -208,7 +208,7 @@ func newWorker() *worker {
 		tpl:                  tpl,
 		senders:              senders,
 		unsuccessfulRequests: make([]bool, cfg.errorDenominator),
-		downloadResults:      make([]bool, cfg.errorDenominator),
+		downloadErrors:       make([]bool, cfg.errorDenominator),
 		ipnServeMux:          http.NewServeMux(),
 		mailTLS:              mailTLS,
 		images:               map[string]string{},
@@ -981,7 +981,7 @@ func (w *worker) modelTimeDiff(modelID string, now int) *timeDiff {
 }
 
 func (w *worker) downloadSuccess(success bool) {
-	w.downloadResults[w.downloadResultsPos] = success
+	w.downloadErrors[w.downloadResultsPos] = !success
 	w.downloadResultsPos = (w.downloadResultsPos + 1) % w.cfg.errorDenominator
 }
 
@@ -1119,8 +1119,8 @@ func (w *worker) unsuccessfulRequestsCount() int {
 
 func (w *worker) downloadErrorsCount() int {
 	var count = 0
-	for _, s := range w.downloadResults {
-		if !s {
+	for _, s := range w.downloadErrors {
+		if s {
 			count++
 		}
 	}
