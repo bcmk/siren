@@ -114,6 +114,8 @@ type worker struct {
 	senders               map[string]func(msg tg.Chattable) (tg.Message, error)
 	unsuccessfulRequests  []bool
 	successfulRequestsPos int
+	downloadResults       []bool
+	downloadResultsPos    int
 	nextErrorReport       time.Time
 	coinPaymentsAPI       *payments.CoinPaymentsAPI
 	ipnServeMux           *http.ServeMux
@@ -206,6 +208,7 @@ func newWorker() *worker {
 		tpl:                  tpl,
 		senders:              senders,
 		unsuccessfulRequests: make([]bool, cfg.errorDenominator),
+		downloadResults:      make([]bool, cfg.errorDenominator),
 		ipnServeMux:          http.NewServeMux(),
 		mailTLS:              mailTLS,
 		images:               map[string]string{},
@@ -977,17 +980,25 @@ func (w *worker) modelTimeDiff(modelID string, now int) *timeDiff {
 	return nil
 }
 
+func (w *worker) downloadSuccess(success bool) {
+	w.downloadResults[w.downloadResultsPos] = success
+	w.downloadResultsPos = (w.downloadResultsPos + 1) % w.cfg.errorDenominator
+}
+
 func (w *worker) download(url string) []byte {
 	resp, err := w.clients[0].Client.Get(url)
 	if err != nil {
+		w.downloadSuccess(false)
 		return nil
 	}
 	defer func() { checkErr(resp.Body.Close()) }()
 	buf := new(bytes.Buffer)
 	_, err = buf.ReadFrom(resp.Body)
 	if err != nil {
+		w.downloadSuccess(false)
 		return nil
 	}
+	w.downloadSuccess(true)
 	return buf.Bytes()
 }
 
@@ -1000,7 +1011,6 @@ func (w *worker) listOnlineModels(endpoint string, chatID int64, now int) {
 			var image []byte
 			if imageURL != "" {
 				image = w.download(imageURL)
-				linf("image download, URL: %s, result: %v", w.images[s.ModelID], image != nil)
 			}
 			if image == nil {
 				w.sendTr(
@@ -1101,6 +1111,16 @@ func (w *worker) unsuccessfulRequestsCount() int {
 	var count = 0
 	for _, s := range w.unsuccessfulRequests {
 		if s {
+			count++
+		}
+	}
+	return count
+}
+
+func (w *worker) downloadErrorsCount() int {
+	var count = 0
+	for _, s := range w.downloadResults {
+		if !s {
 			count++
 		}
 	}
@@ -1777,6 +1797,7 @@ func (w *worker) getStat(endpoint string) statistics {
 		QueriesDurationMilliseconds:    int(w.httpQueriesDuration.Milliseconds()),
 		UpdatesDurationMilliseconds:    int(w.updatesDuration.Milliseconds()),
 		ErrorRate:                      [2]int{w.unsuccessfulRequestsCount(), w.cfg.errorDenominator},
+		DownloadErrorRate:              [2]int{w.downloadErrorsCount(), w.cfg.errorDenominator},
 		Rss:                            rss / 1024,
 		MaxRss:                         rusage.Maxrss,
 		UserReferralsCount:             w.userReferralsCount(),
