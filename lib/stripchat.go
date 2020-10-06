@@ -108,14 +108,17 @@ func StartStripchatAPIChecker(
 ) (
 	statusRequests chan StatusRequest,
 	output chan []OnlineModel,
+	errorsCh chan struct{},
 	elapsedCh chan time.Duration) {
 
 	statusRequests = make(chan StatusRequest)
 	output = make(chan []OnlineModel)
+	errorsCh = make(chan struct{})
 	elapsedCh = make(chan time.Duration)
 	clientIdx := 0
 	clientsNum := len(clients)
 	go func() {
+	requests:
 		for range statusRequests {
 			hash := map[string]OnlineModel{}
 			updates := []OnlineModel{}
@@ -130,13 +133,13 @@ func StartStripchatAPIChecker(
 				elapsedCh <- elapsed
 				if err != nil {
 					Lerr("[%v] cannot send a query, %v", client.Addr, err)
-					output <- nil
-					continue
+					errorsCh <- struct{}{}
+					continue requests
 				}
 				if resp.StatusCode != 200 {
 					Lerr("[%v] query status, %d", client.Addr, resp.StatusCode)
-					output <- nil
-					continue
+					errorsCh <- struct{}{}
+					continue requests
 				}
 				decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
 				parsed := &stripchatResponse{}
@@ -146,8 +149,8 @@ func StartStripchatAPIChecker(
 					if dbg {
 						Ldbg("response: %s", buf.String())
 					}
-					output <- nil
-					continue
+					errorsCh <- struct{}{}
+					continue requests
 				}
 				for _, m := range parsed.Models {
 					modelID := strings.ToLower(m.Username)

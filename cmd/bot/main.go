@@ -116,6 +116,7 @@ type worker struct {
 	) (
 		requests chan lib.StatusRequest,
 		output chan []lib.OnlineModel,
+		errors chan struct{},
 		elapsed chan time.Duration)
 
 	senders               map[string]func(msg tg.Chattable) (tg.Message, error)
@@ -1989,7 +1990,7 @@ func main() {
 	}
 
 	var periodicTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
-	statusRequestsChan, onlineModelsChan, elapsed := w.startChecker(
+	statusRequestsChan, onlineModelsChan, errorsChan, elapsed := w.startChecker(
 		w.cfg.UsersOnlineEndpoint,
 		w.clients,
 		w.cfg.Headers,
@@ -2007,9 +2008,6 @@ func main() {
 			runtime.GC()
 			w.processPeriodic(statusRequestsChan)
 		case onlineModels := <-onlineModelsChan:
-			// check error in different way
-			w.unsuccessfulRequests[w.successfulRequestsPos] = onlineModels == nil
-			w.successfulRequestsPos = (w.successfulRequestsPos + 1) % w.cfg.errorDenominator
 			now := int(time.Now().Unix())
 			changesInPeriod, confirmedChangesInPeriod, notifications, elapsed := w.processStatusUpdates(onlineModels, now)
 			w.updatesDuration = elapsed
@@ -2019,6 +2017,9 @@ func main() {
 			if w.cfg.Debug {
 				ldbg("status updates processed in %v", elapsed)
 			}
+		case <-errorsChan:
+			w.unsuccessfulRequests[w.successfulRequestsPos] = true
+			w.successfulRequestsPos = (w.successfulRequestsPos + 1) % w.cfg.errorDenominator
 		case u := <-incoming:
 			w.processTGUpdate(u)
 		case m := <-mail:

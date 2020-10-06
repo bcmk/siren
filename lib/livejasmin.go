@@ -90,14 +90,17 @@ func StartLiveJasminAPIChecker(
 ) (
 	statusRequests chan StatusRequest,
 	output chan []OnlineModel,
+	errorsCh chan struct{},
 	elapsedCh chan time.Duration,
 ) {
 	statusRequests = make(chan StatusRequest)
 	output = make(chan []OnlineModel)
+	errorsCh = make(chan struct{})
 	elapsedCh = make(chan time.Duration)
 	clientIdx := 0
 	clientsNum := len(clients)
 	go func() {
+	requests:
 		for range statusRequests {
 			hash := map[string]OnlineModel{}
 			updates := []OnlineModel{}
@@ -112,13 +115,13 @@ func StartLiveJasminAPIChecker(
 				elapsedCh <- elapsed
 				if err != nil {
 					Lerr("[%v] cannot send a query, %v", client.Addr, err)
-					output <- nil
-					continue
+					errorsCh <- struct{}{}
+					continue requests
 				}
 				if resp.StatusCode != 200 {
 					Lerr("[%v] query status, %d", client.Addr, resp.StatusCode)
-					output <- nil
-					continue
+					errorsCh <- struct{}{}
+					continue requests
 				}
 				decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
 				var parsed liveJasminResponse
@@ -128,16 +131,16 @@ func StartLiveJasminAPIChecker(
 					if dbg {
 						Ldbg("response: %s", buf.String())
 					}
-					output <- nil
-					continue
+					errorsCh <- struct{}{}
+					continue requests
 				}
 				if parsed.Status != "OK" {
 					Lerr("[%v] cannot query a list of models, %d", client.Addr, parsed.ErrorCode)
 					if dbg {
 						Ldbg("response: %s", buf.String())
 					}
-					output <- nil
-					continue
+					errorsCh <- struct{}{}
+					continue requests
 				}
 				for _, m := range parsed.Data.Models {
 					modelID := strings.ToLower(m.PerformerID)

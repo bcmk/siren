@@ -44,8 +44,6 @@ func CheckModelBongaCams(client *Client, modelID string, headers [][2]string, db
 	return StatusUnknown
 }
 
-var _ = StartBongaCamsAPIChecker
-
 // StartBongaCamsAPIChecker starts a checker for BongaCams
 func StartBongaCamsAPIChecker(
 	usersOnlineEndpoint []string,
@@ -57,14 +55,17 @@ func StartBongaCamsAPIChecker(
 ) (
 	statusRequests chan StatusRequest,
 	statusUpdates chan []OnlineModel,
+	errorsCh chan struct{},
 	elapsedCh chan time.Duration) {
 
 	statusRequests = make(chan StatusRequest)
 	statusUpdates = make(chan []OnlineModel)
+	errorsCh = make(chan struct{})
 	elapsedCh = make(chan time.Duration)
 	clientIdx := 0
 	clientsNum := len(clients)
 	go func() {
+	requests:
 		for range statusRequests {
 			hash := map[string]OnlineModel{}
 			updates := []OnlineModel{}
@@ -78,14 +79,14 @@ func StartBongaCamsAPIChecker(
 				resp, buf, elapsed, err := onlineQuery(endpoint, client, headers)
 				elapsedCh <- elapsed
 				if err != nil {
-					statusUpdates <- nil
 					Lerr("[%v] cannot send a query, %v", client.Addr, err)
-					continue
+					errorsCh <- struct{}{}
+					continue requests
 				}
 				if resp.StatusCode != 200 {
 					Lerr("[%v] query status, %d", client.Addr, resp.StatusCode)
-					statusUpdates <- nil
-					continue
+					errorsCh <- struct{}{}
+					continue requests
 				}
 				decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
 				var parsed []bongacamsModel
@@ -95,8 +96,8 @@ func StartBongaCamsAPIChecker(
 					if dbg {
 						Ldbg("response: %s", buf.String())
 					}
-					statusUpdates <- nil
-					continue
+					errorsCh <- struct{}{}
+					continue requests
 				}
 
 				for _, m := range parsed {

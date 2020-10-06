@@ -78,6 +78,9 @@ var migrations = []func(w *worker){
 	func(w *worker) {
 		w.mustExec("alter table users add blacklist integer not null default 0;")
 	},
+	func(w *worker) {
+		w.mustExec("alter table users add show_images integer not null default 1;")
+	},
 }
 
 func (w *worker) applyMigrations() {
