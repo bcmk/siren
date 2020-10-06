@@ -274,6 +274,10 @@ func checkInv(w *worker, t *testing.T) {
 		t.Errorf("unexpected inv check result, left: %v, right: %v", a, b)
 		t.Log(string(debug.Stack()))
 	}
+	if !reflect.DeepEqual(a, w.lastStatusChanges) {
+		t.Errorf("unexpected inv check result, left: %v, right: %v", a, w.lastStatusChanges)
+		t.Log(string(debug.Stack()))
+	}
 	confOnlineQuery := w.mustQuery(`select model_id, status from models`)
 	defer func() { checkErr(confOnlineQuery.Close()) }()
 	confOnline := map[string]bool{}
