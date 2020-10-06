@@ -77,7 +77,6 @@ type Translations struct {
 	SelectCurrency         *Translation `yaml:"select_currency"`
 	UnknownCurrency        *Translation `yaml:"unknown_currency"`
 	BuyAd                  *Translation `yaml:"buy_ad"`
-	YourMaxModels          *Translation `yaml:"your_max_models"`
 	PaymentComplete        *Translation `yaml:"payment_complete"`
 	MailReceived           *Translation `yaml:"mail_received"`
 	BuyButton              *Translation `yaml:"buy_button"`
@@ -93,6 +92,8 @@ type Translations struct {
 	ZeroSubscriptions      *Translation `yaml:"zero_subscriptions"`
 	FAQ                    *Translation `yaml:"faq"`
 	RawCommands            *Translation `yaml:"raw_commands"`
+	Settings               *Translation `yaml:"settings"`
+	OK                     *Translation `yaml:"ok"`
 }
 
 // LoadEndpointTranslations loads translations for a specific endpoint

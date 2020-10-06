@@ -86,10 +86,11 @@ type queryDurationsData struct {
 }
 
 type user struct {
-	chatID    int64
-	maxModels int
-	reports   int
-	blacklist bool
+	chatID     int64
+	maxModels  int
+	reports    int
+	blacklist  bool
+	showImages bool
 }
 
 type worker struct {
@@ -586,17 +587,27 @@ func (w *worker) statusesForChat(endpoint string, chatID int64) []model {
 
 func (w *worker) notifyOfStatuses(notifications []notification) {
 	models := map[string]bool{}
+	chats := map[int64]bool{}
 	for _, n := range notifications {
 		models[n.modelID] = true
+		chats[n.chatID] = true
 	}
 	images := map[string][]byte{}
+	users := map[int64]user{}
 	for m := range models {
 		if url := w.images[m]; url != "" {
 			images[m] = w.download(url)
 		}
 	}
+	for c := range chats {
+		users[c] = w.mustUser(c)
+	}
 	for _, n := range notifications {
-		w.notifyOfStatus(n, images[n.modelID])
+		var image []byte = nil
+		if users[n.chatID].showImages {
+			image = images[n.modelID]
+		}
+		w.notifyOfStatus(n, image)
 	}
 }
 
@@ -617,7 +628,6 @@ func (w *worker) notifyOfStatus(n notification, image []byte) {
 	case lib.StatusDenied:
 		w.sendTr(n.endpoint, n.chatID, false, w.tr[n.endpoint].Denied, data)
 	}
-	w.addUser(n.endpoint, n.chatID)
 	w.mustExec("update users set reports=reports+1 where chat_id=?", n.chatID)
 }
 
@@ -635,18 +645,18 @@ func (w *worker) subscriptionsNumber(endpoint string, chatID int64) int {
 	return w.mustInt("select count(*) from signals where chat_id=? and endpoint=?", chatID, endpoint)
 }
 
-func (w *worker) maxModels(chatID int64) int {
-	user, found := w.user(chatID)
-	if !found {
-		return w.cfg.MaxModels
-	}
-	return user.maxModels
+func (w *worker) user(chatID int64) (user user, found bool) {
+	found = w.maybeRecord("select chat_id, max_models, reports, blacklist, show_images from users where chat_id=?",
+		queryParams{chatID},
+		record{&user.chatID, &user.maxModels, &user.reports, &user.blacklist, &user.showImages})
+	return
 }
 
-func (w *worker) user(chatID int64) (user user, found bool) {
-	found = w.maybeRecord("select chat_id, max_models, reports, blacklist from users where chat_id=?",
-		queryParams{chatID},
-		record{&user.chatID, &user.maxModels, &user.reports, &user.blacklist})
+func (w *worker) mustUser(chatID int64) (user user) {
+	user, found := w.user(chatID)
+	if !found {
+		checkErr(fmt.Errorf("user not found: %d", chatID))
+	}
 	return
 }
 
@@ -695,15 +705,13 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 		return false
 	}
 
-	w.addUser(endpoint, chatID)
-
 	if w.subscriptionExists(endpoint, chatID, modelID) {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].AlreadyAdded, tplData{"model": modelID})
 		return false
 	}
 	subscriptionsNumber := w.subscriptionsNumber(endpoint, chatID)
-	maxModels := w.maxModels(chatID)
-	if subscriptionsNumber >= maxModels {
+	user := w.mustUser(chatID)
+	if subscriptionsNumber >= user.maxModels {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].NotEnoughSubscriptions, nil)
 		w.subscriptionUsage(endpoint, chatID, true)
 		return false
@@ -731,7 +739,7 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 		modelID:  modelID,
 		status:   confirmedStatus,
 		timeDiff: w.modelTimeDiff(modelID, now)}})
-	if subscriptionsNumber >= maxModels-w.cfg.HeavyUserRemainder {
+	if subscriptionsNumber >= user.maxModels-w.cfg.HeavyUserRemainder {
 		w.subscriptionUsage(endpoint, chatID, true)
 	}
 	return true
@@ -739,18 +747,17 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 
 func (w *worker) subscriptionUsage(endpoint string, chatID int64, ad bool) {
 	subscriptionsNumber := w.subscriptionsNumber(endpoint, chatID)
-	maxModels := w.maxModels(chatID)
+	user := w.mustUser(chatID)
 	tr := w.tr[endpoint].SubscriptionUsage
 	if ad {
 		tr = w.tr[endpoint].SubscriptionUsageAd
 	}
 	w.sendTr(endpoint, chatID, false, tr, tplData{
 		"subscriptions_used":  subscriptionsNumber,
-		"total_subscriptions": maxModels})
+		"total_subscriptions": user.maxModels})
 }
 
 func (w *worker) wantMore(endpoint string, chatID int64) {
-	w.subscriptionUsage(endpoint, chatID, false)
 	w.showReferral(endpoint, chatID)
 
 	if w.cfg.CoinPayments == nil || w.cfg.Mail == nil {
@@ -771,6 +778,21 @@ func (w *worker) wantMore(endpoint string, chatID int64) {
 	msg := tg.NewMessage(chatID, text)
 	msg.ReplyMarkup = keyboard
 	w.sendMessage(endpoint, &messageConfig{msg})
+}
+
+func (w *worker) settings(endpoint string, chatID int64) {
+	subscriptionsNumber := w.subscriptionsNumber(endpoint, chatID)
+	user := w.mustUser(chatID)
+	w.sendTr(endpoint, chatID, false, w.tr[endpoint].Settings, tplData{
+		"subscriptions_used":  subscriptionsNumber,
+		"total_subscriptions": user.maxModels,
+		"show_images":         user.showImages,
+	})
+}
+
+func (w *worker) enableImages(endpoint string, chatID int64, showImages bool) {
+	w.mustExec("update users set show_images=?", showImages)
+	w.sendTr(endpoint, chatID, false, w.tr[endpoint].OK, nil)
 }
 
 func (w *worker) removeModel(endpoint string, chatID int64, modelID string) {
@@ -802,12 +824,13 @@ func (w *worker) buy(endpoint string, chatID int64) {
 		buttons = append(buttons, []tg.InlineKeyboardButton{tg.NewInlineKeyboardButtonData(c, "buy_with "+c)})
 	}
 
+	user := w.mustUser(chatID)
 	keyboard := tg.NewInlineKeyboardMarkup(buttons...)
 	tpl := w.tpl[endpoint]
 	text := templateToString(tpl, w.tr[endpoint].SelectCurrency.Key, tplData{
 		"dollars":                 w.cfg.CoinPayments.subscriptionPacketPrice,
 		"number_of_subscriptions": w.cfg.CoinPayments.subscriptionPacketModelNumber,
-		"total_subscriptions":     w.maxModels(chatID) + w.cfg.CoinPayments.subscriptionPacketModelNumber,
+		"total_subscriptions":     user.maxModels + w.cfg.CoinPayments.subscriptionPacketModelNumber,
 	})
 
 	msg := tg.NewMessage(chatID, text)
@@ -820,8 +843,8 @@ func (w *worker) email(endpoint string, chatID int64) string {
 	return username + "@" + w.cfg.Mail.Host
 }
 
-func (w *worker) transaction(uuid string) (status payments.StatusKind, chatID int64, endpoint string) {
-	_ = w.maybeRecord("select status, chat_id, endpoint from transactions where local_id=?",
+func (w *worker) transaction(uuid string) (status payments.StatusKind, chatID int64, endpoint string, found bool) {
+	found = w.maybeRecord("select status, chat_id, endpoint from transactions where local_id=?",
 		queryParams{uuid},
 		record{&status, &chatID, &endpoint})
 	return
@@ -840,7 +863,6 @@ func (w *worker) buyWith(endpoint string, chatID int64, currency string) {
 		return
 	}
 
-	w.addUser(endpoint, chatID)
 	email := w.email(endpoint, chatID)
 	localID := uuid.New()
 	transaction, err := w.coinPaymentsAPI.CreateTransaction(w.cfg.CoinPayments.subscriptionPacketPrice, currency, email, localID.String())
@@ -1059,7 +1081,7 @@ func (w *worker) feedback(endpoint string, chatID int64, text string) {
 	}
 	w.mustExec("insert into feedback (endpoint, chat_id, text) values (?, ?, ?)", endpoint, chatID, text)
 	w.sendTr(endpoint, chatID, false, w.tr[endpoint].Feedback, nil)
-	user, _ := w.user(chatID)
+	user := w.mustUser(chatID)
 	if !user.blacklist {
 		w.sendText(endpoint, w.cfg.AdminID, true, true, lib.ParseRaw, fmt.Sprintf("Feedback from %d: %s", chatID, text))
 	}
@@ -1301,7 +1323,6 @@ func (w *worker) logConfig() {
 }
 
 func (w *worker) myEmail(endpoint string) {
-	w.addUser(endpoint, w.cfg.AdminID)
 	email := w.email(endpoint, w.cfg.AdminID)
 	w.sendText(endpoint, w.cfg.AdminID, true, true, lib.ParseRaw, email)
 }
@@ -1460,10 +1481,14 @@ func (w *worker) showReferral(endpoint string, chatID int64) {
 		w.mustExec("insert into referrals (chat_id, referral_id) values (?, ?)", chatID, *referralID)
 	}
 	referralLink := fmt.Sprintf("https://t.me/%s?start=%s", w.cfg.Endpoints[endpoint].BotName, *referralID)
+	subscriptionsNumber := w.subscriptionsNumber(endpoint, chatID)
+	user := w.mustUser(chatID)
 	w.sendTr(endpoint, chatID, false, w.tr[endpoint].ReferralLink, tplData{
-		"link":           referralLink,
-		"referral_bonus": w.cfg.ReferralBonus,
-		"follower_bonus": w.cfg.FollowerBonus,
+		"link":                referralLink,
+		"referral_bonus":      w.cfg.ReferralBonus,
+		"follower_bonus":      w.cfg.FollowerBonus,
+		"subscriptions_used":  subscriptionsNumber,
+		"total_subscriptions": user.maxModels,
 	})
 }
 
@@ -1504,6 +1529,9 @@ func (w *worker) start(endpoint string, chatID int64, referrer string, now int) 
 func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, arguments string, now int) {
 	w.resetBlock(endpoint, chatID)
 	command = strings.ToLower(command)
+	if command != "start" {
+		w.addUser(endpoint, chatID)
+	}
 	linf("chat: %d, command: %s %s", chatID, command, arguments)
 
 	if chatID == w.cfg.AdminID && w.processAdminMessage(endpoint, chatID, command, arguments) {
@@ -1531,7 +1559,6 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 			"number_of_subscriptions": w.cfg.CoinPayments.subscriptionPacketModelNumber,
 			"max_models":              w.cfg.MaxModels,
 		})
-
 	case "feedback":
 		w.feedback(endpoint, chatID, arguments)
 	case "social":
@@ -1544,6 +1571,12 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		w.sureRemoveAll(endpoint, chatID)
 	case "want_more":
 		w.wantMore(endpoint, chatID)
+	case "settings":
+		w.settings(endpoint, chatID)
+	case "enable_images":
+		w.enableImages(endpoint, chatID, true)
+	case "disable_images":
+		w.enableImages(endpoint, chatID, false)
 	case "buy":
 		if w.cfg.CoinPayments == nil || w.cfg.Mail == nil {
 			unknown()
@@ -1556,8 +1589,6 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 			return
 		}
 		w.buyWith(endpoint, chatID, arguments)
-	case "max_models":
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].YourMaxModels, tplData{"max_models": w.maxModels(chatID)})
 	case "referral":
 		w.showReferral(endpoint, chatID)
 	case "week":
@@ -1860,7 +1891,11 @@ func (w *worker) processIPN(writer http.ResponseWriter, r *http.Request, done ch
 
 	switch newStatus {
 	case payments.StatusFinished:
-		oldStatus, chatID, endpoint := w.transaction(custom)
+		oldStatus, chatID, endpoint, found := w.transaction(custom)
+		if !found {
+			lerr("transaction not found: %s", custom)
+			return
+		}
 		if oldStatus == payments.StatusFinished {
 			lerr("transaction is already finished")
 			return
@@ -1871,7 +1906,8 @@ func (w *worker) processIPN(writer http.ResponseWriter, r *http.Request, done ch
 		}
 		w.mustExec("update transactions set status=? where local_id=?", payments.StatusFinished, custom)
 		w.mustExec("update users set max_models = max_models + (select coalesce(sum(model_number), 0) from transactions where local_id=?)", custom)
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].PaymentComplete, tplData{"max_models": w.maxModels(chatID)})
+		user := w.mustUser(chatID)
+		w.sendTr(endpoint, chatID, false, w.tr[endpoint].PaymentComplete, tplData{"max_models": user.maxModels})
 		linf("payment %s is finished", custom)
 		text := fmt.Sprintf("payment %s is finished", custom)
 		w.sendText(w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, text)

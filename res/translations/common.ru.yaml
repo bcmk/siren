@@ -1,3 +1,6 @@
+ok:
+  parse: raw
+  str: OK
 add_error:
   parse: html
   str: |-
@@ -36,8 +39,8 @@ raw_commands:
     pics - Кадры трансляций в этот момент
     week - График модели в предыдущие 7 дней
     buy - Купить дополнительные подписки
-    max_models - Показать ваши ограничения по подпискам
     help - Список команд
+    settings - Настройки
     feedback - Обратная связь
 commands:
   parse: html
@@ -51,6 +54,7 @@ commands:
     <b>pics</b> — Кадры трансляций в этот момент
     <b>week</b> <code>МОДЕЛЬ</code> — График модели в предыдущие 7 дней
     <b>feedback</b> <code>ВАШЕ_СООБЩЕНИЕ</code> — Обратная связь
+    <b>settings</b> — Настройки
     <b>help</b> — Список команд
 invalid_command:
   parse: raw
@@ -88,6 +92,7 @@ not_enough_subscriptions:
   str: У вас недостаточно подписок
 online:
   parse: html
+  disable_preview: true
   str: |-
     {{- template "affiliate_link" .model -}}
     {{- print " " -}}
@@ -176,6 +181,8 @@ referral_link:
   disable_preview: true
   parse: raw
   str: |-
+    {{ template "subscription_usage" . }}
+
     Зарабатывайте дополнительные подписки, делясь реферальной ссылкой!
     {{ .link }}
 
@@ -198,6 +205,7 @@ social:
   disable_preview: true
   parse: raw
   str: |-
+    <b>Соцсети</b>
     Twitter: https://twitter.com/siren_tlg
     GitHub: https://github.com/bcmk/siren
     Новостной канал: https://t.me/siren_telegram_bot
@@ -211,6 +219,22 @@ subscription_usage_ad:
     Хотите больше подписок? Наберите
 
     /want_more
+settings:
+  parse: html
+  str: |-
+    {{ template "subscription_usage" . }}
+    Не хватает? Наберите /want_more
+
+    Показывать кадры трансляций: <b>{{ template "yes_no" .show_images }}</b>
+    {{- print "\n" -}}
+    {{- if .show_images  -}}
+      Чтобы отключить, наберите /disable_images
+    {{- else -}}
+      Чтобы включить, наберите /enable_images
+    {{- end -}}
+yes_no:
+  parse: raw
+  str: '{{- if . -}} да {{- else -}} нет {{- end -}}'
 syntax_feedback:
   parse: html
   str: |-
@@ -254,9 +278,6 @@ unknown_currency:
 version:
   parse: raw
   str: 'Версия: {{ .version }}'
-your_max_models:
-  parse: raw
-  str: 'Вы можете подписаться на {{ .max_models }} моделей'
 duration:
   str: |-
     {{- if and .Days (not .Hours) -}}

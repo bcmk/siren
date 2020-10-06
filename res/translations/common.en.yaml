@@ -1,3 +1,6 @@
+ok:
+  parse: raw
+  str: OK
 add_error:
   parse: html
   str: |-
@@ -36,8 +39,8 @@ raw_commands:
     pics - Pictures of your models online
     week - Camming hours in the previous 7 days
     buy - Buy additional subscriptions
-    max_models - Show your subscription limit
-    help - Command list
+    help - Help
+    settings - Show settings
     feedback - Send feedback
 commands:
   parse: html
@@ -51,7 +54,8 @@ commands:
     <b>pics</b> — Pictures of your models online
     <b>week</b> <code>CAMNAME</code> — Camming hours in the previous 7 days
     <b>feedback</b> <code>YOUR_MESSAGE</code> — Send feedback
-    <b>help</b> — Command list
+    <b>settings</b> — Show settings
+    <b>help</b> — Help
 invalid_command:
   parse: raw
   str: Invalid command
@@ -88,6 +92,7 @@ not_enough_subscriptions:
   str: You have not enough available subscriptions
 online:
   parse: html
+  disable_preview: true
   str: |-
     {{- template "affiliate_link" .model }}
     {{- print " " -}}
@@ -176,6 +181,8 @@ referral_link:
   disable_preview: true
   parse: raw
   str: |-
+    {{ template "subscription_usage" . }}
+
     Earn additional models by sharing this referral link!
     {{ .link }}
 
@@ -196,8 +203,9 @@ select_currency:
     Please select a cryptocurrency to pay with
 social:
   disable_preview: true
-  parse: raw
+  parse: html
   str: |-
+    <b>Social</b>
     Twitter: https://twitter.com/siren_tlg
     GitHub: https://github.com/bcmk/siren
     News channel: https://t.me/siren_telegram_bot
@@ -207,10 +215,26 @@ subscription_usage:
 subscription_usage_ad:
   parse: raw
   str: |-
-    Subscriptions usage: {{ .subscriptions_used }}/{{ .total_subscriptions }}
+    {{ template "subscription_usage" . }}
     Want more subscriptions? Type
 
     /want_more
+settings:
+  parse: html
+  str: |-
+    {{ template "subscription_usage" . }}
+    Need more? Type /want_more
+
+    Show images in notifications: <b>{{ template "yes_no" .show_images }}</b>
+    {{- print "\n" -}}
+    {{- if .show_images  -}}
+      To disable type /disable_images
+    {{- else -}}
+      To enable type /enable_images
+    {{- end -}}
+yes_no:
+  parse: raw
+  str: '{{- if . -}} yes {{- else -}} no {{- end -}}'
 syntax_feedback:
   parse: html
   str: |-
@@ -254,9 +278,6 @@ unknown_currency:
 version:
   parse: raw
   str: 'Version: {{ .version }}'
-your_max_models:
-  parse: raw
-  str: 'You can subscribe up to {{ .max_models }} models'
 duration:
   str: |-
     {{- if and .Days (not .Hours) -}}
