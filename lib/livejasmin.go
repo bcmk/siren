@@ -89,18 +89,18 @@ func StartLiveJasminAPIChecker(
 	config map[string]string,
 ) (
 	statusRequests chan StatusRequest,
-	output chan []StatusUpdate,
+	output chan []OnlineModel,
 	elapsedCh chan time.Duration,
 ) {
 	statusRequests = make(chan StatusRequest)
-	output = make(chan []StatusUpdate)
+	output = make(chan []OnlineModel)
 	elapsedCh = make(chan time.Duration)
 	clientIdx := 0
 	clientsNum := len(clients)
 	go func() {
-		for request := range statusRequests {
-			hash := map[string]StatusUpdate{}
-			updates := []StatusUpdate{}
+		for _ = range statusRequests {
+			hash := map[string]OnlineModel{}
+			updates := []OnlineModel{}
 			for _, endpoint := range usersOnlineEndpoint {
 				client := clients[clientIdx]
 				clientIdx++
@@ -141,16 +141,11 @@ func StartLiveJasminAPIChecker(
 				}
 				for _, m := range parsed.Data.Models {
 					modelID := strings.ToLower(m.PerformerID)
-					hash[modelID] = StatusUpdate{ModelID: modelID, Status: StatusOnline, Image: "https:" + m.ProfilePictureURL.Size896x503}
+					hash[modelID] = OnlineModel{ModelID: modelID, Image: "https:" + m.ProfilePictureURL.Size896x503}
 				}
 			}
 			for _, statusUpdate := range hash {
 				updates = append(updates, statusUpdate)
-			}
-			for modelID := range request.KnownModels {
-				if _, ok := hash[modelID]; !ok {
-					updates = append(updates, StatusUpdate{ModelID: modelID, Status: StatusOffline})
-				}
 			}
 			output <- updates
 		}

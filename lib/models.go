@@ -7,13 +7,10 @@ var ModelIDRegexp = regexp.MustCompile(`^[a-z0-9\-_@]+$`)
 
 // StatusRequest represents a request of model status
 type StatusRequest struct {
-	KnownModels  map[string]StatusKind
-	ModelsToPoll []string
 }
 
-// StatusUpdate represents an update of model status
-type StatusUpdate struct {
+// OnlineModel represents an update of model status
+type OnlineModel struct {
 	ModelID string
-	Status  StatusKind
 	Image   string
 }

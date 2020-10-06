@@ -56,6 +56,11 @@ type notification struct {
 	timeDiff *timeDiff
 }
 
+type model struct {
+	modelID string
+	status  lib.StatusKind
+}
+
 type statusChange struct {
 	modelID   string
 	status    lib.StatusKind
@@ -96,6 +101,8 @@ type worker struct {
 	updatesDuration          time.Duration
 	changesInPeriod          int
 	confirmedChangesInPeriod int
+	confirmedOnlineModels    map[string]bool
+	lastStatusChanges        map[string]statusChange
 	tr                       map[string]*lib.Translations
 	tpl                      map[string]*template.Template
 	checkModel               func(client *lib.Client, modelID string, headers [][2]string, dbg bool, config map[string]string) lib.StatusKind
@@ -108,7 +115,7 @@ type worker struct {
 		config map[string]string,
 	) (
 		requests chan lib.StatusRequest,
-		output chan []lib.StatusUpdate,
+		output chan []lib.OnlineModel,
 		elapsed chan time.Duration)
 
 	senders               map[string]func(msg tg.Chattable) (tg.Message, error)
@@ -120,10 +127,8 @@ type worker struct {
 	coinPaymentsAPI       *payments.CoinPaymentsAPI
 	ipnServeMux           *http.ServeMux
 	mailTLS               *tls.Config
-	lastStatusChanges     map[string]statusChange
-	confirmedStatuses     map[string]lib.StatusKind
-	images                map[string]string
 	sqlQueryDurations     map[string]queryDurationsData
+	images                map[string]string
 }
 
 type packet struct {
@@ -211,8 +216,8 @@ func newWorker() *worker {
 		downloadErrors:       make([]bool, cfg.errorDenominator),
 		ipnServeMux:          http.NewServeMux(),
 		mailTLS:              mailTLS,
-		images:               map[string]string{},
 		sqlQueryDurations:    map[string]queryDurationsData{},
+		images:               map[string]string{},
 	}
 
 	if cp := cfg.CoinPayments; cp != nil {
@@ -222,14 +227,7 @@ func newWorker() *worker {
 	switch cfg.Website {
 	case "bongacams":
 		w.checkModel = lib.CheckModelBongaCams
-		switch w.cfg.Checker {
-		case checkerAPI:
-			w.startChecker = lib.StartBongaCamsAPIChecker
-		case checkerPolling:
-			w.startChecker = lib.StartBongaCamsPollingChecker
-		default:
-			panic("specify checker")
-		}
+		w.startChecker = lib.StartBongaCamsAPIChecker
 	case "chaturbate":
 		w.checkModel = lib.CheckModelChaturbate
 		w.startChecker = lib.StartChaturbateAPIChecker
@@ -244,45 +242,6 @@ func newWorker() *worker {
 	}
 
 	return w
-}
-
-func (w *worker) cleanStatuses() {
-	if w.cfg.Checker != checkerPolling {
-		return
-	}
-
-	now := int(time.Now().Unix())
-	query := w.mustQuery(`
-		select model_id from models
-		where status != ? and not exists(select * from signals where signals.model_id = models.model_id)`,
-		lib.StatusUnknown)
-	var models []string
-	for query.Next() {
-		var modelID string
-		checkErr(query.Scan(&modelID))
-		models = append(models, modelID)
-	}
-	tx, err := w.db.Begin()
-	checkErr(err)
-	insertStatusChangeStmt, err := tx.Prepare(insertStatusChange)
-	checkErr(err)
-	updateLastStatusChangeStmt, err := tx.Prepare(updateLastStatusChange)
-	checkErr(err)
-	for _, modelID := range models {
-		w.mustExecInTx(tx, "update models set status=? where model_id=?", lib.StatusUnknown, modelID)
-		w.confirmedStatuses[modelID] = lib.StatusUnknown
-		w.mustExecPrepared(insertStatusChange, insertStatusChangeStmt, modelID, lib.StatusUnknown, now)
-		w.mustExecPrepared(updateLastStatusChange, updateLastStatusChangeStmt, modelID, lib.StatusUnknown, now)
-		w.lastStatusChanges[modelID] = statusChange{
-			modelID:   modelID,
-			status:    lib.StatusUnknown,
-			timestamp: now,
-		}
-	}
-	defer w.measure("commit -- clean statuses")()
-	checkErr(insertStatusChangeStmt.Close())
-	checkErr(updateLastStatusChangeStmt.Close())
-	checkErr(tx.Commit())
 }
 
 func trsByEndpoint(cfg *config) map[string][]string {
@@ -438,9 +397,19 @@ func (w *worker) createDatabase() {
 func (w *worker) initCache() {
 	start := time.Now()
 	w.lastStatusChanges = w.queryLastStatusChanges()
-	w.confirmedStatuses = w.queryConfirmedStatuses()
+	w.confirmedOnlineModels = w.queryConfirmedOnlineModels()
 	elapsed := time.Since(start)
 	linf("cache initialized in %d ms", elapsed.Milliseconds())
+}
+
+func (w *worker) lastOnlineModels() map[string]bool {
+	res := map[string]bool{}
+	for k, v := range w.lastStatusChanges {
+		if v.status == lib.StatusOnline {
+			res[k] = true
+		}
+	}
+	return res
 }
 
 func (w *worker) lastSeenInfo(modelID string, now int) (begin int, end int, prevStatus lib.StatusKind) {
@@ -489,29 +458,35 @@ func (w *worker) confirmationSeconds(status lib.StatusKind) int {
 	}
 }
 
-func (w *worker) updateStatus(
-	insertStatusChangeStmt, updateLastStatusChangeStmt, updateModelStatusStmt *sql.Stmt,
-	statusChange statusChange,
-) (
-	changeConfirmed bool,
-) {
+func (w *worker) updateStatus(insertStatusChangeStmt, updateLastStatusChangeStmt *sql.Stmt, statusChange statusChange) {
 	lastStatusChange := w.lastStatusChanges[statusChange.modelID]
 	if statusChange.status != lastStatusChange.status {
 		w.mustExecPrepared(insertStatusChange, insertStatusChangeStmt, statusChange.modelID, statusChange.status, statusChange.timestamp)
 		w.mustExecPrepared(updateLastStatusChange, updateLastStatusChangeStmt, statusChange.modelID, statusChange.status, statusChange.timestamp)
 		w.lastStatusChanges[statusChange.modelID] = statusChange
 	}
-	confirmationSeconds := w.confirmationSeconds(statusChange.status)
-	durationConfirmed := false ||
-		confirmationSeconds == 0 ||
-		(statusChange.status == lastStatusChange.status && statusChange.timestamp-lastStatusChange.timestamp >= confirmationSeconds)
-	if w.confirmedStatuses[statusChange.modelID] != statusChange.status && durationConfirmed {
-		w.mustExecPrepared(updateModelStatus, updateModelStatusStmt, statusChange.modelID, statusChange.status)
-		w.confirmedStatuses[statusChange.modelID] = statusChange.status
-		return true
-	}
+}
 
-	return false
+func (w *worker) confirm(updateModelStatusStmt *sql.Stmt, now int) []string {
+	before := w.confirmedOnlineModels
+	after := w.lastOnlineModels()
+	all, _, _ := hashDiff(before, after)
+	var confirmations []string
+	for _, c := range all {
+		statusChange := w.lastStatusChanges[c]
+		confirmationSeconds := w.confirmationSeconds(statusChange.status)
+		durationConfirmed := confirmationSeconds == 0 || (now-statusChange.timestamp >= confirmationSeconds)
+		if durationConfirmed {
+			if statusChange.status == lib.StatusOnline {
+				w.confirmedOnlineModels[statusChange.modelID] = true
+			} else {
+				delete(w.confirmedOnlineModels, statusChange.modelID)
+			}
+			w.mustExecPrepared(updateModelStatus, updateModelStatusStmt, statusChange.modelID, statusChange.status)
+			confirmations = append(confirmations, statusChange.modelID)
+		}
+	}
+	return confirmations
 }
 
 func (w *worker) modelsToPoll() (models []string) {
@@ -595,7 +570,7 @@ func (w *worker) modelsForChat(endpoint string, chatID int64) []string {
 	return models
 }
 
-func (w *worker) statusesForChat(endpoint string, chatID int64) []lib.StatusUpdate {
+func (w *worker) statusesForChat(endpoint string, chatID int64) []model {
 	statusesQuery := w.mustQuery(`
 		select models.model_id, models.status
 		from models
@@ -605,12 +580,12 @@ func (w *worker) statusesForChat(endpoint string, chatID int64) []lib.StatusUpda
 		chatID,
 		endpoint)
 	defer func() { checkErr(statusesQuery.Close()) }()
-	var statuses []lib.StatusUpdate
+	var statuses []model
 	for statusesQuery.Next() {
 		var modelID string
 		var status lib.StatusKind
 		checkErr(statusesQuery.Scan(&modelID, &status))
-		statuses = append(statuses, lib.StatusUpdate{ModelID: modelID, Status: status})
+		statuses = append(statuses, model{modelID: modelID, status: status})
 	}
 	return statuses
 }
@@ -739,29 +714,28 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 		w.subscriptionUsage(endpoint, chatID, true)
 		return false
 	}
-	confirmedStatus := w.confirmedStatuses[modelID]
-	newStatus := confirmedStatus
-	if newStatus == lib.StatusUnknown {
+	confirmedStatus := lib.StatusUnknown
+	if w.confirmedOnlineModels[modelID] {
+		confirmedStatus = lib.StatusOnline
+	} else if _, ok := w.lastStatusChanges[modelID]; ok {
+		confirmedStatus = lib.StatusOffline
+	} else {
 		checkedStatus := w.checkModel(w.clients[0], modelID, w.cfg.Headers, w.cfg.Debug, w.cfg.SpecificConfig)
 		if checkedStatus == lib.StatusUnknown || checkedStatus == lib.StatusNotFound {
 			w.sendTr(endpoint, chatID, false, w.tr[endpoint].AddError, tplData{"model": modelID})
 			return false
 		}
-		if w.cfg.Checker == checkerAPI {
-			newStatus = lib.StatusOffline
-		}
+		confirmedStatus = lib.StatusOffline
 	}
 	w.mustExec("insert into signals (chat_id, model_id, endpoint) values (?,?,?)", chatID, modelID, endpoint)
-	w.mustExec("insert or ignore into models (model_id, status) values (?,?)", modelID, newStatus)
+	w.mustExec("insert or ignore into models (model_id, status) values (?,?)", modelID, confirmedStatus)
 	subscriptionsNumber++
-	if newStatus != lib.StatusDenied {
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].ModelAdded, tplData{"model": modelID})
-	}
+	w.sendTr(endpoint, chatID, false, w.tr[endpoint].ModelAdded, tplData{"model": modelID})
 	w.notifyOfStatuses([]notification{{
 		endpoint: endpoint,
 		chatID:   chatID,
 		modelID:  modelID,
-		status:   newStatus,
+		status:   confirmedStatus,
 		timeDiff: w.modelTimeDiff(modelID, now)}})
 	if subscriptionsNumber >= maxModels-w.cfg.HeavyUserRemainder {
 		w.subscriptionUsage(endpoint, chatID, true)
@@ -820,13 +794,11 @@ func (w *worker) removeModel(endpoint string, chatID int64, modelID string) {
 		return
 	}
 	w.mustExec("delete from signals where chat_id=? and model_id=? and endpoint=?", chatID, modelID, endpoint)
-	w.cleanStatuses()
 	w.sendTr(endpoint, chatID, false, w.tr[endpoint].ModelRemoved, tplData{"model": modelID})
 }
 
 func (w *worker) sureRemoveAll(endpoint string, chatID int64) {
 	w.mustExec("delete from signals where chat_id=? and endpoint=?", chatID, endpoint)
-	w.cleanStatuses()
 	w.sendTr(endpoint, chatID, false, w.tr[endpoint].AllModelsRemoved, nil)
 }
 
@@ -952,10 +924,10 @@ func (w *worker) listModels(endpoint string, chatID int64, now int) {
 	var online, offline, denied []data
 	for _, s := range statuses {
 		data := data{
-			Model:    s.ModelID,
-			TimeDiff: w.modelTimeDiff(s.ModelID, now),
+			Model:    s.modelID,
+			TimeDiff: w.modelTimeDiff(s.modelID, now),
 		}
-		switch s.Status {
+		switch s.status {
 		case lib.StatusOnline:
 			online = append(online, data)
 		case lib.StatusDenied:
@@ -1006,8 +978,8 @@ func (w *worker) listOnlineModels(endpoint string, chatID int64, now int) {
 	statuses := w.statusesForChat(endpoint, chatID)
 	online := 0
 	for _, s := range statuses {
-		if s.Status == lib.StatusOnline {
-			imageURL := w.images[s.ModelID]
+		if s.status == lib.StatusOnline {
+			imageURL := w.images[s.modelID]
 			var image []byte
 			if imageURL != "" {
 				image = w.download(imageURL)
@@ -1018,14 +990,14 @@ func (w *worker) listOnlineModels(endpoint string, chatID int64, now int) {
 					chatID,
 					false,
 					w.tr[endpoint].Online,
-					tplData{"model": s.ModelID, "time_diff": w.modelTimeDiff(s.ModelID, now)})
+					tplData{"model": s.modelID, "time_diff": w.modelTimeDiff(s.modelID, now)})
 			} else {
 				w.sendTrImage(
 					endpoint,
 					chatID,
 					false,
 					w.tr[endpoint].Online,
-					tplData{"model": s.ModelID, "time_diff": w.modelTimeDiff(s.ModelID, now)},
+					tplData{"model": s.modelID, "time_diff": w.modelTimeDiff(s.modelID, now)},
 					image)
 			}
 			online++
@@ -1187,10 +1159,6 @@ func (w *worker) modelsToPollTotalCount() int {
 		w.cfg.BlockThreshold)
 }
 
-func (w *worker) onlineModelsCount() int {
-	return w.mustInt("select count(*) from models where models.status=?", lib.StatusOnline)
-}
-
 func (w *worker) statusChangesCount() int {
 	return w.mustInt("select max(_rowid_) from status_changes")
 }
@@ -1225,6 +1193,7 @@ func (w *worker) statStrings(endpoint string) []string {
 		fmt.Sprintf("Models: %d", stat.ModelsCount),
 		fmt.Sprintf("Models to poll: %d", stat.ModelsToPollOnEndpointCount),
 		fmt.Sprintf("Models to poll total: %d", stat.ModelsToPollTotalCount),
+		fmt.Sprintf("Models online: %d", stat.OnlineModelsCount),
 		fmt.Sprintf("Status changes: %d", stat.StatusChangesCount),
 		fmt.Sprintf("Queries duration: %d ms", stat.QueriesDurationMilliseconds),
 		fmt.Sprintf("Updates duration: %d ms", stat.UpdatesDurationMilliseconds),
@@ -1618,7 +1587,7 @@ func (w *worker) processPeriodic(statusRequests chan lib.StatusRequest) {
 	}
 
 	select {
-	case statusRequests <- lib.StatusRequest{KnownModels: w.confirmedStatuses, ModelsToPoll: w.modelsToPoll()}:
+	case statusRequests <- lib.StatusRequest{}:
 	default:
 		linf("the queue is full")
 	}
@@ -1636,21 +1605,49 @@ func (w *worker) queryLastStatusChanges() map[string]statusChange {
 	return statusChanges
 }
 
-func (w *worker) queryConfirmedStatuses() map[string]lib.StatusKind {
+func (w *worker) queryConfirmedOnlineModels() map[string]bool {
 	query := w.mustQuery("select model_id, status from models")
 	defer func() { checkErr(query.Close()) }()
-	statuses := map[string]lib.StatusKind{}
+	statuses := map[string]bool{}
 	for query.Next() {
 		var modelID string
 		var status lib.StatusKind
 		checkErr(query.Scan(&modelID, &status))
-		statuses[modelID] = status
+		if status == lib.StatusOnline {
+			statuses[modelID] = true
+		}
 	}
 	return statuses
 }
 
+func hashDiff(before, after map[string]bool) (all, added, removed []string) {
+	for k := range after {
+		if _, ok := before[k]; !ok {
+			added = append(added, k)
+			all = append(all, k)
+		}
+	}
+	for k := range before {
+		if _, ok := after[k]; !ok {
+			removed = append(removed, k)
+			all = append(all, k)
+		}
+	}
+	return
+}
+
+func (w *worker) updateImages(onlineModels []lib.OnlineModel) {
+	for _, u := range onlineModels {
+		if u.Image != "" {
+			w.images[u.ModelID] = u.Image
+		} else {
+			delete(w.images, u.ModelID)
+		}
+	}
+}
+
 func (w *worker) processStatusUpdates(
-	statusUpdates []lib.StatusUpdate,
+	onlineModels []lib.OnlineModel,
 	now int,
 ) (
 	changesCount int,
@@ -1659,6 +1656,7 @@ func (w *worker) processStatusUpdates(
 	elapsed time.Duration,
 ) {
 	start := time.Now()
+	w.updateImages(onlineModels)
 	chatsForModels, endpointsForModels := w.chatsForModels()
 	tx, err := w.db.Begin()
 	checkErr(err)
@@ -1670,35 +1668,37 @@ func (w *worker) processStatusUpdates(
 	updateModelStatusStmt, err := tx.Prepare(updateModelStatus)
 	checkErr(err)
 
-	for _, u := range statusUpdates {
-		if u.Status != lib.StatusUnknown {
-			statusChange := statusChange{modelID: u.ModelID, status: u.Status, timestamp: now}
-			if w.lastStatusChanges[u.ModelID].status != statusChange.status {
-				changesCount++
-			}
-			changeConfirmed := w.updateStatus(insertStatusChangeStmt, updateLastStatusChangeStmt, updateModelStatusStmt, statusChange)
-			if changeConfirmed {
-				confirmedChangesCount++
-			}
-			if u.Image != "" {
-				w.images[u.ModelID] = u.Image
-			} else {
-				delete(w.images, u.ModelID)
-			}
-			if changeConfirmed && (w.cfg.OfflineNotifications || u.Status != lib.StatusOffline) {
-				chats := chatsForModels[u.ModelID]
-				endpoints := endpointsForModels[u.ModelID]
-				for i, chatID := range chats {
-					notifications = append(notifications, notification{
-						endpoint: endpoints[i],
-						chatID:   chatID,
-						modelID:  u.ModelID,
-						status:   u.Status,
-					})
-				}
-			}
+	before := w.lastOnlineModels()
+	after := map[string]bool{}
+	for _, u := range onlineModels {
+		after[u.ModelID] = true
+	}
+	all, _, _ := hashDiff(before, after)
+	changesCount = len(all)
+	for _, u := range all {
+		status := lib.StatusOffline
+		if _, ok := after[u]; ok {
+			status = lib.StatusOnline
+		}
+		statusChange := statusChange{modelID: u, status: status, timestamp: now}
+		w.updateStatus(insertStatusChangeStmt, updateLastStatusChangeStmt, statusChange)
+	}
+
+	confirmations := w.confirm(updateModelStatusStmt, now)
+	for _, c := range confirmations {
+		chats := chatsForModels[c]
+		endpoints := endpointsForModels[c]
+		for i, chatID := range chats {
+			notifications = append(notifications, notification{
+				endpoint: endpoints[i],
+				chatID:   chatID,
+				modelID:  c,
+				status:   w.lastStatusChanges[c].status,
+			})
 		}
 	}
+
+	confirmedChangesCount = len(confirmations)
 
 	defer w.measure("commit -- update statuses")()
 	checkErr(insertStatusChangeStmt.Close())
@@ -1789,8 +1789,8 @@ func (w *worker) getStat(endpoint string) statistics {
 		ModelsCount:                    w.modelsCount(endpoint),
 		ModelsToPollOnEndpointCount:    w.modelsToPollOnEndpointCount(endpoint),
 		ModelsToPollTotalCount:         w.modelsToPollTotalCount(),
-		OnlineModelsCount:              w.onlineModelsCount(),
-		KnownModelsCount:               len(w.confirmedStatuses),
+		OnlineModelsCount:              len(w.confirmedOnlineModels),
+		KnownModelsCount:               len(w.lastStatusChanges),
 		StatusChangesCount:             w.statusChangesCount(),
 		TransactionsOnEndpointCount:    w.transactionsOnEndpoint(endpoint),
 		TransactionsOnEndpointFinished: w.transactionsOnEndpointFinished(endpoint),
@@ -1996,14 +1996,14 @@ func main() {
 	}
 
 	var periodicTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
-	statusRequestsChan, statusUpdatesChan, elapsed := w.startChecker(
+	statusRequestsChan, onlineModelsChan, elapsed := w.startChecker(
 		w.cfg.UsersOnlineEndpoint,
 		w.clients,
 		w.cfg.Headers,
 		w.cfg.IntervalMs,
 		w.cfg.Debug,
 		w.cfg.SpecificConfig)
-	statusRequestsChan <- lib.StatusRequest{KnownModels: w.confirmedStatuses, ModelsToPoll: w.modelsToPoll()}
+	statusRequestsChan <- lib.StatusRequest{}
 	signals := make(chan os.Signal, 16)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT)
 	for {
@@ -2013,11 +2013,12 @@ func main() {
 		case <-periodicTimer.C:
 			runtime.GC()
 			w.processPeriodic(statusRequestsChan)
-		case statusUpdates := <-statusUpdatesChan:
-			w.unsuccessfulRequests[w.successfulRequestsPos] = statusUpdates == nil
+		case onlineModels := <-onlineModelsChan:
+			// check error in different way
+			w.unsuccessfulRequests[w.successfulRequestsPos] = onlineModels == nil
 			w.successfulRequestsPos = (w.successfulRequestsPos + 1) % w.cfg.errorDenominator
 			now := int(time.Now().Unix())
-			changesInPeriod, confirmedChangesInPeriod, notifications, elapsed := w.processStatusUpdates(statusUpdates, now)
+			changesInPeriod, confirmedChangesInPeriod, notifications, elapsed := w.processStatusUpdates(onlineModels, now)
 			w.updatesDuration = elapsed
 			w.changesInPeriod = changesInPeriod
 			w.confirmedChangesInPeriod = confirmedChangesInPeriod

@@ -2,6 +2,7 @@ package main
 
 import (
 	"reflect"
+	"runtime/debug"
 	"testing"
 
 	"github.com/bcmk/siren/lib"
@@ -96,9 +97,9 @@ func TestSql(t *testing.T) {
 		t.Error("unexpected block for model result", chatsForModel)
 	}
 	statuses := w.statusesForChat("ep1", 3)
-	if !reflect.DeepEqual(statuses, []lib.StatusUpdate{
-		{ModelID: "c", Status: lib.StatusOnline},
-		{ModelID: "c2", Status: lib.StatusOnline}}) {
+	if !reflect.DeepEqual(statuses, []model{
+		{modelID: "c", status: lib.StatusOnline},
+		{modelID: "c2", status: lib.StatusOnline}}) {
 		t.Error("unexpected statuses", statuses)
 	}
 	_ = w.db.Close()
@@ -108,125 +109,183 @@ func TestUpdateStatus(t *testing.T) {
 	w := newTestWorker()
 	w.createDatabase()
 	w.initCache()
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 18); n == 0 {
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.processStatusUpdates([]lib.OnlineModel{{ModelID: "a"}}, 18); n == 0 {
 		t.Error("unexpected status update")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 19); n != 0 {
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.processStatusUpdates([]lib.OnlineModel{}, 19); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 20); n != 0 {
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.processStatusUpdates([]lib.OnlineModel{}, 20); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 21); n != 0 {
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.processStatusUpdates([]lib.OnlineModel{{ModelID: "a"}}, 21); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if w.onlineModelsCount() != 1 {
+	checkInv(&w.worker, t)
+	if len(w.confirmedOnlineModels) != 1 {
 		t.Error("wrong online models count")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 22); n != 0 {
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.processStatusUpdates([]lib.OnlineModel{{ModelID: "a"}}, 22); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusNotFound}}, 23); n != 0 {
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.processStatusUpdates([]lib.OnlineModel{}, 23); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if w.onlineModelsCount() != 1 {
+	checkInv(&w.worker, t)
+	if len(w.confirmedOnlineModels) != 1 {
 		t.Error("wrong online models count")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusNotFound}}, 24); n != 0 {
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.processStatusUpdates([]lib.OnlineModel{}, 24); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if w.confirmedStatuses["a"] != lib.StatusOnline {
+	checkInv(&w.worker, t)
+	if !w.confirmedOnlineModels["a"] {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusNotFound}}, 29); n == 0 {
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.processStatusUpdates([]lib.OnlineModel{}, 29); n == 0 {
 		t.Error("unexpected status update")
 	}
-	if w.confirmedStatuses["a"] != lib.StatusNotFound {
+	checkInv(&w.worker, t)
+	if w.confirmedOnlineModels["a"] {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 30); n == 0 {
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.processStatusUpdates([]lib.OnlineModel{{ModelID: "a"}}, 31); n == 0 {
 		t.Error("unexpected status update")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 31); n != 0 {
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.processStatusUpdates([]lib.OnlineModel{}, 32); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusUnknown}}, 32); n != 0 {
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.processStatusUpdates([]lib.OnlineModel{}, 33); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusUnknown}}, 33); n != 0 {
+	checkInv(&w.worker, t)
+	w.processStatusUpdates([]lib.OnlineModel{}, 34)
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.processStatusUpdates([]lib.OnlineModel{}, 35); n != 0 {
 		t.Error("unexpected status update")
 	}
-	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 34)
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusNotFound}}, 35); n != 0 {
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.processStatusUpdates([]lib.OnlineModel{{ModelID: "a"}}, 36); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 37); n != 0 {
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.processStatusUpdates([]lib.OnlineModel{}, 37); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 37); n != 0 {
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.processStatusUpdates([]lib.OnlineModel{{ModelID: "a"}}, 41); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 41); n != 0 {
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.processStatusUpdates([]lib.OnlineModel{}, 42); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 42); n != 0 {
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.processStatusUpdates([]lib.OnlineModel{{ModelID: "a"}}, 48); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 48); n != 0 {
-		t.Error("unexpected status update")
-	}
-	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusNotFound}}, 49)
-	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusNotFound}}, 50)
-	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 50)
-	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusNotFound}}, 52)
-	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "b", Status: lib.StatusOnline}}, 53)
-	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "b", Status: lib.StatusOffline}}, 54)
-	if w.confirmedStatuses["b"] != lib.StatusOnline {
+	checkInv(&w.worker, t)
+	w.processStatusUpdates([]lib.OnlineModel{}, 49)
+	checkInv(&w.worker, t)
+	w.processStatusUpdates([]lib.OnlineModel{}, 50)
+	checkInv(&w.worker, t)
+	w.processStatusUpdates([]lib.OnlineModel{{ModelID: "a"}}, 50)
+	checkInv(&w.worker, t)
+	w.processStatusUpdates([]lib.OnlineModel{}, 52)
+	checkInv(&w.worker, t)
+	w.processStatusUpdates([]lib.OnlineModel{{ModelID: "b"}}, 53)
+	checkInv(&w.worker, t)
+	w.processStatusUpdates([]lib.OnlineModel{}, 54)
+	checkInv(&w.worker, t)
+	if !w.confirmedOnlineModels["b"] {
 		t.Error("wrong active status")
 	}
-	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "b", Status: lib.StatusOnline}}, 55)
-	if w.confirmedStatuses["b"] != lib.StatusOnline {
+	checkInv(&w.worker, t)
+	w.processStatusUpdates([]lib.OnlineModel{{ModelID: "a"}, {ModelID: "b"}}, 55)
+	checkInv(&w.worker, t)
+	if !w.confirmedOnlineModels["b"] {
 		t.Error("wrong active status")
 	}
-	if w.onlineModelsCount() != 2 {
-		t.Error("wrong online models count")
+	checkInv(&w.worker, t)
+	if len(w.confirmedOnlineModels) != 2 {
+		t.Errorf("wrong online models: %v", w.confirmedOnlineModels)
 	}
-	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 56)
-	if count := w.onlineModelsCount(); count != 2 {
+	checkInv(&w.worker, t)
+	w.processStatusUpdates([]lib.OnlineModel{{ModelID: "a"}}, 56)
+	if count := len(w.confirmedOnlineModels); count != 2 {
 		t.Errorf("wrong online models count: %d", count)
 	}
 	w.cfg.OfflineNotifications = true
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 57); n != 0 {
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.processStatusUpdates([]lib.OnlineModel{}, 57); n != 0 {
 		t.Error("unexpected status update")
 	}
-	if w.confirmedStatuses["a"] != lib.StatusOnline {
+	checkInv(&w.worker, t)
+	if !w.confirmedOnlineModels["a"] {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 68); n == 0 {
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.processStatusUpdates([]lib.OnlineModel{}, 68); n == 0 {
 		t.Error("unexpected status update")
 	}
-	if w.confirmedStatuses["a"] != lib.StatusOffline {
+	checkInv(&w.worker, t)
+	if w.confirmedOnlineModels["a"] {
 		t.Error("wrong active status")
 	}
 	_ = w.db.Close()
 }
 
-func TestUpdateStatusFromNotFoundToOnline(t *testing.T) {
-	w := newTestWorker()
-	w.createDatabase()
-	w.initCache()
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusNotFound}}, 18); n != 0 {
-		t.Error("unexpected status update")
+func checkInv(w *worker, t *testing.T) {
+	lastStatusesQueryA := w.mustQuery(`
+		select model_id, status, timestamp
+		from (
+			select *, row_number() over (partition by model_id order by timestamp desc) as row
+			from status_changes
+		)
+		where row = 1
+	`)
+	defer func() { checkErr(lastStatusesQueryA.Close()) }()
+	a := map[string]statusChange{}
+	for lastStatusesQueryA.Next() {
+		var rec statusChange
+		checkErr(lastStatusesQueryA.Scan(&rec.modelID, &rec.status, &rec.timestamp))
+		a[rec.modelID] = rec
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusNotFound}}, 24); n == 0 {
-		t.Error("unexpected status update")
+	lastStatusesQueryB := w.mustQuery(`select model_id, status, timestamp from last_status_changes`)
+	defer func() { checkErr(lastStatusesQueryB.Close()) }()
+	b := map[string]statusChange{}
+	for lastStatusesQueryB.Next() {
+		var rec statusChange
+		checkErr(lastStatusesQueryB.Scan(&rec.modelID, &rec.status, &rec.timestamp))
+		b[rec.modelID] = rec
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 30); n == 0 {
-		t.Error("unexpected status update")
+	if !reflect.DeepEqual(a, b) {
+		t.Errorf("unexpected inv check result, left: %v, right: %v", a, b)
+		t.Log(string(debug.Stack()))
 	}
-	status, _ := w.model("a")
-	if status != lib.StatusOnline {
-		t.Errorf("unexpected status %v", status)
+	confOnlineQuery := w.mustQuery(`select model_id, status from models`)
+	defer func() { checkErr(confOnlineQuery.Close()) }()
+	confOnline := map[string]bool{}
+	for confOnlineQuery.Next() {
+		var rec model
+		checkErr(confOnlineQuery.Scan(&rec.modelID, &rec.status))
+		if rec.status == lib.StatusOnline {
+			confOnline[rec.modelID] = true
+		}
 	}
-	_ = w.db.Close()
+	if !reflect.DeepEqual(w.confirmedOnlineModels, confOnline) {
+		t.Errorf("unexpected inv check result, left: %v, right: %v", w.confirmedOnlineModels, confOnline)
+		t.Log(string(debug.Stack()))
+	}
 }

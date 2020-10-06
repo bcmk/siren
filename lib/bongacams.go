@@ -56,18 +56,18 @@ func StartBongaCamsAPIChecker(
 	_ map[string]string,
 ) (
 	statusRequests chan StatusRequest,
-	statusUpdates chan []StatusUpdate,
+	statusUpdates chan []OnlineModel,
 	elapsedCh chan time.Duration) {
 
 	statusRequests = make(chan StatusRequest)
-	statusUpdates = make(chan []StatusUpdate)
+	statusUpdates = make(chan []OnlineModel)
 	elapsedCh = make(chan time.Duration)
 	clientIdx := 0
 	clientsNum := len(clients)
 	go func() {
-		for request := range statusRequests {
-			hash := map[string]StatusUpdate{}
-			updates := []StatusUpdate{}
+		for _ = range statusRequests {
+			hash := map[string]OnlineModel{}
+			updates := []OnlineModel{}
 			for _, endpoint := range usersOnlineEndpoint {
 				client := clients[clientIdx]
 				clientIdx++
@@ -101,63 +101,13 @@ func StartBongaCamsAPIChecker(
 
 				for _, m := range parsed {
 					modelID := strings.ToLower(m.Username)
-					hash[modelID] = StatusUpdate{ModelID: modelID, Status: StatusOnline, Image: "https:" + m.ProfileImages.ThumbnailImageMediumLive}
+					hash[modelID] = OnlineModel{ModelID: modelID, Image: "https:" + m.ProfileImages.ThumbnailImageMediumLive}
 				}
 			}
 			for _, statusUpdate := range hash {
 				updates = append(updates, statusUpdate)
 			}
-			for modelID := range request.KnownModels {
-				if _, ok := hash[modelID]; !ok {
-					updates = append(updates, StatusUpdate{ModelID: modelID, Status: StatusOffline})
-				}
-			}
 			statusUpdates <- updates
-		}
-	}()
-	return
-}
-
-// StartBongaCamsPollingChecker starts a checker for BongaCams using redirection heuristic
-func StartBongaCamsPollingChecker(
-	usersOnlineEndpoint []string,
-	clients []*Client,
-	headers [][2]string,
-	intervalMs int,
-	debug bool,
-	_ map[string]string,
-) (
-	statusRequests chan StatusRequest,
-	output chan []StatusUpdate,
-	elapsed chan time.Duration) {
-
-	statusRequests = make(chan StatusRequest)
-	output = make(chan []StatusUpdate)
-	elapsed = make(chan time.Duration)
-	clientIdx := 0
-	clientsNum := len(clients)
-	go func() {
-		for request := range statusRequests {
-			start := time.Now()
-			updates := []StatusUpdate{}
-			for _, modelID := range request.ModelsToPoll {
-				queryStart := time.Now()
-				newStatus := CheckModelBongaCams(clients[clientIdx], modelID, headers, debug, nil)
-				updates = append(updates, StatusUpdate{ModelID: modelID, Status: newStatus})
-				queryElapsed := time.Since(queryStart) / time.Millisecond
-				if intervalMs != 0 {
-					sleep := intervalMs/len(clients) - int(queryElapsed)
-					if sleep > 0 {
-						time.Sleep(time.Duration(sleep) * time.Millisecond)
-					}
-				}
-				clientIdx++
-				if clientIdx == clientsNum {
-					clientIdx = 0
-				}
-			}
-			elapsed <- time.Since(start)
-			output <- updates
 		}
 	}()
 	return
