@@ -38,15 +38,6 @@ func (w *worker) mustExec(query string, args ...interface{}) {
 	checkErr(stmt.Close())
 }
 
-func (w *worker) mustExecInTx(tx *sql.Tx, query string, args ...interface{}) {
-	defer w.measure(query)()
-	stmt, err := tx.Prepare(query)
-	checkErr(err)
-	_, err = stmt.Exec(args...)
-	checkErr(err)
-	checkErr(stmt.Close())
-}
-
 func (w *worker) mustExecPrepared(query string, stmt *sql.Stmt, args ...interface{}) {
 	defer w.measure(query)()
 	_, err := stmt.Exec(args...)

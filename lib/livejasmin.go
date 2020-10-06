@@ -98,7 +98,7 @@ func StartLiveJasminAPIChecker(
 	clientIdx := 0
 	clientsNum := len(clients)
 	go func() {
-		for _ = range statusRequests {
+		for range statusRequests {
 			hash := map[string]OnlineModel{}
 			updates := []OnlineModel{}
 			for _, endpoint := range usersOnlineEndpoint {

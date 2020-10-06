@@ -534,13 +534,6 @@ func (w *worker) chatsForModel(modelID string) (chats []int64, endpoints []strin
 	return
 }
 
-func (w *worker) model(modelID string) (status lib.StatusKind, referredUsers int) {
-	_ = w.maybeRecord("select status, referred_users from models where model_id=?",
-		queryParams{modelID},
-		record{&status, &referredUsers})
-	return
-}
-
 func (w *worker) broadcastChats(endpoint string) (chats []int64) {
 	chatsQuery := w.mustQuery(`select distinct chat_id from signals where endpoint=? order by chat_id`, endpoint)
 	defer func() { checkErr(chatsQuery.Close()) }()
@@ -714,7 +707,7 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 		w.subscriptionUsage(endpoint, chatID, true)
 		return false
 	}
-	confirmedStatus := lib.StatusUnknown
+	var confirmedStatus lib.StatusKind
 	if w.confirmedOnlineModels[modelID] {
 		confirmedStatus = lib.StatusOnline
 	} else if _, ok := w.lastStatusChanges[modelID]; ok {
