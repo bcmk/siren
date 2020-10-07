@@ -25,7 +25,6 @@ var testTranslations = lib.Translations{
 	SyntaxFeedback: &lib.Translation{Str: "SyntaxFeedback", Parse: lib.ParseRaw},
 	InvalidSymbols: &lib.Translation{Str: "InvalidSymbols", Parse: lib.ParseRaw},
 	AlreadyAdded:   &lib.Translation{Str: "AlreadyAdded %s", Parse: lib.ParseRaw},
-	YourMaxModels:  &lib.Translation{Str: "YourMaxModels %d", Parse: lib.ParseRaw},
 	AddError:       &lib.Translation{Str: "AddError %s", Parse: lib.ParseRaw},
 	ModelAdded:     &lib.Translation{Str: "ModelAdded %s", Parse: lib.ParseRaw},
 	ModelNotInList: &lib.Translation{Str: "ModelNotInList %s", Parse: lib.ParseRaw},
