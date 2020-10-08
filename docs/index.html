@@ -3,28 +3,48 @@
 
 <head>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&display=swap');
+
         body {
             background-color: #eeeeee !important;
+            font-family: 'Montserrat', sans-serif !important;
         }
 
         #h1 {
+            font-weight: 500;
+            font-size: 30pt;
+            letter-spacing: 7pt;
             color: #c7152b;
             line-height: 1 !important;
             margin-block-end: 0 !important;
         }
 
         h2 {
+            font-weight: 500 !important;
             color: #c7152b;
         }
 
         strong {
             color: #c7152b;
         }
+
+        .title-bottom {
+            margin-top: 5px;
+            font-size: 12pt;
+            line-height: 1.1;
+        }
+
+        .icon {
+            max-width: 100%;
+            width: 40px;
+            height: 40px;
+        }
     </style>
 
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" integrity="sha384-JcKb8q3iqJ61gNV9KGb8thSsNjpSL0n8PARn9HuZOnIxN0hoP+VmmDGMN5t9UJ0Z" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"
+          integrity="sha384-JcKb8q3iqJ61gNV9KGb8thSsNjpSL0n8PARn9HuZOnIxN0hoP+VmmDGMN5t9UJ0Z" crossorigin="anonymous">
     <link rel="icon shortcut" type="image/png" href="icons/siren-32x32.png" sizes="32x32">
     <link rel="icon shortcut" type="image/png" href="icons/siren-48x48.png" sizes="48x48">
     <link rel="icon shortcut" type="image/png" href="icons/siren-64x64.png" sizes="64x64">
@@ -35,136 +55,149 @@
 </head>
 
 <body>
-    <div class="container">
-        <div class="px-3 py-3 pt-md-5 pb-md-4 mx-auto">
-            <table style="margin:0 auto;">
-                <tr>
-                    <td style="vertical-align:middle;">
-                        <img src="icons/siren.svg" alt="" style="max-width:100%;" width="72" height="72">
-                    </td>
-                    <td style="vertical-align:middle; padding-left: 25px;">
-                        <h1 id="h1" class="display-4">SIREN</h1>
-                        <span style="font-size:1em; line-height:1.2;" class="d-block mb-0 text-muted">The Telegram bot for<br>adult webcasts alerts</span>
-                    </td>
-                    <td style="width:25px;"></td>
-                </tr>
-            </table>
+<div class="container">
+    <div class="px-3 py-3 pt-md-5 pb-md-4 mx-auto">
+        <table class="mx-auto">
+            <tr>
+                <td style="vertical-align:middle;">
+                    <img src="icons/siren.svg" alt="" class="icon">
+                </td>
+                <td style="vertical-align:middle; padding-left: 30px;">
+                    <h1 id="h1">SIREN</h1>
+                </td>
+            </tr>
+            <tr>
+                <td colspan="2" style="text-align:center;">
+                </td>
+            </tr>
+        </table>
+        <div class="mx-auto text-muted title-bottom text-center">
+            The Telegram bot for<br>adult webcasts alerts
         </div>
-
-        <p class="lead">
-            Get notifications in Telegram whenever
-            <a href="https://chaturbate.com">Chaturbate</a>,
-            <a href="https://go.clbjmp.com?userId=d100c22f4c1ce24c2706ec4ac744d0bbd9a2a46fc437add588196a2d7aa9db07">Stripchat</a>,
-            <a href="https://bongacams7.com/track?c=673886">BongaCams</a>, and
-            <a href="https://livejasmin.com">LiveJasmin</a>
-            models are online!
-            You just subscribe to your favorite webcam models with <strong>/add</strong> command.
-            Now we notify you whenever they start broadcasting.
-        </p>
-
-        <h2>Installation</h2>
-
-        <ul>
-            <li>Chaturbate #1: <a href="https://t.me/ChaturbateAlarmBot">t.me/ChaturbateAlarmBot</a></li>
-            <li>Chaturbate #2: <a href="https://t.me/ChaturbateAlertsBot">t.me/ChaturbateAlertsBot</a></li>
-            <li>Stripchat and xHamster Live: <a href="https://t.me/StripchatOnlineBot">t.me/StripchatOnlineBot</a></li>
-            <li>BongaCams: <a href="https://t.me/BongacamsOnlineBot">t.me/BongacamsOnlineBot</a></li>
-            <li>LiveJasmin: <a href="https://t.me/LiveJasminSirenBot">t.me/LiveJasminSirenBot</a></li>
-        </ul>
-        <p>For bots in other languages change the language on the bottom of the page</p>
-
-        <h2>Commands</h2>
-
-        <ul>
-            <li><b>add</b> <em><strong>MODEL_ID</strong></em> — Add model</li>
-            <li><b>remove</b> <em><strong>MODEL_ID</strong></em> — Remove model</li>
-            <li><b>remove_all</b> — Remove all models</li>
-            <li><b>list</b> — Your model subscriptions</li>
-            <li><b>pics</b> — Pictures of your models online</li>
-            <li><b>week</b> — Camming hours in the previous 7 days</li>
-            <li><b>help</b> — Help</li>
-            <li><b>settings</b> — Show settings</li>
-            <li><b>feedback</b> <em><strong>YOUR_MESSAGE</strong></em> — Send feedback</li>
-        </ul>
-
-        <p>
-            Replace <em><strong>MODEL_ID</strong></em> by the actual model ID.
-            It is the same as model name in Chaturbate and Stripchat.
-            For BongaCams you can find a model ID in the address line of your browser.
-        </p>
-
-        <h2>Referral links</h2>
-        <p>
-            Type <strong>/referral</strong> and get your referral link.
-            You will get two additional subscriptions for every new user registered using this link.
-            Such new user will also get two additional subscriptions.
-            Share it on Twitter, Instagram and other social media.
-        </p>
-
-        <h2 id="models">Referral links for models</h2>
-        <p>
-            First of all we need to say this bot has nothing to do with you personal Telegram account.
-            You don't need to have Telegram to use it.
-            Do you want your followers to get automatic notifications in Telegram whenever you are online?
-            Add our referral link to your profile page on Chaturbate, Stripchat and BongaCams.
-            You can set up floating icon in Chaturbate.
-            Also share it on Twitter, Instagram or other social media.
-            Users follow you in our bot by this link.
-            Then the only thing you need to do is to start broadcasting.
-            Our bot checks who is online and sends notifications automatically.
-            Use following referral links:
-        </p>
-
-        <ul class="list-unstyled">
-            <li>Chaturbate: <p class="text-nowrap overflow-auto">https://t.me/ChaturbateAlarmBot?start=m-<strong><em>YOUR_USERNAME</em></strong></p></li>
-            <li>Stripchat: <p class="text-nowrap overflow-auto">https://t.me/StripchatOnlineBot?start=m-<strong><em>YOUR_USERNAME</em></strong></p></li>
-            <li>BongaCams:
-                <p class="text-nowrap overflow-auto">https://t.me/BongacamsOnlineBot?start=m-<strong><em>YOUR_USERNAME</em></strong></p>
-                <p class="p-3 mb-2 bg-warning">Please don't use your display name or real name. Use the username you log in with!</p>
-            </li>
-            <li>LiveJasmin: <p class="text-nowrap overflow-auto">https://t.me/LiveJasminSirenBot?start=m-<strong><em>YOUR_USERNAME</em></strong></p></li>
-        </ul>
-
-        <p>
-            Substitute <em><strong>YOUR_USERNAME</strong></em> with your actual login username.
-        </p>
-
-        <p>Recommended text: "Get a notification in Telegram whenever I'm online <em><strong>YOUR LINK</strong></em>".</p>
-        <p>You can use these <a href="https://github.com/bcmk/siren/tree/master/docs/icons">icons</a>.</p>
-        <p>For bots in other languages change the language on the bottom of the page</p>
-        <p>Write to <a href="mailto:siren.chat@gmail.com">siren.chat@gmail.com</a> in case of any questions.</p>
-
-        <h2>Privacy policy</h2>
-        <p>
-            We do not store any sensitive personal information.
-            We store only your Telegram chat ID that is essential for core functionality of the bot.
-            Telegram chat ID is just a number which we use to send you notifications.
-        </p>
-
-        <footer class="pt-4 my-md-5 pt-md-5 border-top">
-            <div class="row">
-                <div class="col-12 col-md">
-                    <img class="mb-2" src="icons/siren.svg" alt="" style="max-width:100%;" width="40" height="40">
-                    <small class="d-block mb-0 text-muted">&copy; 2019-2020</small>
-                    <small class="d-block mb-3 text-muted"><a href="mailto:siren.chat@gmail.com">siren.chat@gmail.com</a></small>
-                </div>
-                <div class="col-6 col-md">
-                    <h5>Links</h5>
-                    <ul class="list-unstyled text-small">
-                        <li><a class="text-muted" href="https://github.com/bcmk/siren"><i class="fab fa-github"></i> GitHub</a></li>
-                        <li><a class="text-muted" href="https://twitter.com/siren_tlg"><i class="fab fa-twitter"></i> Twitter</a></li>
-                        <li><a class="text-muted" href="https://www.wecamgirls.com/users/sirenbot">WeCamgirls</a></li>
-                    </ul>
-                </div>
-                <div class="col-6 col-md">
-                    <h5>Languages</h5>
-                    <ul class="list-unstyled text-small">
-                        <li><span class="text-muted">English</span></li>
-                        <li><a class="text-muted" href="ru.html">Русский</a></li>
-                    </ul>
-                </div>
-            </div>
-        </footer>
     </div>
+
+    <p>
+        Get notifications in Telegram whenever
+        <a href="https://chaturbate.com">Chaturbate</a>,
+        <a href="https://go.clbjmp.com?userId=d100c22f4c1ce24c2706ec4ac744d0bbd9a2a46fc437add588196a2d7aa9db07">Stripchat</a>,
+        <a href="https://bongacams7.com/track?c=673886">BongaCams</a>, and
+        <a href="https://livejasmin.com">LiveJasmin</a>
+        models are online!
+        You subscribe to your favorite webcam models with <strong>/add</strong> command.
+        We notify you whenever they start broadcasting.
+    </p>
+
+    <h2>Installation</h2>
+
+    <ul>
+        <li>Chaturbate #1: <a href="https://t.me/ChaturbateAlarmBot">t.me/ChaturbateAlarmBot</a></li>
+        <li>Chaturbate #2: <a href="https://t.me/ChaturbateAlertsBot">t.me/ChaturbateAlertsBot</a></li>
+        <li>Stripchat and xHamster Live: <a href="https://t.me/StripchatOnlineBot">t.me/StripchatOnlineBot</a></li>
+        <li>BongaCams: <a href="https://t.me/BongacamsOnlineBot">t.me/BongacamsOnlineBot</a></li>
+        <li>LiveJasmin: <a href="https://t.me/LiveJasminSirenBot">t.me/LiveJasminSirenBot</a></li>
+    </ul>
+    <p>For bots in other languages change the language on the bottom of the page</p>
+
+    <h2>Commands</h2>
+
+    <ul>
+        <li><b>add</b> <em><strong>MODEL_ID</strong></em> — Add model</li>
+        <li><b>remove</b> <em><strong>MODEL_ID</strong></em> — Remove model</li>
+        <li><b>remove_all</b> — Remove all models</li>
+        <li><b>list</b> — Your model subscriptions</li>
+        <li><b>pics</b> — Pictures of your models online</li>
+        <li><b>week</b> — Camming hours in the previous 7 days</li>
+        <li><b>help</b> — Help</li>
+        <li><b>settings</b> — Show settings</li>
+        <li><b>feedback</b> <em><strong>YOUR_MESSAGE</strong></em> — Send feedback</li>
+    </ul>
+
+    <p>
+        Replace <em><strong>MODEL_ID</strong></em> by the actual model ID.
+        It is the same as model name in Chaturbate and Stripchat.
+        For BongaCams you can find a model ID in the address line of your browser.
+    </p>
+
+    <h2>Referral links</h2>
+    <p>
+        Type <strong>/referral</strong> and get your referral link.
+        You will get two additional subscriptions for every new user registered using this link.
+        Such new user will also get two additional subscriptions.
+        Share it on Twitter, Instagram and other social media.
+    </p>
+
+    <h2 id="models">Referral links for models</h2>
+    <p>
+        First of all we need to say this bot has nothing to do with you personal Telegram account.
+        You don't need to have Telegram to use it.
+        Do you want your followers to get automatic notifications in Telegram whenever you are online?
+        Add our referral link to your profile page on Chaturbate, Stripchat and BongaCams.
+        You can set up floating icon in Chaturbate.
+        Also share it on Twitter, Instagram or other social media.
+        Users follow you in our bot by this link.
+        Then the only thing you need to do is to start broadcasting.
+        Our bot checks who is online and sends notifications automatically.
+        Use following referral links:
+    </p>
+
+    <ul class="list-unstyled">
+        <li>Chaturbate: <p class="text-nowrap overflow-auto">https://t.me/ChaturbateAlarmBot?start=m-<strong><em>YOUR_USERNAME</em></strong>
+        </p></li>
+        <li>Stripchat: <p class="text-nowrap overflow-auto">https://t.me/StripchatOnlineBot?start=m-<strong><em>YOUR_USERNAME</em></strong>
+        </p></li>
+        <li>BongaCams:
+            <p class="text-nowrap overflow-auto">https://t.me/BongacamsOnlineBot?start=m-<strong><em>YOUR_USERNAME</em></strong>
+            </p>
+            <p class="p-3 mb-2 bg-warning">Please don't use your display name or real name. Use the username you log in
+                with!</p>
+        </li>
+        <li>LiveJasmin: <p class="text-nowrap overflow-auto">https://t.me/LiveJasminSirenBot?start=m-<strong><em>YOUR_USERNAME</em></strong>
+        </p></li>
+    </ul>
+
+    <p>
+        Substitute <em><strong>YOUR_USERNAME</strong></em> with your actual login username.
+    </p>
+
+    <p>Recommended text: "Get a notification in Telegram whenever I'm online <em><strong>YOUR LINK</strong></em>".</p>
+    <p>You can use these <a href="https://github.com/bcmk/siren/tree/master/docs/icons">icons</a>.</p>
+    <p>For bots in other languages change the language on the bottom of the page</p>
+    <p>Write to <a href="mailto:siren.chat@gmail.com">siren.chat@gmail.com</a> in case of any questions.</p>
+
+    <h2>Privacy policy</h2>
+    <p>
+        We do not store any sensitive personal information.
+        We store only your Telegram chat ID that is essential for core functionality of the bot.
+        Telegram chat ID is just a number which we use to send you notifications.
+    </p>
+
+    <footer class="pt-4 my-md-5 pt-md-5 border-top">
+        <div class="row">
+            <div class="col-12 col-md">
+                <img class="mb-2" src="icons/siren.svg" alt="" style="max-width:100%;" width="40" height="40">
+                <small class="d-block mb-0 text-muted">&copy; 2019-2020</small>
+                <small class="d-block mb-3 text-muted"><a
+                        href="mailto:siren.chat@gmail.com">siren.chat@gmail.com</a></small>
+            </div>
+            <div class="col-6 col-md">
+                <h5>Links</h5>
+                <ul class="list-unstyled text-small">
+                    <li><a class="text-muted" href="https://github.com/bcmk/siren"><i class="fab fa-github"></i> GitHub</a>
+                    </li>
+                    <li><a class="text-muted" href="https://twitter.com/siren_tlg"><i class="fab fa-twitter"></i>
+                        Twitter</a></li>
+                    <li><a class="text-muted" href="https://www.wecamgirls.com/users/sirenbot">WeCamgirls</a></li>
+                </ul>
+            </div>
+            <div class="col-6 col-md">
+                <h5>Languages</h5>
+                <ul class="list-unstyled text-small">
+                    <li><span class="text-muted">English</span></li>
+                    <li><a class="text-muted" href="ru.html">Русский</a></li>
+                </ul>
+            </div>
+        </div>
+    </footer>
+</div>
 </body>
 </html>
