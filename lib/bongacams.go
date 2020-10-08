@@ -100,6 +100,12 @@ func StartBongaCamsAPIChecker(
 					continue requests
 				}
 
+				if len(parsed) == 0 {
+					Lerr("[%v] zero online models reported", client.Addr)
+					errorsCh <- struct{}{}
+					continue requests
+				}
+
 				for _, m := range parsed {
 					modelID := strings.ToLower(m.Username)
 					hash[modelID] = OnlineModel{ModelID: modelID, Image: "https:" + m.ProfileImages.ThumbnailImageMediumLive}
