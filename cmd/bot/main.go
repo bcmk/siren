@@ -799,7 +799,7 @@ func (w *worker) settings(endpoint string, chatID int64) {
 }
 
 func (w *worker) enableImages(endpoint string, chatID int64, showImages bool) {
-	w.mustExec("update users set show_images=?", showImages)
+	w.mustExec("update users set show_images=? where chat_id=?", showImages, chatID)
 	w.sendTr(endpoint, chatID, false, w.tr[endpoint].OK, nil)
 }
 
