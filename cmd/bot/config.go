@@ -76,7 +76,7 @@ type config struct {
 	UsersOnlineEndpoint         []string                  `json:"users_online_endpoint"`          // the endpoint to fetch online users
 	StatusConfirmationSeconds   statusConfirmationSeconds `json:"status_confirmation_seconds"`    // a status is confirmed only if it lasts for at least this number of seconds
 	OfflineNotifications        bool                      `json:"offline_notifications"`          // enable offline notifications
-	SQLPrelude                  string                    `json:"sql_prelude"`                    // run these SQL commands before any other
+	SQLPrelude                  []string                  `json:"sql_prelude"`                    // run these SQL commands before any other
 	EnableWeek                  bool                      `json:"enable_week"`                    // enable week command
 	AffiliateLink               string                    `json:"affiliate_link"`                 // affiliate link template
 	SpecificConfig              map[string]string         `json:"specific_config"`                // the config for specific website

@@ -126,7 +126,7 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if len(w.confirmedOnlineModels) != 1 {
+	if len(w.ourOnline) != 1 {
 		t.Error("wrong online models count")
 	}
 	checkInv(&w.worker, t)
@@ -138,7 +138,7 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if len(w.confirmedOnlineModels) != 1 {
+	if len(w.ourOnline) != 1 {
 		t.Error("wrong online models count")
 	}
 	checkInv(&w.worker, t)
@@ -146,7 +146,7 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if !w.confirmedOnlineModels["a"] {
+	if !w.ourOnline["a"] {
 		t.Error("wrong active status")
 	}
 	checkInv(&w.worker, t)
@@ -154,7 +154,7 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if w.confirmedOnlineModels["a"] {
+	if w.ourOnline["a"] {
 		t.Error("wrong active status")
 	}
 	checkInv(&w.worker, t)
@@ -208,22 +208,22 @@ func TestUpdateStatus(t *testing.T) {
 	checkInv(&w.worker, t)
 	w.processStatusUpdates([]lib.OnlineModel{}, 54)
 	checkInv(&w.worker, t)
-	if !w.confirmedOnlineModels["b"] {
+	if !w.ourOnline["b"] {
 		t.Error("wrong active status")
 	}
 	checkInv(&w.worker, t)
 	w.processStatusUpdates([]lib.OnlineModel{{ModelID: "a"}, {ModelID: "b"}}, 55)
 	checkInv(&w.worker, t)
-	if !w.confirmedOnlineModels["b"] {
+	if !w.ourOnline["b"] {
 		t.Error("wrong active status")
 	}
 	checkInv(&w.worker, t)
-	if len(w.confirmedOnlineModels) != 2 {
-		t.Errorf("wrong online models: %v", w.confirmedOnlineModels)
+	if len(w.ourOnline) != 2 {
+		t.Errorf("wrong online models: %v", w.ourOnline)
 	}
 	checkInv(&w.worker, t)
 	w.processStatusUpdates([]lib.OnlineModel{{ModelID: "a"}}, 56)
-	if count := len(w.confirmedOnlineModels); count != 2 {
+	if count := len(w.ourOnline); count != 2 {
 		t.Errorf("wrong online models count: %d", count)
 	}
 	w.cfg.OfflineNotifications = true
@@ -232,7 +232,7 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if !w.confirmedOnlineModels["a"] {
+	if !w.ourOnline["a"] {
 		t.Error("wrong active status")
 	}
 	checkInv(&w.worker, t)
@@ -240,7 +240,7 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if w.confirmedOnlineModels["a"] {
+	if w.ourOnline["a"] {
 		t.Error("wrong active status")
 	}
 	_ = w.db.Close()
@@ -274,8 +274,8 @@ func checkInv(w *worker, t *testing.T) {
 		t.Errorf("unexpected inv check result, left: %v, right: %v", a, b)
 		t.Log(string(debug.Stack()))
 	}
-	if !reflect.DeepEqual(a, w.lastStatusChanges) {
-		t.Errorf("unexpected inv check result, left: %v, right: %v", a, w.lastStatusChanges)
+	if !reflect.DeepEqual(a, w.siteStatuses) {
+		t.Errorf("unexpected inv check result, left: %v, right: %v", a, w.siteStatuses)
 		t.Log(string(debug.Stack()))
 	}
 	confOnlineQuery := w.mustQuery(`select model_id, status from models`)
@@ -288,8 +288,8 @@ func checkInv(w *worker, t *testing.T) {
 			confOnline[rec.modelID] = true
 		}
 	}
-	if !reflect.DeepEqual(w.confirmedOnlineModels, confOnline) {
-		t.Errorf("unexpected inv check result, left: %v, right: %v", w.confirmedOnlineModels, confOnline)
+	if !reflect.DeepEqual(w.ourOnline, confOnline) {
+		t.Errorf("unexpected inv check result, left: %v, right: %v", w.ourOnline, confOnline)
 		t.Log(string(debug.Stack()))
 	}
 }

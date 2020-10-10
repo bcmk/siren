@@ -102,8 +102,9 @@ type worker struct {
 	updatesDuration          time.Duration
 	changesInPeriod          int
 	confirmedChangesInPeriod int
-	confirmedOnlineModels    map[string]bool
-	lastStatusChanges        map[string]statusChange
+	ourOnline                map[string]bool
+	siteStatuses             map[string]statusChange
+	siteOnline               map[string]bool
 	tr                       map[string]*lib.Translations
 	tpl                      map[string]*template.Template
 	checkModel               func(client *lib.Client, modelID string, headers [][2]string, dbg bool, config map[string]string) lib.StatusKind
@@ -129,7 +130,7 @@ type worker struct {
 	coinPaymentsAPI       *payments.CoinPaymentsAPI
 	ipnServeMux           *http.ServeMux
 	mailTLS               *tls.Config
-	sqlQueryDurations     map[string]queryDurationsData
+	durations             map[string]queryDurationsData
 	images                map[string]string
 }
 
@@ -218,7 +219,7 @@ func newWorker() *worker {
 		downloadErrors:       make([]bool, cfg.errorDenominator),
 		ipnServeMux:          http.NewServeMux(),
 		mailTLS:              mailTLS,
-		sqlQueryDurations:    map[string]queryDurationsData{},
+		durations:            map[string]queryDurationsData{},
 		images:               map[string]string{},
 	}
 
@@ -227,6 +228,9 @@ func newWorker() *worker {
 	}
 
 	switch cfg.Website {
+	case "test":
+		w.checkModel = lib.CheckModelTest
+		w.startChecker = lib.StartTestChecker
 	case "bongacams":
 		w.checkModel = lib.CheckModelBongaCams
 		w.startChecker = lib.StartBongaCamsAPIChecker
@@ -389,8 +393,8 @@ func (w *worker) sendTrImage(endpoint string, chatID int64, notify bool, transla
 
 func (w *worker) createDatabase() {
 	linf("creating database if needed...")
-	if w.cfg.SQLPrelude != "" {
-		w.mustExec(w.cfg.SQLPrelude)
+	for _, prelude := range w.cfg.SQLPrelude {
+		w.mustExec(prelude)
 	}
 	w.mustExec(`create table if not exists schema_version (version integer);`)
 	w.applyMigrations()
@@ -398,15 +402,16 @@ func (w *worker) createDatabase() {
 
 func (w *worker) initCache() {
 	start := time.Now()
-	w.lastStatusChanges = w.queryLastStatusChanges()
-	w.confirmedOnlineModels = w.queryConfirmedOnlineModels()
+	w.siteStatuses = w.queryLastStatusChanges()
+	w.siteOnline = w.getLastOnlineModels()
+	w.ourOnline = w.queryConfirmedOnlineModels()
 	elapsed := time.Since(start)
 	linf("cache initialized in %d ms", elapsed.Milliseconds())
 }
 
-func (w *worker) lastOnlineModels() map[string]bool {
+func (w *worker) getLastOnlineModels() map[string]bool {
 	res := map[string]bool{}
-	for k, v := range w.lastStatusChanges {
+	for k, v := range w.siteStatuses {
 		if v.status == lib.StatusOnline {
 			res[k] = true
 		}
@@ -460,29 +465,32 @@ func (w *worker) confirmationSeconds(status lib.StatusKind) int {
 	}
 }
 
-func (w *worker) updateStatus(insertStatusChangeStmt, updateLastStatusChangeStmt *sql.Stmt, statusChange statusChange) {
-	lastStatusChange := w.lastStatusChanges[statusChange.modelID]
-	if statusChange.status != lastStatusChange.status {
-		w.mustExecPrepared(insertStatusChange, insertStatusChangeStmt, statusChange.modelID, statusChange.status, statusChange.timestamp)
-		w.mustExecPrepared(updateLastStatusChange, updateLastStatusChangeStmt, statusChange.modelID, statusChange.status, statusChange.timestamp)
-		w.lastStatusChanges[statusChange.modelID] = statusChange
+func (w *worker) updateStatus(insertStatusChangeStmt, updateLastStatusChangeStmt *sql.Stmt, next statusChange) {
+	prev := w.siteStatuses[next.modelID]
+	if next.status != prev.status {
+		w.mustExecPrepared(insertStatusChange, insertStatusChangeStmt, next.modelID, next.status, next.timestamp)
+		w.mustExecPrepared(updateLastStatusChange, updateLastStatusChangeStmt, next.modelID, next.status, next.timestamp)
+		w.siteStatuses[next.modelID] = next
+		if next.status == lib.StatusOnline {
+			w.siteOnline[next.modelID] = true
+		} else {
+			delete(w.siteOnline, next.modelID)
+		}
 	}
 }
 
 func (w *worker) confirm(updateModelStatusStmt *sql.Stmt, now int) []string {
-	before := w.confirmedOnlineModels
-	after := w.lastOnlineModels()
-	all, _, _ := hashDiff(before, after)
+	all, _, _ := hashDiff(w.ourOnline, w.siteOnline)
 	var confirmations []string
 	for _, c := range all {
-		statusChange := w.lastStatusChanges[c]
+		statusChange := w.siteStatuses[c]
 		confirmationSeconds := w.confirmationSeconds(statusChange.status)
 		durationConfirmed := confirmationSeconds == 0 || (now-statusChange.timestamp >= confirmationSeconds)
 		if durationConfirmed {
 			if statusChange.status == lib.StatusOnline {
-				w.confirmedOnlineModels[statusChange.modelID] = true
+				w.ourOnline[statusChange.modelID] = true
 			} else {
-				delete(w.confirmedOnlineModels, statusChange.modelID)
+				delete(w.ourOnline, statusChange.modelID)
 			}
 			w.mustExecPrepared(updateModelStatus, updateModelStatusStmt, statusChange.modelID, statusChange.status)
 			confirmations = append(confirmations, statusChange.modelID)
@@ -717,9 +725,9 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 		return false
 	}
 	var confirmedStatus lib.StatusKind
-	if w.confirmedOnlineModels[modelID] {
+	if w.ourOnline[modelID] {
 		confirmedStatus = lib.StatusOnline
-	} else if _, ok := w.lastStatusChanges[modelID]; ok {
+	} else if _, ok := w.siteStatuses[modelID]; ok {
 		confirmedStatus = lib.StatusOffline
 	} else {
 		checkedStatus := w.checkModel(w.clients[0], modelID, w.cfg.Headers, w.cfg.Debug, w.cfg.SpecificConfig)
@@ -1228,8 +1236,8 @@ func (w *worker) stat(endpoint string) {
 	w.sendText(endpoint, w.cfg.AdminID, true, true, lib.ParseRaw, strings.Join(w.statStrings(endpoint), "\n"))
 }
 
-func (w *worker) sqlStat(endpoint string) {
-	durations := w.sqlQueryDurations
+func (w *worker) performanceStat(endpoint string) {
+	durations := w.durations
 	var queries []string
 	for x := range durations {
 		queries = append(queries, x)
@@ -1240,8 +1248,8 @@ func (w *worker) sqlStat(endpoint string) {
 	for _, x := range queries {
 		lines := []string{
 			fmt.Sprintf("<b>Query</b>: %s", html.EscapeString(x)),
-			fmt.Sprintf("<b>Total</b>: %f", durations[x].avg*float64(durations[x].count)),
-			fmt.Sprintf("<b>Avg</b>: %f", durations[x].avg),
+			fmt.Sprintf("<b>Total</b>: %d", int(durations[x].avg*float64(durations[x].count)*1000.)),
+			fmt.Sprintf("<b>Avg</b>: %d", int(durations[x].avg*1000.)),
 			fmt.Sprintf("<b>Count</b>: %d", durations[x].count),
 		}
 		entry := strings.Join(lines, "\n")
@@ -1332,8 +1340,8 @@ func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arg
 	case "stat":
 		w.stat(endpoint)
 		return true
-	case "sql_stat":
-		w.sqlStat(endpoint)
+	case "performance":
+		w.performanceStat(endpoint)
 		return true
 	case "email":
 		w.myEmail(endpoint)
@@ -1648,13 +1656,11 @@ func (w *worker) queryConfirmedOnlineModels() map[string]bool {
 func hashDiff(before, after map[string]bool) (all, added, removed []string) {
 	for k := range after {
 		if _, ok := before[k]; !ok {
-			added = append(added, k)
 			all = append(all, k)
 		}
 	}
 	for k := range before {
 		if _, ok := after[k]; !ok {
-			removed = append(removed, k)
 			all = append(all, k)
 		}
 	}
@@ -1693,23 +1699,31 @@ func (w *worker) processStatusUpdates(
 	updateModelStatusStmt, err := tx.Prepare(updateModelStatus)
 	checkErr(err)
 
-	before := w.lastOnlineModels()
-	after := map[string]bool{}
+	next := map[string]bool{}
+	hashDone := w.measure("algo: hash diff")
 	for _, u := range onlineModels {
-		after[u.ModelID] = true
+		next[u.ModelID] = true
 	}
-	all, _, _ := hashDiff(before, after)
+	all, _, _ := hashDiff(w.siteOnline, next)
+	hashDone()
+
 	changesCount = len(all)
+
+	statusDone := w.measure("db: status updates")
 	for _, u := range all {
 		status := lib.StatusOffline
-		if _, ok := after[u]; ok {
+		if _, ok := next[u]; ok {
 			status = lib.StatusOnline
 		}
 		statusChange := statusChange{modelID: u, status: status, timestamp: now}
 		w.updateStatus(insertStatusChangeStmt, updateLastStatusChangeStmt, statusChange)
 	}
+	statusDone()
 
+	confirmationsDone := w.measure("db: confirmations")
 	confirmations := w.confirm(updateModelStatusStmt, now)
+	confirmationsDone()
+
 	for _, c := range confirmations {
 		chats := chatsForModels[c]
 		endpoints := endpointsForModels[c]
@@ -1718,14 +1732,14 @@ func (w *worker) processStatusUpdates(
 				endpoint: endpoints[i],
 				chatID:   chatID,
 				modelID:  c,
-				status:   w.lastStatusChanges[c].status,
+				status:   w.siteStatuses[c].status,
 			})
 		}
 	}
 
 	confirmedChangesCount = len(confirmations)
 
-	defer w.measure("commit -- update statuses")()
+	defer w.measure("db: update statuses commit")()
 	checkErr(insertStatusChangeStmt.Close())
 	checkErr(updateLastStatusChangeStmt.Close())
 	checkErr(updateModelStatusStmt.Close())
@@ -1814,8 +1828,8 @@ func (w *worker) getStat(endpoint string) statistics {
 		ModelsCount:                    w.modelsCount(endpoint),
 		ModelsToPollOnEndpointCount:    w.modelsToPollOnEndpointCount(endpoint),
 		ModelsToPollTotalCount:         w.modelsToPollTotalCount(),
-		OnlineModelsCount:              len(w.confirmedOnlineModels),
-		KnownModelsCount:               len(w.lastStatusChanges),
+		OnlineModelsCount:              len(w.ourOnline),
+		KnownModelsCount:               len(w.siteStatuses),
 		StatusChangesCount:             w.statusChangesCount(),
 		TransactionsOnEndpointCount:    w.transactionsOnEndpoint(endpoint),
 		TransactionsOnEndpointFinished: w.transactionsOnEndpointFinished(endpoint),

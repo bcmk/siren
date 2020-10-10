@@ -62,7 +62,7 @@ func newTestWorker() *testWorker {
 			cfg:               &testConfig,
 			clients:           nil,
 			tr:                map[string]*lib.Translations{"test": &testTranslations},
-			sqlQueryDurations: map[string]queryDurationsData{},
+			durations: map[string]queryDurationsData{},
 		},
 	}
 	w.checkModel = w.testCheckModel
