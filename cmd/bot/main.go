@@ -1247,7 +1247,7 @@ func (w *worker) performanceStat(endpoint string) {
 	})
 	for _, x := range queries {
 		lines := []string{
-			fmt.Sprintf("<b>Query</b>: %s", html.EscapeString(x)),
+			fmt.Sprintf("<b>Desc</b>: %s", html.EscapeString(x)),
 			fmt.Sprintf("<b>Total</b>: %d", int(durations[x].avg*float64(durations[x].count)*1000.)),
 			fmt.Sprintf("<b>Avg</b>: %d", int(durations[x].avg*1000.)),
 			fmt.Sprintf("<b>Count</b>: %d", durations[x].count),
@@ -1739,7 +1739,7 @@ func (w *worker) processStatusUpdates(
 
 	confirmedChangesCount = len(confirmations)
 
-	defer w.measure("db: update statuses commit")()
+	defer w.measure("db: status updates commit")()
 	checkErr(insertStatusChangeStmt.Close())
 	checkErr(updateLastStatusChangeStmt.Close())
 	checkErr(updateModelStatusStmt.Close())
