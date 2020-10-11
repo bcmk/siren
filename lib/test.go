@@ -10,33 +10,22 @@ func CheckModelTest(client *Client, modelID string, headers [][2]string, dbg boo
 	return StatusOnline
 }
 
-// StartTestChecker mimics checker
-func StartTestChecker(
-	usersOnlineEndpoint []string,
-	clients []*Client,
+// TestOnlineAPI returns random online models
+func TestOnlineAPI(
+	endpoint string,
+	client *Client,
 	headers [][2]string,
-	intervalMs int,
 	dbg bool,
 	_ map[string]string,
 ) (
-	statusRequests chan StatusRequest,
-	statusUpdates chan []OnlineModel,
-	errorsCh chan struct{},
-	elapsedCh chan time.Duration) {
-
-	statusRequests = make(chan StatusRequest)
-	statusUpdates = make(chan []OnlineModel)
-	errorsCh = make(chan struct{})
-	elapsedCh = make(chan time.Duration)
-	go func() {
-		for range statusRequests {
-			updates := []OnlineModel{}
-			for i := 0; i < 300; i++ {
-				updates = append(updates, OnlineModel{ModelID: RandString(4), Image: ""})
-			}
-			statusUpdates <- updates
-		}
-	}()
+	onlineModels map[string]OnlineModel,
+	err error,
+) {
+	onlineModels = map[string]OnlineModel{}
+	for i := 0; i < 300; i++ {
+		modelID := randString(4)
+		onlineModels[modelID] = OnlineModel{ModelID: modelID, Image: ""}
+	}
 	return
 }
 
@@ -46,7 +35,7 @@ func init() {
 
 var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
-func RandString(n int) string {
+func randString(n int) string {
 	b := make([]rune, n)
 	for i := range b {
 		b[i] = letterRunes[rand.Intn(len(letterRunes))]

@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
-	"time"
 )
 
 type liveJasminModel struct {
@@ -79,79 +78,43 @@ func liveJasminStatus(roomStatus string) StatusKind {
 	return StatusUnknown
 }
 
-// StartLiveJasminAPIChecker starts a checker for LiveJasmin
-func StartLiveJasminAPIChecker(
-	usersOnlineEndpoint []string,
-	clients []*Client,
+// LiveJasminOnlineAPI returns LiveJasmin online models
+func LiveJasminOnlineAPI(
+	endpoint string,
+	client *Client,
 	headers [][2]string,
-	intervalMs int,
 	dbg bool,
-	config map[string]string,
+	_ map[string]string,
 ) (
-	statusRequests chan StatusRequest,
-	output chan []OnlineModel,
-	errorsCh chan struct{},
-	elapsedCh chan time.Duration,
+	onlineModels map[string]OnlineModel,
+	err error,
 ) {
-	statusRequests = make(chan StatusRequest)
-	output = make(chan []OnlineModel)
-	errorsCh = make(chan struct{})
-	elapsedCh = make(chan time.Duration)
-	clientIdx := 0
-	clientsNum := len(clients)
-	go func() {
-	requests:
-		for range statusRequests {
-			hash := map[string]OnlineModel{}
-			updates := []OnlineModel{}
-			for _, endpoint := range usersOnlineEndpoint {
-				client := clients[clientIdx]
-				clientIdx++
-				if clientIdx == clientsNum {
-					clientIdx = 0
-				}
-
-				resp, buf, elapsed, err := onlineQuery(endpoint, client, headers)
-				elapsedCh <- elapsed
-				if err != nil {
-					Lerr("[%v] cannot send a query, %v", client.Addr, err)
-					errorsCh <- struct{}{}
-					continue requests
-				}
-				if resp.StatusCode != 200 {
-					Lerr("[%v] query status, %d", client.Addr, resp.StatusCode)
-					errorsCh <- struct{}{}
-					continue requests
-				}
-				decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
-				var parsed liveJasminResponse
-				err = decoder.Decode(&parsed)
-				if err != nil {
-					Lerr("[%v] cannot parse response, %v", client.Addr, err)
-					if dbg {
-						Ldbg("response: %s", buf.String())
-					}
-					errorsCh <- struct{}{}
-					continue requests
-				}
-				if parsed.Status != "OK" {
-					Lerr("[%v] cannot query a list of models, %d", client.Addr, parsed.ErrorCode)
-					if dbg {
-						Ldbg("response: %s", buf.String())
-					}
-					errorsCh <- struct{}{}
-					continue requests
-				}
-				for _, m := range parsed.Data.Models {
-					modelID := strings.ToLower(m.PerformerID)
-					hash[modelID] = OnlineModel{ModelID: modelID, Image: "https:" + m.ProfilePictureURL.Size896x503}
-				}
-			}
-			for _, statusUpdate := range hash {
-				updates = append(updates, statusUpdate)
-			}
-			output <- updates
+	onlineModels = map[string]OnlineModel{}
+	resp, buf, err := onlineQuery(endpoint, client, headers)
+	if err != nil {
+		return nil, fmt.Errorf("cannot send a query, %v", err)
+	}
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("query status, %d", resp.StatusCode)
+	}
+	decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
+	var parsed liveJasminResponse
+	err = decoder.Decode(&parsed)
+	if err != nil {
+		if dbg {
+			Ldbg("response: %s", buf.String())
 		}
-	}()
+		return nil, fmt.Errorf("cannot parse response, %v", err)
+	}
+	if parsed.Status != "OK" {
+		if dbg {
+			Ldbg("response: %s", buf.String())
+		}
+		return nil, fmt.Errorf("cannot query a list of models, %d", parsed.ErrorCode)
+	}
+	for _, m := range parsed.Data.Models {
+		modelID := strings.ToLower(m.PerformerID)
+		onlineModels[modelID] = OnlineModel{ModelID: modelID, Image: "https:" + m.ProfilePictureURL.Size896x503}
+	}
 	return
 }

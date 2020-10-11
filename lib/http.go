@@ -56,10 +56,8 @@ func onlineQuery(
 ) (
 	*http.Response,
 	*bytes.Buffer,
-	time.Duration,
 	error,
 ) {
-	start := time.Now()
 	req, err := http.NewRequest("GET", usersOnlineEndpoint, nil)
 	CheckErr(err)
 	for _, h := range headers {
@@ -67,13 +65,13 @@ func onlineQuery(
 	}
 	resp, err := client.Client.Do(req)
 	if err != nil {
-		return nil, nil, time.Duration(0), fmt.Errorf("sending error, %w", err)
+		return nil, nil, fmt.Errorf("sending error, %w", err)
 	}
 	defer func() { CheckErr(resp.Body.Close()) }()
 	buf := bytes.Buffer{}
 	_, err = buf.ReadFrom(resp.Body)
 	if err != nil {
-		return nil, nil, time.Duration(0), fmt.Errorf("cannot read response, %w", err)
+		return nil, nil, fmt.Errorf("cannot read response, %w", err)
 	}
-	return resp, &buf, time.Since(start), nil
+	return resp, &buf, nil
 }

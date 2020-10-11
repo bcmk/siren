@@ -108,18 +108,16 @@ type worker struct {
 	tr                       map[string]*lib.Translations
 	tpl                      map[string]*template.Template
 	checkModel               func(client *lib.Client, modelID string, headers [][2]string, dbg bool, config map[string]string) lib.StatusKind
-	startChecker             func(
-		usersOnlineEndpoint []string,
-		clients []*lib.Client,
+	apiChecker               func(
+		endpoint string,
+		client *lib.Client,
 		headers [][2]string,
-		intervalMs int,
 		debug bool,
 		config map[string]string,
 	) (
-		requests chan lib.StatusRequest,
-		output chan []lib.OnlineModel,
-		errors chan struct{},
-		elapsed chan time.Duration)
+		onlineModels map[string]lib.OnlineModel,
+		err error,
+	)
 
 	senders               map[string]func(msg tg.Chattable) (tg.Message, error)
 	unsuccessfulRequests  []bool
@@ -230,19 +228,19 @@ func newWorker() *worker {
 	switch cfg.Website {
 	case "test":
 		w.checkModel = lib.CheckModelTest
-		w.startChecker = lib.StartTestChecker
+		w.apiChecker = lib.TestOnlineAPI
 	case "bongacams":
 		w.checkModel = lib.CheckModelBongaCams
-		w.startChecker = lib.StartBongaCamsAPIChecker
+		w.apiChecker = lib.BongaCamsOnlineAPI
 	case "chaturbate":
 		w.checkModel = lib.CheckModelChaturbate
-		w.startChecker = lib.StartChaturbateAPIChecker
+		w.apiChecker = lib.ChaturbateOnlineAPI
 	case "stripchat":
 		w.checkModel = lib.CheckModelStripchat
-		w.startChecker = lib.StartStripchatAPIChecker
+		w.apiChecker = lib.StripchatOnlineAPI
 	case "livejasmin":
 		w.checkModel = lib.CheckModelLiveJasmin
-		w.startChecker = lib.StartLiveJasminAPIChecker
+		w.apiChecker = lib.LiveJasminOnlineAPI
 	default:
 		panic("wrong website")
 	}
@@ -1724,6 +1722,10 @@ func (w *worker) processStatusUpdates(
 	confirmations := w.confirm(updateModelStatusStmt, now)
 	confirmationsDone()
 
+	if w.cfg.Debug {
+		ldbg("confirmed online models: %d", len(w.ourOnline))
+	}
+
 	for _, c := range confirmations {
 		chats := chatsForModels[c]
 		endpoints := endpointsForModels[c]
@@ -2040,7 +2042,8 @@ func main() {
 	}
 
 	var periodicTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
-	statusRequestsChan, onlineModelsChan, errorsChan, elapsed := w.startChecker(
+	statusRequestsChan, onlineModelsChan, errorsChan, elapsed := lib.StartAPIChecker(
+		w.apiChecker,
 		w.cfg.UsersOnlineEndpoint,
 		w.clients,
 		w.cfg.Headers,
