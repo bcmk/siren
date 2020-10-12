@@ -130,6 +130,7 @@ type worker struct {
 	mailTLS               *tls.Config
 	durations             map[string]queryDurationsData
 	images                map[string]string
+	botNames              map[string]string
 }
 
 type packet struct {
@@ -219,6 +220,7 @@ func newWorker() *worker {
 		mailTLS:              mailTLS,
 		durations:            map[string]queryDurationsData{},
 		images:               map[string]string{},
+		botNames:             map[string]string{},
 	}
 
 	if cp := cfg.CoinPayments; cp != nil {
@@ -241,6 +243,9 @@ func newWorker() *worker {
 	case "livejasmin":
 		w.checkModel = lib.CheckModelLiveJasmin
 		w.apiChecker = lib.LiveJasminOnlineAPI
+	case "camsoda":
+		w.checkModel = lib.CheckModelCamSoda
+		w.apiChecker = lib.CamSodaOnlineAPI
 	default:
 		panic("wrong website")
 	}
@@ -287,6 +292,15 @@ func (w *worker) removeWebhook() {
 		_, err := w.bots[n].RemoveWebhook()
 		checkErr(err)
 		linf("OK")
+	}
+}
+
+func (w *worker) initBotNames() {
+	for n := range w.cfg.Endpoints {
+		user, err := w.bots[n].GetMe()
+		checkErr(err)
+		linf("bot name for endpoint %s: %s", n, user.UserName)
+		w.botNames[n] = user.UserName
 	}
 }
 
@@ -1486,7 +1500,7 @@ func (w *worker) showReferral(endpoint string, chatID int64) {
 		referralID = &temp
 		w.mustExec("insert into referrals (chat_id, referral_id) values (?, ?)", chatID, *referralID)
 	}
-	referralLink := fmt.Sprintf("https://t.me/%s?start=%s", w.cfg.Endpoints[endpoint].BotName, *referralID)
+	referralLink := fmt.Sprintf("https://t.me/%s?start=%s", w.botNames[endpoint], *referralID)
 	subscriptionsNumber := w.subscriptionsNumber(endpoint, chatID)
 	user := w.mustUser(chatID)
 	w.sendTr(endpoint, chatID, false, w.tr[endpoint].ReferralLink, tplData{
@@ -2012,6 +2026,7 @@ func main() {
 	w.logConfig()
 	w.setWebhook()
 	w.setCommands()
+	w.initBotNames()
 	w.createDatabase()
 	w.initCache()
 

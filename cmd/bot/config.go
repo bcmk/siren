@@ -13,7 +13,6 @@ import (
 )
 
 type endpoint struct {
-	BotName            string   `json:"bot_name"`             // the name of the bot
 	ListenPath         string   `json:"listen_path"`          // the path excluding domain to listen to, the good choice is "/your-telegram-bot-token"
 	ListenAddress      string   `json:"listen_address"`       // the address to listen to
 	WebhookDomain      string   `json:"webhook_domain"`       // the domain listening to the webhook
@@ -114,9 +113,6 @@ func checkConfig(cfg *config) error {
 		}
 	}
 	for _, x := range cfg.Endpoints {
-		if x.BotName == "" {
-			return errors.New("configure bot_name")
-		}
 		if x.ListenAddress == "" {
 			return errors.New("configure listen_address")
 		}

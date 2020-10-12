@@ -9,7 +9,7 @@ help:
   parse: html
   disable_preview: true
   str: |-
-    The bot notifies you whenever your favorite BongaCams models are online.
+    The bot notifies you whenever your favorite CamSoda models are online.
 
     {{ template "commands" }}
 
@@ -20,25 +20,25 @@ help:
     {{ template "sites" }}
 
     {{ template "social" }}
+address_line:
+  parse: html
+  str: Use the camname from an address line of your browser
 languages:
   parse: html
   str: |-
     <b>This bot in other languages</b>
-    Русский: t.me/BongacamsSirenBot
+    Русский: t.me/RuCamSodaSirenBot
 sites:
   parse: html
   str: |-
     <b>This bot for other sites</b>
     Chaturbate: t.me/ChaturbateAlarmBot
+    BongaCams: t.me/BongaCamsOnlineBot
     Stripchat: t.me/StripchatOnlineBot
     LiveJasmin: t.me/LiveJasminSirenBot
-    CamSoda: t.me/CamSodaSirenBot
 add_example:
   parse: html
-  str: /add bbbweb
-address_line:
-  parse: html
-  str: Use the camname from an address line of your browser
+  str: /add gorgonmedusa
 syntax_add:
   parse: html
   str: |-
@@ -80,17 +80,17 @@ zero_subscriptions:
     /add <code>CAMNAME</code>
 
     {{ template "address_line" }}
-faq_no_notifications:
+faq_direct_subscriptions:
   parse: html
   str: >
-    <b>I've subscribed to a model but I don't receive notifications</b>
+    <b>It would be nice if I can subscribe to models directly from their profile pages</b>
 
-    We use the same list of online models as affiliate sites use for advertisements.
-    Some models decided to not appear there so we cannot know when they are online.
-    You can tell a model about this bot and a model may probably change her or his mind on this setting.
+    Actually models can provide a link in their profile pages and a floating icon exacly for this purpose.
+    You can tell a model about this feature.
+    A model can write to siren.chat@gmail.com and we will create a floating icon for her or him for free.
 faq:
   parse: html
   str: |-
-    {{ template "faq_no_notifications" }}
-
     {{ template "faq_pricing" . }}
+
+    {{ template "faq_direct_subscriptions"}}

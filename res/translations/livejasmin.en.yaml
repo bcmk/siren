@@ -23,6 +23,7 @@ sites:
     Chaturbate: t.me/ChaturbateAlarmBot
     BongaCams: t.me/BongaCamsOnlineBot
     Stripchat: t.me/StripchatOnlineBot
+    CamSoda: t.me/CamSodaSirenBot
 add_example:
   parse: html
   str: /add maiaferre

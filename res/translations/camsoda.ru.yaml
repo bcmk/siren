@@ -9,7 +9,7 @@ help:
   parse: html
   disable_preview: true
   str: |-
-    Бот сообщит, когда твоя любимая модель появится в сети BongaCams.
+    Бот сообщит, когда твоя любимая модель появится в сети CamSoda.
 
     {{ template "commands" }}
 
@@ -20,25 +20,25 @@ help:
     {{ template "sites" }}
 
     {{ template "social" }}
+address_line:
+  parse: html
+  str: Используйте идентификатор модели из адресной строки браузера
 languages:
   parse: html
   str: |-
     <b>Этот бот на других языках</b>
-    English: t.me/BongacamsOnlineBot
+    English: t.me/CamSodaSirenBot
 sites:
   parse: html
   str: |-
     <b>Этот бот для других сайтов</b>
     Chaturbate: t.me/ChaturbateSirenBot
+    BongaCams: t.me/BongaCamsSirenBot
     Stripchat: t.me/StripchatSirenBot
     LiveJasmin: t.me/RuLiveJasminSirenBot
-    CamSoda: t.me/RuCamSodaSirenBot
 add_example:
   parse: html
-  str: /add bbbweb
-address_line:
-  parse: html
-  str: Используйте идентификатор модели из адресной строки браузера
+  str: /add gorgonmedusa
 syntax_add:
   parse: html
   str: |-
@@ -50,7 +50,7 @@ syntax_add:
 
     Пример
 
-    /add bbbweb
+    {{ template "add_example" }}
 syntax_remove:
   parse: html
   str: |-
@@ -80,17 +80,17 @@ zero_subscriptions:
     /add <code>МОДЕЛЬ</code>
 
     {{ template "address_line" }}
-faq_no_notifications:
+faq_direct_subscriptions:
   parse: html
   str: >
-    <b>Я подписался на модель, но не получаю оповещений</b>
+    <b>Было бы здорово, если бы можно было подписаться на модель прямо с её страницы</b>
 
-    Для того, чтобы узнать, какие модели сейчас в сети, мы используем тот же список, что и некоторые сайты используют для рекламы BongaCams.
-    Часть моделей не хочет там появляться, поэтому они отключили эту функцию, и мы не можем знать, когда они в сети.
-    Вы можете рассказать модели об этом боте, и, возможно, она изменит своё мнение.
+    Некоторые модели вставляют в свои профили ссылки и плавающие иконки именно для этого.
+    Вы можете рассказать модели об этой возможности.
+    Модель может написать нам по адресу siren.chat@gmail.com, и мы бесплатно нарисуем плавающую иконку специально для неё.
 faq:
   parse: html
   str: |-
-    {{ template "faq_no_notifications" }}
-
     {{ template "faq_pricing" . }}
+
+    {{ template "faq_direct_subscriptions"}}

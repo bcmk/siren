@@ -23,6 +23,7 @@ sites:
     BongaCams: t.me/BongaCamsSirenBot
     Stripchat: t.me/StripchatSirenBot
     LiveJasmin: t.me/RuLiveJasminSirenBot
+    CamSoda: t.me/RuCamSodaSirenBot
 add_example:
   parse: html
   str: /add bbwebcam
