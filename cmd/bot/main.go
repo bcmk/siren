@@ -86,11 +86,12 @@ type queryDurationsData struct {
 }
 
 type user struct {
-	chatID     int64
-	maxModels  int
-	reports    int
-	blacklist  bool
-	showImages bool
+	chatID               int64
+	maxModels            int
+	reports              int
+	blacklist            bool
+	showImages           bool
+	offlineNotifications bool
 }
 
 type worker struct {
@@ -527,17 +528,21 @@ func (w *worker) modelsToPoll() (models []string) {
 	return
 }
 
-func (w *worker) chatsForModels() (chats map[string][]int64, endpoints map[string][]string) {
-	chats = make(map[string][]int64)
+func (w *worker) usersForModels() (users map[string][]user, endpoints map[string][]string) {
+	users = map[string][]user{}
 	endpoints = make(map[string][]string)
-	chatsQuery := w.mustQuery(`select model_id, chat_id, endpoint from signals`)
+	chatsQuery := w.mustQuery(`
+		select signals.model_id, signals.chat_id, signals.endpoint, users.offline_notifications
+		from signals
+		join users on users.chat_id=signals.chat_id`)
 	defer func() { checkErr(chatsQuery.Close()) }()
 	for chatsQuery.Next() {
 		var modelID string
 		var chatID int64
 		var endpoint string
-		checkErr(chatsQuery.Scan(&modelID, &chatID, &endpoint))
-		chats[modelID] = append(chats[modelID], chatID)
+		var offlineNotifications bool
+		checkErr(chatsQuery.Scan(&modelID, &chatID, &endpoint, &offlineNotifications))
+		users[modelID] = append(users[modelID], user{chatID: chatID, offlineNotifications: offlineNotifications})
 		endpoints[modelID] = append(endpoints[modelID], endpoint)
 	}
 	return
@@ -656,19 +661,14 @@ func (w *worker) subscriptionExists(endpoint string, chatID int64, modelID strin
 	return count != 0
 }
 
-func (w *worker) userExists(chatID int64) bool {
-	count := w.mustInt("select count(*) from users where chat_id=?", chatID)
-	return count != 0
-}
-
 func (w *worker) subscriptionsNumber(endpoint string, chatID int64) int {
 	return w.mustInt("select count(*) from signals where chat_id=? and endpoint=?", chatID, endpoint)
 }
 
 func (w *worker) user(chatID int64) (user user, found bool) {
-	found = w.maybeRecord("select chat_id, max_models, reports, blacklist, show_images from users where chat_id=?",
+	found = w.maybeRecord("select chat_id, max_models, reports, blacklist, show_images, offline_notifications from users where chat_id=?",
 		queryParams{chatID},
-		record{&user.chatID, &user.maxModels, &user.reports, &user.blacklist, &user.showImages})
+		record{&user.chatID, &user.maxModels, &user.reports, &user.blacklist, &user.showImages, &user.offlineNotifications})
 	return
 }
 
@@ -804,14 +804,21 @@ func (w *worker) settings(endpoint string, chatID int64) {
 	subscriptionsNumber := w.subscriptionsNumber(endpoint, chatID)
 	user := w.mustUser(chatID)
 	w.sendTr(endpoint, chatID, false, w.tr[endpoint].Settings, tplData{
-		"subscriptions_used":  subscriptionsNumber,
-		"total_subscriptions": user.maxModels,
-		"show_images":         user.showImages,
+		"subscriptions_used":              subscriptionsNumber,
+		"total_subscriptions":             user.maxModels,
+		"show_images":                     user.showImages,
+		"offline_notifications_supported": w.cfg.OfflineNotifications,
+		"offline_notifications":           user.offlineNotifications,
 	})
 }
 
 func (w *worker) enableImages(endpoint string, chatID int64, showImages bool) {
 	w.mustExec("update users set show_images=? where chat_id=?", showImages, chatID)
+	w.sendTr(endpoint, chatID, false, w.tr[endpoint].OK, nil)
+}
+
+func (w *worker) enableOfflineNotifications(endpoint string, chatID int64, offlineNotifications bool) {
+	w.mustExec("update users set offline_notifications=? where chat_id=?", offlineNotifications, chatID)
 	w.sendTr(endpoint, chatID, false, w.tr[endpoint].OK, nil)
 }
 
@@ -1479,7 +1486,7 @@ func (w *worker) refer(followerChatID int64, referrer string) (applied appliedKi
 	if referrerChatID == nil {
 		return invalidReferral
 	}
-	if w.userExists(followerChatID) {
+	if _, exists := w.user(followerChatID); exists {
 		return followerExists
 	}
 	w.mustExec("insert into users (chat_id, max_models) values (?, ?)", followerChatID, w.cfg.MaxModels+w.cfg.FollowerBonus)
@@ -1597,6 +1604,10 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		w.enableImages(endpoint, chatID, true)
 	case "disable_images":
 		w.enableImages(endpoint, chatID, false)
+	case "enable_offline_notifications":
+		w.enableOfflineNotifications(endpoint, chatID, true)
+	case "disable_offline_notifications":
+		w.enableOfflineNotifications(endpoint, chatID, false)
 	case "buy":
 		if w.cfg.CoinPayments == nil || w.cfg.Mail == nil {
 			unknown()
@@ -1700,7 +1711,7 @@ func (w *worker) processStatusUpdates(
 ) {
 	start := time.Now()
 	w.updateImages(onlineModels)
-	chatsForModels, endpointsForModels := w.chatsForModels()
+	usersForModels, endpointsForModels := w.usersForModels()
 	tx, err := w.db.Begin()
 	checkErr(err)
 
@@ -1741,15 +1752,18 @@ func (w *worker) processStatusUpdates(
 	}
 
 	for _, c := range confirmations {
-		chats := chatsForModels[c]
+		users := usersForModels[c]
 		endpoints := endpointsForModels[c]
-		for i, chatID := range chats {
-			notifications = append(notifications, notification{
-				endpoint: endpoints[i],
-				chatID:   chatID,
-				modelID:  c,
-				status:   w.siteStatuses[c].status,
-			})
+		for i, user := range users {
+			status := w.siteStatuses[c].status
+			if (w.cfg.OfflineNotifications && user.offlineNotifications) || status != lib.StatusOffline {
+				notifications = append(notifications, notification{
+					endpoint: endpoints[i],
+					chatID:   user.chatID,
+					modelID:  c,
+					status:   status,
+				})
+			}
 		}
 	}
 

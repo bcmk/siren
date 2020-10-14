@@ -228,9 +228,21 @@ settings:
     Показывать кадры трансляций: <b>{{ template "yes_no" .show_images }}</b>
     {{- print "\n" -}}
     {{- if .show_images  -}}
-      Чтобы отключить, наберите /disable_images
+      Чтобы отключить, кликните /disable_images
     {{- else -}}
-      Чтобы включить, наберите /enable_images
+      Чтобы включить, кликните /enable_images
+    {{- end -}}
+
+    {{- if .offline_notifications_supported -}}
+      {{- print "\n" -}}
+      {{- print "\n" -}}
+      Отправлять оповещения о выходе из сети: <b>{{ template "yes_no" .offline_notifications }}</b>
+      {{- print "\n" -}}
+      {{- if .offline_notifications  -}}
+        Чтобы отключить, кликните /disable_offline_notifications
+      {{- else -}}
+        Чтобы включить, кликнете /enable_offline_notifications
+      {{- end -}}
     {{- end -}}
 yes_no:
   parse: raw

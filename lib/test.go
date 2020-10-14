@@ -21,7 +21,13 @@ func TestOnlineAPI(
 	onlineModels map[string]OnlineModel,
 	err error,
 ) {
+	now := time.Now()
+	seconds := now.Sub(now.Truncate(time.Minute))
 	onlineModels = map[string]OnlineModel{}
+	if seconds < time.Second*30 {
+		toggle := "toggle"
+		onlineModels[toggle] = OnlineModel{ModelID: toggle, Image: ""}
+	}
 	for i := 0; i < 300; i++ {
 		modelID := randString(4)
 		onlineModels[modelID] = OnlineModel{ModelID: modelID, Image: ""}
