@@ -15,16 +15,14 @@ Telegram-бот для оповещений о вебкам-шоу
 Установка
 ---------
 
-* Русский бот для BongaCams: [t.me/BongacamsSirenBot](https://t.me/BongacamsSirenBot)
-* Русский бот для Chaturbate: [t.me/ChaturbateSirenBot](https://t.me/ChaturbateSirenBot)
-* Русский бот для Stripchat и xHamster Live: [t.me/StripchatSirenBot](https://t.me/StripchatSirenBot)
-* Русский бот для LiveJasmin: [t.me/RuLiveJasminSirenBot](https://t.me/RuLiveJasminSirenBot)
-* Русский бот для CamSoda: [t.me/RuCamSodaSirenBot](https://t.me/RuCamSodaSirenBot)
-* Английский бот для BongaCams: [t.me/BongacamsOnlineBot](https://t.me/BongacamsOnlineBot)
-* Английский бот для Chaturbate: [t.me/ChaturbateAlarmBot](https://t.me/ChaturbateAlarmBot)
-* Английский бот для Stripchat и xHamster Live: [t.me/StripchatOnlineBot](https://t.me/StripchatOnlineBot)
-* Английский бот для LiveJasmin: [t.me/LiveJasminSirenBot](https://t.me/LiveJasminSirenBot)
-* Английский бот для CamSoda: [t.me/CamSodaSirenBot](https://t.me/CamSodaSirenBot)
+* BongaCams: [t.me/BongacamsSirenBot](https://t.me/BongacamsSirenBot)
+* Chaturbate: [t.me/ChaturbateSirenBot](https://t.me/ChaturbateSirenBot)
+* Stripchat и xHamster Live: [t.me/StripchatSirenBot](https://t.me/StripchatSirenBot)
+* LiveJasmin: [t.me/RuLiveJasminSirenBot](https://t.me/RuLiveJasminSirenBot)
+* CamSoda: [t.me/RuCamSodaSirenBot](https://t.me/RuCamSodaSirenBot)
+* Flirt4Free: [t.me/RuFlirt4FreeSirenBot](https://t.me/RuFlirt4FreeSirenBot)
+
+Эти боты работают на русском языке. Англоязычные боты можно посмотреть тут [English](README.md)
 
 Команды
 -------
@@ -61,6 +59,8 @@ Telegram-бот для оповещений о вебкам-шоу
   <pre>https://t.me/LiveJasminSirenBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
 * Английский бот для CamSoda:  
   <pre>https://t.me/CamSodaSirenBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
+* Английский бот для Flirt4Free:  
+  <pre>https://t.me/Flirt4FreeSirenBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
 * Русский бот для Chaturbate:  
   <pre>https://t.me/ChaturbateSirenBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
 * Русский бот для Stripchat и xHamster Live:  
@@ -71,6 +71,8 @@ Telegram-бот для оповещений о вебкам-шоу
   <pre>https://t.me/RuLiveJasminSirenBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
 * Русский бот для CamSoda:  
   <pre>https://t.me/RuCamSodaSirenBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
+* Русский бот для Flirt4Free:  
+  <pre>https://t.me/RuFlirt4FreeSirenBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
 
 Замените ___МОДЕЛЬ___ на ваш реальный идентификатор модели.
 Это то же самое, что и имя модели в Chaturbate и Stripchat.
