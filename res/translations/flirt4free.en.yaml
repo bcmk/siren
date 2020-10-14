@@ -1,0 +1,97 @@
+add_error:
+  parse: html
+  str: |-
+    Could not add the model {{ .model }}
+    Check the camname or try later
+    Syntax: /add <code>CAMNAME</code>
+    {{ template "address_line" }}
+help:
+  parse: html
+  disable_preview: true
+  str: |-
+    The bot notifies you whenever your favorite Flirt4Free models are online.
+
+    {{ template "commands" }}
+
+    {{ template "address_line" }}
+
+    {{ template "languages" }}
+
+    {{ template "sites" }}
+
+    {{ template "social" }}
+address_line:
+  parse: html
+  str: Use the camname from an address line of your browser
+languages:
+  parse: html
+  str: |-
+    <b>This bot in other languages</b>
+    Русский: t.me/RuFlirt4FreeSirenBot
+sites:
+  parse: html
+  str: |-
+    <b>This bot for other sites</b>
+    Chaturbate: t.me/ChaturbateAlarmBot
+    BongaCams: t.me/BongaCamsOnlineBot
+    Stripchat: t.me/StripchatOnlineBot
+    LiveJasmin: t.me/LiveJasminSirenBot
+    CamSoda: t.me/CamSodaSirenBot
+add_example:
+  parse: html
+  str: /add dalla-and-mirana
+syntax_add:
+  parse: html
+  str: |-
+    Enter
+
+    /add <code>CAMNAME</code>
+
+    {{ template "address_line" }}
+
+    Example
+
+    {{ template "add_example" }}
+syntax_remove:
+  parse: html
+  str: |-
+    Enter
+
+    /remove <code>CAMNAME</code>
+
+    {{ template "address_line" }}
+unknown_command:
+  parse: html
+  str: |-
+    Unknown command. To subscribe to a model enter
+
+    /add <code>CAMNAME</code>
+
+    {{ template "address_line" }}
+
+    Example
+
+    {{ template "add_example" }}
+zero_subscriptions:
+  parse: html
+  str: |-
+    You are not subscribed to any model
+    To subscribe enter
+
+    /add <code>CAMNAME</code>
+
+    {{ template "address_line" }}
+faq_direct_subscriptions:
+  parse: html
+  str: >
+    <b>It would be nice if I can subscribe to models directly from their profile pages</b>
+
+    Actually models can provide a link in their profile pages and a floating icon exacly for this purpose.
+    You can tell a model about this feature.
+    A model can write to siren.chat@gmail.com and we will create a floating icon for her or him for free.
+faq:
+  parse: html
+  str: |-
+    {{ template "faq_pricing" . }}
+
+    {{ template "faq_direct_subscriptions"}}

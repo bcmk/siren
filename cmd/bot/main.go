@@ -108,6 +108,7 @@ type worker struct {
 	siteOnline               map[string]bool
 	tr                       map[string]*lib.Translations
 	tpl                      map[string]*template.Template
+	modelIDPreprocessing     func(string) string
 	checkModel               func(client *lib.Client, modelID string, headers [][2]string, dbg bool, config map[string]string) lib.StatusKind
 	apiChecker               func(
 		endpoint string,
@@ -152,25 +153,6 @@ const (
 	followerExists
 	referralApplied
 )
-
-//go:generate jsonenums -type=checkerKind
-type checkerKind int
-
-const (
-	checkerAPI checkerKind = iota
-	checkerPolling
-)
-
-func (c checkerKind) String() string {
-	switch c {
-	case checkerAPI:
-		return "api"
-	case checkerPolling:
-		return "polling"
-	default:
-		return "unknown"
-	}
-}
 
 func newWorker() *worker {
 	if len(os.Args) != 2 {
@@ -232,21 +214,31 @@ func newWorker() *worker {
 	case "test":
 		w.checkModel = lib.CheckModelTest
 		w.apiChecker = lib.TestOnlineAPI
+		w.modelIDPreprocessing = lib.CanonicalModelID
 	case "bongacams":
 		w.checkModel = lib.CheckModelBongaCams
 		w.apiChecker = lib.BongaCamsOnlineAPI
+		w.modelIDPreprocessing = lib.CanonicalModelID
 	case "chaturbate":
 		w.checkModel = lib.CheckModelChaturbate
 		w.apiChecker = lib.ChaturbateOnlineAPI
+		w.modelIDPreprocessing = lib.CanonicalModelID
 	case "stripchat":
 		w.checkModel = lib.CheckModelStripchat
 		w.apiChecker = lib.StripchatOnlineAPI
+		w.modelIDPreprocessing = lib.CanonicalModelID
 	case "livejasmin":
 		w.checkModel = lib.CheckModelLiveJasmin
 		w.apiChecker = lib.LiveJasminOnlineAPI
+		w.modelIDPreprocessing = lib.CanonicalModelID
 	case "camsoda":
 		w.checkModel = lib.CheckModelCamSoda
 		w.apiChecker = lib.CamSodaOnlineAPI
+		w.modelIDPreprocessing = lib.CanonicalModelID
+	case "flirt4free":
+		w.checkModel = lib.CheckModelFlirt4Free
+		w.apiChecker = lib.Flirt4FreeOnlineAPI
+		w.modelIDPreprocessing = lib.Flirt4FreeCanonicalModelID
 	default:
 		panic("wrong website")
 	}
@@ -701,7 +693,7 @@ func (w *worker) showWeek(endpoint string, chatID int64, modelID string) {
 }
 
 func (w *worker) showWeekForModel(endpoint string, chatID int64, modelID string) {
-	modelID = strings.ToLower(modelID)
+	modelID = w.modelIDPreprocessing(modelID)
 	if !lib.ModelIDRegexp.MatchString(modelID) {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"model": modelID})
 		return
@@ -719,7 +711,7 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].SyntaxAdd, nil)
 		return false
 	}
-	modelID = strings.ToLower(modelID)
+	modelID = w.modelIDPreprocessing(modelID)
 	if !lib.ModelIDRegexp.MatchString(modelID) {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"model": modelID})
 		return false
@@ -827,7 +819,7 @@ func (w *worker) removeModel(endpoint string, chatID int64, modelID string) {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].SyntaxRemove, nil)
 		return
 	}
-	modelID = strings.ToLower(modelID)
+	modelID = w.modelIDPreprocessing(modelID)
 	if !lib.ModelIDRegexp.MatchString(modelID) {
 		w.sendTr(endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"model": modelID})
 		return
