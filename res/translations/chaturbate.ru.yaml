@@ -24,6 +24,7 @@ sites:
     Stripchat: t.me/StripchatSirenBot
     LiveJasmin: t.me/RuLiveJasminSirenBot
     CamSoda: t.me/RuCamSodaSirenBot
+    Flirt4Free: t.me/RuFlirt4FreeSirenBot
 add_example:
   parse: html
   str: /add bbwebcam

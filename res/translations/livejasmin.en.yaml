@@ -24,6 +24,7 @@ sites:
     BongaCams: t.me/BongaCamsOnlineBot
     Stripchat: t.me/StripchatOnlineBot
     CamSoda: t.me/CamSodaSirenBot
+    Flirt4Free: t.me/Flirt4FreeSirenBot
 add_example:
   parse: html
   str: /add maiaferre

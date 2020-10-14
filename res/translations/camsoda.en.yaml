@@ -36,6 +36,7 @@ sites:
     BongaCams: t.me/BongaCamsOnlineBot
     Stripchat: t.me/StripchatOnlineBot
     LiveJasmin: t.me/LiveJasminSirenBot
+    Flirt4Free: t.me/Flirt4FreeSirenBot
 add_example:
   parse: html
   str: /add gorgonmedusa
