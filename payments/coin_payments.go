@@ -20,7 +20,7 @@ import (
 
 // CoinPaymentsAPI implements CoinPayments API
 type CoinPaymentsAPI struct {
-	nonce      int
+	nonce      int64
 	publicKey  string
 	privateKey string
 	httpClient *http.Client
@@ -32,7 +32,7 @@ type CoinPaymentsAPI struct {
 // NewCoinPaymentsAPI returns new CoinPaymentsAPI object
 func NewCoinPaymentsAPI(publicKey, privateKey, ipnURL string, timeoutSeconds int, debug bool) *CoinPaymentsAPI {
 	return &CoinPaymentsAPI{
-		nonce:      int(time.Now().Unix()),
+		nonce:      time.Now().UnixNano(),
 		publicKey:  publicKey,
 		privateKey: privateKey,
 		httpClient: &http.Client{Timeout: time.Duration(timeoutSeconds) * time.Second},
@@ -55,11 +55,16 @@ func calcHMAC(message, secret string) string {
 }
 
 func (api *CoinPaymentsAPI) coinpaymentsMethod(method string, additionalParams []kv) (body []byte, err error) {
+	now := time.Now().UnixNano()
+	if now > api.nonce {
+		api.nonce = now
+	}
+
 	params := []kv{
 		{"version", "1"},
 		{"cmd", method},
 		{"key", api.publicKey},
-		{"nonce", strconv.Itoa(api.nonce)},
+		{"nonce", strconv.FormatInt(api.nonce, 10)},
 		{"format", "json"}}
 	params = append(params, additionalParams...)
 
