@@ -57,15 +57,14 @@ func newTestWorker() *testWorker {
 	checkErr(err)
 	w := &testWorker{
 		worker: worker{
-			bots:              nil,
-			db:                db,
-			cfg:               &testConfig,
-			clients:           nil,
-			tr:                map[string]*lib.Translations{"test": &testTranslations},
+			bots:      nil,
+			db:        db,
+			cfg:       &testConfig,
+			clients:   nil,
+			tr:        map[string]*lib.Translations{"test": &testTranslations},
 			durations: map[string]queryDurationsData{},
 		},
 	}
 	w.checkModel = w.testCheckModel
-	w.senders = map[string]func(msg tg.Chattable) (tg.Message, error){"ep1": w.testSend, "ep2": w.testSend}
 	return w
 }

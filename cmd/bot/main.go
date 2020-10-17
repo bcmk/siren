@@ -121,7 +121,6 @@ type worker struct {
 		err error,
 	)
 
-	senders               map[string]func(msg tg.Chattable) (tg.Message, error)
 	unsuccessfulRequests  []bool
 	successfulRequestsPos int
 	downloadErrors        []bool
@@ -174,14 +173,12 @@ func newWorker() *worker {
 	}
 
 	bots := make(map[string]*tg.BotAPI)
-	senders := make(map[string]func(msg tg.Chattable) (tg.Message, error))
 	for n, p := range cfg.Endpoints {
 		//noinspection GoNilness
 		var bot *tg.BotAPI
 		bot, err = tg.NewBotAPIWithClient(p.BotToken, tg.APIEndpoint, clients[0].Client)
 		checkErr(err)
 		bots[n] = bot
-		senders[n] = bot.Send
 	}
 	db, err := sql.Open("sqlite3", cfg.DBPath)
 	checkErr(err)
@@ -196,7 +193,6 @@ func newWorker() *worker {
 		clients:              clients,
 		tr:                   tr,
 		tpl:                  tpl,
-		senders:              senders,
 		unsuccessfulRequests: make([]bool, cfg.errorDenominator),
 		downloadErrors:       make([]bool, cfg.errorDenominator),
 		ipnServeMux:          http.NewServeMux(),
