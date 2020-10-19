@@ -170,11 +170,13 @@ const (
 
 const (
 	messageSent                = 200
+	messageBadRequest          = 400
 	messageBlocked             = 403
 	messageTooManyRequests     = 429
 	messageUnknownError        = -1
 	messageUnknownNetworkError = -2
 	messageTimeout             = -3
+	messageMigrate             = -4
 )
 
 type msgSendResult struct {
@@ -442,6 +444,17 @@ func (w *worker) sendMessageInternal(endpoint string, msg baseChattable) int {
 					ldbg("too many requests")
 				}
 				return messageTooManyRequests
+			case messageBadRequest:
+				if err.ResponseParameters.MigrateToChatID != 0 {
+					if w.cfg.Debug {
+						ldbg("group migration")
+					}
+					return messageMigrate
+				}
+				if w.cfg.Debug {
+					ldbg("bad request, error: %v", err)
+				}
+				return err.Code
 			default:
 				if w.cfg.Debug {
 					ldbg("unknown code, error: %v", err)
