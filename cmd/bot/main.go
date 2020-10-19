@@ -436,38 +436,35 @@ func (w *worker) sendMessageInternal(endpoint string, msg baseChattable) int {
 			switch err.Code {
 			case messageBlocked:
 				if w.cfg.Debug {
-					ldbg("message blocked")
+					ldbg("cannot send a message, bot blocked")
 				}
 				return messageBlocked
 			case messageTooManyRequests:
 				if w.cfg.Debug {
-					ldbg("too many requests")
+					ldbg("cannot send a message, too many requests")
 				}
 				return messageTooManyRequests
 			case messageBadRequest:
 				if err.ResponseParameters.MigrateToChatID != 0 {
 					if w.cfg.Debug {
-						ldbg("group migration")
+						ldbg("cannot send a message, group migration")
 					}
 					return messageMigrate
 				}
-				if w.cfg.Debug {
-					ldbg("bad request, error: %v", err)
-				}
+				lerr("cannot send a message, bad request, code: %d, error: %v", err.Code, err)
 				return err.Code
 			default:
-				if w.cfg.Debug {
-					ldbg("unknown code, error: %v", err)
-				}
+				lerr("cannot send a message, unknown code: %d, error: %v", err.Code, err)
 				return err.Code
 			}
 		case net.Error:
 			if err.Timeout() {
+				if w.cfg.Debug {
+					ldbg("cannot send a message, timeout")
+				}
 				return messageTimeout
 			}
-			if w.cfg.Debug {
-				ldbg("unknown network error")
-			}
+			lerr("cannot send a message, unknown network error")
 			return messageUnknownNetworkError
 		default:
 			lerr("unexpected error type while sending a message to %d, %v", chatID, err)
