@@ -4,7 +4,6 @@ import (
 	"database/sql"
 
 	"github.com/bcmk/siren/lib"
-	tg "github.com/bcmk/telegram-bot-api"
 )
 
 var testConfig = config{
@@ -39,17 +38,11 @@ var testTranslations = lib.Translations{
 
 type testWorker struct {
 	worker
-	status    lib.StatusKind
-	message   tg.Message
-	sendError error
+	status lib.StatusKind
 }
 
 func (w *testWorker) testCheckModel(*lib.Client, string, [][2]string, bool, map[string]string) lib.StatusKind {
 	return w.status
-}
-
-func (w *testWorker) testSend(tg.Chattable) (tg.Message, error) {
-	return w.message, w.sendError
 }
 
 func newTestWorker() *testWorker {

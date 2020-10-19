@@ -84,6 +84,16 @@ var migrations = []func(w *worker){
 	func(w *worker) {
 		w.mustExec("alter table users add offline_notifications integer not null default 1;")
 	},
+	func(w *worker) {
+		w.mustExec(`
+			create table interactions (
+				priority integer not null,
+				timestamp integer not null,
+				endpoint text not null,
+				chat_id integer not null,
+				result integer not null,
+				delay integer not null);`)
+	},
 }
 
 func (w *worker) applyMigrations() {

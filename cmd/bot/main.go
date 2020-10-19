@@ -10,6 +10,7 @@ import (
 	"html"
 	"io/ioutil"
 	"math/rand"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -132,11 +133,20 @@ type worker struct {
 	durations             map[string]queryDurationsData
 	images                map[string]string
 	botNames              map[string]string
+	lowPriorityMsg        chan outgoingPacket
+	highPriorityMsg       chan outgoingPacket
+	outgoingMsgResults    chan msgSendResult
 }
 
-type packet struct {
+type incomingPacket struct {
 	message  tg.Update
 	endpoint string
+}
+
+type outgoingPacket struct {
+	message   baseChattable
+	endpoint  string
+	requested time.Time
 }
 
 type email struct {
@@ -152,6 +162,24 @@ const (
 	followerExists
 	referralApplied
 )
+
+const (
+	messageSent                = 200
+	messageBlocked             = 403
+	messageTooManyRequests     = 429
+	messageUnknownError        = -1
+	messageUnknownNetworkError = -2
+	messageTimeout             = -3
+)
+
+type msgSendResult struct {
+	priority  int
+	timestamp int
+	result    int
+	endpoint  string
+	chatID    int64
+	delay     int
+}
 
 func newWorker() *worker {
 	if len(os.Args) != 2 {
@@ -200,6 +228,9 @@ func newWorker() *worker {
 		durations:            map[string]queryDurationsData{},
 		images:               map[string]string{},
 		botNames:             map[string]string{},
+		lowPriorityMsg:       make(chan outgoingPacket, 10000),
+		highPriorityMsg:      make(chan outgoingPacket, 10000),
+		outgoingMsgResults:   make(chan msgSendResult),
 	}
 
 	if cp := cfg.CoinPayments; cp != nil {
@@ -328,7 +359,15 @@ func (w *worker) resetBlock(endpoint string, chatID int64) {
 	w.mustExec("update block set block=0 where endpoint=? and chat_id=?", endpoint, chatID)
 }
 
-func (w *worker) sendText(endpoint string, chatID int64, notify bool, disablePreview bool, parse lib.ParseKind, text string) {
+func (w *worker) sendText(
+	queue chan outgoingPacket,
+	endpoint string,
+	chatID int64,
+	notify bool,
+	disablePreview bool,
+	parse lib.ParseKind,
+	text string,
+) {
 	msg := tg.NewMessage(chatID, text)
 	msg.DisableNotification = !notify
 	msg.DisableWebPagePreview = disablePreview
@@ -336,10 +375,18 @@ func (w *worker) sendText(endpoint string, chatID int64, notify bool, disablePre
 	case lib.ParseHTML, lib.ParseMarkdown:
 		msg.ParseMode = parse.String()
 	}
-	w.sendMessage(endpoint, &messageConfig{msg})
+	w.enqueueMessage(queue, endpoint, &messageConfig{msg})
 }
 
-func (w *worker) sendImage(endpoint string, chatID int64, notify bool, parse lib.ParseKind, text string, image []byte) {
+func (w *worker) sendImage(
+	queue chan outgoingPacket,
+	endpoint string,
+	chatID int64,
+	notify bool,
+	parse lib.ParseKind,
+	text string,
+	image []byte,
+) {
 	fileBytes := tg.FileBytes{Name: "preview", Bytes: image}
 	msg := tg.NewPhotoUpload(chatID, fileBytes)
 	msg.Caption = text
@@ -348,29 +395,56 @@ func (w *worker) sendImage(endpoint string, chatID int64, notify bool, parse lib
 	case lib.ParseHTML, lib.ParseMarkdown:
 		msg.ParseMode = parse.String()
 	}
-	w.sendMessage(endpoint, &photoConfig{msg})
+	w.enqueueMessage(queue, endpoint, &photoConfig{msg})
 }
 
-func (w *worker) sendMessage(endpoint string, msg baseChattable) {
+func (w *worker) enqueueMessage(queue chan outgoingPacket, endpoint string, msg baseChattable) {
+	select {
+	case queue <- outgoingPacket{endpoint: endpoint, message: msg, requested: time.Now()}:
+	default:
+		lerr("the outgoing message queue is full")
+	}
+}
+
+func (w *worker) sender(queue chan outgoingPacket, priority int) {
+	for p := range queue {
+		now := int(time.Now().Unix())
+		w.outgoingMsgResults <- msgSendResult{
+			priority:  priority,
+			timestamp: now,
+			result:    w.sendMessageInternal(p.endpoint, p.message),
+			endpoint:  p.endpoint,
+			chatID:    p.message.baseChat().ChatID,
+			delay:     int(time.Since(p.requested).Milliseconds()),
+		}
+		time.Sleep(60 * time.Millisecond)
+	}
+}
+
+func (w *worker) sendMessageInternal(endpoint string, msg baseChattable) int {
 	chatID := msg.baseChat().ChatID
 	if _, err := w.bots[endpoint].Send(msg); err != nil {
 		switch err := err.(type) {
 		case tg.Error:
-			if err.Code == 403 {
-				linf("bot is blocked by the user %d, %v", chatID, err)
-				w.incrementBlock(endpoint, chatID)
-			} else {
-				lerr("cannot send a message to %d, code %d, %v", chatID, err.Code, err)
+			switch err.Code {
+			case messageBlocked:
+				return messageBlocked
+			case messageTooManyRequests:
+				return messageTooManyRequests
+			default:
+				return err.Code
 			}
+		case net.Error:
+			if err.Timeout() {
+				return messageTimeout
+			}
+			return messageUnknownNetworkError
 		default:
-			lerr("unexpected error type while sending a message to %d, %v", msg.baseChat().ChatID, err)
+			lerr("unexpected error type while sending a message to %d, %v", chatID, err)
+			return messageUnknownError
 		}
-		return
 	}
-	if w.cfg.Debug {
-		ldbg("message sent to %d", chatID)
-	}
-	w.resetBlock(endpoint, chatID)
+	return messageSent
 }
 
 func templateToString(t *template.Template, key string, data map[string]interface{}) string {
@@ -380,16 +454,31 @@ func templateToString(t *template.Template, key string, data map[string]interfac
 	return buf.String()
 }
 
-func (w *worker) sendTr(endpoint string, chatID int64, notify bool, translation *lib.Translation, data map[string]interface{}) {
+func (w *worker) sendTr(
+	queue chan outgoingPacket,
+	endpoint string,
+	chatID int64,
+	notify bool,
+	translation *lib.Translation,
+	data map[string]interface{},
+) {
 	tpl := w.tpl[endpoint]
 	text := templateToString(tpl, translation.Key, data)
-	w.sendText(endpoint, chatID, notify, translation.DisablePreview, translation.Parse, text)
+	w.sendText(queue, endpoint, chatID, notify, translation.DisablePreview, translation.Parse, text)
 }
 
-func (w *worker) sendTrImage(endpoint string, chatID int64, notify bool, translation *lib.Translation, data map[string]interface{}, image []byte) {
+func (w *worker) sendTrImage(
+	queue chan outgoingPacket,
+	endpoint string,
+	chatID int64,
+	notify bool,
+	translation *lib.Translation,
+	data map[string]interface{},
+	image []byte,
+) {
 	tpl := w.tpl[endpoint]
 	text := templateToString(tpl, translation.Key, data)
-	w.sendImage(endpoint, chatID, notify, translation.Parse, text, image)
+	w.sendImage(queue, endpoint, chatID, notify, translation.Parse, text, image)
 }
 
 func (w *worker) createDatabase() {
@@ -598,7 +687,7 @@ func (w *worker) statusesForChat(endpoint string, chatID int64) []model {
 	return statuses
 }
 
-func (w *worker) notifyOfStatuses(notifications []notification) {
+func (w *worker) notifyOfStatuses(queue chan outgoingPacket, notifications []notification) {
 	models := map[string]bool{}
 	chats := map[int64]bool{}
 	for _, n := range notifications {
@@ -620,11 +709,11 @@ func (w *worker) notifyOfStatuses(notifications []notification) {
 		if users[n.chatID].showImages {
 			image = images[n.modelID]
 		}
-		w.notifyOfStatus(n, image)
+		w.notifyOfStatus(queue, n, image)
 	}
 }
 
-func (w *worker) notifyOfStatus(n notification, image []byte) {
+func (w *worker) notifyOfStatus(queue chan outgoingPacket, n notification, image []byte) {
 	if w.cfg.Debug {
 		ldbg("notifying of status of the model %s", n.modelID)
 	}
@@ -632,14 +721,14 @@ func (w *worker) notifyOfStatus(n notification, image []byte) {
 	switch n.status {
 	case lib.StatusOnline:
 		if image == nil {
-			w.sendTr(n.endpoint, n.chatID, true, w.tr[n.endpoint].Online, data)
+			w.sendTr(queue, n.endpoint, n.chatID, true, w.tr[n.endpoint].Online, data)
 		} else {
-			w.sendTrImage(n.endpoint, n.chatID, true, w.tr[n.endpoint].Online, data, image)
+			w.sendTrImage(queue, n.endpoint, n.chatID, true, w.tr[n.endpoint].Online, data, image)
 		}
 	case lib.StatusOffline:
-		w.sendTr(n.endpoint, n.chatID, false, w.tr[n.endpoint].Offline, data)
+		w.sendTr(queue, n.endpoint, n.chatID, false, w.tr[n.endpoint].Offline, data)
 	case lib.StatusDenied:
-		w.sendTr(n.endpoint, n.chatID, false, w.tr[n.endpoint].Denied, data)
+		w.sendTr(queue, n.endpoint, n.chatID, false, w.tr[n.endpoint].Denied, data)
 	}
 	w.mustExec("update users set reports=reports+1 where chat_id=?", n.chatID)
 }
@@ -683,7 +772,7 @@ func (w *worker) showWeek(endpoint string, chatID int64, modelID string) {
 		w.showWeekForModel(endpoint, chatID, m)
 	}
 	if len(models) == 0 {
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].ZeroSubscriptions, nil)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ZeroSubscriptions, nil)
 	}
 
 }
@@ -691,11 +780,11 @@ func (w *worker) showWeek(endpoint string, chatID int64, modelID string) {
 func (w *worker) showWeekForModel(endpoint string, chatID int64, modelID string) {
 	modelID = w.modelIDPreprocessing(modelID)
 	if !lib.ModelIDRegexp.MatchString(modelID) {
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"model": modelID})
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"model": modelID})
 		return
 	}
 	hours, start := w.week(modelID)
-	w.sendTr(endpoint, chatID, false, w.tr[endpoint].Week, tplData{
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Week, tplData{
 		"hours":   hours,
 		"weekday": int(start.UTC().Weekday()),
 		"model":   modelID,
@@ -704,23 +793,23 @@ func (w *worker) showWeekForModel(endpoint string, chatID int64, modelID string)
 
 func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int) bool {
 	if modelID == "" {
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].SyntaxAdd, nil)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].SyntaxAdd, nil)
 		return false
 	}
 	modelID = w.modelIDPreprocessing(modelID)
 	if !lib.ModelIDRegexp.MatchString(modelID) {
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"model": modelID})
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"model": modelID})
 		return false
 	}
 
 	if w.subscriptionExists(endpoint, chatID, modelID) {
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].AlreadyAdded, tplData{"model": modelID})
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].AlreadyAdded, tplData{"model": modelID})
 		return false
 	}
 	subscriptionsNumber := w.subscriptionsNumber(endpoint, chatID)
 	user := w.mustUser(chatID)
 	if subscriptionsNumber >= user.maxModels {
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].NotEnoughSubscriptions, nil)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].NotEnoughSubscriptions, nil)
 		w.subscriptionUsage(endpoint, chatID, true)
 		return false
 	}
@@ -732,7 +821,7 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 	} else {
 		checkedStatus := w.checkModel(w.clients[0], modelID, w.cfg.Headers, w.cfg.Debug, w.cfg.SpecificConfig)
 		if checkedStatus == lib.StatusUnknown || checkedStatus == lib.StatusNotFound {
-			w.sendTr(endpoint, chatID, false, w.tr[endpoint].AddError, tplData{"model": modelID})
+			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].AddError, tplData{"model": modelID})
 			return false
 		}
 		confirmedStatus = lib.StatusOffline
@@ -740,8 +829,8 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 	w.mustExec("insert into signals (chat_id, model_id, endpoint) values (?,?,?)", chatID, modelID, endpoint)
 	w.mustExec("insert or ignore into models (model_id, status) values (?,?)", modelID, confirmedStatus)
 	subscriptionsNumber++
-	w.sendTr(endpoint, chatID, false, w.tr[endpoint].ModelAdded, tplData{"model": modelID})
-	w.notifyOfStatuses([]notification{{
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ModelAdded, tplData{"model": modelID})
+	w.notifyOfStatuses(w.highPriorityMsg, []notification{{
 		endpoint: endpoint,
 		chatID:   chatID,
 		modelID:  modelID,
@@ -760,7 +849,7 @@ func (w *worker) subscriptionUsage(endpoint string, chatID int64, ad bool) {
 	if ad {
 		tr = w.tr[endpoint].SubscriptionUsageAd
 	}
-	w.sendTr(endpoint, chatID, false, tr, tplData{
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, tr, tplData{
 		"subscriptions_used":  subscriptionsNumber,
 		"total_subscriptions": user.maxModels})
 }
@@ -785,13 +874,13 @@ func (w *worker) wantMore(endpoint string, chatID int64) {
 	keyboard := tg.NewInlineKeyboardMarkup(buttons...)
 	msg := tg.NewMessage(chatID, text)
 	msg.ReplyMarkup = keyboard
-	w.sendMessage(endpoint, &messageConfig{msg})
+	w.enqueueMessage(w.highPriorityMsg, endpoint, &messageConfig{msg})
 }
 
 func (w *worker) settings(endpoint string, chatID int64) {
 	subscriptionsNumber := w.subscriptionsNumber(endpoint, chatID)
 	user := w.mustUser(chatID)
-	w.sendTr(endpoint, chatID, false, w.tr[endpoint].Settings, tplData{
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Settings, tplData{
 		"subscriptions_used":              subscriptionsNumber,
 		"total_subscriptions":             user.maxModels,
 		"show_images":                     user.showImages,
@@ -802,35 +891,35 @@ func (w *worker) settings(endpoint string, chatID int64) {
 
 func (w *worker) enableImages(endpoint string, chatID int64, showImages bool) {
 	w.mustExec("update users set show_images=? where chat_id=?", showImages, chatID)
-	w.sendTr(endpoint, chatID, false, w.tr[endpoint].OK, nil)
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].OK, nil)
 }
 
 func (w *worker) enableOfflineNotifications(endpoint string, chatID int64, offlineNotifications bool) {
 	w.mustExec("update users set offline_notifications=? where chat_id=?", offlineNotifications, chatID)
-	w.sendTr(endpoint, chatID, false, w.tr[endpoint].OK, nil)
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].OK, nil)
 }
 
 func (w *worker) removeModel(endpoint string, chatID int64, modelID string) {
 	if modelID == "" {
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].SyntaxRemove, nil)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].SyntaxRemove, nil)
 		return
 	}
 	modelID = w.modelIDPreprocessing(modelID)
 	if !lib.ModelIDRegexp.MatchString(modelID) {
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"model": modelID})
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"model": modelID})
 		return
 	}
 	if !w.subscriptionExists(endpoint, chatID, modelID) {
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].ModelNotInList, tplData{"model": modelID})
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ModelNotInList, tplData{"model": modelID})
 		return
 	}
 	w.mustExec("delete from signals where chat_id=? and model_id=? and endpoint=?", chatID, modelID, endpoint)
-	w.sendTr(endpoint, chatID, false, w.tr[endpoint].ModelRemoved, tplData{"model": modelID})
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ModelRemoved, tplData{"model": modelID})
 }
 
 func (w *worker) sureRemoveAll(endpoint string, chatID int64) {
 	w.mustExec("delete from signals where chat_id=? and endpoint=?", chatID, endpoint)
-	w.sendTr(endpoint, chatID, false, w.tr[endpoint].AllModelsRemoved, nil)
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].AllModelsRemoved, nil)
 }
 
 func (w *worker) buy(endpoint string, chatID int64) {
@@ -850,7 +939,7 @@ func (w *worker) buy(endpoint string, chatID int64) {
 
 	msg := tg.NewMessage(chatID, text)
 	msg.ReplyMarkup = keyboard
-	w.sendMessage(endpoint, &messageConfig{msg})
+	w.enqueueMessage(w.highPriorityMsg, endpoint, &messageConfig{msg})
 }
 
 func (w *worker) email(endpoint string, chatID int64) string {
@@ -874,7 +963,7 @@ func (w *worker) buyWith(endpoint string, chatID int64, currency string) {
 		}
 	}
 	if !found {
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].UnknownCurrency, nil)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].UnknownCurrency, nil)
 		return
 	}
 
@@ -882,7 +971,7 @@ func (w *worker) buyWith(endpoint string, chatID int64, currency string) {
 	localID := uuid.New()
 	transaction, err := w.coinPaymentsAPI.CreateTransaction(w.cfg.CoinPayments.subscriptionPacketPrice, currency, email, localID.String())
 	if err != nil {
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].TryToBuyLater, nil)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].TryToBuyLater, nil)
 		lerr("create transaction failed, %v", err)
 		return
 	}
@@ -922,7 +1011,7 @@ func (w *worker) buyWith(endpoint string, chatID int64, currency string) {
 		currency,
 		endpoint)
 
-	w.sendTr(endpoint, chatID, false, w.tr[endpoint].PayThis, tplData{
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].PayThis, tplData{
 		"price":    transaction.Amount,
 		"currency": currency,
 		"link":     transaction.CheckoutURL,
@@ -967,7 +1056,7 @@ func (w *worker) listModels(endpoint string, chatID int64, now int) {
 			offline = append(offline, data)
 		}
 	}
-	w.sendTr(endpoint, chatID, false, w.tr[endpoint].List, tplData{"online": online, "offline": offline, "denied": denied})
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].List, tplData{"online": online, "offline": offline, "denied": denied})
 }
 
 func (w *worker) modelTimeDiff(modelID string, now int) *timeDiff {
@@ -1017,6 +1106,7 @@ func (w *worker) listOnlineModels(endpoint string, chatID int64, now int) {
 			}
 			if image == nil {
 				w.sendTr(
+					w.highPriorityMsg,
 					endpoint,
 					chatID,
 					false,
@@ -1024,6 +1114,7 @@ func (w *worker) listOnlineModels(endpoint string, chatID int64, now int) {
 					tplData{"model": s.modelID, "time_diff": w.modelTimeDiff(s.modelID, now)})
 			} else {
 				w.sendTrImage(
+					w.highPriorityMsg,
 					endpoint,
 					chatID,
 					false,
@@ -1035,7 +1126,7 @@ func (w *worker) listOnlineModels(endpoint string, chatID int64, now int) {
 		}
 	}
 	if online == 0 {
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].NoOnlineModels, nil)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].NoOnlineModels, nil)
 	}
 }
 
@@ -1091,14 +1182,14 @@ func (w *worker) week(modelID string) ([]bool, time.Time) {
 
 func (w *worker) feedback(endpoint string, chatID int64, text string) {
 	if text == "" {
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].SyntaxFeedback, nil)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].SyntaxFeedback, nil)
 		return
 	}
 	w.mustExec("insert into feedback (endpoint, chat_id, text) values (?, ?, ?)", endpoint, chatID, text)
-	w.sendTr(endpoint, chatID, false, w.tr[endpoint].Feedback, nil)
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Feedback, nil)
 	user := w.mustUser(chatID)
 	if !user.blacklist {
-		w.sendText(endpoint, w.cfg.AdminID, true, true, lib.ParseRaw, fmt.Sprintf("Feedback from %d: %s", chatID, text))
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, true, true, lib.ParseRaw, fmt.Sprintf("Feedback from %d: %s", chatID, text))
 	}
 }
 
@@ -1240,7 +1331,7 @@ func (w *worker) statStrings(endpoint string) []string {
 }
 
 func (w *worker) stat(endpoint string) {
-	w.sendText(endpoint, w.cfg.AdminID, true, true, lib.ParseRaw, strings.Join(w.statStrings(endpoint), "\n"))
+	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, true, true, lib.ParseRaw, strings.Join(w.statStrings(endpoint), "\n"))
 }
 
 func (w *worker) performanceStat(endpoint string) {
@@ -1260,7 +1351,7 @@ func (w *worker) performanceStat(endpoint string) {
 			fmt.Sprintf("<b>Count</b>: %d", durations[x].count),
 		}
 		entry := strings.Join(lines, "\n")
-		w.sendText(endpoint, w.cfg.AdminID, false, true, lib.ParseHTML, entry)
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseHTML, entry)
 	}
 }
 
@@ -1273,38 +1364,38 @@ func (w *worker) broadcast(endpoint string, text string) {
 	}
 	chats := w.broadcastChats(endpoint)
 	for _, chatID := range chats {
-		w.sendText(endpoint, chatID, true, false, lib.ParseRaw, text)
+		w.sendText(w.lowPriorityMsg, endpoint, chatID, true, false, lib.ParseRaw, text)
 	}
-	w.sendText(endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
+	w.sendText(w.lowPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
 }
 
 func (w *worker) direct(endpoint string, arguments string) {
 	parts := strings.SplitN(arguments, " ", 2)
 	if len(parts) < 2 {
-		w.sendText(endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "usage: /direct chatID text")
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "usage: /direct chatID text")
 		return
 	}
 	whom, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
-		w.sendText(endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "first argument is invalid")
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "first argument is invalid")
 		return
 	}
 	text := parts[1]
 	if text == "" {
 		return
 	}
-	w.sendText(endpoint, whom, true, false, lib.ParseRaw, text)
-	w.sendText(endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
+	w.sendText(w.highPriorityMsg, endpoint, whom, true, false, lib.ParseRaw, text)
+	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
 }
 
 func (w *worker) blacklist(endpoint string, arguments string) {
 	whom, err := strconv.ParseInt(arguments, 10, 64)
 	if err != nil {
-		w.sendText(endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "first argument is invalid")
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "first argument is invalid")
 		return
 	}
 	w.mustExec("update users set blacklist=1 where chat_id=?", whom)
-	w.sendText(endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
+	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
 }
 
 func (w *worker) serveEndpoint(n string, p endpoint) {
@@ -1339,7 +1430,7 @@ func (w *worker) logConfig() {
 
 func (w *worker) myEmail(endpoint string) {
 	email := w.email(endpoint, w.cfg.AdminID)
-	w.sendText(endpoint, w.cfg.AdminID, true, true, lib.ParseRaw, email)
+	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, true, true, lib.ParseRaw, email)
 }
 
 func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arguments string) bool {
@@ -1365,21 +1456,21 @@ func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arg
 	case "set_max_models":
 		parts := strings.Fields(arguments)
 		if len(parts) != 2 {
-			w.sendText(endpoint, chatID, false, true, lib.ParseRaw, "expecting two arguments")
+			w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, lib.ParseRaw, "expecting two arguments")
 			return true
 		}
 		who, err := strconv.ParseInt(parts[0], 10, 64)
 		if err != nil {
-			w.sendText(endpoint, chatID, false, true, lib.ParseRaw, "first argument is invalid")
+			w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, lib.ParseRaw, "first argument is invalid")
 			return true
 		}
 		maxModels, err := strconv.Atoi(parts[1])
 		if err != nil {
-			w.sendText(endpoint, chatID, false, true, lib.ParseRaw, "second argument is invalid")
+			w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, lib.ParseRaw, "second argument is invalid")
 			return true
 		}
 		w.setLimit(who, maxModels)
-		w.sendText(endpoint, chatID, false, true, lib.ParseRaw, "OK")
+		w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, lib.ParseRaw, "OK")
 		return true
 	}
 	return false
@@ -1419,7 +1510,7 @@ func (w *worker) mailReceived(e *env) {
 	}
 
 	for email := range emails {
-		w.sendTr(email.endpoint, email.chatID, true, w.tr[email.endpoint].MailReceived, tplData{
+		w.sendTr(w.lowPriorityMsg, email.endpoint, email.chatID, true, w.tr[email.endpoint].MailReceived, tplData{
 			"subject": e.mime.GetHeader("Subject"),
 			"from":    e.mime.GetHeader("From"),
 			"text":    e.mime.Text})
@@ -1428,16 +1519,16 @@ func (w *worker) mailReceived(e *env) {
 			switch {
 			case strings.HasPrefix(inline.ContentType, "image/"):
 				msg := tg.NewPhotoUpload(email.chatID, b)
-				w.sendMessage(email.endpoint, &photoConfig{msg})
+				w.enqueueMessage(w.lowPriorityMsg, email.endpoint, &photoConfig{msg})
 			default:
 				msg := tg.NewDocumentUpload(email.chatID, b)
-				w.sendMessage(email.endpoint, &documentConfig{msg})
+				w.enqueueMessage(w.lowPriorityMsg, email.endpoint, &documentConfig{msg})
 			}
 		}
 		for _, inline := range e.mime.Attachments {
 			b := tg.FileBytes{Name: inline.FileName, Bytes: inline.Content}
 			msg := tg.NewDocumentUpload(email.chatID, b)
-			w.sendMessage(email.endpoint, &documentConfig{msg})
+			w.enqueueMessage(w.lowPriorityMsg, email.endpoint, &documentConfig{msg})
 		}
 	}
 }
@@ -1498,7 +1589,7 @@ func (w *worker) showReferral(endpoint string, chatID int64) {
 	referralLink := fmt.Sprintf("https://t.me/%s?start=%s", w.botNames[endpoint], *referralID)
 	subscriptionsNumber := w.subscriptionsNumber(endpoint, chatID)
 	user := w.mustUser(chatID)
-	w.sendTr(endpoint, chatID, false, w.tr[endpoint].ReferralLink, tplData{
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ReferralLink, tplData{
 		"link":                referralLink,
 		"referral_bonus":      w.cfg.ReferralBonus,
 		"follower_bonus":      w.cfg.FollowerBonus,
@@ -1516,20 +1607,20 @@ func (w *worker) start(endpoint string, chatID int64, referrer string, now int) 
 	case referrer != "":
 		referralID := w.referralID(chatID)
 		if referralID != nil && *referralID == referrer {
-			w.sendTr(endpoint, chatID, false, w.tr[endpoint].OwnReferralLinkHit, nil)
+			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].OwnReferralLinkHit, nil)
 			return
 		}
 	}
-	w.sendTr(endpoint, chatID, false, w.tr[endpoint].Help, nil)
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Help, nil)
 	if chatID > 0 && referrer != "" {
 		applied := w.refer(chatID, referrer)
 		switch applied {
 		case referralApplied:
-			w.sendTr(endpoint, chatID, false, w.tr[endpoint].ReferralApplied, nil)
+			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ReferralApplied, nil)
 		case invalidReferral:
-			w.sendTr(endpoint, chatID, false, w.tr[endpoint].InvalidReferralLink, nil)
+			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidReferralLink, nil)
 		case followerExists:
-			w.sendTr(endpoint, chatID, false, w.tr[endpoint].FollowerExists, nil)
+			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].FollowerExists, nil)
 		}
 	}
 	w.addUser(endpoint, chatID)
@@ -1553,7 +1644,7 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		return
 	}
 
-	unknown := func() { w.sendTr(endpoint, chatID, false, w.tr[endpoint].UnknownCommand, nil) }
+	unknown := func() { w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].UnknownCommand, nil) }
 
 	switch command {
 	case "add":
@@ -1569,7 +1660,7 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	case "start", "help":
 		w.start(endpoint, chatID, arguments, now)
 	case "faq":
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].FAQ, tplData{
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].FAQ, tplData{
 			"dollars":                 w.cfg.CoinPayments.subscriptionPacketPrice,
 			"number_of_subscriptions": w.cfg.CoinPayments.subscriptionPacketModelNumber,
 			"max_models":              w.cfg.MaxModels,
@@ -1577,11 +1668,11 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	case "feedback":
 		w.feedback(endpoint, chatID, arguments)
 	case "social":
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Social, nil)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Social, nil)
 	case "version":
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].Version, tplData{"version": version})
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Version, tplData{"version": version})
 	case "remove_all", "stop":
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].RemoveAll, nil)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].RemoveAll, nil)
 	case "sure_remove_all":
 		w.sureRemoveAll(endpoint, chatID)
 	case "want_more":
@@ -1626,7 +1717,7 @@ func (w *worker) processPeriodic(statusRequests chan lib.StatusRequest) {
 	now := time.Now()
 	if w.nextErrorReport.Before(now) && unsuccessfulRequestsCount > w.cfg.errorThreshold {
 		text := fmt.Sprintf("Dangerous error rate reached: %d/%d", unsuccessfulRequestsCount, w.cfg.errorDenominator)
-		w.sendText(w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, lib.ParseRaw, text)
+		w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, lib.ParseRaw, text)
 		w.nextErrorReport = now.Add(time.Minute * time.Duration(w.cfg.ErrorReportingPeriodMinutes))
 	}
 
@@ -1766,7 +1857,7 @@ func (w *worker) processStatusUpdates(
 	return
 }
 
-func (w *worker) processTGUpdate(p packet) {
+func (w *worker) processTGUpdate(p incomingPacket) {
 	now := int(time.Now().Unix())
 	u := p.message
 	if u.Message != nil && u.Message.Chat != nil {
@@ -1776,7 +1867,7 @@ func (w *worker) processTGUpdate(p packet) {
 			for _, m := range *newMembers {
 				for _, ourID := range ourIDs {
 					if int64(m.ID) == ourID {
-						w.sendTr(p.endpoint, u.Message.Chat.ID, false, w.tr[p.endpoint].Help, nil)
+						w.sendTr(w.highPriorityMsg, p.endpoint, u.Message.Chat.ID, false, w.tr[p.endpoint].Help, nil)
 						break addedToChat
 					}
 				}
@@ -1939,19 +2030,19 @@ func (w *worker) processIPN(writer http.ResponseWriter, r *http.Request, done ch
 		w.mustExec("update transactions set status=? where local_id=?", payments.StatusFinished, custom)
 		w.mustExec("update users set max_models = max_models + (select coalesce(sum(model_number), 0) from transactions where local_id=?)", custom)
 		user := w.mustUser(chatID)
-		w.sendTr(endpoint, chatID, false, w.tr[endpoint].PaymentComplete, tplData{"max_models": user.maxModels})
+		w.sendTr(w.lowPriorityMsg, endpoint, chatID, false, w.tr[endpoint].PaymentComplete, tplData{"max_models": user.maxModels})
 		linf("payment %s is finished", custom)
 		text := fmt.Sprintf("payment %s is finished", custom)
-		w.sendText(w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, text)
+		w.sendText(w.lowPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, text)
 	case payments.StatusCanceled:
 		w.mustExec("update transactions set status=? where local_id=?", payments.StatusCanceled, custom)
 		linf("payment %s is canceled", custom)
 		text := fmt.Sprintf("payment %s is cancelled", custom)
-		w.sendText(w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, text)
+		w.sendText(w.lowPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, text)
 	default:
 		linf("payment %s is still pending", custom)
 		text := fmt.Sprintf("payment %s is still pending", custom)
-		w.sendText(w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, text)
+		w.sendText(w.lowPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, text)
 	}
 }
 
@@ -1965,14 +2056,14 @@ func (w *worker) handleIPNEndpoint(ipnRequests chan ipnRequest) {
 	w.ipnServeMux.HandleFunc(w.cfg.CoinPayments.IPNListenURL, w.handleIPN(ipnRequests))
 }
 
-func (w *worker) incoming() chan packet {
-	result := make(chan packet)
+func (w *worker) incoming() chan incomingPacket {
+	result := make(chan incomingPacket)
 	for n, p := range w.cfg.Endpoints {
 		linf("listening for a webhook for endpoint %s", n)
 		incoming := w.bots[n].ListenForWebhook(p.WebhookDomain + p.ListenPath)
 		go func(n string, incoming tg.UpdatesChannel) {
 			for i := range incoming {
-				result <- packet{message: i, endpoint: n}
+				result <- incomingPacket{message: i, endpoint: n}
 			}
 		}(n, incoming)
 	}
@@ -2058,6 +2149,9 @@ func main() {
 		}()
 	}
 
+	go w.sender(w.highPriorityMsg, 0)
+	go w.sender(w.lowPriorityMsg, 1)
+
 	var periodicTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
 	statusRequestsChan, onlineModelsChan, errorsChan, elapsed := lib.StartAPIChecker(
 		w.apiChecker,
@@ -2083,7 +2177,7 @@ func main() {
 			w.updatesDuration = elapsed
 			w.changesInPeriod = changesInPeriod
 			w.confirmedChangesInPeriod = confirmedChangesInPeriod
-			w.notifyOfStatuses(notifications)
+			w.notifyOfStatuses(w.lowPriorityMsg, notifications)
 			if w.cfg.Debug {
 				ldbg("status updates processed in %v", elapsed)
 			}
@@ -2102,6 +2196,20 @@ func main() {
 			linf("got signal %v", s)
 			w.removeWebhook()
 			return
+		case r := <-w.outgoingMsgResults:
+			switch r.result {
+			case messageBlocked:
+				w.incrementBlock(r.endpoint, r.chatID)
+			case messageSent:
+				w.resetBlock(r.endpoint, r.chatID)
+			}
+			w.mustExec("insert into interactions (timestamp, chat_id, result, endpoint, priority, delay) values (?,?,?,?,?,?)",
+				r.timestamp,
+				r.chatID,
+				r.result,
+				r.endpoint,
+				r.priority,
+				r.delay)
 		}
 	}
 }
