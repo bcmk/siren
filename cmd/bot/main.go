@@ -1286,7 +1286,8 @@ func (w *worker) reports() int {
 }
 
 func (w *worker) interactions(endpoint string) map[int]int {
-	query := w.mustQuery("select result, count(*) from interactions where endpoint=? group by result", endpoint)
+	timestamp := time.Now().Add(time.Hour * -24).Unix()
+	query := w.mustQuery("select result, count(*) from interactions where endpoint=? and timestamp>? group by result", endpoint, timestamp)
 	defer func() { checkErr(query.Close()) }()
 	results := map[int]int{}
 	for query.Next() {
