@@ -1285,6 +1285,19 @@ func (w *worker) reports() int {
 	return w.mustInt("select coalesce(sum(reports), 0) from users")
 }
 
+func (w *worker) interactions(endpoint string) map[int]int {
+	query := w.mustQuery("select result, count(*) from interactions where endpoint=? group by result", endpoint)
+	defer func() { checkErr(query.Close()) }()
+	results := map[int]int{}
+	for query.Next() {
+		var result int
+		var count int
+		checkErr(query.Scan(&result, &count))
+		results[result] = count
+	}
+	return results
+}
+
 func (w *worker) usersCount(endpoint string) int {
 	return w.mustInt("select count(distinct chat_id) from signals where endpoint=?", endpoint)
 }
@@ -2005,6 +2018,7 @@ func (w *worker) getStat(endpoint string) statistics {
 		ReportsCount:                   w.reports(),
 		ChangesInPeriod:                w.changesInPeriod,
 		ConfirmedChangesInPeriod:       w.confirmedChangesInPeriod,
+		Interactions:                   w.interactions(endpoint),
 	}
 }
 
