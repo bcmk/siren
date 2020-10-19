@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"image"
 	"io/ioutil"
 	"math/rand"
 	"net"
@@ -22,6 +23,10 @@ import (
 	"syscall"
 	"text/template"
 	"time"
+
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 
 	"github.com/bcmk/go-smtpd/smtpd"
 	"github.com/bcmk/siren/lib"
@@ -428,15 +433,27 @@ func (w *worker) sendMessageInternal(endpoint string, msg baseChattable) int {
 		case tg.Error:
 			switch err.Code {
 			case messageBlocked:
+				if w.cfg.Debug {
+					ldbg("message blocked")
+				}
 				return messageBlocked
 			case messageTooManyRequests:
+				if w.cfg.Debug {
+					ldbg("too many requests")
+				}
 				return messageTooManyRequests
 			default:
+				if w.cfg.Debug {
+					ldbg("unknown code, error: %v", err)
+				}
 				return err.Code
 			}
 		case net.Error:
 			if err.Timeout() {
 				return messageTimeout
+			}
+			if w.cfg.Debug {
+				ldbg("unknown network error")
 			}
 			return messageUnknownNetworkError
 		default:
@@ -1080,18 +1097,40 @@ func (w *worker) downloadSuccess(success bool) {
 func (w *worker) download(url string) []byte {
 	resp, err := w.clients[0].Client.Get(url)
 	if err != nil {
+		if w.cfg.Debug {
+			ldbg("cannot make image query")
+		}
 		w.downloadSuccess(false)
 		return nil
 	}
 	defer func() { checkErr(resp.Body.Close()) }()
+	if resp.StatusCode != 200 {
+		if w.cfg.Debug {
+			ldbg("cannot download image data")
+		}
+		w.downloadSuccess(false)
+		return nil
+	}
 	buf := new(bytes.Buffer)
 	_, err = buf.ReadFrom(resp.Body)
 	if err != nil {
+		if w.cfg.Debug {
+			ldbg("cannot read image")
+		}
+		w.downloadSuccess(false)
+		return nil
+	}
+	data := buf.Bytes()
+	_, _, err = image.Decode(bytes.NewReader(data))
+	if err != nil {
+		if w.cfg.Debug {
+			ldbg("cannot decode image")
+		}
 		w.downloadSuccess(false)
 		return nil
 	}
 	w.downloadSuccess(true)
-	return buf.Bytes()
+	return data
 }
 
 func (w *worker) listOnlineModels(endpoint string, chatID int64, now int) {
