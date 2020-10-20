@@ -416,15 +416,21 @@ func (w *worker) enqueueMessage(queue chan outgoingPacket, endpoint string, msg 
 func (w *worker) sender(queue chan outgoingPacket, priority int) {
 	for p := range queue {
 		now := int(time.Now().Unix())
+		result := messageTimeout
+		delay := 0
+		for result == messageTimeout {
+			result = w.sendMessageInternal(p.endpoint, p.message)
+			delay = int(time.Since(p.requested).Milliseconds())
+			time.Sleep(60 * time.Millisecond)
+		}
 		w.outgoingMsgResults <- msgSendResult{
 			priority:  priority,
 			timestamp: now,
-			result:    w.sendMessageInternal(p.endpoint, p.message),
+			result:    result,
 			endpoint:  p.endpoint,
 			chatID:    p.message.baseChat().ChatID,
-			delay:     int(time.Since(p.requested).Milliseconds()),
+			delay:     delay,
 		}
-		time.Sleep(60 * time.Millisecond)
 	}
 }
 
