@@ -207,11 +207,12 @@ func newWorker() *worker {
 		clients = append(clients, lib.HTTPClientWithTimeoutAndAddress(cfg.TimeoutSeconds, address, cfg.EnableCookies))
 	}
 
+	telegramClient := lib.HTTPClientWithTimeoutAndAddress(cfg.TelegramTimeoutSeconds, "", false)
 	bots := make(map[string]*tg.BotAPI)
 	for n, p := range cfg.Endpoints {
 		//noinspection GoNilness
 		var bot *tg.BotAPI
-		bot, err = tg.NewBotAPIWithClient(p.BotToken, tg.APIEndpoint, clients[0].Client)
+		bot, err = tg.NewBotAPIWithClient(p.BotToken, tg.APIEndpoint, telegramClient.Client)
 		checkErr(err)
 		bots[n] = bot
 	}

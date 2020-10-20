@@ -18,7 +18,7 @@ type endpoint struct {
 	WebhookDomain      string   `json:"webhook_domain"`       // the domain listening to the webhook
 	CertificatePath    string   `json:"certificate_path"`     // a path to your certificate, it is used to setup a webhook and to setup this HTTP server
 	CertificateKeyPath string   `json:"certificate_key_path"` // your certificate key, omit if under a proxy
-	BotToken           string   `json:"bot_token"`            // your telegram bot token
+	BotToken           string   `json:"bot_token"`            // your Telegram bot token
 	Translation        []string `json:"translation"`          // translation strings
 }
 
@@ -54,7 +54,7 @@ type config struct {
 	PeriodSeconds               int                       `json:"period_seconds"`                 // the period of querying models statuses
 	MaxModels                   int                       `json:"max_models"`                     // maximum models per user
 	TimeoutSeconds              int                       `json:"timeout_seconds"`                // HTTP timeout
-	AdminID                     int64                     `json:"admin_id"`                       // admin telegram ID
+	AdminID                     int64                     `json:"admin_id"`                       // admin Telegram ID
 	AdminEndpoint               string                    `json:"admin_endpoint"`                 // admin endpoint
 	DBPath                      string                    `json:"db_path"`                        // path to the database
 	BlockThreshold              int                       `json:"block_threshold"`                // do not send a message to the user after being blocked by him this number of times
@@ -79,6 +79,7 @@ type config struct {
 	EnableWeek                  bool                      `json:"enable_week"`                    // enable week command
 	AffiliateLink               string                    `json:"affiliate_link"`                 // affiliate link template
 	SpecificConfig              map[string]string         `json:"specific_config"`                // the config for specific website
+	TelegramTimeoutSeconds      int                       `json:"telegram_timeout_seconds"`       // the timeout for Telegram queries
 
 	errorThreshold   int
 	errorDenominator int
@@ -175,6 +176,9 @@ func checkConfig(cfg *config) error {
 	}
 	if cfg.AffiliateLink == "" {
 		cfg.AffiliateLink = "{{ . }}"
+	}
+	if cfg.TelegramTimeoutSeconds == 0 {
+		return errors.New("configure telegram_timeout_seconds")
 	}
 
 	if m := fractionRegexp.FindStringSubmatch(cfg.DangerousErrorRate); len(m) == 3 {
