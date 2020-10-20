@@ -421,15 +421,15 @@ func (w *worker) sender(queue chan outgoingPacket, priority int) {
 		for result == messageTimeout {
 			result = w.sendMessageInternal(p.endpoint, p.message)
 			delay = int(time.Since(p.requested).Milliseconds())
+			w.outgoingMsgResults <- msgSendResult{
+				priority:  priority,
+				timestamp: now,
+				result:    result,
+				endpoint:  p.endpoint,
+				chatID:    p.message.baseChat().ChatID,
+				delay:     delay,
+			}
 			time.Sleep(60 * time.Millisecond)
-		}
-		w.outgoingMsgResults <- msgSendResult{
-			priority:  priority,
-			timestamp: now,
-			result:    result,
-			endpoint:  p.endpoint,
-			chatID:    p.message.baseChat().ChatID,
-			delay:     delay,
 		}
 	}
 }
