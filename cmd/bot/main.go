@@ -116,7 +116,7 @@ type worker struct {
 	tpl                      map[string]*template.Template
 	modelIDPreprocessing     func(string) string
 	checkModel               func(client *lib.Client, modelID string, headers [][2]string, dbg bool, config map[string]string) lib.StatusKind
-	apiChecker               func(
+	onlineModelsAPI               func(
 		endpoint string,
 		client *lib.Client,
 		headers [][2]string,
@@ -248,31 +248,31 @@ func newWorker() *worker {
 	switch cfg.Website {
 	case "test":
 		w.checkModel = lib.CheckModelTest
-		w.apiChecker = lib.TestOnlineAPI
+		w.onlineModelsAPI = lib.TestOnlineAPI
 		w.modelIDPreprocessing = lib.CanonicalModelID
 	case "bongacams":
 		w.checkModel = lib.CheckModelBongaCams
-		w.apiChecker = lib.BongaCamsOnlineAPI
+		w.onlineModelsAPI = lib.BongaCamsOnlineAPI
 		w.modelIDPreprocessing = lib.CanonicalModelID
 	case "chaturbate":
 		w.checkModel = lib.CheckModelChaturbate
-		w.apiChecker = lib.ChaturbateOnlineAPI
+		w.onlineModelsAPI = lib.ChaturbateOnlineAPI
 		w.modelIDPreprocessing = lib.CanonicalModelID
 	case "stripchat":
 		w.checkModel = lib.CheckModelStripchat
-		w.apiChecker = lib.StripchatOnlineAPI
+		w.onlineModelsAPI = lib.StripchatOnlineAPI
 		w.modelIDPreprocessing = lib.CanonicalModelID
 	case "livejasmin":
 		w.checkModel = lib.CheckModelLiveJasmin
-		w.apiChecker = lib.LiveJasminOnlineAPI
+		w.onlineModelsAPI = lib.LiveJasminOnlineAPI
 		w.modelIDPreprocessing = lib.CanonicalModelID
 	case "camsoda":
 		w.checkModel = lib.CheckModelCamSoda
-		w.apiChecker = lib.CamSodaOnlineAPI
+		w.onlineModelsAPI = lib.CamSodaOnlineAPI
 		w.modelIDPreprocessing = lib.CanonicalModelID
 	case "flirt4free":
 		w.checkModel = lib.CheckModelFlirt4Free
-		w.apiChecker = lib.Flirt4FreeOnlineAPI
+		w.onlineModelsAPI = lib.Flirt4FreeOnlineAPI
 		w.modelIDPreprocessing = lib.Flirt4FreeCanonicalModelID
 	default:
 		panic("wrong website")
@@ -2225,7 +2225,7 @@ func main() {
 
 	var periodicTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
 	statusRequestsChan, onlineModelsChan, errorsChan, elapsed := lib.StartAPIChecker(
-		w.apiChecker,
+		w.onlineModelsAPI,
 		w.cfg.UsersOnlineEndpoint,
 		w.clients,
 		w.cfg.Headers,
