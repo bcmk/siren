@@ -225,7 +225,7 @@ settings:
     {{ template "subscription_usage" . }}
     Не хватает? Наберите /want_more
 
-    Показывать кадры трансляций: <b>{{ template "yes_no" .show_images }}</b>
+    Показывать кадры трансляций в оповещениях: <b>{{ template "yes_no" .show_images }}</b>
     {{- print "\n" -}}
     {{- if .show_images  -}}
       Чтобы отключить, кликните /disable_images
