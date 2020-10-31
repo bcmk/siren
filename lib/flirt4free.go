@@ -20,6 +20,11 @@ type flirt4FreeOnlineModel struct {
 }
 
 type flirt4FreeOnlineResponse struct {
+	Error *struct {
+		Method      string
+		Code        string
+		Description string
+	}
 	Girls map[int]flirt4FreeOnlineModel
 	Guys  map[int]flirt4FreeOnlineModel
 	Trans map[int]flirt4FreeOnlineModel
@@ -118,6 +123,9 @@ func Flirt4FreeOnlineAPI(
 			Ldbg("response: %s", buf.String())
 		}
 		return nil, fmt.Errorf("cannot parse response, %v", err)
+	}
+	if parsed.Error != nil {
+		return nil, fmt.Errorf("API error, code: %s, description: %s", parsed.Error.Code, parsed.Error.Description)
 	}
 	if len(parsed.Girls) == 0 || len(parsed.Guys) == 0 || len(parsed.Trans) == 0 {
 		return nil, errors.New("zero online models reported")
