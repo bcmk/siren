@@ -3,6 +3,7 @@ package lib
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -117,6 +118,9 @@ func Flirt4FreeOnlineAPI(
 			Ldbg("response: %s", buf.String())
 		}
 		return nil, fmt.Errorf("cannot parse response, %v", err)
+	}
+	if len(parsed.Girls) == 0 || len(parsed.Guys) == 0 || len(parsed.Trans) == 0 {
+		return nil, errors.New("zero online models reported")
 	}
 	for _, m := range parsed.Girls {
 		modelID := flirt4FreeCanonicalAPIModelID(m.Name)
