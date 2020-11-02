@@ -116,7 +116,7 @@ type worker struct {
 	tpl                      map[string]*template.Template
 	modelIDPreprocessing     func(string) string
 	checkModel               func(client *lib.Client, modelID string, headers [][2]string, dbg bool, config map[string]string) lib.StatusKind
-	onlineModelsAPI               func(
+	onlineModelsAPI          func(
 		endpoint string,
 		client *lib.Client,
 		headers [][2]string,
@@ -2183,6 +2183,11 @@ func (q queryDurationsData) total() float64 {
 	return q.avg * float64(q.count)
 }
 
+func (w *worker) logQuerySuccess(success bool) {
+	w.unsuccessfulRequests[w.successfulRequestsPos] = !success
+	w.successfulRequestsPos = (w.successfulRequestsPos + 1) % w.cfg.errorDenominator
+}
+
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
@@ -2252,9 +2257,9 @@ func main() {
 			if w.cfg.Debug {
 				ldbg("status updates processed in %v", elapsed)
 			}
+			w.logQuerySuccess(true)
 		case <-errorsChan:
-			w.unsuccessfulRequests[w.successfulRequestsPos] = true
-			w.successfulRequestsPos = (w.successfulRequestsPos + 1) % w.cfg.errorDenominator
+			w.logQuerySuccess(false)
 		case u := <-incoming:
 			w.processTGUpdate(u)
 		case m := <-mail:
