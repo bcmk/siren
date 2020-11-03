@@ -177,6 +177,7 @@ const (
 	messageUnknownNetworkError = -2
 	messageTimeout             = -3
 	messageMigrate             = -4
+	messageChatNotFound        = -5
 )
 
 type msgSendResult struct {
@@ -457,6 +458,12 @@ func (w *worker) sendMessageInternal(endpoint string, msg baseChattable) int {
 						ldbg("cannot send a message, group migration")
 					}
 					return messageMigrate
+				}
+				if err.Message == "Bad Request: chat not found" {
+					if w.cfg.Debug {
+						ldbg("cannot send a message, chat not found")
+					}
+					return messageChatNotFound
 				}
 				lerr("cannot send a message, bad request, code: %d, error: %v", err.Code, err)
 				return err.Code
