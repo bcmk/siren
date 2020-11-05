@@ -101,3 +101,5 @@ Links
 [WeCamgirls](https://www.wecamgirls.com/users/sirenbot)
 
 [GitHub Pages](https://siren.chat)
+
+[News Telegram channel](https://t.me/siren_telegram_bot)
