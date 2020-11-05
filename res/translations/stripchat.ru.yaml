@@ -1,16 +1,6 @@
-help:
+site:
   parse: html
-  disable_preview: true
-  str: |-
-    Бот сообщит, когда твоя любимая модель появится в сети Stripchat.
-
-    {{ template "commands" }}
-
-    {{ template "languages" }}
-
-    {{ template "sites" }}
-
-    {{ template "social" }}
+  str: Stripchat
 languages:
   parse: html
   str: |-

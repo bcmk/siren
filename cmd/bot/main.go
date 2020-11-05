@@ -1688,7 +1688,9 @@ func (w *worker) start(endpoint string, chatID int64, referrer string, now int) 
 			return
 		}
 	}
-	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Help, nil)
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Help, tplData{
+		"website_link": w.cfg.WebsiteLink,
+	})
 	if chatID > 0 && referrer != "" {
 		applied := w.refer(chatID, referrer)
 		switch applied {
@@ -1944,7 +1946,9 @@ func (w *worker) processTGUpdate(p incomingPacket) {
 			for _, m := range *newMembers {
 				for _, ourID := range ourIDs {
 					if int64(m.ID) == ourID {
-						w.sendTr(w.highPriorityMsg, p.endpoint, u.Message.Chat.ID, false, w.tr[p.endpoint].Help, nil)
+						w.sendTr(w.highPriorityMsg, p.endpoint, u.Message.Chat.ID, false, w.tr[p.endpoint].Help, tplData{
+							"website_link": w.cfg.WebsiteLink,
+						})
 						break addedToChat
 					}
 				}

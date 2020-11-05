@@ -1,3 +1,6 @@
+site:
+  parse: html
+  str: Flirt4Free
 add_error:
   parse: html
   str: |-
@@ -9,7 +12,7 @@ help:
   parse: html
   disable_preview: true
   str: |-
-    Бот сообщит, когда твоя любимая модель появится в сети Flirt4Free.
+    {{ template "hello" .website_link }}
 
     {{ template "commands" }}
 

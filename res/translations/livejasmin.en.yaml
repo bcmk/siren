@@ -1,16 +1,6 @@
-help:
+site:
   parse: html
-  disable_preview: true
-  str: |-
-    The bot notifies you whenever your favorite LiveJasmin models are online.
-
-    {{ template "commands" }}
-
-    {{ template "languages" }}
-
-    {{ template "sites" }}
-
-    {{ template "social" }}
+  str: LiveJasmin
 languages:
   parse: html
   str: |-

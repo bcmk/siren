@@ -1,3 +1,6 @@
+site:
+  parse: html
+  str: Flirt4Free
 add_error:
   parse: html
   str: |-
@@ -9,7 +12,7 @@ help:
   parse: html
   disable_preview: true
   str: |-
-    The bot notifies you whenever your favorite Flirt4Free models are online.
+    {{ template "hello" .website_link }}
 
     {{ template "commands" }}
 

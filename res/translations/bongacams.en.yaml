@@ -1,3 +1,6 @@
+site:
+  parse: html
+  str: BongaCams
 add_error:
   parse: html
   str: |-
@@ -9,7 +12,7 @@ help:
   parse: html
   disable_preview: true
   str: |-
-    The bot notifies you whenever your favorite BongaCams models are online.
+    {{ template "hello" .website_link }}
 
     {{ template "commands" }}
 

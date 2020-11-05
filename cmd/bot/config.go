@@ -51,6 +51,7 @@ type statusConfirmationSeconds struct {
 
 type config struct {
 	Website                     string                    `json:"website"`                        // one of the following strings: "bongacams", "stripchat", "chaturbate", "livejasmin"
+	WebsiteLink                 string                    `json:"website_link"`                   // affiliate link to website
 	PeriodSeconds               int                       `json:"period_seconds"`                 // the period of querying models statuses
 	MaxModels                   int                       `json:"max_models"`                     // maximum models per user
 	TimeoutSeconds              int                       `json:"timeout_seconds"`                // HTTP timeout
@@ -150,6 +151,9 @@ func checkConfig(cfg *config) error {
 	}
 	if cfg.Website == "" {
 		return errors.New("configure website")
+	}
+	if cfg.WebsiteLink == "" {
+		return errors.New("configure website_link")
 	}
 	if cfg.Website == "livejasmin" {
 		if cfg.SpecificConfig["ps_id"] == "" {

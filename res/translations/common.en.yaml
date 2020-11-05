@@ -1,3 +1,19 @@
+hello:
+  parse: html
+  str: The bot notifies you whenever your favorite <a href="{{ . }}">{{ template "site" }}</a> models are online.
+help:
+  parse: html
+  disable_preview: true
+  str: |-
+    {{ template "hello" .website_link }}
+
+    {{ template "commands" }}
+
+    {{ template "languages" }}
+
+    {{ template "sites" }}
+
+    {{ template "social" }}
 ok:
   parse: raw
   str: OK
