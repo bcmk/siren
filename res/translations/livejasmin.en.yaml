@@ -15,16 +15,16 @@ languages:
   parse: html
   str: |-
     <b>This bot in other languages</b>
-    Русский: t.me/RuLiveJasminSirenBot
+    Русский: <a href="https://t.me/RuLiveJasminSirenBot">RuLiveJasminSirenBot</a>
 sites:
   parse: html
   str: |-
     <b>This bot for other sites</b>
-    Chaturbate: t.me/ChaturbateAlarmBot
-    BongaCams: t.me/BongaCamsOnlineBot
-    Stripchat: t.me/StripchatOnlineBot
-    CamSoda: t.me/CamSodaSirenBot
-    Flirt4Free: t.me/Flirt4FreeSirenBot
+    Chaturbate: <a href="https://t.me/ChaturbateAlarmBot">ChaturbateAlarmBot</a>
+    BongaCams: <a href="https://t.me/BongaCamsOnlineBot">BongaCamsOnlineBot</a>
+    Stripchat: <a href="https://t.me/StripchatOnlineBot">StripchatOnlineBot</a>
+    CamSoda: <a href="https://t.me/CamSodaSirenBot">CamSodaSirenBot</a>
+    Flirt4Free: <a href="https://t.me/Flirt4FreeSirenBot">Flirt4FreeSirenBot</a>
 add_example:
   parse: html
   str: /add maiaferre

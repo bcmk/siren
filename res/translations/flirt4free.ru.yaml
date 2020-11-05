@@ -27,16 +27,16 @@ languages:
   parse: html
   str: |-
     <b>Этот бот на других языках</b>
-    English: t.me/Flirt4FreeSirenBot
+    English: <a href="https://t.me/Flirt4FreeSirenBot">Flirt4FreeSirenBot</a>
 sites:
   parse: html
   str: |-
     <b>Этот бот для других сайтов</b>
-    Chaturbate: t.me/ChaturbateSirenBot
-    BongaCams: t.me/BongaCamsSirenBot
-    Stripchat: t.me/StripchatSirenBot
-    LiveJasmin: t.me/RuLiveJasminSirenBot
-    CamSoda: t.me/RuCamSodaSirenBot
+    Chaturbate: <a href="https://t.me/ChaturbateSirenBot">ChaturbateSirenBot</a>
+    BongaCams: <a href="https://t.me/BongaCamsSirenBot">BongaCamsSirenBot</a>
+    Stripchat: <a href="https://t.me/StripchatSirenBot">StripchatSirenBot</a>
+    LiveJasmin: <a href="https://t.me/RuLiveJasminSirenBot">RuLiveJasminSirenBot</a>
+    CamSoda: <a href="https://t.me/RuCamSodaSirenBot">RuCamSodaSirenBot</a>
 add_example:
   parse: html
   str: /add dalla-and-mirana

@@ -27,16 +27,16 @@ languages:
   parse: html
   str: |-
     <b>This bot in other languages</b>
-    Русский: t.me/RuCamSodaSirenBot
+    Русский: <a href="https://t.me/RuCamSodaSirenBot">RuCamSodaSirenBot</a>
 sites:
   parse: html
   str: |-
     <b>This bot for other sites</b>
-    Chaturbate: t.me/ChaturbateAlarmBot
-    BongaCams: t.me/BongaCamsOnlineBot
-    Stripchat: t.me/StripchatOnlineBot
-    LiveJasmin: t.me/LiveJasminSirenBot
-    Flirt4Free: t.me/Flirt4FreeSirenBot
+    Chaturbate: <a href="https://t.me/ChaturbateAlarmBot">ChaturbateAlarmBot</a>
+    BongaCams: <a href="https://t.me/BongaCamsOnlineBot">BongaCamsOnlineBot</a>
+    Stripchat: <a href="https://t.me/StripchatOnlineBot">StripchatOnlineBot</a>
+    LiveJasmin: <a href="https://t.me/LiveJasminSirenBot">LiveJasminSirenBot</a>
+    Flirt4Free: <a href="https://t.me/Flirt4FreeSirenBot">Flirt4FreeSirenBot</a>
 add_example:
   parse: html
   str: /add gorgonmedusa

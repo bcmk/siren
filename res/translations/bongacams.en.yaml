@@ -24,16 +24,16 @@ languages:
   parse: html
   str: |-
     <b>This bot in other languages</b>
-    Русский: t.me/BongacamsSirenBot
+    Русский: <a href="https://t.me/BongacamsSirenBot">BongacamsSirenBot</a>
 sites:
   parse: html
   str: |-
     <b>This bot for other sites</b>
-    Chaturbate: t.me/ChaturbateAlarmBot
-    Stripchat: t.me/StripchatOnlineBot
-    LiveJasmin: t.me/LiveJasminSirenBot
-    CamSoda: t.me/CamSodaSirenBot
-    Flirt4Free: t.me/Flirt4FreeSirenBot
+    Chaturbate: <a href="https://t.me/ChaturbateAlarmBot">ChaturbateAlarmBot</a>
+    Stripchat: <a href="https://t.me/StripchatOnlineBot">StripchatOnlineBot</a>
+    LiveJasmin: <a href="https://t.me/LiveJasminSirenBot">LiveJasminSirenBot</a>
+    CamSoda: <a href="https://t.me/CamSodaSirenBot">CamSodaSirenBot</a>
+    Flirt4Free: <a href="https://t.me/Flirt4FreeSirenBot">Flirt4FreeSirenBot</a>
 add_example:
   parse: html
   str: /add bbbweb

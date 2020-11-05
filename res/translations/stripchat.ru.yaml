@@ -15,16 +15,16 @@ languages:
   parse: html
   str: |-
     <b>Этот бот на других языках</b>
-    English: t.me/StripchatOnlineBot
+    English: <a href="https://t.me/StripchatOnlineBot">StripchatOnlineBot</a>
 sites:
   parse: html
   str: |-
     <b>Этот бот для других сайтов</b>
-    Chaturbate: t.me/ChaturbateSirenBot
-    BongaCams: t.me/BongaCamsSirenBot
-    LiveJasmin: t.me/RuLiveJasminSirenBot
-    CamSoda: t.me/RuCamSodaSirenBot
-    Flirt4Free: t.me/RuFlirt4FreeSirenBot
+    Chaturbate: <a href="https://t.me/ChaturbateSirenBot">ChaturbateSirenBot</a>
+    BongaCams: <a href="https://t.me/BongaCamsSirenBot">BongaCamsSirenBot</a>
+    LiveJasmin: <a href="https://t.me/RuLiveJasminSirenBot">RuLiveJasminSirenBot</a>
+    CamSoda: <a href="https://t.me/RuCamSodaSirenBot">RuCamSodaSirenBot</a>
+    Flirt4Free: <a href="https://t.me/RuFlirt4FreeSirenBot">RuFlirt4FreeSirenBot</a>
 add_example:
   parse: html
   str: /add bbweb
