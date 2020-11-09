@@ -13,13 +13,11 @@ import (
 )
 
 type endpoint struct {
-	ListenPath         string   `json:"listen_path"`          // the path excluding domain to listen to, the good choice is "/your-telegram-bot-token"
-	ListenAddress      string   `json:"listen_address"`       // the address to listen to
-	WebhookDomain      string   `json:"webhook_domain"`       // the domain listening to the webhook
-	CertificatePath    string   `json:"certificate_path"`     // a path to your certificate, it is used to setup a webhook and to setup this HTTP server
-	CertificateKeyPath string   `json:"certificate_key_path"` // your certificate key, omit if under a proxy
-	BotToken           string   `json:"bot_token"`            // your Telegram bot token
-	Translation        []string `json:"translation"`          // translation strings
+	ListenPath      string   `json:"listen_path"`      // the path excluding domain to listen to, the good choice is "/your-telegram-bot-token"
+	WebhookDomain   string   `json:"webhook_domain"`   // the domain listening to the webhook
+	CertificatePath string   `json:"certificate_path"` // a path to your certificate, it is used to setup a webhook and to setup this HTTP server
+	BotToken        string   `json:"bot_token"`        // your Telegram bot token
+	Translation     []string `json:"translation"`      // translation strings
 }
 
 type coinPaymentsConfig struct {
@@ -28,7 +26,6 @@ type coinPaymentsConfig struct {
 	PublicKey          string   `json:"public_key"`          // CoinPayments public key
 	PrivateKey         string   `json:"private_key"`         // CoinPayments private key
 	IPNListenURL       string   `json:"ipn_listen_url"`      // CoinPayments IPN payment status notification listen URL
-	IPNListenAddress   string   `json:"ipn_listen_address"`  // CoinPayments IPN payment status notification listen address
 	IPNSecret          string   `json:"ipn_secret"`          // CoinPayments IPN secret
 
 	subscriptionPacketPrice       int
@@ -50,6 +47,7 @@ type statusConfirmationSeconds struct {
 }
 
 type config struct {
+	ListenAddress               string                    `json:"listen_address"`                 // the address to listen to
 	Website                     string                    `json:"website"`                        // one of the following strings: "bongacams", "stripchat", "chaturbate", "livejasmin"
 	WebsiteLink                 string                    `json:"website_link"`                   // affiliate link to website
 	PeriodSeconds               int                       `json:"period_seconds"`                 // the period of querying models statuses
@@ -115,9 +113,6 @@ func checkConfig(cfg *config) error {
 		}
 	}
 	for _, x := range cfg.Endpoints {
-		if x.ListenAddress == "" {
-			return errors.New("configure listen_address")
-		}
 		if x.ListenPath == "" {
 			return errors.New("configure listen_path")
 		}
@@ -127,6 +122,9 @@ func checkConfig(cfg *config) error {
 		if len(x.Translation) == 0 {
 			return errors.New("configure translation")
 		}
+	}
+	if cfg.ListenAddress == "" {
+		return errors.New("configure listen_address")
 	}
 	if _, found := cfg.Endpoints[cfg.AdminEndpoint]; !found {
 		return errors.New("configure admin_endpoint")
@@ -232,9 +230,6 @@ func checkCoinPaymentsConfig(cfg *coinPaymentsConfig) error {
 		return errors.New("configure private_key")
 	}
 	if cfg.IPNListenURL == "" {
-		return errors.New("configure ipn_path")
-	}
-	if cfg.IPNListenAddress == "" {
 		return errors.New("configure ipn_path")
 	}
 	if cfg.IPNSecret == "" {

@@ -133,7 +133,6 @@ type worker struct {
 	downloadResultsPos    int
 	nextErrorReport       time.Time
 	coinPaymentsAPI       *payments.CoinPaymentsAPI
-	ipnServeMux           *http.ServeMux
 	mailTLS               *tls.Config
 	durations             map[string]queryDurationsData
 	images                map[string]string
@@ -232,7 +231,6 @@ func newWorker() *worker {
 		tpl:                  tpl,
 		unsuccessfulRequests: make([]bool, cfg.errorDenominator),
 		downloadErrors:       make([]bool, cfg.errorDenominator),
-		ipnServeMux:          http.NewServeMux(),
 		mailTLS:              mailTLS,
 		durations:            map[string]queryDurationsData{},
 		images:               map[string]string{},
@@ -1475,26 +1473,10 @@ func (w *worker) blacklist(endpoint string, arguments string) {
 	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
 }
 
-func (w *worker) serveEndpoint(n string, p endpoint) {
-	linf("serving endpoint %s...", n)
-	var err error
-	if p.CertificatePath != "" && p.CertificateKeyPath != "" {
-		err = http.ListenAndServeTLS(p.ListenAddress, p.CertificatePath, p.CertificateKeyPath, nil)
-	} else {
-		err = http.ListenAndServe(p.ListenAddress, nil)
-	}
-	checkErr(err)
-}
-
 func (w *worker) serveEndpoints() {
-	for n, p := range w.cfg.Endpoints {
-		go w.serveEndpoint(n, p)
-	}
-}
-
-func (w *worker) serveIPN() {
 	go func() {
-		err := http.ListenAndServe(w.cfg.CoinPayments.IPNListenAddress, w.ipnServeMux)
+		var err error
+		err = http.ListenAndServe(w.cfg.ListenAddress, nil)
 		checkErr(err)
 	}()
 }
@@ -2135,7 +2117,7 @@ func (w *worker) handleStatEndpoints(statRequests chan statRequest) {
 }
 
 func (w *worker) handleIPNEndpoint(ipnRequests chan ipnRequest) {
-	w.ipnServeMux.HandleFunc(w.cfg.CoinPayments.IPNListenURL, w.handleIPN(ipnRequests))
+	http.HandleFunc(w.cfg.CoinPayments.IPNListenURL, w.handleIPN(ipnRequests))
 }
 
 func (w *worker) incoming() chan incomingPacket {
@@ -2213,14 +2195,13 @@ func main() {
 	incoming := w.incoming()
 	statRequests := make(chan statRequest)
 	w.handleStatEndpoints(statRequests)
-	w.serveEndpoints()
 
 	ipnRequests := make(chan ipnRequest)
 	if w.cfg.CoinPayments != nil {
 		w.handleIPNEndpoint(ipnRequests)
-		w.serveIPN()
 	}
 
+	w.serveEndpoints()
 	mail := make(chan *env)
 
 	if w.cfg.Mail != nil {
