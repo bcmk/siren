@@ -1,7 +1,7 @@
 __[English](README.md)__
 
-<img src="docs/icons/siren.svg" width="24" height="24">&ensp;SIREN
-==================================================================
+<img src="docs/icons/siren-tri.svg" width="23" height="23">&ensp;SIREN
+======================================================================
 Telegram-бот для оповещений о вебкам-шоу
 
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
