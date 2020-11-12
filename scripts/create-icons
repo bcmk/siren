@@ -9,20 +9,8 @@ single () {
 
 exp () {
     single $1 $1 siren
-    single $1 $1 siren-round
-    single $1 $1 siren-white-background
 }
 
-exp 20
-exp 24
-exp 32
-exp 48
-exp 64
-exp 128
-exp 196
-exp 300
-exp 512
 exp 1024
 
 single 1024 410 siren-stripchat
-single 1024 465 siren-stripchat-round

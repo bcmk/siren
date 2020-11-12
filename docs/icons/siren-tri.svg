@@ -1,0 +1,9 @@
+<svg width="19.286" height="19.286" version="1.1" viewBox="0 0 19.286 19.286" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gr" x1="13.122" x2="13.122" y1="10.217" y2="27.441" gradientTransform="matrix(1.1114 0 0 .89977 -4.9408 -7.3572)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2aabee" offset="0"/>
+      <stop stop-color="#229ed9" offset="1"/>
+    </linearGradient>
+  </defs>
+  <path d="m18.287 1.8363c-0.22146-0.00393-0.48056 0.049701-0.77539 0.17188l-16.627 6.5352c-0.58938 0.24482-0.88477 0.67147-0.88477 1.0996 0 0.42813 0.29538 0.85479 0.88477 1.0996l0.26758 0.10547 14.67-5.7656v2.2012l-11.869 4.666 13.559 5.3281c1.1793 0.4887 1.7727-0.12318 1.7734-1.1016v-13.066c-5.32e-4 -0.73379-0.33367-1.2617-0.99805-1.2734z" color="#000000" color-rendering="auto" dominant-baseline="auto" fill="url(#gr)" image-rendering="auto" shape-rendering="auto" solid-color="#000000" style="font-feature-settings:normal;font-variant-alternates:normal;font-variant-caps:normal;font-variant-ligatures:normal;font-variant-numeric:normal;font-variant-position:normal;isolation:auto;mix-blend-mode:normal;paint-order:normal;shape-padding:0;text-decoration-color:#000000;text-decoration-line:none;text-decoration-style:solid;text-indent:0;text-orientation:mixed;text-transform:none;white-space:normal"/>
+</svg>

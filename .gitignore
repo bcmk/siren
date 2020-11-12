@@ -15,4 +15,5 @@
 *.db-wal
 *.json
 *.log
+*.png
 .idea/
