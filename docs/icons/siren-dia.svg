@@ -1,0 +1,12 @@
+<svg width="4845.1" height="3278.9" version="1.1" viewBox="0 0 4360.7 2951" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <defs>
+    <linearGradient id="gr" x1=".5" x2=".5" y2=".99258">
+      <stop stop-color="#2aabee" offset="0"/>
+      <stop stop-color="#229ed9" offset="1"/>
+    </linearGradient>
+    <linearGradient id="linearGradient824" x1="9680.4" x2="9680.4" y1="851.06" y2="1542" gradientTransform="matrix(.66614 0 0 1.5012 -2319.7 -324.51)" gradientUnits="userSpaceOnUse" xlink:href="#gr"/>
+    <linearGradient id="linearGradient826" x1="3727.1" x2="3727.1" y1="360.64" y2="3616.1" gradientTransform="matrix(1.1114 0 0 .89977 -2319.7 -324.51)" gradientUnits="userSpaceOnUse" xlink:href="#gr"/>
+  </defs>
+  <rect x="3897" y="953.09" width="463.67" height="1044.9" ry="337.79" fill="url(#linearGradient824)" stroke-width="0"/>
+  <path d="m3456.4 0.017955c-41.857-0.7428-90.828 9.3937-146.55 32.486l-3142.6 1235.2c-111.4 46.272-167.23 126.91-167.23 207.83 0 80.918 55.828 161.56 167.23 207.83l50.574 19.934 2772.7-1089.7v416.04l-2243.3 881.9 2562.7 1007c222.89 92.366 335.05-23.282 335.18-208.21v-2469.5c-0.1-138.69-63.065-238.47-188.64-240.68z" color="#000000" color-rendering="auto" dominant-baseline="auto" fill="url(#linearGradient826)" image-rendering="auto" shape-rendering="auto" solid-color="#000000" stroke-width="189" style="font-feature-settings:normal;font-variant-alternates:normal;font-variant-caps:normal;font-variant-ligatures:normal;font-variant-numeric:normal;font-variant-position:normal;isolation:auto;mix-blend-mode:normal;paint-order:normal;shape-padding:0;text-decoration-color:#000000;text-decoration-line:none;text-decoration-style:solid;text-indent:0;text-orientation:mixed;text-transform:none;white-space:normal"/>
+</svg>

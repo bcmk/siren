@@ -1,6 +1,6 @@
 __[Русский](README-ru.md)__
 
-<img src="docs/icons/siren-tri.svg" width="23" height="23">&ensp;SIREN
+<img src="docs/icons/siren-dia.svg" height="23">&ensp;SIREN
 ======================================================================
 Telegram bot for adult webcasts alerts
 

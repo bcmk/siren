@@ -1,6 +1,6 @@
 __[English](README.md)__
 
-<img src="docs/icons/siren-tri.svg" width="23" height="23">&ensp;SIREN
+<img src="docs/icons/siren-dia.svg" height="23">&ensp;SIREN
 ======================================================================
 Telegram-бот для оповещений о вебкам-шоу
 
