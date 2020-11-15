@@ -244,9 +244,9 @@ settings:
     Show images in notifications: <b>{{ template "yes_no" .show_images }}</b>
     {{- print "\n" -}}
     {{- if .show_images  -}}
-      To disable click /disable_images
+      Disable: /disable_images
     {{- else -}}
-      To enable click /enable_images
+      Enable: /enable_images
     {{- end -}}
 
     {{- if .offline_notifications_supported -}}
@@ -255,9 +255,9 @@ settings:
       Send offline notifications: <b>{{ template "yes_no" .offline_notifications }}</b>
       {{- print "\n" -}}
       {{- if .offline_notifications  -}}
-        To disable click /disable_offline_notifications
+        Disable: /disable_offline_notifications
       {{- else -}}
-        To enable click /enable_offline_notifications
+        Enable: /enable_offline_notifications
       {{- end -}}
     {{- end -}}
 yes_no:
