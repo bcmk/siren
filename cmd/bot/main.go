@@ -414,22 +414,32 @@ func (w *worker) enqueueMessage(queue chan outgoingPacket, endpoint string, msg 
 }
 
 func (w *worker) sender(queue chan outgoingPacket, priority int) {
-	for p := range queue {
+	for packet := range queue {
 		now := int(time.Now().Unix())
-		result := messageTimeout
 		delay := 0
-		for result == messageTimeout {
-			result = w.sendMessageInternal(p.endpoint, p.message)
-			delay = int(time.Since(p.requested).Milliseconds())
+	resend:
+		for {
+			result := w.sendMessageInternal(packet.endpoint, packet.message)
+			delay = int(time.Since(packet.requested).Milliseconds())
 			w.outgoingMsgResults <- msgSendResult{
 				priority:  priority,
 				timestamp: now,
 				result:    result,
-				endpoint:  p.endpoint,
-				chatID:    p.message.baseChat().ChatID,
+				endpoint:  packet.endpoint,
+				chatID:    packet.message.baseChat().ChatID,
 				delay:     delay,
 			}
-			time.Sleep(60 * time.Millisecond)
+			switch result {
+			case messageTimeout:
+				time.Sleep(1000 * time.Millisecond)
+				continue resend
+			case messageUnknownNetworkError:
+				time.Sleep(1000 * time.Millisecond)
+				continue resend
+			default:
+				time.Sleep(60 * time.Millisecond)
+				break resend
+			}
 		}
 	}
 }
@@ -1475,8 +1485,7 @@ func (w *worker) blacklist(endpoint string, arguments string) {
 
 func (w *worker) serveEndpoints() {
 	go func() {
-		var err error
-		err = http.ListenAndServe(w.cfg.ListenAddress, nil)
+		err := http.ListenAndServe(w.cfg.ListenAddress, nil)
 		checkErr(err)
 	}()
 }
