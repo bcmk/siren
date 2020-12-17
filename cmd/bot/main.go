@@ -436,6 +436,9 @@ func (w *worker) sender(queue chan outgoingPacket, priority int) {
 			case messageUnknownNetworkError:
 				time.Sleep(1000 * time.Millisecond)
 				continue resend
+			case messageTooManyRequests:
+				time.Sleep(8000 * time.Millisecond)
+				continue resend
 			default:
 				time.Sleep(60 * time.Millisecond)
 				break resend
