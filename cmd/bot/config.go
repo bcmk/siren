@@ -79,6 +79,7 @@ type config struct {
 	AffiliateLink               string                    `json:"affiliate_link"`                 // affiliate link template
 	SpecificConfig              map[string]string         `json:"specific_config"`                // the config for specific website
 	TelegramTimeoutSeconds      int                       `json:"telegram_timeout_seconds"`       // the timeout for Telegram queries
+	MaxSubscriptionsForPics     int                       `json:"max_subscriptions_for_pics"`     // the maximum amount of subscriptions for pics in a group chat
 
 	errorThreshold   int
 	errorDenominator int
@@ -181,6 +182,9 @@ func checkConfig(cfg *config) error {
 	}
 	if cfg.TelegramTimeoutSeconds == 0 {
 		return errors.New("configure telegram_timeout_seconds")
+	}
+	if cfg.MaxSubscriptionsForPics == 0 {
+		return errors.New("configure max_subscriptions_for_pics")
 	}
 
 	if m := fractionRegexp.FindStringSubmatch(cfg.DangerousErrorRate); len(m) == 3 {

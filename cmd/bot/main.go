@@ -1170,36 +1170,31 @@ func (w *worker) download(url string) []byte {
 
 func (w *worker) listOnlineModels(endpoint string, chatID int64, now int) {
 	statuses := w.statusesForChat(endpoint, chatID)
-	online := 0
+	var online []model
 	for _, s := range statuses {
 		if s.status == lib.StatusOnline {
-			imageURL := w.images[s.modelID]
-			var image []byte
-			if imageURL != "" {
-				image = w.download(imageURL)
-			}
-			if image == nil {
-				w.sendTr(
-					w.highPriorityMsg,
-					endpoint,
-					chatID,
-					false,
-					w.tr[endpoint].Online,
-					tplData{"model": s.modelID, "time_diff": w.modelTimeDiff(s.modelID, now)})
-			} else {
-				w.sendTrImage(
-					w.highPriorityMsg,
-					endpoint,
-					chatID,
-					false,
-					w.tr[endpoint].Online,
-					tplData{"model": s.modelID, "time_diff": w.modelTimeDiff(s.modelID, now)},
-					image)
-			}
-			online++
+			online = append(online, s)
 		}
 	}
-	if online == 0 {
+	if len(online) > w.cfg.MaxSubscriptionsForPics && chatID < -1 {
+		data := tplData{"max_subs": w.cfg.MaxSubscriptionsForPics}
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].TooManySubscriptionsForPics, data)
+		return
+	}
+	for _, s := range online {
+		imageURL := w.images[s.modelID]
+		var image []byte
+		if imageURL != "" {
+			image = w.download(imageURL)
+		}
+		data := tplData{"model": s.modelID, "time_diff": w.modelTimeDiff(s.modelID, now)}
+		if image == nil {
+			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Online, data)
+		} else {
+			w.sendTrImage(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Online, data, image)
+		}
+	}
+	if len(online) == 0 {
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].NoOnlineModels, nil)
 	}
 }
