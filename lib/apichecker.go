@@ -5,9 +5,29 @@ import (
 	"time"
 )
 
-// StartAPIChecker starts a checker for Chaturbate
-func StartAPIChecker(
-	checker func(
+type clientsLoop struct {
+	clients   []*Client
+	clientIdx int
+}
+
+func (c *clientsLoop) nextClient() *Client {
+	client := c.clients[c.clientIdx]
+	c.clientIdx++
+	if c.clientIdx == len(c.clients) {
+		c.clientIdx = 0
+	}
+	return client
+}
+
+// StartChecker starts a checker for Chaturbate
+func StartChecker(
+	singleChecker func(
+		client *Client,
+		modelID string,
+		headers [][2]string,
+		dbg bool,
+		specificConfig map[string]string) StatusKind,
+	apiChecker func(
 		usersOnlineEndpoint string,
 		client *Client,
 		headers [][2]string,
@@ -33,23 +53,16 @@ func StartAPIChecker(
 	output = make(chan []OnlineModel)
 	errorsCh = make(chan struct{})
 	elapsedCh = make(chan time.Duration)
-	clientIdx := 0
-	clientsNum := len(clients)
+	clientsLoop := clientsLoop{clients: clients}
 	go func() {
 	requests:
-		for range statusRequests {
+		for request := range statusRequests {
 			hash := map[string]OnlineModel{}
 			updates := []OnlineModel{}
+			start := time.Now()
 			for _, endpoint := range usersOnlineEndpoint {
-				client := clients[clientIdx]
-				clientIdx++
-				if clientIdx == clientsNum {
-					clientIdx = 0
-				}
-
-				start := time.Now()
-				onlineModels, err := checker(endpoint, client, headers, dbg, specificConfig)
-				elapsedCh <- time.Since(start)
+				client := clientsLoop.nextClient()
+				onlineModels, err := apiChecker(endpoint, client, headers, dbg, specificConfig)
 				if err != nil {
 					Lerr("[%v] %v", client.Addr, err)
 					errorsCh <- struct{}{}
@@ -63,9 +76,21 @@ func StartAPIChecker(
 					hash[m.ModelID] = m
 				}
 			}
+			for _, modelID := range request.SpecialModels {
+				time.Sleep(time.Duration(intervalMs) * time.Millisecond)
+				client := clientsLoop.nextClient()
+				status := singleChecker(client, modelID, headers, dbg, specificConfig)
+				if status == StatusOnline {
+					hash[modelID] = OnlineModel{ModelID: modelID}
+				} else if status != StatusOffline {
+					Lerr("status for model %s reported: %v", modelID, status)
+					errorsCh <- struct{}{}
+				}
+			}
 			for _, statusUpdate := range hash {
 				updates = append(updates, statusUpdate)
 			}
+			elapsedCh <- time.Since(start)
 			if dbg {
 				Ldbg("online models: %d", len(updates))
 			}

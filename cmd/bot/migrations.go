@@ -94,6 +94,9 @@ var migrations = []func(w *worker){
 				result integer not null,
 				delay integer not null);`)
 	},
+	func(w *worker) {
+		w.mustExec("alter table models add special integer not null default 0;")
+	},
 }
 
 func (w *worker) applyMigrations() {

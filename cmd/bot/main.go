@@ -110,6 +110,7 @@ type worker struct {
 	changesInPeriod          int
 	confirmedChangesInPeriod int
 	ourOnline                map[string]bool
+	specialModels            []string
 	siteStatuses             map[string]statusChange
 	siteOnline               map[string]bool
 	tr                       map[string]*lib.Translations
@@ -546,7 +547,7 @@ func (w *worker) initCache() {
 	start := time.Now()
 	w.siteStatuses = w.queryLastStatusChanges()
 	w.siteOnline = w.getLastOnlineModels()
-	w.ourOnline = w.queryConfirmedOnlineModels()
+	w.ourOnline, w.specialModels = w.queryConfirmedModels()
 	elapsed := time.Since(start)
 	linf("cache initialized in %d ms", elapsed.Milliseconds())
 }
@@ -1481,6 +1482,20 @@ func (w *worker) blacklist(endpoint string, arguments string) {
 	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
 }
 
+func (w *worker) addSpecialModel(endpoint string, modelID string) {
+	modelID = w.modelIDPreprocessing(modelID)
+	if !lib.ModelIDRegexp.MatchString(modelID) {
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "model ID is invalid")
+		return
+	}
+	w.mustExec(`
+		insert into models (model_id, special) values (?,?)
+		on conflict(model_id) do update set special=excluded.special`,
+		modelID,
+		true)
+	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
+}
+
 func (w *worker) serveEndpoints() {
 	go func() {
 		err := http.ListenAndServe(w.cfg.ListenAddress, nil)
@@ -1518,6 +1533,9 @@ func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arg
 		return true
 	case "blacklist":
 		w.blacklist(endpoint, arguments)
+		return true
+	case "special":
+		w.addSpecialModel(endpoint, arguments)
 		return true
 	case "set_max_models":
 		parts := strings.Fields(arguments)
@@ -1790,7 +1808,7 @@ func (w *worker) processPeriodic(statusRequests chan lib.StatusRequest) {
 	}
 
 	select {
-	case statusRequests <- lib.StatusRequest{}:
+	case statusRequests <- lib.StatusRequest{SpecialModels: w.specialModels}:
 	default:
 		linf("the queue is full")
 	}
@@ -1808,19 +1826,24 @@ func (w *worker) queryLastStatusChanges() map[string]statusChange {
 	return statusChanges
 }
 
-func (w *worker) queryConfirmedOnlineModels() map[string]bool {
-	query := w.mustQuery("select model_id, status from models")
+func (w *worker) queryConfirmedModels() (map[string]bool, []string) {
+	query := w.mustQuery("select model_id, status, special from models")
 	defer func() { checkErr(query.Close()) }()
 	statuses := map[string]bool{}
+	var specialModels []string
 	for query.Next() {
 		var modelID string
 		var status lib.StatusKind
-		checkErr(query.Scan(&modelID, &status))
+		var special bool
+		checkErr(query.Scan(&modelID, &status, &special))
 		if status == lib.StatusOnline {
 			statuses[modelID] = true
 		}
+		if special {
+			specialModels = append(specialModels, modelID)
+		}
 	}
-	return statuses
+	return statuses, specialModels
 }
 
 func hashDiff(before, after map[string]bool) (all, added, removed []string) {
@@ -2009,6 +2032,7 @@ func (w *worker) getStat(endpoint string) statistics {
 		ModelsToPollTotalCount:         w.modelsToPollTotalCount(),
 		OnlineModelsCount:              len(w.ourOnline),
 		KnownModelsCount:               len(w.siteStatuses),
+		SpecialModelsCount:             len(w.specialModels),
 		StatusChangesCount:             w.statusChangesCount(),
 		TransactionsOnEndpointCount:    w.transactionsOnEndpoint(endpoint),
 		TransactionsOnEndpointFinished: w.transactionsOnEndpointFinished(endpoint),
@@ -2043,7 +2067,7 @@ func (w *worker) handleStat(endpoint string, statRequests chan statRequest) func
 func (w *worker) processStatCommand(endpoint string, writer http.ResponseWriter, r *http.Request, done chan bool) {
 	defer func() { done <- true }()
 	passwords, ok := r.URL.Query()["password"]
-	if !ok || len(passwords[0]) < 1 {
+	if !ok || len(passwords) < 1 {
 		return
 	}
 	password := passwords[0]
@@ -2228,7 +2252,8 @@ func main() {
 	go w.sender(w.lowPriorityMsg, 1)
 
 	var periodicTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
-	statusRequestsChan, onlineModelsChan, errorsChan, elapsed := lib.StartAPIChecker(
+	statusRequestsChan, onlineModelsChan, errorsChan, elapsed := lib.StartChecker(
+		w.checkModel,
 		w.onlineModelsAPI,
 		w.cfg.UsersOnlineEndpoint,
 		w.clients,
@@ -2236,7 +2261,7 @@ func main() {
 		w.cfg.IntervalMs,
 		w.cfg.Debug,
 		w.cfg.SpecificConfig)
-	statusRequestsChan <- lib.StatusRequest{}
+	statusRequestsChan <- lib.StatusRequest{SpecialModels: w.specialModels}
 	signals := make(chan os.Signal, 16)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT)
 	for {
