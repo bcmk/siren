@@ -110,7 +110,7 @@ type worker struct {
 	changesInPeriod          int
 	confirmedChangesInPeriod int
 	ourOnline                map[string]bool
-	specialModels            []string
+	specialModels            map[string]bool
 	siteStatuses             map[string]statusChange
 	siteOnline               map[string]bool
 	tr                       map[string]*lib.Translations
@@ -1493,6 +1493,7 @@ func (w *worker) addSpecialModel(endpoint string, modelID string) {
 		on conflict(model_id) do update set special=excluded.special`,
 		modelID,
 		true)
+	w.specialModels[modelID] = true
 	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
 }
 
@@ -1826,11 +1827,11 @@ func (w *worker) queryLastStatusChanges() map[string]statusChange {
 	return statusChanges
 }
 
-func (w *worker) queryConfirmedModels() (map[string]bool, []string) {
+func (w *worker) queryConfirmedModels() (map[string]bool, map[string]bool) {
 	query := w.mustQuery("select model_id, status, special from models")
 	defer func() { checkErr(query.Close()) }()
 	statuses := map[string]bool{}
-	var specialModels []string
+	specialModels := map[string]bool{}
 	for query.Next() {
 		var modelID string
 		var status lib.StatusKind
@@ -1840,7 +1841,7 @@ func (w *worker) queryConfirmedModels() (map[string]bool, []string) {
 			statuses[modelID] = true
 		}
 		if special {
-			specialModels = append(specialModels, modelID)
+			specialModels[modelID] = true
 		}
 	}
 	return statuses, specialModels

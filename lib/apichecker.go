@@ -76,7 +76,7 @@ func StartChecker(
 					hash[m.ModelID] = m
 				}
 			}
-			for _, modelID := range request.SpecialModels {
+			for modelID := range request.SpecialModels {
 				time.Sleep(time.Duration(intervalMs) * time.Millisecond)
 				client := clientsLoop.nextClient()
 				status := singleChecker(client, modelID, headers, dbg, specificConfig)
