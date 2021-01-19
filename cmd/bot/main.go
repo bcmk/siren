@@ -1482,17 +1482,22 @@ func (w *worker) blacklist(endpoint string, arguments string) {
 	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
 }
 
-func (w *worker) addSpecialModel(endpoint string, modelID string) {
-	modelID = w.modelIDPreprocessing(modelID)
+func (w *worker) addSpecialModel(endpoint string, arguments string) {
+	parts := strings.Split(arguments, " ")
+	if len(parts) != 2 || (parts[0] != "set" && parts[0] != "unset") {
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "usage: /special set/unset MODEL_ID")
+		return
+	}
+	modelID := w.modelIDPreprocessing(parts[1])
 	if !lib.ModelIDRegexp.MatchString(modelID) {
-		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "model ID is invalid")
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "MODEL_ID is invalid")
 		return
 	}
 	w.mustExec(`
 		insert into models (model_id, special) values (?,?)
 		on conflict(model_id) do update set special=excluded.special`,
 		modelID,
-		true)
+		parts[0] == "set")
 	w.specialModels[modelID] = true
 	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
 }
