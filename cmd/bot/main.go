@@ -740,7 +740,7 @@ func (w *worker) statusesForChat(endpoint string, chatID int64) []model {
 	return statuses
 }
 
-func (w *worker) notifyOfStatuses(queue chan outgoingPacket, notifications []notification) {
+func (w *worker) notifyOfStatuses(queue chan outgoingPacket, notifications []notification, social bool) {
 	models := map[string]bool{}
 	chats := map[int64]bool{}
 	for _, n := range notifications {
@@ -762,11 +762,11 @@ func (w *worker) notifyOfStatuses(queue chan outgoingPacket, notifications []not
 		if users[n.chatID].showImages {
 			image = images[n.modelID]
 		}
-		w.notifyOfStatus(queue, n, image)
+		w.notifyOfStatus(queue, n, image, social)
 	}
 }
 
-func (w *worker) notifyOfStatus(queue chan outgoingPacket, n notification, image []byte) {
+func (w *worker) notifyOfStatus(queue chan outgoingPacket, n notification, image []byte, social bool) {
 	if w.cfg.Debug {
 		ldbg("notifying of status of the model %s", n.modelID)
 	}
@@ -782,6 +782,14 @@ func (w *worker) notifyOfStatus(queue chan outgoingPacket, n notification, image
 		w.sendTr(queue, n.endpoint, n.chatID, false, w.tr[n.endpoint].Offline, data)
 	case lib.StatusDenied:
 		w.sendTr(queue, n.endpoint, n.chatID, false, w.tr[n.endpoint].Denied, data)
+	}
+	if social && rand.Intn(10) == 0 {
+		switch rand.Intn(2) {
+		case 0:
+			w.sendTr(queue, n.endpoint, n.chatID, false, w.tr[n.endpoint].Twitter, nil)
+		case 1:
+			w.sendTr(queue, n.endpoint, n.chatID, false, w.tr[n.endpoint].TelegramChannel, nil)
+		}
 	}
 	w.mustExec("update users set reports=reports+1 where chat_id=?", n.chatID)
 }
@@ -888,7 +896,8 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 		chatID:   chatID,
 		modelID:  modelID,
 		status:   confirmedStatus,
-		timeDiff: w.modelTimeDiff(modelID, now)}})
+		timeDiff: w.modelTimeDiff(modelID, now)}},
+		false)
 	if subscriptionsNumber >= user.maxModels-w.cfg.HeavyUserRemainder {
 		w.subscriptionUsage(endpoint, chatID, true)
 	}
@@ -2283,7 +2292,7 @@ func main() {
 			w.updatesDuration = elapsed
 			w.changesInPeriod = changesInPeriod
 			w.confirmedChangesInPeriod = confirmedChangesInPeriod
-			w.notifyOfStatuses(w.lowPriorityMsg, notifications)
+			w.notifyOfStatuses(w.lowPriorityMsg, notifications, true)
 			if w.cfg.Debug {
 				ldbg("status updates processed in %v", elapsed)
 			}
