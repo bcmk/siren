@@ -72,6 +72,7 @@ func chaturbateStatus(status string) StatusKind {
 	}
 	return StatusUnknown
 }
+
 func chaturbateRoomStatus(roomStatus string) StatusKind {
 	switch roomStatus {
 	case "public":
