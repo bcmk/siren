@@ -16,6 +16,8 @@ type chaturbateModel struct {
 
 type chaturbateResponse struct {
 	RoomStatus string `json:"room_status"`
+	Status     *int   `json:"status"`
+	Code       string `json:"code"`
 }
 
 // CheckModelChaturbate checks Chaturbate model status
@@ -55,10 +57,22 @@ func CheckModelChaturbate(client *Client, modelID string, headers [][2]string, d
 		}
 		return StatusUnknown
 	}
-	return chaturbateStatus(parsed.RoomStatus)
+	if parsed.Status != nil {
+		return chaturbateStatus(parsed.Code)
+	}
+	return chaturbateRoomStatus(parsed.RoomStatus)
 }
 
-func chaturbateStatus(roomStatus string) StatusKind {
+func chaturbateStatus(status string) StatusKind {
+	switch status {
+	case "access-denied":
+		return StatusDenied
+	case "unauthorized":
+		return StatusDenied
+	}
+	return StatusUnknown
+}
+func chaturbateRoomStatus(roomStatus string) StatusKind {
 	switch roomStatus {
 	case "public":
 		return StatusOnline
@@ -76,10 +90,6 @@ func chaturbateStatus(roomStatus string) StatusKind {
 		return StatusOffline
 	case "offline":
 		return StatusOffline
-	case "access-denied":
-		return StatusDenied
-	case "unauthorized":
-		return StatusDenied
 	}
 	Lerr("cannot parse room status \"%s\"", roomStatus)
 	return StatusUnknown
