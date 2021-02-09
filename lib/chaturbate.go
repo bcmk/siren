@@ -36,9 +36,6 @@ func CheckModelChaturbate(client *Client, modelID string, headers [][2]string, d
 	if dbg {
 		Ldbg("[%v] query status for %s: %d", client.Addr, modelID, resp.StatusCode)
 	}
-	if resp.StatusCode == 401 {
-		return StatusDenied
-	}
 	if resp.StatusCode == 404 {
 		return StatusNotFound
 	}
@@ -79,6 +76,10 @@ func chaturbateStatus(roomStatus string) StatusKind {
 		return StatusOffline
 	case "offline":
 		return StatusOffline
+	case "access-denied":
+		return StatusDenied
+	case "unauthorized":
+		return StatusDenied
 	}
 	Lerr("cannot parse room status \"%s\"", roomStatus)
 	return StatusUnknown

@@ -82,7 +82,7 @@ func StartChecker(
 				status := singleChecker(client, modelID, headers, dbg, specificConfig)
 				if status == StatusOnline {
 					hash[modelID] = OnlineModel{ModelID: modelID}
-				} else if status != StatusOffline {
+				} else if status == StatusUnknown || status == StatusNotFound {
 					Lerr("status for model %s reported: %v", modelID, status)
 					errorsCh <- struct{}{}
 				}
