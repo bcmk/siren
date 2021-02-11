@@ -2279,6 +2279,7 @@ func main() {
 	statusRequestsChan <- lib.StatusRequest{SpecialModels: w.specialModels}
 	signals := make(chan os.Signal, 16)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT)
+	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, lib.ParseRaw, "bot started")
 	for {
 		select {
 		case e := <-elapsed:
