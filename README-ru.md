@@ -109,3 +109,5 @@ Telegram-бот для оповещений о вебкам-шоу
 [GitHub Pages](https://siren.chat/ru.html)
 
 [Канал Telegram](https://t.me/siren_telegram_bot)
+
+[Reddit](https://www.reddit.com/user/siren_tlg)

@@ -225,6 +225,7 @@ social:
     Twitter: https://twitter.com/siren_tlg
     GitHub: https://github.com/bcmk/siren
     News channel: https://t.me/siren_telegram_bot
+    Reddit: https://www.reddit.com/user/siren_tlg
 subscription_usage:
   parse: raw
   str: 'Subscriptions usage: {{ .subscriptions_used }}/{{ .total_subscriptions }}'

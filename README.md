@@ -103,3 +103,5 @@ Links
 [GitHub Pages](https://siren.chat)
 
 [News Telegram channel](https://t.me/siren_telegram_bot)
+
+[Reddit](https://www.reddit.com/user/siren_tlg)
