@@ -24,6 +24,7 @@ func main() {
 		return
 	}
 	modelID := flag.Arg(0)
+	modelID = lib.ChaturbateCanonicalModelID(modelID)
 	if !lib.ModelIDRegexp.MatchString(modelID) {
 		fmt.Println("invalid model ID")
 		return

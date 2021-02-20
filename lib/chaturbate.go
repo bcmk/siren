@@ -6,8 +6,20 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"regexp"
 	"strings"
 )
+
+var chaturbateModelRegex = regexp.MustCompile(`^(?:http(?:s)?://)?(?:www\.|ar\.|de\.|el\.|en\.|es\.|fr\.|hi\.|it\.|ja\.|ko\.|nl\.|pt\.|ru\.|tr\.|zh\.)?chaturbate\.com(?:/p|/b)?/([A-Za-z0-9\-_@]+)(?:/)?(?:\?.*)?$`)
+
+// ChaturbateCanonicalModelID preprocesses model ID string to canonical for Chaturbate form
+func ChaturbateCanonicalModelID(name string) string {
+	m := chaturbateModelRegex.FindStringSubmatch(name)
+	if len(m) == 2 {
+		name = m[1]
+	}
+	return strings.ToLower(name)
+}
 
 type chaturbateModel struct {
 	Username string `json:"username"`

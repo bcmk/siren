@@ -257,7 +257,7 @@ func newWorker() *worker {
 	case "chaturbate":
 		w.checkModel = lib.CheckModelChaturbate
 		w.onlineModelsAPI = lib.ChaturbateOnlineAPI
-		w.modelIDPreprocessing = lib.CanonicalModelID
+		w.modelIDPreprocessing = lib.ChaturbateCanonicalModelID
 	case "stripchat":
 		w.checkModel = lib.CheckModelStripchat
 		w.onlineModelsAPI = lib.StripchatOnlineAPI
