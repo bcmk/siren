@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-var chaturbateModelRegex = regexp.MustCompile(`^(?:http(?:s)?://)?(?:www\.|ar\.|de\.|el\.|en\.|es\.|fr\.|hi\.|it\.|ja\.|ko\.|nl\.|pt\.|ru\.|tr\.|zh\.)?chaturbate\.com(?:/p|/b)?/([A-Za-z0-9\-_@]+)(?:/)?(?:\?.*)?$`)
+var chaturbateModelRegex = regexp.MustCompile(`^(?:http(?:s)?://)?(?:[A-Za-z]+\.)?chaturbate\.com(?:/p|/b)?/([A-Za-z0-9\-_@]+)(?:/)?(?:\?.*)?$`)
 
 // ChaturbateCanonicalModelID preprocesses model ID string to canonical for Chaturbate form
 func ChaturbateCanonicalModelID(name string) string {
