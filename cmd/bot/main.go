@@ -2159,7 +2159,7 @@ func (w *worker) processIPN(writer http.ResponseWriter, r *http.Request, done ch
 func (w *worker) handleStatEndpoints(statRequests chan statRequest) {
 	for n, p := range w.cfg.Endpoints {
 		if p.StatPath != "" {
-			http.HandleFunc(p.StatPath, w.handleStat(n, statRequests))
+			http.HandleFunc(p.WebhookDomain+p.StatPath, w.handleStat(n, statRequests))
 		}
 	}
 }
