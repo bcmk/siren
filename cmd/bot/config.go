@@ -14,6 +14,7 @@ import (
 
 type endpoint struct {
 	ListenPath      string   `json:"listen_path"`      // the path excluding domain to listen to, the good choice is "/your-telegram-bot-token"
+	StatPath        string   `json:"stat_path"`        // the path for statistics
 	WebhookDomain   string   `json:"webhook_domain"`   // the domain listening to the webhook
 	CertificatePath string   `json:"certificate_path"` // a path to your certificate, it is used to setup a webhook and to setup this HTTP server
 	BotToken        string   `json:"bot_token"`        // your Telegram bot token
