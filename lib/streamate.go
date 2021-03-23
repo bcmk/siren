@@ -9,112 +9,112 @@ import (
 	"strings"
 )
 
-type DescriptionsRequest struct {
+type descriptionsRequest struct {
 	XMLName xml.Name `xml:"Descriptions"`
 }
 
-type MediaRequest struct {
+type mediaRequest struct {
 	XMLName xml.Name `xml:"Media"`
 	Value   string   `xml:",chardata"`
 }
 
-type StaticSortRequest struct {
+type staticSortRequest struct {
 	XMLName xml.Name `xml:"StaticSort"`
 }
 
-type IncludeRequest struct {
+type includeRequest struct {
 	XMLName      xml.Name `xml:"Include"`
-	Descriptions *DescriptionsRequest
-	Media        *MediaRequest
-	StaticSort   *StaticSortRequest
+	Descriptions *descriptionsRequest
+	Media        *mediaRequest
+	StaticSort   *staticSortRequest
 }
 
-type PublicProfileRequest struct {
+type publicProfileRequest struct {
 	XMLName xml.Name `xml:"PublicProfile"`
 }
 
-type NameRequest struct {
+type nameRequest struct {
 	XMLName xml.Name `xml:"Name"`
 	Value   string   `xml:",chardata"`
 }
 
-type StreamTypeRequest struct {
+type streamTypeRequest struct {
 	XMLName xml.Name `xml:"StreamType"`
 	Value   string   `xml:",chardata"`
 }
 
-type ConstraintsRequest struct {
+type constraintsRequest struct {
 	XMLName       xml.Name `xml:"Constraints"`
-	PublicProfile *PublicProfileRequest
-	Name          *NameRequest
-	StreamType    *StreamTypeRequest
+	PublicProfile *publicProfileRequest
+	Name          *nameRequest
+	StreamType    *streamTypeRequest
 }
 
-type AvailablePerformersRequest struct {
+type availablePerformersRequest struct {
 	XMLName           xml.Name `xml:"AvailablePerformers"`
 	Exact             bool     `xml:"Exact,attr"`
 	PageNum           int      `xml:"PageNum,attr"`
 	CountTotalResults bool     `xml:"CountTotalResults,attr"`
-	Include           IncludeRequest
-	Constraints       ConstraintsRequest
+	Include           includeRequest
+	Constraints       constraintsRequest
 }
 
-type OptionsRequest struct {
+type optionsRequest struct {
 	XMLName    xml.Name `xml:"Options"`
 	MaxResults int      `xml:"MaxResults,attr"`
 }
 
-type StreamateRequest struct {
+type streamateRequest struct {
 	XMLName             xml.Name `xml:"SMLQuery"`
-	Options             OptionsRequest
-	AvailablePerformers AvailablePerformersRequest
+	Options             optionsRequest
+	AvailablePerformers availablePerformersRequest
 }
 
-type FullResponse struct {
+type fullResponse struct {
 	XMLName xml.Name `xml:"Full"`
 	Src     string   `xml:"Src,attr"`
 }
 
-type PicResponse struct {
+type picResponse struct {
 	XMLName xml.Name      `xml:"Pic"`
-	Full    *FullResponse `xml:"Full"`
+	Full    *fullResponse `xml:"Full"`
 }
 
-type MediaResponse struct {
+type mediaResponse struct {
 	XMLName xml.Name     `xml:"Media"`
-	Pic     *PicResponse `xml:"Pic"`
+	Pic     *picResponse `xml:"Pic"`
 }
 
-type PerformerResponse struct {
+type performerResponse struct {
 	XMLName    xml.Name       `xml:"Performer"`
 	Name       string         `xml:"Name,attr"`
 	StreamType string         `xml:"StreamType,attr"`
-	Media      *MediaResponse `xml:"Media"`
+	Media      *mediaResponse `xml:"Media"`
 }
 
-type AvailablePerformersResponse struct {
+type availablePerformersResponse struct {
 	XMLName          xml.Name            `xml:"AvailablePerformers"`
 	ExactMatches     int                 `xml:"ExactMatches,attr"`
 	TotalResultCount int                 `xml:"TotalResultCount,attr"`
-	Performers       []PerformerResponse `xml:"Performer"`
+	Performers       []performerResponse `xml:"Performer"`
 }
 
-type StreamateResponse struct {
+type streamateResponse struct {
 	XMLName             xml.Name `xml:"SMLResult"`
-	AvailablePerformers AvailablePerformersResponse
+	AvailablePerformers availablePerformersResponse
 }
 
 // CheckModelStreamate checks Streamate model status
 func CheckModelStreamate(client *Client, modelID string, headers [][2]string, dbg bool, _ map[string]string) StatusKind {
-	reqData := StreamateRequest{
-		Options: OptionsRequest{MaxResults: 1},
-		AvailablePerformers: AvailablePerformersRequest{
+	reqData := streamateRequest{
+		Options: optionsRequest{MaxResults: 1},
+		AvailablePerformers: availablePerformersRequest{
 			Exact:   true,
 			PageNum: 1,
-			Constraints: ConstraintsRequest{
-				PublicProfile: &PublicProfileRequest{},
-				StreamType:    &StreamTypeRequest{Value: "live,recorded,offline"},
-				Name:          &NameRequest{Value: modelID},
+			Constraints: constraintsRequest{
+				PublicProfile: &publicProfileRequest{},
+				StreamType:    &streamTypeRequest{Value: "live,recorded,offline"},
+				Name:          &nameRequest{Value: modelID},
 			},
 		},
 	}
@@ -148,7 +148,7 @@ func CheckModelStreamate(client *Client, modelID string, headers [][2]string, db
 		return StatusUnknown
 	}
 	decoder := xml.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
-	parsed := &StreamateResponse{}
+	parsed := &streamateResponse{}
 	err = decoder.Decode(parsed)
 	if err != nil {
 		Lerr("[%v] cannot parse response for model %s, %v", client.Addr, modelID, err)
@@ -185,18 +185,18 @@ func StreamateOnlineAPI(
 	i := 0
 	for i < 20 {
 		i++
-		reqData := StreamateRequest{
-			Options: OptionsRequest{MaxResults: page},
-			AvailablePerformers: AvailablePerformersRequest{
+		reqData := streamateRequest{
+			Options: optionsRequest{MaxResults: page},
+			AvailablePerformers: availablePerformersRequest{
 				Exact:             true,
 				PageNum:           i,
 				CountTotalResults: true,
-				Include: IncludeRequest{
-					Media: &MediaRequest{Value: "biopic"},
+				Include: includeRequest{
+					Media: &mediaRequest{Value: "biopic"},
 				},
-				Constraints: ConstraintsRequest{
-					PublicProfile: &PublicProfileRequest{},
-					StreamType:    &StreamTypeRequest{Value: "live"},
+				Constraints: constraintsRequest{
+					PublicProfile: &publicProfileRequest{},
+					StreamType:    &streamTypeRequest{Value: "live"},
 				},
 			},
 		}
@@ -214,7 +214,7 @@ func StreamateOnlineAPI(
 			return nil, fmt.Errorf("cannot send a query, %v", err)
 		}
 		decoder := xml.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
-		parsed := &StreamateResponse{}
+		parsed := &streamateResponse{}
 		err = decoder.Decode(parsed)
 		if err != nil {
 			if dbg {
