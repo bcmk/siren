@@ -21,6 +21,7 @@ Telegram-бот для оповещений о вебкам-шоу
 * LiveJasmin: [t.me/RuLiveJasminSirenBot](https://t.me/RuLiveJasminSirenBot)
 * CamSoda: [t.me/RuCamSodaSirenBot](https://t.me/RuCamSodaSirenBot)
 * Flirt4Free: [t.me/RuFlirt4FreeSirenBot](https://t.me/RuFlirt4FreeSirenBot)
+* Streamate: [t.me/RuStreamateSirenBot](https://t.me/RuStreamateSirenBot)
 
 Эти боты работают на русском языке. Англоязычные боты можно посмотреть тут [English](README.md)
 

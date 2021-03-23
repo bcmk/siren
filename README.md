@@ -22,6 +22,7 @@ Installation
 * LiveJasmin: [t.me/LiveJasminSirenBot](https://t.me/LiveJasminSirenBot)
 * CamSoda: [t.me/CamSodaSirenBot](https://t.me/CamSodaSirenBot)
 * Flirt4Free: [t.me/Flirt4FreeSirenBot](https://t.me/Flirt4FreeSirenBot)
+* Streamate: [t.me/StreamateSirenBot](https://t.me/StreamateSirenBot)
 
 Commands
 --------
