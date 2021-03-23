@@ -43,7 +43,7 @@ sites:
     Flirt4Free: <a href="https://t.me/RuFlirt4FreeSirenBot">RuFlirt4FreeSirenBot</a>
 add_example:
   parse: html
-  str: /add dalla-and-mirana
+  str: /add melinarose91
 syntax_add:
   parse: html
   str: |-
