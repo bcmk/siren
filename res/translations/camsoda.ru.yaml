@@ -40,6 +40,7 @@ sites:
     Stripchat: <a href="https://t.me/StripchatSirenBot">StripchatSirenBot</a>
     LiveJasmin: <a href="https://t.me/RuLiveJasminSirenBot">RuLiveJasminSirenBot</a>
     Flirt4Free: <a href="https://t.me/RuFlirt4FreeSirenBot">RuFlirt4FreeSirenBot</a>
+    Streamate: <a href="https://t.me/RuStreamateSirenBot">RuStreamateSirenBot</a>
 add_example:
   parse: html
   str: /add gorgonmedusa

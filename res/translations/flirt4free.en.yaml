@@ -40,6 +40,7 @@ sites:
     Stripchat: <a href="https://t.me/StripchatOnlineBot">StripchatOnlineBot</a>
     LiveJasmin: <a href="https://t.me/LiveJasminSirenBot">LiveJasminSirenBot</a>
     CamSoda: <a href="https://t.me/CamSodaSirenBot">CamSodaSirenBot</a>
+    Streamate: <a href="https://t.me/StreamateSirenBot">StreamateSirenBot</a>
 add_example:
   parse: html
   str: /add dalla-and-mirana

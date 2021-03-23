@@ -15,6 +15,7 @@ sites:
     Stripchat: <a href="https://t.me/StripchatOnlineBot">StripchatOnlineBot</a>
     CamSoda: <a href="https://t.me/CamSodaSirenBot">CamSodaSirenBot</a>
     Flirt4Free: <a href="https://t.me/Flirt4FreeSirenBot">Flirt4FreeSirenBot</a>
+    Streamate: <a href="https://t.me/StreamateSirenBot">StreamateSirenBot</a>
 add_example:
   parse: html
   str: /add maiaferre
