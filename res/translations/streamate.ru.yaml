@@ -1,0 +1,101 @@
+site:
+  parse: html
+  str: Streamate
+add_error:
+  parse: html
+  str: |-
+    Не получилось добавить модель {{ .model }}
+    Проверьте идентификатор модели или попробуйте позже
+    Формат команды: /add <code>МОДЕЛЬ</code>
+    {{ template "address_line" }}
+help:
+  parse: html
+  disable_preview: true
+  str: |-
+    {{ template "hello" .website_link }}
+
+    {{ template "commands" }}
+
+    {{ template "address_line" }}
+
+    {{ template "languages" }}
+
+    {{ template "sites" }}
+
+    {{ template "social" }}
+address_line:
+  parse: html
+  str: Используйте идентификатор модели из адресной строки браузера
+languages:
+  parse: html
+  str: |-
+    <b>Этот бот на других языках</b>
+    English: <a href="https://t.me/StreamateSirenBot">StreamateSirenBot</a>
+sites:
+  parse: html
+  str: |-
+    <b>Этот бот для других сайтов</b>
+    Chaturbate: <a href="https://t.me/ChaturbateSirenBot">ChaturbateSirenBot</a>
+    BongaCams: <a href="https://t.me/BongaCamsSirenBot">BongaCamsSirenBot</a>
+    Stripchat: <a href="https://t.me/StripchatSirenBot">StripchatSirenBot</a>
+    LiveJasmin: <a href="https://t.me/RuLiveJasminSirenBot">RuLiveJasminSirenBot</a>
+    CamSoda: <a href="https://t.me/RuCamSodaSirenBot">RuCamSodaSirenBot</a>
+    Flirt4Free: <a href="https://t.me/RuFlirt4FreeSirenBot">RuFlirt4FreeSirenBot</a>
+add_example:
+  parse: html
+  str: /add dalla-and-mirana
+syntax_add:
+  parse: html
+  str: |-
+    Наберите
+
+    /add <code>МОДЕЛЬ</code>
+
+    {{ template "address_line" }}
+
+    Пример
+
+    {{ template "add_example" }}
+syntax_remove:
+  parse: html
+  str: |-
+    Наберите
+
+    /remove <code>МОДЕЛЬ</code>
+
+    {{ template "address_line" }}
+unknown_command:
+  parse: html
+  str: |-
+    Такой команде не обучен. Чтобы подписаться на модель, наберите
+
+    /add <code>МОДЕЛЬ</code>
+
+    {{ template "address_line" }}
+
+    Пример
+
+    {{ template "add_example" }}
+zero_subscriptions:
+  parse: html
+  str: |-
+    Вы не подписаны ни на одну модель
+    Чтобы подписаться, наберите
+
+    /add <code>МОДЕЛЬ</code>
+
+    {{ template "address_line" }}
+faq_direct_subscriptions:
+  parse: html
+  str: >
+    <b>Было бы здорово, если бы можно было подписаться на модель прямо с её страницы</b>
+
+    Некоторые модели вставляют в свои профили ссылки и плавающие иконки именно для этого.
+    Вы можете рассказать модели об этой возможности.
+    Модель может написать нам по адресу siren.chat@gmail.com, и мы бесплатно нарисуем плавающую иконку специально для неё.
+faq:
+  parse: html
+  str: |-
+    {{ template "faq_pricing" . }}
+
+    {{ template "faq_direct_subscriptions"}}

@@ -63,6 +63,17 @@ func onlineQuery(
 	for _, h := range headers {
 		req.Header.Set(h[0], h[1])
 	}
+	return onlineRequest(req, client)
+}
+
+func onlineRequest(
+	req *http.Request,
+	client *Client,
+) (
+	*http.Response,
+	*bytes.Buffer,
+	error,
+) {
 	resp, err := client.Client.Do(req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("sending error, %w", err)

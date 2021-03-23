@@ -274,6 +274,10 @@ func newWorker() *worker {
 		w.checkModel = lib.CheckModelFlirt4Free
 		w.onlineModelsAPI = lib.Flirt4FreeOnlineAPI
 		w.modelIDPreprocessing = lib.Flirt4FreeCanonicalModelID
+	case "streamate":
+		w.checkModel = lib.CheckModelStreamate
+		w.onlineModelsAPI = lib.StreamateOnlineAPI
+		w.modelIDPreprocessing = lib.CanonicalModelID
 	default:
 		panic("wrong website")
 	}

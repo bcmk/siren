@@ -49,7 +49,7 @@ type statusConfirmationSeconds struct {
 
 type config struct {
 	ListenAddress               string                    `json:"listen_address"`                 // the address to listen to
-	Website                     string                    `json:"website"`                        // one of the following strings: "bongacams", "stripchat", "chaturbate", "livejasmin"
+	Website                     string                    `json:"website"`                        // one of the following strings: "bongacams", "stripchat", "chaturbate", "livejasmin", "flirt4free", "streamate"
 	WebsiteLink                 string                    `json:"website_link"`                   // affiliate link to website
 	PeriodSeconds               int                       `json:"period_seconds"`                 // the period of querying models statuses
 	MaxModels                   int                       `json:"max_models"`                     // maximum models per user
