@@ -85,6 +85,14 @@ zero_subscriptions:
     /add <code>МОДЕЛЬ</code>
 
     {{ template "address_line" }}
+faq_cannot_subscribe:
+  parse: html
+  str: >
+    <b>Я не могу подписаться на некоторых моделей</b>
+
+    Мы используем тот же список моделей в сети, что и некоторые сайты используют для рекламы.
+    Модели, использующие гео-блокировку, отсутствуют в нём, поэтому мы не можем знать, когда они в сети.
+    К сожалению, в данный момент эту проблему решить нельзя
 faq_direct_subscriptions:
   parse: html
   str: >
@@ -96,6 +104,8 @@ faq_direct_subscriptions:
 faq:
   parse: html
   str: |-
+    {{ template "faq_cannot_subscribe" }}
+
     {{ template "faq_pricing" . }}
 
     {{ template "faq_direct_subscriptions"}}

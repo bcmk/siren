@@ -85,6 +85,14 @@ zero_subscriptions:
     /add <code>CAMNAME</code>
 
     {{ template "address_line" }}
+faq_cannot_subscribe:
+  parse: html
+  str: >
+    <b>I cannot subscribe to some models</b>
+
+    We use the same list of online models as affiliate sites use for advertisements.
+    Models that use geo-restriction don't appear there, so we cannot know when they are online.
+    Unfortunately there is no workaround at the moment.
 faq_direct_subscriptions:
   parse: html
   str: >
@@ -96,6 +104,8 @@ faq_direct_subscriptions:
 faq:
   parse: html
   str: |-
+    {{ template "faq_cannot_subscribe" }}
+
     {{ template "faq_pricing" . }}
 
     {{ template "faq_direct_subscriptions"}}
