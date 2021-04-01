@@ -51,19 +51,19 @@ Telegram-бот для оповещений о вебкам-шоу
 Используйте следующие ссылки:
 
 * Chaturbate:  
-  <pre>https://siren.chat/cb-ru/<b><i>YOUR_USERNAME</i></b></pre>
+  <pre>https://siren.chat/cb-ru/<b><i>МОДЕЛЬ</i></b></pre>
 * Stripchat and xHamster Live:  
-  <pre>https://siren.chat/sc-ru/<b><i>YOUR_USERNAME</i></b></pre>
+  <pre>https://siren.chat/sc-ru/<b><i>МОДЕЛЬ</i></b></pre>
 * BongaCams:  
-  <pre>https://siren.chat/bc-ru/<b><i>YOUR_USERNAME</i></b></pre>
+  <pre>https://siren.chat/bc-ru/<b><i>МОДЕЛЬ</i></b></pre>
 * LiveJasmin:  
-  <pre>https://siren.chat/lj-ru/<b><i>YOUR_USERNAME</i></b></pre>
+  <pre>https://siren.chat/lj-ru/<b><i>МОДЕЛЬ</i></b></pre>
 * CamSoda:  
-  <pre>https://siren.chat/cs-ru/<b><i>YOUR_USERNAME</i></b></pre>
+  <pre>https://siren.chat/cs-ru/<b><i>МОДЕЛЬ</i></b></pre>
 * Flirt4Free:  
-  <pre>https://siren.chat/f4f-ru/<b><i>YOUR_USERNAME</i></b></pre>
+  <pre>https://siren.chat/f4f-ru/<b><i>МОДЕЛЬ</i></b></pre>
 * Streamate:  
-  <pre>https://siren.chat/sm-ru/<b><i>YOUR_USERNAME</i></b></pre>
+  <pre>https://siren.chat/sm-ru/<b><i>МОДЕЛЬ</i></b></pre>
 
 Замените ___МОДЕЛЬ___ на ваш реальный идентификатор модели.
 Это то же самое, что и имя модели в Chaturbate и Stripchat.

@@ -64,7 +64,7 @@ Use following links:
 * Streamate:  
   <pre>https://siren.chat/sm/<b><i>YOUR_USERNAME</i></b></pre>
 
-Substitute ___MODEL_ID___ with your actual model ID.
+Substitute ___YOUR_USERNAME___ with your actual model ID.
 It is the same as model name in Chaturbate and Stripchat.
 
 Recommended text: "Get a notification in Telegram whenever I'm online ___YOUR LINK___".
