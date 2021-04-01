@@ -69,7 +69,7 @@ It is the same as model name in Chaturbate and Stripchat.
 
 Recommended text: "Get a notification in Telegram whenever I'm online ___YOUR LINK___".
 
-You can use these [icons](https://siren.chat/chic) for Chaturbate.
+You can use these [floating icons](https://siren.chat/chic) for your Chaturbate profile.
 
 Write to siren.chat@gmail.com in case of any questions.
 
