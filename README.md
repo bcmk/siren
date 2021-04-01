@@ -50,17 +50,19 @@ From that moment they receive a notification whenever you start broadcasting.
 Use following links:
 
 * Chaturbate:  
-  <pre>https://t.me/ChaturbateAlarmBot?start=m-<b><i>MODEL_ID</i></b></pre>
+  <pre>https://siren.chat/cb/<b><i>YOUR_USERNAME</i></b></pre>
 * Stripchat and xHamster Live:  
-  <pre>https://t.me/StripchatOnlineBot?start=m-<b><i>MODEL_ID</i></b></pre>
+  <pre>https://siren.chat/sc/<b><i>YOUR_USERNAME</i></b></pre>
 * BongaCams:  
-  <pre>https://t.me/BongacamsOnlineBot?start=m-<b><i>MODEL_ID</i></b></pre>
+  <pre>https://siren.chat/bc/<b><i>YOUR_USERNAME</i></b></pre>
 * LiveJasmin:  
-  <pre>https://t.me/LiveJasminSirenBot?start=m-<b><i>MODEL_ID</i></b></pre>
+  <pre>https://siren.chat/lj/<b><i>YOUR_USERNAME</i></b></pre>
 * CamSoda:  
-  <pre>https://t.me/CamSodaSirenBot?start=m-<b><i>MODEL_ID</i></b></pre>
+  <pre>https://siren.chat/cs/<b><i>YOUR_USERNAME</i></b></pre>
 * Flirt4Free:  
-  <pre>https://t.me/Flirt4FreeSirenBot?start=m-<b><i>MODEL_ID</i></b></pre>
+  <pre>https://siren.chat/f4f/<b><i>YOUR_USERNAME</i></b></pre>
+* Streamate:  
+  <pre>https://siren.chat/sm/<b><i>YOUR_USERNAME</i></b></pre>
 
 Substitute ___MODEL_ID___ with your actual model ID.
 It is the same as model name in Chaturbate and Stripchat.

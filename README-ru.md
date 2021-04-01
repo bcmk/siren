@@ -50,33 +50,25 @@ Telegram-бот для оповещений о вебкам-шоу
 С этого момента они будут получать оповещения, когда вы начинаете трансляцию.
 Используйте следующие ссылки:
 
-* Английский бот для Chaturbate:  
-  <pre>https://t.me/ChaturbateAlarmBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
-* Английский бот для Stripchat и xHamster Live:  
-  <pre>https://t.me/StripchatOnlineBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
-* Английский бот для BongaCams:  
-  <pre>https://t.me/BongacamsOnlineBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
-* Английский бот для LiveJasmin:  
-  <pre>https://t.me/LiveJasminSirenBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
-* Английский бот для CamSoda:  
-  <pre>https://t.me/CamSodaSirenBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
-* Английский бот для Flirt4Free:  
-  <pre>https://t.me/Flirt4FreeSirenBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
-* Русский бот для Chaturbate:  
-  <pre>https://t.me/ChaturbateSirenBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
-* Русский бот для Stripchat и xHamster Live:  
-  <pre>https://t.me/StripchatSirenBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
-* Русский бот для BongaCams:  
-  <pre>https://t.me/BongacamsSirenBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
-* Русский бот для LiveJasmin:  
-  <pre>https://t.me/RuLiveJasminSirenBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
-* Русский бот для CamSoda:  
-  <pre>https://t.me/RuCamSodaSirenBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
-* Русский бот для Flirt4Free:  
-  <pre>https://t.me/RuFlirt4FreeSirenBot?start=m-<b><i>МОДЕЛЬ</i></b></pre>
+* Chaturbate:  
+  <pre>https://siren.chat/cb-ru/<b><i>YOUR_USERNAME</i></b></pre>
+* Stripchat and xHamster Live:  
+  <pre>https://siren.chat/sc-ru/<b><i>YOUR_USERNAME</i></b></pre>
+* BongaCams:  
+  <pre>https://siren.chat/bc-ru/<b><i>YOUR_USERNAME</i></b></pre>
+* LiveJasmin:  
+  <pre>https://siren.chat/lj-ru/<b><i>YOUR_USERNAME</i></b></pre>
+* CamSoda:  
+  <pre>https://siren.chat/cs-ru/<b><i>YOUR_USERNAME</i></b></pre>
+* Flirt4Free:  
+  <pre>https://siren.chat/f4f-ru/<b><i>YOUR_USERNAME</i></b></pre>
+* Streamate:  
+  <pre>https://siren.chat/sm-ru/<b><i>YOUR_USERNAME</i></b></pre>
 
 Замените ___МОДЕЛЬ___ на ваш реальный идентификатор модели.
 Это то же самое, что и имя модели в Chaturbate и Stripchat.
+
+Эти боты работают на русском языке. Англоязычные боты [тут](README.md).
 
 Рекомендованный текст для англоязычных пользователей: "Get a notification in Telegram whenever I'm online ___ВАША ССЫЛКА___".
 
