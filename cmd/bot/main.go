@@ -2284,7 +2284,7 @@ func main() {
 		w.cfg.SpecificConfig)
 	statusRequestsChan <- lib.StatusRequest{SpecialModels: w.specialModels}
 	signals := make(chan os.Signal, 16)
-	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT, syscall.SIGTSTP, syscall.SIGCONT)
 	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, lib.ParseRaw, "bot started")
 	for {
 		select {
@@ -2316,8 +2316,23 @@ func main() {
 			w.processIPN(s.writer, s.request, s.done)
 		case s := <-signals:
 			linf("got signal %v", s)
-			w.removeWebhook()
-			return
+			if s == syscall.SIGINT || s == syscall.SIGTERM || s == syscall.SIGABRT {
+				w.removeWebhook()
+				return
+			}
+			if s == syscall.SIGTSTP {
+				for {
+					n := <-signals
+					linf("got signal %v", n)
+					if n == syscall.SIGINT || n == syscall.SIGTERM || n == syscall.SIGABRT {
+						w.removeWebhook()
+						return
+					}
+					if n == syscall.SIGCONT {
+						break
+					}
+				}
+			}
 		case r := <-w.outgoingMsgResults:
 			switch r.result {
 			case messageBlocked:
