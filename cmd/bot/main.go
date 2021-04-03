@@ -1533,50 +1533,53 @@ func (w *worker) myEmail(endpoint string) {
 	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, true, true, lib.ParseRaw, email)
 }
 
-func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arguments string) bool {
+func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arguments string) (processed bool, maintenance bool) {
 	switch command {
 	case "stat":
 		w.stat(endpoint)
-		return true
+		return true, false
 	case "performance":
 		w.performanceStat(endpoint)
-		return true
+		return true, false
 	case "email":
 		w.myEmail(endpoint)
-		return true
+		return true, false
 	case "broadcast":
 		w.broadcast(endpoint, arguments)
-		return true
+		return true, false
 	case "direct":
 		w.direct(endpoint, arguments)
-		return true
+		return true, false
 	case "blacklist":
 		w.blacklist(endpoint, arguments)
-		return true
+		return true, false
 	case "special":
 		w.addSpecialModel(endpoint, arguments)
-		return true
+		return true, false
 	case "set_max_models":
 		parts := strings.Fields(arguments)
 		if len(parts) != 2 {
 			w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, lib.ParseRaw, "expecting two arguments")
-			return true
+			return true, false
 		}
 		who, err := strconv.ParseInt(parts[0], 10, 64)
 		if err != nil {
 			w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, lib.ParseRaw, "first argument is invalid")
-			return true
+			return true, false
 		}
 		maxModels, err := strconv.Atoi(parts[1])
 		if err != nil {
 			w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, lib.ParseRaw, "second argument is invalid")
-			return true
+			return true, false
 		}
 		w.setLimit(who, maxModels)
 		w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, lib.ParseRaw, "OK")
-		return true
+		return true, false
+	case "maintenance":
+		w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, lib.ParseRaw, "OK")
+		return true, true
 	}
-	return false
+	return false, false
 }
 
 func splitAddress(a string) (string, string) {
@@ -1737,7 +1740,7 @@ func (w *worker) start(endpoint string, chatID int64, referrer string, now int) 
 	}
 }
 
-func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, arguments string, now int) {
+func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, arguments string, now int) bool {
 	w.resetBlock(endpoint, chatID)
 	command = strings.ToLower(command)
 	if command != "start" {
@@ -1745,8 +1748,10 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	}
 	linf("chat: %d, command: %s %s", chatID, command, arguments)
 
-	if chatID == w.cfg.AdminID && w.processAdminMessage(endpoint, chatID, command, arguments) {
-		return
+	if chatID == w.cfg.AdminID {
+		if proc, maintenance := w.processAdminMessage(endpoint, chatID, command, arguments); proc {
+			return maintenance
+		}
 	}
 
 	unknown := func() { w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].UnknownCommand, nil) }
@@ -1795,13 +1800,13 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	case "buy":
 		if w.cfg.CoinPayments == nil || w.cfg.Mail == nil {
 			unknown()
-			return
+			return false
 		}
 		w.buy(endpoint, chatID)
 	case "buy_with":
 		if w.cfg.CoinPayments == nil || w.cfg.Mail == nil {
 			unknown()
-			return
+			return false
 		}
 		w.buyWith(endpoint, chatID, arguments)
 	case "referral":
@@ -1809,12 +1814,13 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	case "week":
 		if !w.cfg.EnableWeek {
 			unknown()
-			return
+			return false
 		}
 		w.showWeek(endpoint, chatID, arguments)
 	default:
 		unknown()
 	}
+	return false
 }
 
 func (w *worker) processPeriodic(statusRequests chan lib.StatusRequest) {
@@ -1967,7 +1973,24 @@ func (w *worker) processStatusUpdates(
 	return
 }
 
-func (w *worker) processTGUpdate(p incomingPacket) {
+func getCommandAndArgs(u *tg.Update) (string, string) {
+	if u.Message.IsCommand() {
+		return u.Message.Command(), strings.TrimSpace(u.Message.CommandArguments())
+	}
+	if u.Message.Text == "" {
+		return "", ""
+	}
+	parts := strings.SplitN(u.Message.Text, " ", 2)
+	if parts[0] == "" {
+		return "", ""
+	}
+	for len(parts) < 2 {
+		parts = append(parts, "")
+	}
+	return parts[0], strings.TrimSpace(parts[1])
+}
+
+func (w *worker) processTGUpdate(p incomingPacket) bool {
 	now := int(time.Now().Unix())
 	u := p.message
 	if u.Message != nil && u.Message.Chat != nil {
@@ -1984,20 +2007,11 @@ func (w *worker) processTGUpdate(p incomingPacket) {
 					}
 				}
 			}
-		} else if u.Message.IsCommand() {
-			w.processIncomingCommand(p.endpoint, u.Message.Chat.ID, u.Message.Command(), strings.TrimSpace(u.Message.CommandArguments()), now)
 		} else {
-			if u.Message.Text == "" {
-				return
+			command, args := getCommandAndArgs(&u)
+			if command != "" {
+				return w.processIncomingCommand(p.endpoint, u.Message.Chat.ID, command, args, now)
 			}
-			parts := strings.SplitN(u.Message.Text, " ", 2)
-			if parts[0] == "" {
-				return
-			}
-			for len(parts) < 2 {
-				parts = append(parts, "")
-			}
-			w.processIncomingCommand(p.endpoint, u.Message.Chat.ID, parts[0], strings.TrimSpace(parts[1]), now)
 		}
 	}
 	if u.CallbackQuery != nil {
@@ -2011,8 +2025,9 @@ func (w *worker) processTGUpdate(p incomingPacket) {
 		if len(data) < 2 {
 			data = append(data, "")
 		}
-		w.processIncomingCommand(p.endpoint, chatID, data[0], data[1], now)
+		return w.processIncomingCommand(p.endpoint, chatID, data[0], data[1], now)
 	}
+	return false
 }
 
 func getRss() (int64, error) {
@@ -2233,6 +2248,33 @@ func (w *worker) logQuerySuccess(success bool) {
 	w.successfulRequestsPos = (w.successfulRequestsPos + 1) % w.cfg.errorDenominator
 }
 
+func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacket) bool {
+	for {
+		select {
+		case n := <-signals:
+			linf("got signal %v", n)
+			if n == syscall.SIGINT || n == syscall.SIGTERM || n == syscall.SIGABRT {
+				w.removeWebhook()
+				return false
+			}
+			if n == syscall.SIGCONT {
+				return true
+			}
+		case u := <-incoming:
+			command, _ := getCommandAndArgs(&u.message)
+			switch command {
+			case "continue":
+				w.sendText(w.highPriorityMsg, u.endpoint, u.message.Message.Chat.ID, false, true, lib.ParseRaw, "OK")
+				return true
+			case "":
+			default:
+				w.sendTr(w.highPriorityMsg, u.endpoint, u.message.Message.Chat.ID, false, w.tr[u.endpoint].Maintenance, nil)
+			}
+		case <-w.outgoingMsgResults:
+		}
+	}
+}
+
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
@@ -2307,7 +2349,11 @@ func main() {
 		case <-errorsChan:
 			w.logQuerySuccess(false)
 		case u := <-incoming:
-			w.processTGUpdate(u)
+			if w.processTGUpdate(u) {
+				if !w.maintenance(signals, incoming) {
+					return
+				}
+			}
 		case m := <-mail:
 			w.mailReceived(m)
 		case s := <-statRequests:
@@ -2321,16 +2367,8 @@ func main() {
 				return
 			}
 			if s == syscall.SIGTSTP {
-				for {
-					n := <-signals
-					linf("got signal %v", n)
-					if n == syscall.SIGINT || n == syscall.SIGTERM || n == syscall.SIGABRT {
-						w.removeWebhook()
-						return
-					}
-					if n == syscall.SIGCONT {
-						break
-					}
+				if !w.maintenance(signals, incoming) {
+					return
 				}
 			}
 		case r := <-w.outgoingMsgResults:
