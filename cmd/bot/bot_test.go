@@ -11,7 +11,7 @@ import (
 func TestSql(t *testing.T) {
 	linf = func(string, ...interface{}) {}
 	w := newTestWorker()
-	w.createDatabase()
+	w.createDatabase(make(chan bool, 1))
 	w.initCache()
 	w.mustExec("insert into signals (endpoint, chat_id, model_id) values (?,?,?)", "ep1", 1, "a")
 	w.mustExec("insert into signals (endpoint, chat_id, model_id) values (?,?,?)", "ep1", 2, "b")
@@ -107,7 +107,7 @@ func TestSql(t *testing.T) {
 
 func TestUpdateStatus(t *testing.T) {
 	w := newTestWorker()
-	w.createDatabase()
+	w.createDatabase(make(chan bool, 1))
 	w.initCache()
 	checkInv(&w.worker, t)
 	if _, n, _, _ := w.processStatusUpdates([]lib.OnlineModel{{ModelID: "a"}}, 18); n == 0 {
@@ -250,7 +250,7 @@ func TestCleanStatuses(t *testing.T) {
 	const day = 60 * 60 * 24
 	w := newTestWorker()
 	w.cfg.StatusConfirmationSeconds.Offline = day + 2
-	w.createDatabase()
+	w.createDatabase(make(chan bool, 1))
 	w.initCache()
 	w.processStatusUpdates([]lib.OnlineModel{{ModelID: "a"}}, 18)
 	w.processStatusUpdates([]lib.OnlineModel{{ModelID: "b"}}, 53)
