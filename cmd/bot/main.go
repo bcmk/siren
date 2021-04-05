@@ -2274,6 +2274,12 @@ func (w *worker) cleanStatusChanges(now int64) time.Duration {
 	return time.Since(start)
 }
 
+func (w *worker) vacuum() time.Duration {
+	start := time.Now()
+	w.mustExec("vacuum")
+	return time.Since(start)
+}
+
 func (w *worker) maintenanceReply(incoming chan incomingPacket, done chan bool) {
 	waitingUsers := map[waitingUser]bool{}
 	for {
@@ -2296,8 +2302,8 @@ func (w *worker) maintenanceReply(incoming chan incomingPacket, done chan bool) 
 }
 
 func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacket) bool {
-	cleaningDone := make(chan time.Duration)
-	cleaning := false
+	processingDone := make(chan time.Duration)
+	processing := false
 	users := map[waitingUser]bool{}
 	for {
 		select {
@@ -2315,8 +2321,8 @@ func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacke
 			if u.message.Message.Chat.ID == w.cfg.AdminID {
 				switch command {
 				case "continue":
-					if cleaning {
-						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "still cleaning")
+					if processing {
+						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "still processing")
 					} else {
 						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
 						for user := range users {
@@ -2325,13 +2331,23 @@ func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacke
 						return true
 					}
 				case "clean":
-					if cleaning {
-						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "still cleaning")
+					if processing {
+						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "still processing")
 					} else {
-						cleaning = true
+						processing = true
 						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
 						go func() {
-							cleaningDone <- w.cleanStatusChanges(time.Now().Unix())
+							processingDone <- w.cleanStatusChanges(time.Now().Unix())
+						}()
+					}
+				case "vacuum":
+					if processing {
+						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "still processing")
+					} else {
+						processing = true
+						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
+						go func() {
+							processingDone <- w.vacuum()
 						}()
 					}
 				case "":
@@ -2345,9 +2361,9 @@ func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacke
 					linf("ignoring command %s %s", command, args)
 				}
 			}
-		case elapsed := <-cleaningDone:
-			cleaning = false
-			w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, fmt.Sprintf("cleaning done in %v", elapsed))
+		case elapsed := <-processingDone:
+			processing = false
+			w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, fmt.Sprintf("processing done in %v", elapsed))
 		case <-w.outgoingMsgResults:
 		}
 	}
