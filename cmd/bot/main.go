@@ -632,15 +632,15 @@ func (w *worker) confirm(updateModelStatusStmt *sql.Stmt, now int) []string {
 	for _, c := range all {
 		statusChange := w.siteStatuses[c]
 		confirmationSeconds := w.confirmationSeconds(statusChange.status)
-		durationConfirmed := confirmationSeconds == 0 || (now-statusChange.timestamp >= confirmationSeconds)
+		durationConfirmed := confirmationSeconds == 0 || statusChange.timestamp == 0 || (now-statusChange.timestamp >= confirmationSeconds)
 		if durationConfirmed {
 			if statusChange.status == lib.StatusOnline {
-				w.ourOnline[statusChange.modelID] = true
+				w.ourOnline[c] = true
 			} else {
-				delete(w.ourOnline, statusChange.modelID)
+				delete(w.ourOnline, c)
 			}
-			w.mustExecPrepared(updateModelStatus, updateModelStatusStmt, statusChange.modelID, statusChange.status)
-			confirmations = append(confirmations, statusChange.modelID)
+			w.mustExecPrepared(updateModelStatus, updateModelStatusStmt, c, statusChange.status)
+			confirmations = append(confirmations, c)
 		}
 	}
 	return confirmations
@@ -1896,7 +1896,7 @@ func (w *worker) updateImages(onlineModels []lib.OnlineModel) {
 }
 
 func (w *worker) processStatusUpdates(
-	onlineModels []lib.OnlineModel,
+	siteOnline []lib.OnlineModel,
 	now int,
 ) (
 	changesCount int,
@@ -1905,7 +1905,7 @@ func (w *worker) processStatusUpdates(
 	elapsed time.Duration,
 ) {
 	start := time.Now()
-	w.updateImages(onlineModels)
+	w.updateImages(siteOnline)
 	usersForModels, endpointsForModels := w.usersForModels()
 	tx, err := w.db.Begin()
 	checkErr(err)
@@ -1919,7 +1919,7 @@ func (w *worker) processStatusUpdates(
 
 	next := map[string]bool{}
 	hashDone := w.measure("algo: hash diff")
-	for _, u := range onlineModels {
+	for _, u := range siteOnline {
 		next[u.ModelID] = true
 	}
 	all, _, _ := hashDiff(w.siteOnline, next)
@@ -2248,7 +2248,29 @@ func (w *worker) logQuerySuccess(success bool) {
 	w.successfulRequestsPos = (w.successfulRequestsPos + 1) % w.cfg.errorDenominator
 }
 
+type waitingUser struct {
+	chatID   int64
+	endpoint string
+}
+
+func (w *worker) cleanStatusChanges(now int64) {
+	threshold := int(now) - w.cfg.KeepStatusesForDays*24*60*60
+	w.mustExec("delete from status_changes where timestamp < ?", threshold)
+	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "status changes removed")
+	w.mustExec("delete from last_status_changes where timestamp < ?", threshold)
+	for k, v := range w.siteStatuses {
+		if v.timestamp < threshold {
+			delete(w.siteStatuses, k)
+			delete(w.siteOnline, k)
+		}
+	}
+	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "last statuses updated")
+}
+
 func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacket) bool {
+	maintenance_done := make(chan bool)
+	cleaning := false
+	users := map[waitingUser]bool{}
 	for {
 		select {
 		case n := <-signals:
@@ -2261,15 +2283,44 @@ func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacke
 				return true
 			}
 		case u := <-incoming:
-			command, _ := getCommandAndArgs(&u.message)
-			switch command {
-			case "continue":
-				w.sendText(w.highPriorityMsg, u.endpoint, u.message.Message.Chat.ID, false, true, lib.ParseRaw, "OK")
-				return true
-			case "":
-			default:
-				w.sendTr(w.highPriorityMsg, u.endpoint, u.message.Message.Chat.ID, false, w.tr[u.endpoint].Maintenance, nil)
+			command, args := getCommandAndArgs(&u.message)
+			if u.message.Message.Chat.ID == w.cfg.AdminID {
+				switch command {
+				case "continue":
+					if cleaning {
+						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "still cleaning")
+					} else {
+						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
+						for user := range users {
+							w.sendTr(w.highPriorityMsg, user.endpoint, user.chatID, false, w.tr[u.endpoint].WeAreUp, nil)
+						}
+						return true
+					}
+				case "clean":
+					if cleaning {
+						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "still cleaning")
+					} else {
+						cleaning = true
+						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
+						go func() {
+							w.cleanStatusChanges(time.Now().Unix())
+							maintenance_done <- true
+						}()
+					}
+				case "":
+				default:
+					w.sendTr(w.highPriorityMsg, u.endpoint, u.message.Message.Chat.ID, false, w.tr[u.endpoint].Maintenance, nil)
+				}
+			} else {
+				if command != "" {
+					users[waitingUser{chatID: u.message.Message.Chat.ID, endpoint: u.endpoint}] = true
+					w.sendTr(w.highPriorityMsg, u.endpoint, u.message.Message.Chat.ID, false, w.tr[u.endpoint].Maintenance, nil)
+					linf("ignoring command %s %s", command, args)
+				}
 			}
+		case <-maintenance_done:
+			cleaning = false
+			w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "status cleaned")
 		case <-w.outgoingMsgResults:
 		}
 	}

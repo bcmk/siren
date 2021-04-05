@@ -367,3 +367,5 @@ telegram_channel:
   str: Не забывайте подписываться на наш канал в Telegram https://t.me/siren_telegram_bot
 maintenance:
   str: Извините, сейчас у нас запланированное техническое обслуживание
+we_are_up:
+  str: Мы снова работаем

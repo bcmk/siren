@@ -13,6 +13,7 @@ var testConfig = config{
 		Offline:  5,
 		NotFound: 5,
 	},
+	KeepStatusesForDays: 1,
 }
 
 var testTranslations = lib.Translations{
@@ -50,12 +51,14 @@ func newTestWorker() *testWorker {
 	checkErr(err)
 	w := &testWorker{
 		worker: worker{
-			bots:      nil,
-			db:        db,
-			cfg:       &testConfig,
-			clients:   nil,
-			tr:        map[string]*lib.Translations{"test": &testTranslations},
-			durations: map[string]queryDurationsData{},
+			bots:            nil,
+			db:              db,
+			cfg:             &testConfig,
+			clients:         nil,
+			tr:              map[string]*lib.Translations{"test": &testTranslations},
+			durations:       map[string]queryDurationsData{},
+			lowPriorityMsg:  make(chan outgoingPacket, 10000),
+			highPriorityMsg: make(chan outgoingPacket, 10000),
 		},
 	}
 	w.checkModel = w.testCheckModel

@@ -98,6 +98,7 @@ type Translations struct {
 	Twitter                     *Translation `yaml:"twitter"`
 	TelegramChannel             *Translation `yaml:"telegram_channel"`
 	Maintenance                 *Translation `yaml:"maintenance"`
+	WeAreUp                     *Translation `yaml:"we_are_up"`
 }
 
 // LoadEndpointTranslations loads translations for a specific endpoint

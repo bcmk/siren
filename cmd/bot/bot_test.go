@@ -246,6 +246,59 @@ func TestUpdateStatus(t *testing.T) {
 	_ = w.db.Close()
 }
 
+func TestCleanStatuses(t *testing.T) {
+	const day = 60 * 60 * 24
+	w := newTestWorker()
+	w.cfg.StatusConfirmationSeconds.Offline = day + 2
+	w.createDatabase()
+	w.initCache()
+	w.processStatusUpdates([]lib.OnlineModel{{ModelID: "a"}}, 18)
+	w.processStatusUpdates([]lib.OnlineModel{{ModelID: "b"}}, 53)
+	w.processStatusUpdates([]lib.OnlineModel{}, 55)
+	if len(w.siteStatuses) != 2 {
+		t.Error("wrong number of statuses")
+	}
+	w.cleanStatusChanges(day + 54)
+	if len(w.siteStatuses) != 1 {
+		t.Logf("statuses: %v", w.siteStatuses)
+		t.Errorf("wrong number of statuses: %d", len(w.siteStatuses))
+	}
+	checkInv(&w.worker, t)
+	w.processStatusUpdates([]lib.OnlineModel{}, day+56)
+	if len(w.ourOnline) != 1 {
+		t.Logf("statuses: %v", w.siteStatuses)
+		t.Logf("our online: %v", w.ourOnline)
+		t.Errorf("wrong number of online: %d", len(w.ourOnline))
+	}
+	checkInv(&w.worker, t)
+	w.processStatusUpdates([]lib.OnlineModel{}, day+60)
+	if len(w.ourOnline) != 0 {
+		t.Logf("statuses: %v", w.siteStatuses)
+		t.Logf("our online: %v", w.ourOnline)
+		t.Errorf("wrong number of online: %d", len(w.ourOnline))
+	}
+	checkInv(&w.worker, t)
+	w.processStatusUpdates([]lib.OnlineModel{{ModelID: "a"}}, day+100)
+	if len(w.ourOnline) != 1 {
+		t.Logf("statuses: %v", w.siteStatuses)
+		t.Logf("our online: %v", w.ourOnline)
+		t.Errorf("wrong number of online: %d", len(w.ourOnline))
+	}
+	w.cleanStatusChanges(day*100 + 50)
+	if len(w.ourOnline) != 1 {
+		t.Logf("statuses: %v", w.siteStatuses)
+		t.Logf("our online: %v", w.ourOnline)
+		t.Errorf("wrong number of online: %d", len(w.ourOnline))
+	}
+	w.processStatusUpdates([]lib.OnlineModel{}, day+155)
+	if len(w.ourOnline) != 0 {
+		t.Logf("statuses: %v", w.siteStatuses)
+		t.Logf("our online: %v", w.ourOnline)
+		t.Errorf("wrong number of online: %d", len(w.ourOnline))
+	}
+	_ = w.db.Close()
+}
+
 func checkInv(w *worker, t *testing.T) {
 	lastStatusesQueryA := w.mustQuery(`
 		select model_id, status, timestamp

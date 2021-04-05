@@ -81,6 +81,7 @@ type config struct {
 	SpecificConfig              map[string]string         `json:"specific_config"`                // the config for specific website
 	TelegramTimeoutSeconds      int                       `json:"telegram_timeout_seconds"`       // the timeout for Telegram queries
 	MaxSubscriptionsForPics     int                       `json:"max_subscriptions_for_pics"`     // the maximum amount of subscriptions for pics in a group chat
+	KeepStatusesForDays         int                       `json:"keep_statuses_for_days"`         // keep statuses for this number of days
 
 	errorThreshold   int
 	errorDenominator int
@@ -186,6 +187,9 @@ func checkConfig(cfg *config) error {
 	}
 	if cfg.MaxSubscriptionsForPics == 0 {
 		return errors.New("configure max_subscriptions_for_pics")
+	}
+	if cfg.KeepStatusesForDays == 0 {
+		return errors.New("configure keep_statuses_for_days")
 	}
 
 	if m := fractionRegexp.FindStringSubmatch(cfg.DangerousErrorRate); len(m) == 3 {
