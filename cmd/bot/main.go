@@ -107,6 +107,7 @@ type worker struct {
 	cfg                      *config
 	httpQueriesDuration      time.Duration
 	updatesDuration          time.Duration
+	cleaningDuration         time.Duration
 	changesInPeriod          int
 	confirmedChangesInPeriod int
 	ourOnline                map[string]bool
@@ -1829,7 +1830,7 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	return false
 }
 
-func (w *worker) processPeriodic(statusRequests chan lib.StatusRequest) {
+func (w *worker) initiateRequests(statusRequests chan lib.StatusRequest) {
 	unsuccessfulRequestsCount := w.unsuccessfulRequestsCount()
 	now := time.Now()
 	if w.nextErrorReport.Before(now) && unsuccessfulRequestsCount > w.cfg.errorThreshold {
@@ -2078,6 +2079,7 @@ func (w *worker) getStat(endpoint string) statistics {
 		TransactionsOnEndpointFinished: w.transactionsOnEndpointFinished(endpoint),
 		QueriesDurationMilliseconds:    int(w.httpQueriesDuration.Milliseconds()),
 		UpdatesDurationMilliseconds:    int(w.updatesDuration.Milliseconds()),
+		CleaningDurationMilliseconds:   int(w.cleaningDuration.Milliseconds()),
 		ErrorRate:                      [2]int{w.unsuccessfulRequestsCount(), w.cfg.errorDenominator},
 		DownloadErrorRate:              [2]int{w.downloadErrorsCount(), w.cfg.errorDenominator},
 		Rss:                            rss / 1024,
@@ -2254,10 +2256,14 @@ func (w *worker) logQuerySuccess(success bool) {
 	w.successfulRequestsPos = (w.successfulRequestsPos + 1) % w.cfg.errorDenominator
 }
 
-func (w *worker) cleanStatusChanges(now int64) {
+func (w *worker) cleanStatusChanges(now int64) time.Duration {
+	start := time.Now()
 	threshold := int(now) - w.cfg.KeepStatusesForDays*24*60*60
+	limit := w.mustInt("select coalesce(min(timestamp), 0) from status_changes") + w.cfg.MaxCleanSeconds
+	if limit < threshold {
+		threshold = limit
+	}
 	w.mustExec("delete from status_changes where timestamp < ?", threshold)
-	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "status changes removed")
 	w.mustExec("delete from last_status_changes where timestamp < ?", threshold)
 	for k, v := range w.siteStatuses {
 		if v.timestamp < threshold {
@@ -2265,7 +2271,7 @@ func (w *worker) cleanStatusChanges(now int64) {
 			delete(w.siteOnline, k)
 		}
 	}
-	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "last statuses updated")
+	return time.Since(start)
 }
 
 func (w *worker) maintenanceReply(incoming chan incomingPacket, done chan bool) {
@@ -2290,7 +2296,7 @@ func (w *worker) maintenanceReply(incoming chan incomingPacket, done chan bool) 
 }
 
 func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacket) bool {
-	maintenance_done := make(chan bool)
+	cleaning_done := make(chan time.Duration)
 	cleaning := false
 	users := map[waitingUser]bool{}
 	for {
@@ -2325,8 +2331,7 @@ func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacke
 						cleaning = true
 						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
 						go func() {
-							w.cleanStatusChanges(time.Now().Unix())
-							maintenance_done <- true
+							cleaning_done <- w.cleanStatusChanges(time.Now().Unix())
 						}()
 					}
 				case "":
@@ -2340,9 +2345,9 @@ func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacke
 					linf("ignoring command %s %s", command, args)
 				}
 			}
-		case <-maintenance_done:
+		case elapsed := <-cleaning_done:
 			cleaning = false
-			w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "status cleaned")
+			w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, fmt.Sprintf("cleaning done in %v", elapsed))
 		case <-w.outgoingMsgResults:
 		}
 	}
@@ -2389,7 +2394,8 @@ func main() {
 		}()
 	}
 
-	var periodicTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
+	var requestTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
+	var cleaningTimer = time.NewTicker(time.Duration(w.cfg.CleaningPeriodSeconds) * time.Second)
 	statusRequestsChan, onlineModelsChan, errorsChan, elapsed := lib.StartChecker(
 		w.checkModel,
 		w.onlineModelsAPI,
@@ -2407,9 +2413,11 @@ func main() {
 		select {
 		case e := <-elapsed:
 			w.httpQueriesDuration = e
-		case <-periodicTimer.C:
+		case <-requestTimer.C:
 			runtime.GC()
-			w.processPeriodic(statusRequestsChan)
+			w.initiateRequests(statusRequestsChan)
+		case <-cleaningTimer.C:
+			w.cleaningDuration = w.cleanStatusChanges(time.Now().Unix())
 		case onlineModels := <-onlineModelsChan:
 			now := int(time.Now().Unix())
 			changesInPeriod, confirmedChangesInPeriod, notifications, elapsed := w.processStatusUpdates(onlineModels, now)

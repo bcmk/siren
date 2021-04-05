@@ -15,6 +15,7 @@ type statistics struct {
 	StatusChangesCount             int         `json:"status_changes_count"`
 	QueriesDurationMilliseconds    int         `json:"queries_duration_milliseconds"`
 	UpdatesDurationMilliseconds    int         `json:"updates_duration_milliseconds"`
+	CleaningDurationMilliseconds   int         `json:"cleaning_duration_milliseconds"`
 	ErrorRate                      [2]int      `json:"error_rate"`
 	DownloadErrorRate              [2]int      `json:"download_error_rate"`
 	Rss                            int64       `json:"rss"`

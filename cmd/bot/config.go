@@ -52,6 +52,7 @@ type config struct {
 	Website                     string                    `json:"website"`                        // one of the following strings: "bongacams", "stripchat", "chaturbate", "livejasmin", "flirt4free", "streamate"
 	WebsiteLink                 string                    `json:"website_link"`                   // affiliate link to website
 	PeriodSeconds               int                       `json:"period_seconds"`                 // the period of querying models statuses
+	CleaningPeriodSeconds       int                       `json:"cleaning_period_seconds"`        // the cleaning period
 	MaxModels                   int                       `json:"max_models"`                     // maximum models per user
 	TimeoutSeconds              int                       `json:"timeout_seconds"`                // HTTP timeout
 	AdminID                     int64                     `json:"admin_id"`                       // admin Telegram ID
@@ -82,6 +83,7 @@ type config struct {
 	TelegramTimeoutSeconds      int                       `json:"telegram_timeout_seconds"`       // the timeout for Telegram queries
 	MaxSubscriptionsForPics     int                       `json:"max_subscriptions_for_pics"`     // the maximum amount of subscriptions for pics in a group chat
 	KeepStatusesForDays         int                       `json:"keep_statuses_for_days"`         // keep statuses for this number of days
+	MaxCleanSeconds             int                       `json:"max_clean_seconds"`              // maximum number of seconds to clean
 
 	errorThreshold   int
 	errorDenominator int
@@ -134,6 +136,9 @@ func checkConfig(cfg *config) error {
 	}
 	if cfg.PeriodSeconds == 0 {
 		return errors.New("configure period_seconds")
+	}
+	if cfg.CleaningPeriodSeconds == 0 {
+		return errors.New("configure cleaning_period_seconds")
 	}
 	if cfg.MaxModels == 0 {
 		return errors.New("configure max_models")
@@ -190,6 +195,9 @@ func checkConfig(cfg *config) error {
 	}
 	if cfg.KeepStatusesForDays == 0 {
 		return errors.New("configure keep_statuses_for_days")
+	}
+	if cfg.MaxCleanSeconds == 0 {
+		return errors.New("configure max_clean_seconds")
 	}
 
 	if m := fractionRegexp.FindStringSubmatch(cfg.DangerousErrorRate); len(m) == 3 {
