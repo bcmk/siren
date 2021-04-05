@@ -97,6 +97,9 @@ var migrations = []func(w *worker){
 	func(w *worker) {
 		w.mustExec("alter table models add special integer not null default 0;")
 	},
+	func(w *worker) {
+		w.mustExec("create index ix_status_changes_timestamp on status_changes(timestamp);")
+	},
 }
 
 func (w *worker) applyMigrations() {
@@ -115,4 +118,5 @@ func (w *worker) applyMigrations() {
 		m(w)
 		w.mustExec("update schema_version set version=?", n)
 	}
+	linf("no more migrations")
 }

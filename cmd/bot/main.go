@@ -189,6 +189,11 @@ type msgSendResult struct {
 	delay     int
 }
 
+type waitingUser struct {
+	chatID   int64
+	endpoint string
+}
+
 func newWorker() *worker {
 	if len(os.Args) != 2 {
 		panic("usage: siren <config>")
@@ -538,13 +543,14 @@ func (w *worker) sendTrImage(
 	w.sendImage(queue, endpoint, chatID, notify, translation.Parse, text, image)
 }
 
-func (w *worker) createDatabase() {
+func (w *worker) createDatabase(done chan bool) {
 	linf("creating database if needed...")
 	for _, prelude := range w.cfg.SQLPrelude {
 		w.mustExec(prelude)
 	}
 	w.mustExec(`create table if not exists schema_version (version integer);`)
 	w.applyMigrations()
+	done <- true
 }
 
 func (w *worker) initCache() {
@@ -2248,11 +2254,6 @@ func (w *worker) logQuerySuccess(success bool) {
 	w.successfulRequestsPos = (w.successfulRequestsPos + 1) % w.cfg.errorDenominator
 }
 
-type waitingUser struct {
-	chatID   int64
-	endpoint string
-}
-
 func (w *worker) cleanStatusChanges(now int64) {
 	threshold := int(now) - w.cfg.KeepStatusesForDays*24*60*60
 	w.mustExec("delete from status_changes where timestamp < ?", threshold)
@@ -2265,6 +2266,27 @@ func (w *worker) cleanStatusChanges(now int64) {
 		}
 	}
 	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "last statuses updated")
+}
+
+func (w *worker) maintenanceReply(incoming chan incomingPacket, done chan bool) {
+	waitingUsers := map[waitingUser]bool{}
+	for {
+		select {
+		case u := <-incoming:
+			command, args := getCommandAndArgs(&u.message)
+			if command != "" {
+				waitingUsers[waitingUser{chatID: u.message.Message.Chat.ID, endpoint: u.endpoint}] = true
+				w.sendTr(w.highPriorityMsg, u.endpoint, u.message.Message.Chat.ID, false, w.tr[u.endpoint].Maintenance, nil)
+				linf("ignoring command %s %s", command, args)
+			}
+		case <-done:
+			for user := range waitingUsers {
+				w.sendTr(w.highPriorityMsg, user.endpoint, user.chatID, false, w.tr[user.endpoint].WeAreUp, nil)
+			}
+			return
+		case <-w.outgoingMsgResults:
+		}
+	}
 }
 
 func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacket) bool {
@@ -2292,7 +2314,7 @@ func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacke
 					} else {
 						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
 						for user := range users {
-							w.sendTr(w.highPriorityMsg, user.endpoint, user.chatID, false, w.tr[u.endpoint].WeAreUp, nil)
+							w.sendTr(w.highPriorityMsg, user.endpoint, user.chatID, false, w.tr[user.endpoint].WeAreUp, nil)
 						}
 						return true
 					}
@@ -2334,10 +2356,16 @@ func main() {
 	w.setWebhook()
 	w.setCommands()
 	w.initBotNames()
-	w.createDatabase()
+	databaseDone := make(chan bool)
+	w.serveEndpoints()
+	incoming := w.incoming()
+	go w.sender(w.highPriorityMsg, 0)
+	go w.sender(w.lowPriorityMsg, 1)
+	go w.maintenanceReply(incoming, databaseDone)
+	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, lib.ParseRaw, "bot started")
+	w.createDatabase(databaseDone)
 	w.initCache()
 
-	incoming := w.incoming()
 	statRequests := make(chan statRequest)
 	w.handleStatEndpoints(statRequests)
 
@@ -2346,7 +2374,6 @@ func main() {
 		w.handleIPNEndpoint(ipnRequests)
 	}
 
-	w.serveEndpoints()
 	mail := make(chan *env)
 
 	if w.cfg.Mail != nil {
@@ -2362,9 +2389,6 @@ func main() {
 		}()
 	}
 
-	go w.sender(w.highPriorityMsg, 0)
-	go w.sender(w.lowPriorityMsg, 1)
-
 	var periodicTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
 	statusRequestsChan, onlineModelsChan, errorsChan, elapsed := lib.StartChecker(
 		w.checkModel,
@@ -2378,7 +2402,7 @@ func main() {
 	statusRequestsChan <- lib.StatusRequest{SpecialModels: w.specialModels}
 	signals := make(chan os.Signal, 16)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT, syscall.SIGTSTP, syscall.SIGCONT)
-	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, lib.ParseRaw, "bot started")
+	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, lib.ParseRaw, "bot is up")
 	for {
 		select {
 		case e := <-elapsed:
