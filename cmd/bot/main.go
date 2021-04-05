@@ -2296,7 +2296,7 @@ func (w *worker) maintenanceReply(incoming chan incomingPacket, done chan bool) 
 }
 
 func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacket) bool {
-	cleaning_done := make(chan time.Duration)
+	cleaningDone := make(chan time.Duration)
 	cleaning := false
 	users := map[waitingUser]bool{}
 	for {
@@ -2331,7 +2331,7 @@ func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacke
 						cleaning = true
 						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
 						go func() {
-							cleaning_done <- w.cleanStatusChanges(time.Now().Unix())
+							cleaningDone <- w.cleanStatusChanges(time.Now().Unix())
 						}()
 					}
 				case "":
@@ -2345,7 +2345,7 @@ func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacke
 					linf("ignoring command %s %s", command, args)
 				}
 			}
-		case elapsed := <-cleaning_done:
+		case elapsed := <-cleaningDone:
 			cleaning = false
 			w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, fmt.Sprintf("cleaning done in %v", elapsed))
 		case <-w.outgoingMsgResults:

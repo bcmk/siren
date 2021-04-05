@@ -14,6 +14,7 @@ var testConfig = config{
 		NotFound: 5,
 	},
 	KeepStatusesForDays: 1,
+	MaxCleanSeconds:     1000000,
 }
 
 var testTranslations = lib.Translations{
