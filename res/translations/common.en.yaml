@@ -199,11 +199,11 @@ referral_link:
   str: |-
     {{ template "subscription_usage" . }}
 
-    Earn additional models by sharing this referral link!
+    Earn additional subscriptions by sharing this referral link!
     {{ .link }}
 
-    You will get {{ .referral_bonus }} additional models for every new registered user
-    New user will get {{ .follower_bonus }} additional models
+    You will get {{ .referral_bonus }} additional subscriptions for every new registered user
+    New user will get {{ .follower_bonus }} additional subscriptions
 remove_all:
   parse: raw
   str: |-
@@ -213,7 +213,7 @@ remove_all:
 select_currency:
   parse: raw
   str: |-
-    Pay once and get {{ .number_of_subscriptions }} additional models forever
+    Pay once and get {{ .number_of_subscriptions }} additional subscriptions forever
     There will be {{ .total_subscriptions }} total subscriptions
     You will be charged {{ .dollars }}$ in crypto
     Please select a cryptocurrency to pay with
