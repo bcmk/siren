@@ -27,7 +27,9 @@ faq_no_notifications:
     We use the same list of online models as affiliate sites use for advertisements.
     Some models decided to not appear there so we cannot know when they are online.
     You can tell a model about this bot and a model may probably change her or his mind on this setting.
-    The setting is <b>My Profile</b> → <b>Settings &amp; Privacy</b> → <b>Appear on network sites</b> → <b>Yes</b>
+    The setting is <b>My Profile</b> → <b>Settings &amp; Privacy</b> → <b>Appear on network sites</b> → <b>Yes</b>.
+    Please let us know if you don't receive notifications for some models and we will try to fix it.
+    However, there is no guarantee that this will work.
 faq_direct_subscriptions:
   parse: html
   str: >
