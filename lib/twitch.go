@@ -2,6 +2,7 @@ package lib
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/nicklaw5/helix"
 )
@@ -95,7 +96,9 @@ func TwitchOnlineAPI(
 			return nil, errors.New(streamsResponse.ErrorMessage)
 		}
 		for _, s := range streamsResponse.Data.Streams {
-			onlineModels[s.UserLogin] = OnlineModel{ModelID: s.UserLogin, Image: s.ThumbnailURL}
+			thumbnail := strings.Replace(s.ThumbnailURL, "{width}", "1280", 1)
+			thumbnail = strings.Replace(thumbnail, "{height}", "720", 1)
+			onlineModels[s.UserLogin] = OnlineModel{ModelID: s.UserLogin, Image: thumbnail}
 		}
 		if len(streamsResponse.Data.Streams) == 0 {
 			break
