@@ -1390,7 +1390,7 @@ func (w *worker) modelsToPollTotalCount() int {
 }
 
 func (w *worker) statusChangesCount() int {
-	return w.mustInt("select max(_rowid_) from status_changes")
+	return w.mustInt("select coalesce(max(_rowid_), 0) from status_changes")
 }
 
 func (w *worker) heavyUsersCount(endpoint string) int {
