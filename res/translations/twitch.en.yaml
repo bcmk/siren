@@ -83,7 +83,7 @@ raw_commands:
     remove - Remove a channel
     remove_all - Remove all channels
     list - Your subscriptions
-    pics - Screenshots of your channels online
+    pics - Thumbnails of your channels online
     week - Online hours in the previous 7 days
     buy - Buy additional subscriptions
     help - Help
@@ -98,7 +98,7 @@ commands:
     <b>remove</b> <code>CHANNEL</code> — Remove a channel
     <b>remove_all</b> — Remove all channels
     <b>list</b> — Your subscriptions
-    <b>pics</b> — Screenshots of your channels online
+    <b>pics</b> — Thumbnails of your channels online
     <b>week</b> <code>CHANNEL</code> — Online hours in the previous 7 days
     <b>help</b> — Help
     <b>settings</b> — Show settings
