@@ -12,6 +12,8 @@ var verbose = flag.Bool("v", false, "verbose output")
 var timeout = flag.Int("t", 10, "timeout in seconds")
 var address = flag.String("a", "", "source IP address")
 var cookies = flag.Bool("c", false, "use cookies")
+var clientID = flag.String("id", "", "your client id")
+var secret = flag.String("secret", "", "your client secret")
 
 func main() {
 	flag.Usage = func() {
@@ -19,13 +21,16 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
-	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
-	models, err := lib.StreamateOnlineAPI("http://affiliate.streamate.com/SMLive/SMLResult.xml", client, nil, *verbose, nil)
+	httpClient := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
+	res, err := lib.TwitchOnlineAPI("", httpClient, nil, *verbose, map[string]string{
+		"client_id":     *clientID,
+		"client_secret": *secret,
+	})
 	if err != nil {
 		fmt.Printf("error occurred: %v", err)
 		return
 	}
-	for _, model := range models {
-		fmt.Printf("%s %s\n", model.ModelID, model.Image)
+	for s := range res {
+		fmt.Println(s)
 	}
 }
