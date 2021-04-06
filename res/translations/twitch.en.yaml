@@ -120,3 +120,10 @@ model_removed:
 no_online_models:
   parse: raw
   str: There are no online channels you subscribed to
+faq_pricing:
+  parse: html
+  str: >
+    <b>Pricing</b>
+
+    The basic service is free.
+    If you need to subscribe to more than {{ .max_models }} channels you either pay {{ .dollars }}$ for additional {{ .number_of_subscriptions }} subscriptions or you may earn them by sharing.
