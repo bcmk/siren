@@ -89,6 +89,20 @@ raw_commands:
     help - Help
     settings - Show settings
     feedback - Send feedback
+commands:
+  parse: html
+  str: |-
+    <b>Commands</b>
+
+    <b>add</b> <code>CHANNEL</code> — Add a channel
+    <b>remove</b> <code>CHANNEL</code> — Remove a channel
+    <b>remove_all</b> — Remove all channels
+    <b>list</b> — Your subscriptions
+    <b>pics</b> — Screenshots of your channels online
+    <b>week</b> <code>CHANNEL</code> — Online hours in the previous 7 days
+    <b>help</b> — Help
+    <b>settings</b> — Show settings
+    <b>feedback</b> <code>YOUR_MESSAGE</code> — Send feedback
 languages:
   parse: raw
   str: ""

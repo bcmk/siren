@@ -69,9 +69,9 @@ commands:
     <b>list</b> — Ваши модели
     <b>pics</b> — Кадры трансляций в этот момент
     <b>week</b> <code>МОДЕЛЬ</code> — График модели в предыдущие 7 дней
-    <b>feedback</b> <code>ВАШЕ_СООБЩЕНИЕ</code> — Обратная связь
-    <b>settings</b> — Настройки
     <b>help</b> — Список команд
+    <b>settings</b> — Настройки
+    <b>feedback</b> <code>ВАШЕ_СООБЩЕНИЕ</code> — Обратная связь
 invalid_command:
   parse: raw
   str: Ошибка в команде
