@@ -89,3 +89,6 @@ raw_commands:
     help - Help
     settings - Show settings
     feedback - Send feedback
+languages:
+  parse: raw
+  str: ""
