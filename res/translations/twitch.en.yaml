@@ -1,0 +1,91 @@
+hello:
+  parse: html
+  str: The bot notifies you whenever your favorite <a href="{{ . }}">{{ template "site" }}</a> channels are online.
+site:
+  parse: html
+  str: Twitch
+add_error:
+  parse: html
+  str: |-
+    Could not add the channel {{ .model }}
+    Check the channel name or try later
+    Syntax: /add <code>CHANNEL</code>
+help:
+  parse: html
+  disable_preview: true
+  str: |-
+    {{ template "hello" .website_link }}
+
+    {{ template "commands" }}
+
+    {{ template "sites" }}
+
+    {{ template "social" }}
+sites:
+  parse: html
+  str: |-
+    <b>This bot for other sites</b>
+    Chaturbate: <a href="https://t.me/ChaturbateAlarmBot">ChaturbateAlarmBot</a>
+    Stripchat: <a href="https://t.me/StripchatOnlineBot">StripchatOnlineBot</a>
+    BongaCams: <a href="https://t.me/BongaCamsOnlineBot">BongaCamsOnlineBot</a>
+    LiveJasmin: <a href="https://t.me/LiveJasminSirenBot">LiveJasminSirenBot</a>
+    CamSoda: <a href="https://t.me/CamSodaSirenBot">CamSodaSirenBot</a>
+    Flirt4Free: <a href="https://t.me/Flirt4FreeSirenBot">Flirt4FreeSirenBot</a>
+    Streamate: <a href="https://t.me/StreamateSirenBot">StreamateSirenBot</a>
+add_example:
+  parse: html
+  str: /add xqcow
+syntax_add:
+  parse: html
+  str: |-
+    Enter
+
+    /add <code>CHANNEL</code>
+
+    Example
+
+    {{ template "add_example" }}
+syntax_remove:
+  parse: html
+  str: |-
+    Enter
+
+    /remove <code>CHANNEL</code>
+unknown_command:
+  parse: html
+  str: |-
+    Unknown command. To subscribe to a channel enter
+
+    /add <code>CHANNEL</code>
+
+    Example
+
+    {{ template "add_example" }}
+zero_subscriptions:
+  parse: html
+  str: |-
+    You are not subscribed to any channel
+    To subscribe enter
+
+    /add <code>CHANNEL</code>
+faq:
+  parse: html
+  str: |-
+    {{ template "faq_pricing" . }}
+already_added:
+  parse: raw
+  str: 'Channel {{ .model }} is already in your list'
+raw_commands:
+  parse: raw
+  str: |-
+    referral - Your referral link
+    add - Add a channel
+    remove - Remove a channel
+    remove_all - Remove all channels
+    list - Your subscriptions
+    pics - Screenshots of your channels online
+    week - Online hours in the previous 7 days
+    buy - Buy additional subscriptions
+    help - Help
+    settings - Show settings
+    feedback - Send feedback

@@ -13,6 +13,9 @@ func CheckChannelTwitch(httpClient *Client, modelID string, headers [][2]string,
 		ClientSecret: params["client_secret"],
 		HTTPClient:   httpClient.Client,
 	})
+	if err != nil {
+		return StatusUnknown
+	}
 	accessResponse, err := client.RequestAppAccessToken(nil)
 	if err != nil {
 		return StatusUnknown
@@ -66,6 +69,9 @@ func TwitchOnlineAPI(
 		ClientSecret: params["client_secret"],
 		HTTPClient:   httpClient.Client,
 	})
+	if err != nil {
+		return nil, err
+	}
 	accessResponse, err := client.RequestAppAccessToken(nil)
 	if err != nil {
 		return nil, err

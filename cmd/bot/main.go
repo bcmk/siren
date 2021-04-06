@@ -284,6 +284,10 @@ func newWorker() *worker {
 		w.checkModel = lib.CheckModelStreamate
 		w.onlineModelsAPI = lib.StreamateOnlineAPI
 		w.modelIDPreprocessing = lib.CanonicalModelID
+	case "twitch":
+		w.checkModel = lib.CheckChannelTwitch
+		w.onlineModelsAPI = lib.TwitchOnlineAPI
+		w.modelIDPreprocessing = lib.CanonicalModelID
 	default:
 		panic("wrong website")
 	}
