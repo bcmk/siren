@@ -106,3 +106,17 @@ commands:
 languages:
   parse: raw
   str: ""
+model_added:
+  parse: raw
+  str: |-
+    Channel {{ .model }} added successfully
+    Bot will notify you whenever it is online
+model_not_in_list:
+  parse: raw
+  str: 'Channel {{ .model }} is not in your list'
+model_removed:
+  parse: raw
+  str: 'Channel {{ .model }} removed successfully'
+no_online_models:
+  parse: raw
+  str: There are no online channels you subscribed to
