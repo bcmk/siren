@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type camSodaUserResponse struct {
@@ -127,4 +128,21 @@ func CamSodaOnlineAPI(
 		onlineModels[modelID] = OnlineModel{ModelID: modelID, Image: m.Thumb}
 	}
 	return
+}
+
+// StartCamSodaChecker starts a checker for Chaturbate
+func StartCamSodaChecker(
+	usersOnlineEndpoint []string,
+	clients []*Client,
+	headers [][2]string,
+	intervalMs int,
+	dbg bool,
+	specificConfig map[string]string,
+) (
+	statusRequests chan StatusRequest,
+	output chan []OnlineModel,
+	errorsCh chan struct{},
+	elapsedCh chan time.Duration,
+) {
+	return StartChecker(CheckModelCamSoda, CamSodaOnlineAPI, usersOnlineEndpoint, clients, headers, intervalMs, dbg, specificConfig)
 }

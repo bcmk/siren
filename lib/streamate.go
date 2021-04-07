@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type descriptionsRequest struct {
@@ -234,4 +235,21 @@ func StreamateOnlineAPI(
 		}
 	}
 	return
+}
+
+// StartStreamateChecker starts a checker for Chaturbate
+func StartStreamateChecker(
+	usersOnlineEndpoint []string,
+	clients []*Client,
+	headers [][2]string,
+	intervalMs int,
+	dbg bool,
+	specificConfig map[string]string,
+) (
+	statusRequests chan StatusRequest,
+	output chan []OnlineModel,
+	errorsCh chan struct{},
+	elapsedCh chan time.Duration,
+) {
+	return StartChecker(CheckModelStreamate, StreamateOnlineAPI, usersOnlineEndpoint, clients, headers, intervalMs, dbg, specificConfig)
 }

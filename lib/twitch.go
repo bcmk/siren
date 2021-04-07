@@ -3,6 +3,7 @@ package lib
 import (
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/nicklaw5/helix"
 )
@@ -106,4 +107,21 @@ func TwitchOnlineAPI(
 		after = streamsResponse.Data.Pagination.Cursor
 	}
 	return onlineModels, nil
+}
+
+// StartTwitchChecker starts a checker for Chaturbate
+func StartTwitchChecker(
+	usersOnlineEndpoint []string,
+	clients []*Client,
+	headers [][2]string,
+	intervalMs int,
+	dbg bool,
+	specificConfig map[string]string,
+) (
+	statusRequests chan StatusRequest,
+	output chan []OnlineModel,
+	errorsCh chan struct{},
+	elapsedCh chan time.Duration,
+) {
+	return StartChecker(CheckChannelTwitch, TwitchOnlineAPI, usersOnlineEndpoint, clients, headers, intervalMs, dbg, specificConfig)
 }

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 )
 
 var chaturbateModelRegex = regexp.MustCompile(`^(?:http(?:s)?://)?(?:[A-Za-z]+\.)?chaturbate\.com(?:/p|/b)?/([A-Za-z0-9\-_@]+)(?:/)?(?:\?.*)?$`)
@@ -141,4 +142,21 @@ func ChaturbateOnlineAPI(
 		onlineModels[modelID] = OnlineModel{ModelID: modelID, Image: m.ImageURL}
 	}
 	return
+}
+
+// StartChaturbateChecker starts a checker for Chaturbate
+func StartChaturbateChecker(
+	usersOnlineEndpoint []string,
+	clients []*Client,
+	headers [][2]string,
+	intervalMs int,
+	dbg bool,
+	specificConfig map[string]string,
+) (
+	statusRequests chan StatusRequest,
+	output chan []OnlineModel,
+	errorsCh chan struct{},
+	elapsedCh chan time.Duration,
+) {
+	return StartChecker(CheckModelChaturbate, ChaturbateOnlineAPI, usersOnlineEndpoint, clients, headers, intervalMs, dbg, specificConfig)
 }

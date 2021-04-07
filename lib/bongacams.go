@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type bongacamsModel struct {
@@ -82,4 +83,21 @@ func BongaCamsOnlineAPI(
 		onlineModels[modelID] = OnlineModel{ModelID: modelID, Image: "https:" + m.ProfileImages.ThumbnailImageMediumLive}
 	}
 	return
+}
+
+// StartBongaCamsChecker starts a checker for Chaturbate
+func StartBongaCamsChecker(
+	usersOnlineEndpoint []string,
+	clients []*Client,
+	headers [][2]string,
+	intervalMs int,
+	dbg bool,
+	specificConfig map[string]string,
+) (
+	statusRequests chan StatusRequest,
+	output chan []OnlineModel,
+	errorsCh chan struct{},
+	elapsedCh chan time.Duration,
+) {
+	return StartChecker(CheckModelBongaCams, BongaCamsOnlineAPI, usersOnlineEndpoint, clients, headers, intervalMs, dbg, specificConfig)
 }

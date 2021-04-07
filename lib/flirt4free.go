@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type flirt4FreeCheckResponse struct {
@@ -143,4 +144,21 @@ func Flirt4FreeOnlineAPI(
 		onlineModels[modelID] = OnlineModel{ModelID: modelID, Image: m.ScreencapImage}
 	}
 	return
+}
+
+// StartFlirt4FreeChecker starts a checker for Chaturbate
+func StartFlirt4FreeChecker(
+	usersOnlineEndpoint []string,
+	clients []*Client,
+	headers [][2]string,
+	intervalMs int,
+	dbg bool,
+	specificConfig map[string]string,
+) (
+	statusRequests chan StatusRequest,
+	output chan []OnlineModel,
+	errorsCh chan struct{},
+	elapsedCh chan time.Duration,
+) {
+	return StartChecker(CheckModelFlirt4Free, Flirt4FreeOnlineAPI, usersOnlineEndpoint, clients, headers, intervalMs, dbg, specificConfig)
 }

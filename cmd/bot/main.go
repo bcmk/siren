@@ -118,15 +118,18 @@ type worker struct {
 	tpl                      map[string]*template.Template
 	modelIDPreprocessing     func(string) string
 	checkModel               func(client *lib.Client, modelID string, headers [][2]string, dbg bool, config map[string]string) lib.StatusKind
-	onlineModelsAPI          func(
-		endpoint string,
-		client *lib.Client,
+	startChecker             func(
+		usersOnlineEndpoint []string,
+		clients []*lib.Client,
 		headers [][2]string,
-		debug bool,
-		config map[string]string,
+		intervalMs int,
+		dbg bool,
+		specificConfig map[string]string,
 	) (
-		onlineModels map[string]lib.OnlineModel,
-		err error,
+		statusRequests chan lib.StatusRequest,
+		output chan []lib.OnlineModel,
+		errorsCh chan struct{},
+		elapsedCh chan time.Duration,
 	)
 
 	unsuccessfulRequests  []bool
@@ -254,39 +257,39 @@ func newWorker() *worker {
 	switch cfg.Website {
 	case "test":
 		w.checkModel = lib.CheckModelTest
-		w.onlineModelsAPI = lib.TestOnlineAPI
+		w.startChecker = lib.StartTestChecker
 		w.modelIDPreprocessing = lib.CanonicalModelID
 	case "bongacams":
 		w.checkModel = lib.CheckModelBongaCams
-		w.onlineModelsAPI = lib.BongaCamsOnlineAPI
+		w.startChecker = lib.StartBongaCamsChecker
 		w.modelIDPreprocessing = lib.CanonicalModelID
 	case "chaturbate":
 		w.checkModel = lib.CheckModelChaturbate
-		w.onlineModelsAPI = lib.ChaturbateOnlineAPI
+		w.startChecker = lib.StartChaturbateChecker
 		w.modelIDPreprocessing = lib.ChaturbateCanonicalModelID
 	case "stripchat":
 		w.checkModel = lib.CheckModelStripchat
-		w.onlineModelsAPI = lib.StripchatOnlineAPI
+		w.startChecker = lib.StartStripchatChecker
 		w.modelIDPreprocessing = lib.CanonicalModelID
 	case "livejasmin":
 		w.checkModel = lib.CheckModelLiveJasmin
-		w.onlineModelsAPI = lib.LiveJasminOnlineAPI
+		w.startChecker = lib.StartLiveJasminChecker
 		w.modelIDPreprocessing = lib.CanonicalModelID
 	case "camsoda":
 		w.checkModel = lib.CheckModelCamSoda
-		w.onlineModelsAPI = lib.CamSodaOnlineAPI
+		w.startChecker = lib.StartCamSodaChecker
 		w.modelIDPreprocessing = lib.CanonicalModelID
 	case "flirt4free":
 		w.checkModel = lib.CheckModelFlirt4Free
-		w.onlineModelsAPI = lib.Flirt4FreeOnlineAPI
+		w.startChecker = lib.StartFlirt4FreeChecker
 		w.modelIDPreprocessing = lib.Flirt4FreeCanonicalModelID
 	case "streamate":
 		w.checkModel = lib.CheckModelStreamate
-		w.onlineModelsAPI = lib.StreamateOnlineAPI
+		w.startChecker = lib.StartStreamateChecker
 		w.modelIDPreprocessing = lib.CanonicalModelID
 	case "twitch":
 		w.checkModel = lib.CheckChannelTwitch
-		w.onlineModelsAPI = lib.TwitchOnlineAPI
+		w.startChecker = lib.StartTwitchChecker
 		w.modelIDPreprocessing = lib.CanonicalModelID
 	default:
 		panic("wrong website")
@@ -2416,9 +2419,7 @@ func main() {
 
 	var requestTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
 	var cleaningTimer = time.NewTicker(time.Duration(w.cfg.CleaningPeriodSeconds) * time.Second)
-	statusRequestsChan, onlineModelsChan, errorsChan, elapsed := lib.StartChecker(
-		w.checkModel,
-		w.onlineModelsAPI,
+	statusRequestsChan, onlineModelsChan, errorsChan, elapsed := w.startChecker(
 		w.cfg.UsersOnlineEndpoint,
 		w.clients,
 		w.cfg.Headers,

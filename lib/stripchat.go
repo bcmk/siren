@@ -131,3 +131,20 @@ func StripchatOnlineAPI(
 	}
 	return
 }
+
+// StartStripchatChecker starts a checker for Chaturbate
+func StartStripchatChecker(
+	usersOnlineEndpoint []string,
+	clients []*Client,
+	headers [][2]string,
+	intervalMs int,
+	dbg bool,
+	specificConfig map[string]string,
+) (
+	statusRequests chan StatusRequest,
+	output chan []OnlineModel,
+	errorsCh chan struct{},
+	elapsedCh chan time.Duration,
+) {
+	return StartChecker(CheckModelStripchat, StripchatOnlineAPI, usersOnlineEndpoint, clients, headers, intervalMs, dbg, specificConfig)
+}

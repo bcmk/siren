@@ -48,3 +48,20 @@ func randString(n int) string {
 	}
 	return string(b)
 }
+
+// StartTestChecker starts a checker for Chaturbate
+func StartTestChecker(
+	usersOnlineEndpoint []string,
+	clients []*Client,
+	headers [][2]string,
+	intervalMs int,
+	dbg bool,
+	specificConfig map[string]string,
+) (
+	statusRequests chan StatusRequest,
+	output chan []OnlineModel,
+	errorsCh chan struct{},
+	elapsedCh chan time.Duration,
+) {
+	return StartChecker(CheckModelTest, TestOnlineAPI, usersOnlineEndpoint, clients, headers, intervalMs, dbg, specificConfig)
+}
