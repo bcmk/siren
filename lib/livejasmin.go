@@ -10,6 +10,11 @@ import (
 	"time"
 )
 
+// LiveJasminChecker implements a checker for LiveJasmin
+type LiveJasminChecker struct{ CheckerCommon }
+
+var _ FullChecker = &LiveJasminChecker{}
+
 type liveJasminModel struct {
 	PerformerID       string `json:"performerId"`
 	Status            string `json:"status"`
@@ -26,14 +31,15 @@ type liveJasminResponse struct {
 	} `json:"data"`
 }
 
-// CheckModelLiveJasmin checks LiveJasmin model status
-func CheckModelLiveJasmin(client *Client, modelID string, headers [][2]string, dbg bool, config map[string]string) StatusKind {
-	psID := config["ps_id"]
-	accessKey := config["access_key"]
+// CheckSingle checks LiveJasmin model status
+func (c *LiveJasminChecker) CheckSingle(modelID string) StatusKind {
+	client := c.clientsLoop.nextClient()
+	psID := c.specificConfig["ps_id"]
+	accessKey := c.specificConfig["access_key"]
 	url := fmt.Sprintf("https://pt.potawe.com/api/model/status?performerId=%s&psId=%s&accessKey=%s&legacyRedirect=1", modelID, psID, accessKey)
 	req, err := http.NewRequest("GET", url, nil)
 	CheckErr(err)
-	for _, h := range headers {
+	for _, h := range c.headers {
 		req.Header.Set(h[0], h[1])
 	}
 	resp, err := client.Client.Do(req)
@@ -44,7 +50,7 @@ func CheckModelLiveJasmin(client *Client, modelID string, headers [][2]string, d
 	defer func() {
 		CheckErr(resp.Body.Close())
 	}()
-	if dbg {
+	if c.dbg {
 		Ldbg("[%v] query status for %s: %d", client.Addr, modelID, resp.StatusCode)
 	}
 	if resp.StatusCode == 401 {
@@ -79,60 +85,52 @@ func liveJasminStatus(roomStatus string) StatusKind {
 	return StatusUnknown
 }
 
-// LiveJasminOnlineAPI returns LiveJasmin online models
-func LiveJasminOnlineAPI(
-	endpoint string,
-	client *Client,
-	headers [][2]string,
-	dbg bool,
-	_ map[string]string,
-) (
-	onlineModels map[string]OnlineModel,
-	err error,
-) {
-	onlineModels = map[string]OnlineModel{}
-	resp, buf, err := onlineQuery(endpoint, client, headers)
+// checkEndpoint returns LiveJasmin online models
+func (c *LiveJasminChecker) checkEndpoint(endpoint string) (onlineModels map[string]bool, images map[string]string, err error) {
+	client := c.clientsLoop.nextClient()
+	onlineModels = map[string]bool{}
+	images = map[string]string{}
+	resp, buf, err := onlineQuery(endpoint, client, c.headers)
 	if err != nil {
-		return nil, fmt.Errorf("cannot send a query, %v", err)
+		return nil, nil, fmt.Errorf("cannot send a query, %v", err)
 	}
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("query status, %d", resp.StatusCode)
+		return nil, nil, fmt.Errorf("query status, %d", resp.StatusCode)
 	}
 	decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
 	var parsed liveJasminResponse
 	err = decoder.Decode(&parsed)
 	if err != nil {
-		if dbg {
+		if c.dbg {
 			Ldbg("response: %s", buf.String())
 		}
-		return nil, fmt.Errorf("cannot parse response, %v", err)
+		return nil, nil, fmt.Errorf("cannot parse response, %v", err)
 	}
 	if parsed.Status != "OK" {
-		if dbg {
+		if c.dbg {
 			Ldbg("response: %s", buf.String())
 		}
-		return nil, fmt.Errorf("cannot query a list of models, %d", parsed.ErrorCode)
+		return nil, nil, fmt.Errorf("cannot query a list of models, %d", parsed.ErrorCode)
 	}
 	for _, m := range parsed.Data.Models {
 		modelID := strings.ToLower(m.PerformerID)
-		onlineModels[modelID] = OnlineModel{ModelID: modelID, Image: "https:" + m.ProfilePictureURL.Size896x503}
+		onlineModels[modelID] = true
+		images[modelID] = "https:" + m.ProfilePictureURL.Size896x503
 	}
 	return
 }
 
-// StartLiveJasminChecker starts a checker for Chaturbate
-func StartLiveJasminChecker(
-	usersOnlineEndpoint []string,
-	clients []*Client,
-	headers [][2]string,
-	intervalMs int,
-	dbg bool,
-	specificConfig map[string]string,
-) (
+// CheckFull returns LiveJasmin online models
+func (c *LiveJasminChecker) CheckFull() (onlineModels map[string]bool, images map[string]string, err error) {
+	return checkEndpoints(c, c.usersOnlineEndpoint, c.dbg)
+}
+
+// Start starts a daemon
+func (c *LiveJasminChecker) Start(siteOnlineModels map[string]bool, subscriptions map[string]StatusKind, intervalMs int, dbg bool) (
 	statusRequests chan StatusRequest,
-	output chan []OnlineModel,
+	resultsCh chan CheckerResults,
 	errorsCh chan struct{},
 	elapsedCh chan time.Duration,
 ) {
-	return StartChecker(CheckModelLiveJasmin, LiveJasminOnlineAPI, usersOnlineEndpoint, clients, headers, intervalMs, dbg, specificConfig)
+	return fullDaemonStart(c, siteOnlineModels, intervalMs, dbg)
 }

@@ -11,12 +11,13 @@ var ModelIDRegexp = regexp.MustCompile(`^[a-z0-9\-_@]+$`)
 // StatusRequest represents a request of model status
 type StatusRequest struct {
 	SpecialModels map[string]bool
+	Subscriptions map[string]StatusKind
 }
 
-// OnlineModel represents an update of model status
-type OnlineModel struct {
+// StatusUpdate represents an update of model status
+type StatusUpdate struct {
 	ModelID string
-	Image   string
+	Status  StatusKind
 }
 
 // CanonicalModelID preprocesses model ID string to canonical form

@@ -31,8 +31,10 @@ func main() {
 		return
 	}
 	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
-	fmt.Println(lib.CheckChannelTwitch(client, channel, nil, *verbose, map[string]string{
+	checker := lib.TwitchChecker{}
+	checker.Init(nil, []*lib.Client{client}, nil, *verbose, map[string]string{
 		"client_id":     *clientID,
 		"client_secret": *secret,
-	}))
+	})
+	fmt.Println(checker.CheckSingle(channel))
 }

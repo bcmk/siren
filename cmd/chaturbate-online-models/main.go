@@ -12,6 +12,7 @@ var verbose = flag.Bool("v", false, "verbose output")
 var timeout = flag.Int("t", 10, "timeout in seconds")
 var address = flag.String("a", "", "source IP address")
 var cookies = flag.Bool("c", false, "use cookies")
+var endpoint = flag.String("e", "", "online query endpoint")
 
 func main() {
 	flag.Usage = func() {
@@ -20,10 +21,9 @@ func main() {
 	}
 	flag.Parse()
 	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
-	checker := lib.StreamateChecker{}
-	checker.Init([]string{"http://affiliate.streamate.com/SMLive/SMLResult.xml"}, []*lib.Client{client}, nil, *verbose, nil)
+	checker := lib.ChaturbateChecker{}
+	checker.Init([]string{*endpoint}, []*lib.Client{client}, nil, *verbose, nil)
 	models, images, err := checker.CheckFull()
-
 	if err != nil {
 		fmt.Printf("error occurred: %v", err)
 		return

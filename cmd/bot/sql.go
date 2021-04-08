@@ -74,3 +74,15 @@ func (w *worker) maybeRecord(query string, args queryParams, record record) bool
 	checkErr(err)
 	return true
 }
+
+func (w *worker) mustStrings(queryString string, args ...interface{}) (result []string) {
+	defer w.measure("db: " + queryString)()
+	query := w.mustQuery(queryString)
+	defer func() { checkErr(query.Close()) }()
+	for query.Next() {
+		var str string
+		checkErr(query.Scan(&str))
+		result = append(result, str)
+	}
+	return
+}

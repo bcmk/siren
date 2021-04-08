@@ -29,5 +29,7 @@ func main() {
 		return
 	}
 	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
-	fmt.Println(lib.CheckModelCamSoda(client, modelID, nil, *verbose, nil))
+	checker := lib.CamSodaChecker{}
+	checker.Init([]string{""}, []*lib.Client{client}, nil, *verbose, nil)
+	fmt.Println(checker.CheckSingle(modelID))
 }

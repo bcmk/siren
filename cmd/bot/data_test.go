@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"time"
 
 	"github.com/bcmk/siren/lib"
 )
@@ -43,8 +44,30 @@ type testWorker struct {
 	status lib.StatusKind
 }
 
-func (w *testWorker) testCheckModel(*lib.Client, string, [][2]string, bool, map[string]string) lib.StatusKind {
-	return w.status
+type Checker struct {
+	lib.CheckerCommon
+	w *testWorker
+}
+
+func (c *Checker) CheckSingle(string) lib.StatusKind {
+	return c.w.status
+}
+
+func (c *Checker) CheckMany(endpoint string, client *lib.Client) (onlineModels map[string]lib.StatusUpdate, err error) {
+	return
+}
+
+func (c *Checker) Start(
+	map[string]bool,
+	map[string]lib.StatusKind,
+	int,
+	bool,
+) (
+	requests chan lib.StatusRequest,
+	results chan lib.CheckerResults,
+	errors chan struct{},
+	elapsed chan time.Duration) {
+	return
 }
 
 func newTestWorker() *testWorker {
@@ -62,6 +85,6 @@ func newTestWorker() *testWorker {
 			highPriorityMsg: make(chan outgoingPacket, 10000),
 		},
 	}
-	w.checkModel = w.testCheckModel
+	w.checker = &Checker{w: w}
 	return w
 }

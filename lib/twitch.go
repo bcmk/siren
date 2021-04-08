@@ -8,17 +8,26 @@ import (
 	"github.com/nicklaw5/helix"
 )
 
-// CheckChannelTwitch checks Twitch channel status
-func CheckChannelTwitch(httpClient *Client, modelID string, headers [][2]string, dbg bool, params map[string]string) StatusKind {
-	client, err := helix.NewClient(&helix.Options{
-		ClientID:     params["client_id"],
-		ClientSecret: params["client_secret"],
-		HTTPClient:   httpClient.Client,
+// TwitchChecker implements a checker for Twitch
+type TwitchChecker struct {
+	CheckerCommon
+}
+
+var _ SelectiveChecker = &TwitchChecker{}
+var _ FullChecker = &TwitchChecker{}
+
+// CheckSingle checks Twitch channel status
+func (c *TwitchChecker) CheckSingle(modelID string) StatusKind {
+	client := c.clientsLoop.nextClient()
+	helixClient, err := helix.NewClient(&helix.Options{
+		ClientID:     c.specificConfig["client_id"],
+		ClientSecret: c.specificConfig["client_secret"],
+		HTTPClient:   client.Client,
 	})
 	if err != nil {
 		return StatusUnknown
 	}
-	accessResponse, err := client.RequestAppAccessToken(nil)
+	accessResponse, err := helixClient.RequestAppAccessToken(nil)
 	if err != nil {
 		return StatusUnknown
 	}
@@ -26,9 +35,9 @@ func CheckChannelTwitch(httpClient *Client, modelID string, headers [][2]string,
 		return StatusUnknown
 	}
 
-	client.SetAppAccessToken(accessResponse.Data.AccessToken)
+	helixClient.SetAppAccessToken(accessResponse.Data.AccessToken)
 
-	streamsResponse, err := client.GetStreams(&helix.StreamsParams{UserLogins: []string{modelID}})
+	streamsResponse, err := helixClient.GetStreams(&helix.StreamsParams{UserLogins: []string{modelID}})
 	if err != nil {
 		return StatusUnknown
 	}
@@ -39,7 +48,7 @@ func CheckChannelTwitch(httpClient *Client, modelID string, headers [][2]string,
 		return StatusOnline
 	}
 
-	chanResponse, err := client.GetUsers(&helix.UsersParams{
+	chanResponse, err := helixClient.GetUsers(&helix.UsersParams{
 		Logins: []string{modelID},
 	})
 	if err != nil {
@@ -54,32 +63,75 @@ func CheckChannelTwitch(httpClient *Client, modelID string, headers [][2]string,
 	return StatusNotFound
 }
 
-// TwitchOnlineAPI returns Twitch online models
-func TwitchOnlineAPI(
-	endpoint string,
-	httpClient *Client,
-	headers [][2]string,
-	dbg bool,
-	params map[string]string,
-) (
-	onlineModels map[string]OnlineModel,
-	err error,
-) {
-	onlineModels = map[string]OnlineModel{}
+func thumbnail(s string) string {
+	s = strings.Replace(s, "{width}", "1280", 1)
+	return strings.Replace(s, "{height}", "720", 1)
+}
+
+// CheckMany returns Twitch online models
+func (c *TwitchChecker) CheckMany(subscriptions []string) (onlineModels map[string]bool, images map[string]string, err error) {
+	httpClient := c.clientsLoop.nextClient()
+	onlineModels = map[string]bool{}
+	images = map[string]string{}
 	client, err := helix.NewClient(&helix.Options{
-		ClientID:     params["client_id"],
-		ClientSecret: params["client_secret"],
+		ClientID:     c.specificConfig["client_id"],
+		ClientSecret: c.specificConfig["client_secret"],
 		HTTPClient:   httpClient.Client,
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	accessResponse, err := client.RequestAppAccessToken(nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if accessResponse.ErrorMessage != "" {
-		return nil, errors.New(accessResponse.ErrorMessage)
+		return nil, nil, errors.New(accessResponse.ErrorMessage)
+	}
+	client.SetAppAccessToken(accessResponse.Data.AccessToken)
+	toCheckChunks := chunks(subscriptions, 100)
+	for _, chunk := range toCheckChunks {
+		streamsResponse, err := client.GetStreams(&helix.StreamsParams{
+			First:      100,
+			UserLogins: chunk,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		if streamsResponse.ErrorMessage != "" {
+			return nil, nil, errors.New(streamsResponse.ErrorMessage)
+		}
+		for _, s := range streamsResponse.Data.Streams {
+			name := strings.ToLower(s.UserLogin)
+			onlineModels[name] = true
+			images[name] = thumbnail(s.ThumbnailURL)
+		}
+		if len(streamsResponse.Data.Streams) == 0 {
+			break
+		}
+	}
+	return onlineModels, images, nil
+}
+
+// checkEndpoint returns all Twitch online channels on the endpoint
+func (c *TwitchChecker) checkEndpoint(endpoint string) (onlineModels map[string]bool, images map[string]string, err error) {
+	httpClient := c.clientsLoop.nextClient()
+	onlineModels = map[string]bool{}
+	images = map[string]string{}
+	client, err := helix.NewClient(&helix.Options{
+		ClientID:     c.specificConfig["client_id"],
+		ClientSecret: c.specificConfig["client_secret"],
+		HTTPClient:   httpClient.Client,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	accessResponse, err := client.RequestAppAccessToken(nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	if accessResponse.ErrorMessage != "" {
+		return nil, nil, errors.New(accessResponse.ErrorMessage)
 	}
 
 	client.SetAppAccessToken(accessResponse.Data.AccessToken)
@@ -91,37 +143,35 @@ func TwitchOnlineAPI(
 			After: after,
 		})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if streamsResponse.ErrorMessage != "" {
-			return nil, errors.New(streamsResponse.ErrorMessage)
+			return nil, nil, errors.New(streamsResponse.ErrorMessage)
 		}
 		for _, s := range streamsResponse.Data.Streams {
-			thumbnail := strings.Replace(s.ThumbnailURL, "{width}", "1280", 1)
-			thumbnail = strings.Replace(thumbnail, "{height}", "720", 1)
-			onlineModels[s.UserLogin] = OnlineModel{ModelID: s.UserLogin, Image: thumbnail}
+			name := strings.ToLower(s.UserLogin)
+			onlineModels[name] = true
+			images[name] = thumbnail(s.ThumbnailURL)
 		}
 		if len(streamsResponse.Data.Streams) == 0 {
 			break
 		}
 		after = streamsResponse.Data.Pagination.Cursor
 	}
-	return onlineModels, nil
+	return onlineModels, images, nil
 }
 
-// StartTwitchChecker starts a checker for Chaturbate
-func StartTwitchChecker(
-	usersOnlineEndpoint []string,
-	clients []*Client,
-	headers [][2]string,
-	intervalMs int,
-	dbg bool,
-	specificConfig map[string]string,
-) (
+// CheckFull returns Twitch online models
+func (c *TwitchChecker) CheckFull() (onlineModels map[string]bool, images map[string]string, err error) {
+	return checkEndpoints(c, c.usersOnlineEndpoint, c.dbg)
+}
+
+// Start starts a daemon
+func (c *TwitchChecker) Start(siteOnlineModels map[string]bool, subscriptions map[string]StatusKind, intervalMs int, dbg bool) (
 	statusRequests chan StatusRequest,
-	output chan []OnlineModel,
+	resultsCh chan CheckerResults,
 	errorsCh chan struct{},
 	elapsedCh chan time.Duration,
 ) {
-	return StartChecker(CheckChannelTwitch, TwitchOnlineAPI, usersOnlineEndpoint, clients, headers, intervalMs, dbg, specificConfig)
+	return selectiveDaemonStart(c, siteOnlineModels, subscriptions, dbg)
 }

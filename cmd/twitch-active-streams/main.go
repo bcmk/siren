@@ -21,16 +21,18 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
-	httpClient := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
-	res, err := lib.TwitchOnlineAPI("", httpClient, nil, *verbose, map[string]string{
+	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
+	checker := lib.TwitchChecker{}
+	checker.Init([]string{""}, []*lib.Client{client}, nil, *verbose, map[string]string{
 		"client_id":     *clientID,
 		"client_secret": *secret,
 	})
+	models, images, err := checker.CheckFull()
 	if err != nil {
 		fmt.Printf("error occurred: %v", err)
 		return
 	}
-	for s := range res {
-		fmt.Println(s)
+	for model := range models {
+		fmt.Printf("%s %s\n", model, images[model])
 	}
 }

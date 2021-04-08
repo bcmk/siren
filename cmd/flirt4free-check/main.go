@@ -29,5 +29,7 @@ func main() {
 		return
 	}
 	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
-	fmt.Println(lib.CheckModelFlirt4Free(client, modelID, nil, *verbose, nil))
+	checker := lib.Flirt4FreeChecker{}
+	checker.Init([]string{""}, []*lib.Client{client}, nil, *verbose, nil)
+	fmt.Println(checker.CheckSingle(modelID))
 }

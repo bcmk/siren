@@ -29,6 +29,7 @@ func main() {
 		return
 	}
 	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
-	fmt.Println(lib.CheckModelStreamate(client, modelID, nil, *verbose, nil))
-
+	checker := lib.StreamateChecker{}
+	checker.Init([]string{""}, []*lib.Client{client}, nil, *verbose, nil)
+	fmt.Println(checker.CheckSingle(modelID))
 }

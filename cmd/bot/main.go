@@ -117,34 +117,20 @@ type worker struct {
 	tr                       map[string]*lib.Translations
 	tpl                      map[string]*template.Template
 	modelIDPreprocessing     func(string) string
-	checkModel               func(client *lib.Client, modelID string, headers [][2]string, dbg bool, config map[string]string) lib.StatusKind
-	startChecker             func(
-		usersOnlineEndpoint []string,
-		clients []*lib.Client,
-		headers [][2]string,
-		intervalMs int,
-		dbg bool,
-		specificConfig map[string]string,
-	) (
-		statusRequests chan lib.StatusRequest,
-		output chan []lib.OnlineModel,
-		errorsCh chan struct{},
-		elapsedCh chan time.Duration,
-	)
-
-	unsuccessfulRequests  []bool
-	successfulRequestsPos int
-	downloadErrors        []bool
-	downloadResultsPos    int
-	nextErrorReport       time.Time
-	coinPaymentsAPI       *payments.CoinPaymentsAPI
-	mailTLS               *tls.Config
-	durations             map[string]queryDurationsData
-	images                map[string]string
-	botNames              map[string]string
-	lowPriorityMsg        chan outgoingPacket
-	highPriorityMsg       chan outgoingPacket
-	outgoingMsgResults    chan msgSendResult
+	checker                  lib.Checker
+	unsuccessfulRequests     []bool
+	successfulRequestsPos    int
+	downloadErrors           []bool
+	downloadResultsPos       int
+	nextErrorReport          time.Time
+	coinPaymentsAPI          *payments.CoinPaymentsAPI
+	mailTLS                  *tls.Config
+	durations                map[string]queryDurationsData
+	images                   map[string]string
+	botNames                 map[string]string
+	lowPriorityMsg           chan outgoingPacket
+	highPriorityMsg          chan outgoingPacket
+	outgoingMsgResults       chan msgSendResult
 }
 
 type incomingPacket struct {
@@ -256,40 +242,31 @@ func newWorker() *worker {
 
 	switch cfg.Website {
 	case "test":
-		w.checkModel = lib.CheckModelTest
-		w.startChecker = lib.StartTestChecker
+		w.checker = &lib.RandomChecker{}
 		w.modelIDPreprocessing = lib.CanonicalModelID
 	case "bongacams":
-		w.checkModel = lib.CheckModelBongaCams
-		w.startChecker = lib.StartBongaCamsChecker
+		w.checker = &lib.BongaCamsChecker{}
 		w.modelIDPreprocessing = lib.CanonicalModelID
 	case "chaturbate":
-		w.checkModel = lib.CheckModelChaturbate
-		w.startChecker = lib.StartChaturbateChecker
+		w.checker = &lib.ChaturbateChecker{}
 		w.modelIDPreprocessing = lib.ChaturbateCanonicalModelID
 	case "stripchat":
-		w.checkModel = lib.CheckModelStripchat
-		w.startChecker = lib.StartStripchatChecker
+		w.checker = &lib.StripchatChecker{}
 		w.modelIDPreprocessing = lib.CanonicalModelID
 	case "livejasmin":
-		w.checkModel = lib.CheckModelLiveJasmin
-		w.startChecker = lib.StartLiveJasminChecker
+		w.checker = &lib.LiveJasminChecker{}
 		w.modelIDPreprocessing = lib.CanonicalModelID
 	case "camsoda":
-		w.checkModel = lib.CheckModelCamSoda
-		w.startChecker = lib.StartCamSodaChecker
+		w.checker = &lib.CamSodaChecker{}
 		w.modelIDPreprocessing = lib.CanonicalModelID
 	case "flirt4free":
-		w.checkModel = lib.CheckModelFlirt4Free
-		w.startChecker = lib.StartFlirt4FreeChecker
+		w.checker = &lib.Flirt4FreeChecker{}
 		w.modelIDPreprocessing = lib.Flirt4FreeCanonicalModelID
 	case "streamate":
-		w.checkModel = lib.CheckModelStreamate
-		w.startChecker = lib.StartStreamateChecker
+		w.checker = &lib.StreamateChecker{}
 		w.modelIDPreprocessing = lib.CanonicalModelID
 	case "twitch":
-		w.checkModel = lib.CheckChannelTwitch
-		w.startChecker = lib.StartTwitchChecker
+		w.checker = &lib.TwitchChecker{}
 		w.modelIDPreprocessing = lib.CanonicalModelID
 	default:
 		panic("wrong website")
@@ -641,7 +618,7 @@ func (w *worker) updateStatus(insertStatusChangeStmt, updateLastStatusChangeStmt
 }
 
 func (w *worker) confirm(updateModelStatusStmt *sql.Stmt, now int) []string {
-	all, _, _ := hashDiff(w.ourOnline, w.siteOnline)
+	all := lib.HashDiffAll(w.ourOnline, w.siteOnline)
 	var confirmations []string
 	for _, c := range all {
 		statusChange := w.siteStatuses[c]
@@ -898,7 +875,7 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 	} else if _, ok := w.siteStatuses[modelID]; ok {
 		confirmedStatus = lib.StatusOffline
 	} else {
-		checkedStatus := w.checkModel(w.clients[0], modelID, w.cfg.Headers, w.cfg.Debug, w.cfg.SpecificConfig)
+		checkedStatus := w.checker.CheckSingle(modelID)
 		if checkedStatus == lib.StatusUnknown || checkedStatus == lib.StatusNotFound {
 			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].AddError, tplData{"model": modelID})
 			return false
@@ -1842,6 +1819,15 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	return false
 }
 
+func (w *worker) subscriptions() map[string]lib.StatusKind {
+	subs := w.mustStrings("select distinct(model_id) from signals")
+	result := map[string]lib.StatusKind{}
+	for _, s := range subs {
+		result[s] = w.siteStatuses[s].status
+	}
+	return result
+}
+
 func (w *worker) initiateRequests(statusRequests chan lib.StatusRequest) {
 	unsuccessfulRequestsCount := w.unsuccessfulRequestsCount()
 	now := time.Now()
@@ -1850,9 +1836,8 @@ func (w *worker) initiateRequests(statusRequests chan lib.StatusRequest) {
 		w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, lib.ParseRaw, text)
 		w.nextErrorReport = now.Add(time.Minute * time.Duration(w.cfg.ErrorReportingPeriodMinutes))
 	}
-
 	select {
-	case statusRequests <- lib.StatusRequest{SpecialModels: w.specialModels}:
+	case statusRequests <- lib.StatusRequest{SpecialModels: w.specialModels, Subscriptions: w.subscriptions()}:
 	default:
 		linf("the queue is full")
 	}
@@ -1890,32 +1875,8 @@ func (w *worker) queryConfirmedModels() (map[string]bool, map[string]bool) {
 	return statuses, specialModels
 }
 
-func hashDiff(before, after map[string]bool) (all, added, removed []string) {
-	for k := range after {
-		if _, ok := before[k]; !ok {
-			all = append(all, k)
-		}
-	}
-	for k := range before {
-		if _, ok := after[k]; !ok {
-			all = append(all, k)
-		}
-	}
-	return
-}
-
-func (w *worker) updateImages(onlineModels []lib.OnlineModel) {
-	for _, u := range onlineModels {
-		if u.Image != "" {
-			w.images[u.ModelID] = u.Image
-		} else {
-			delete(w.images, u.ModelID)
-		}
-	}
-}
-
 func (w *worker) processStatusUpdates(
-	siteOnline []lib.OnlineModel,
+	updates []lib.StatusUpdate,
 	now int,
 ) (
 	changesCount int,
@@ -1924,7 +1885,6 @@ func (w *worker) processStatusUpdates(
 	elapsed time.Duration,
 ) {
 	start := time.Now()
-	w.updateImages(siteOnline)
 	usersForModels, endpointsForModels := w.usersForModels()
 	tx, err := w.db.Begin()
 	checkErr(err)
@@ -1936,23 +1896,11 @@ func (w *worker) processStatusUpdates(
 	updateModelStatusStmt, err := tx.Prepare(updateModelStatus)
 	checkErr(err)
 
-	next := map[string]bool{}
-	hashDone := w.measure("algo: hash diff")
-	for _, u := range siteOnline {
-		next[u.ModelID] = true
-	}
-	all, _, _ := hashDiff(w.siteOnline, next)
-	hashDone()
-
-	changesCount = len(all)
+	changesCount = len(updates)
 
 	statusDone := w.measure("db: status updates")
-	for _, u := range all {
-		status := lib.StatusOffline
-		if _, ok := next[u]; ok {
-			status = lib.StatusOnline
-		}
-		statusChange := statusChange{modelID: u, status: status, timestamp: now}
+	for _, u := range updates {
+		statusChange := statusChange{modelID: u.ModelID, status: u.Status, timestamp: now}
 		w.updateStatus(insertStatusChangeStmt, updateLastStatusChangeStmt, statusChange)
 	}
 	statusDone()
@@ -2424,13 +2372,8 @@ func main() {
 
 	var requestTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
 	var cleaningTimer = time.NewTicker(time.Duration(w.cfg.CleaningPeriodSeconds) * time.Second)
-	statusRequestsChan, onlineModelsChan, errorsChan, elapsed := w.startChecker(
-		w.cfg.UsersOnlineEndpoint,
-		w.clients,
-		w.cfg.Headers,
-		w.cfg.IntervalMs,
-		w.cfg.Debug,
-		w.cfg.SpecificConfig)
+	w.checker.Init(w.cfg.UsersOnlineEndpoint, w.clients, w.cfg.Headers, w.cfg.Debug, w.cfg.SpecificConfig)
+	statusRequestsChan, onlineModelsChan, errorsChan, elapsed := w.checker.Start(w.siteOnline, w.subscriptions(), w.cfg.IntervalMs, w.cfg.Debug)
 	statusRequestsChan <- lib.StatusRequest{SpecialModels: w.specialModels}
 	signals := make(chan os.Signal, 16)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT, syscall.SIGTSTP, syscall.SIGCONT)
@@ -2446,7 +2389,8 @@ func main() {
 			w.cleaningDuration = w.cleanStatusChanges(time.Now().Unix())
 		case onlineModels := <-onlineModelsChan:
 			now := int(time.Now().Unix())
-			changesInPeriod, confirmedChangesInPeriod, notifications, elapsed := w.processStatusUpdates(onlineModels, now)
+			w.images = onlineModels.Images
+			changesInPeriod, confirmedChangesInPeriod, notifications, elapsed := w.processStatusUpdates(onlineModels.Updates, now)
 			w.updatesDuration = elapsed
 			w.changesInPeriod = changesInPeriod
 			w.confirmedChangesInPeriod = confirmedChangesInPeriod

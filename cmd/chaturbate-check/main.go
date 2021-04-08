@@ -30,5 +30,7 @@ func main() {
 		return
 	}
 	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
-	fmt.Println(lib.CheckModelChaturbate(client, modelID, nil, *verbose, nil))
+	checker := lib.ChaturbateChecker{}
+	checker.Init([]string{""}, []*lib.Client{client}, nil, *verbose, nil)
+	fmt.Println(checker.CheckSingle(modelID))
 }

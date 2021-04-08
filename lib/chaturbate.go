@@ -11,6 +11,11 @@ import (
 	"time"
 )
 
+// ChaturbateChecker implements a checker for Chaturbate
+type ChaturbateChecker struct{ CheckerCommon }
+
+var _ FullChecker = &ChaturbateChecker{}
+
 var chaturbateModelRegex = regexp.MustCompile(`^(?:http(?:s)?://)?(?:[A-Za-z]+\.)?chaturbate\.com(?:/p|/b)?/([A-Za-z0-9\-_@]+)(?:/)?(?:\?.*)?$`)
 
 // ChaturbateCanonicalModelID preprocesses model ID string to canonical for Chaturbate form
@@ -33,11 +38,12 @@ type chaturbateResponse struct {
 	Code       string `json:"code"`
 }
 
-// CheckModelChaturbate checks Chaturbate model status
-func CheckModelChaturbate(client *Client, modelID string, headers [][2]string, dbg bool, _ map[string]string) StatusKind {
+// CheckSingle checks Chaturbate model status
+func (c *ChaturbateChecker) CheckSingle(modelID string) StatusKind {
+	client := c.clientsLoop.nextClient()
 	req, err := http.NewRequest("GET", fmt.Sprintf("https://en.chaturbate.com/api/chatvideocontext/%s/", modelID), nil)
 	CheckErr(err)
-	for _, h := range headers {
+	for _, h := range c.headers {
 		req.Header.Set(h[0], h[1])
 	}
 	resp, err := client.Client.Do(req)
@@ -48,7 +54,7 @@ func CheckModelChaturbate(client *Client, modelID string, headers [][2]string, d
 	defer func() {
 		CheckErr(resp.Body.Close())
 	}()
-	if dbg {
+	if c.dbg {
 		Ldbg("[%v] query status for %s: %d", client.Addr, modelID, resp.StatusCode)
 	}
 	if resp.StatusCode == 404 {
@@ -65,7 +71,7 @@ func CheckModelChaturbate(client *Client, modelID string, headers [][2]string, d
 	err = decoder.Decode(parsed)
 	if err != nil {
 		Lerr("[%v] cannot parse response for model %s, %v", client.Addr, modelID, err)
-		if dbg {
+		if c.dbg {
 			Ldbg("response: %s", buf.String())
 		}
 		return StatusUnknown
@@ -109,54 +115,46 @@ func chaturbateRoomStatus(roomStatus string) StatusKind {
 	return StatusUnknown
 }
 
-// ChaturbateOnlineAPI returns Chaturbate online models
-func ChaturbateOnlineAPI(
-	endpoint string,
-	client *Client,
-	headers [][2]string,
-	dbg bool,
-	_ map[string]string,
-) (
-	onlineModels map[string]OnlineModel,
-	err error,
-) {
-	onlineModels = map[string]OnlineModel{}
-	resp, buf, err := onlineQuery(endpoint, client, headers)
+// checkEndpoint returns Chaturbate online models on the endpoint
+func (c *ChaturbateChecker) checkEndpoint(endpoint string) (onlineModels map[string]bool, images map[string]string, err error) {
+	client := c.clientsLoop.nextClient()
+	onlineModels = map[string]bool{}
+	images = map[string]string{}
+	resp, buf, err := onlineQuery(endpoint, client, c.headers)
 	if err != nil {
-		return nil, fmt.Errorf("cannot send a query, %v", err)
+		return nil, nil, fmt.Errorf("cannot send a query, %v", err)
 	}
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("query status, %d", resp.StatusCode)
+		return nil, nil, fmt.Errorf("query status, %d", resp.StatusCode)
 	}
 	decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
 	var parsed []chaturbateModel
 	err = decoder.Decode(&parsed)
 	if err != nil {
-		if dbg {
+		if c.dbg {
 			Ldbg("response: %s", buf.String())
 		}
-		return nil, fmt.Errorf("cannot parse response, %v", err)
+		return nil, nil, fmt.Errorf("cannot parse response, %v", err)
 	}
 	for _, m := range parsed {
 		modelID := strings.ToLower(m.Username)
-		onlineModels[modelID] = OnlineModel{ModelID: modelID, Image: m.ImageURL}
+		onlineModels[modelID] = true
+		images[modelID] = m.ImageURL
 	}
 	return
 }
 
-// StartChaturbateChecker starts a checker for Chaturbate
-func StartChaturbateChecker(
-	usersOnlineEndpoint []string,
-	clients []*Client,
-	headers [][2]string,
-	intervalMs int,
-	dbg bool,
-	specificConfig map[string]string,
-) (
+// CheckFull returns Chaturbate online models
+func (c *ChaturbateChecker) CheckFull() (onlineModels map[string]bool, images map[string]string, err error) {
+	return checkEndpoints(c, c.usersOnlineEndpoint, c.dbg)
+}
+
+// Start starts a daemon
+func (c *ChaturbateChecker) Start(siteOnlineModels map[string]bool, subscriptions map[string]StatusKind, intervalMs int, dbg bool) (
 	statusRequests chan StatusRequest,
-	output chan []OnlineModel,
+	resultsCh chan CheckerResults,
 	errorsCh chan struct{},
 	elapsedCh chan time.Duration,
 ) {
-	return StartChecker(CheckModelChaturbate, ChaturbateOnlineAPI, usersOnlineEndpoint, clients, headers, intervalMs, dbg, specificConfig)
+	return fullDaemonStart(c, siteOnlineModels, intervalMs, dbg)
 }
