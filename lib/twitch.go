@@ -89,8 +89,7 @@ func (c *TwitchChecker) CheckMany(subscriptions []string) (onlineModels map[stri
 		return nil, nil, errors.New(accessResponse.ErrorMessage)
 	}
 	client.SetAppAccessToken(accessResponse.Data.AccessToken)
-	toCheckChunks := chunks(subscriptions, 100)
-	for _, chunk := range toCheckChunks {
+	for _, chunk := range chunks(subscriptions, 100) {
 		streamsResponse, err := client.GetStreams(&helix.StreamsParams{
 			First:      100,
 			UserLogins: chunk,
@@ -105,9 +104,6 @@ func (c *TwitchChecker) CheckMany(subscriptions []string) (onlineModels map[stri
 			name := strings.ToLower(s.UserLogin)
 			onlineModels[name] = true
 			images[name] = thumbnail(s.ThumbnailURL)
-		}
-		if len(streamsResponse.Data.Streams) == 0 {
-			break
 		}
 	}
 	return onlineModels, images, nil
