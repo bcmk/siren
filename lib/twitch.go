@@ -69,9 +69,9 @@ func thumbnail(s string) string {
 }
 
 // CheckMany returns Twitch online models
-func (c *TwitchChecker) CheckMany(subscriptions []string) (onlineModels map[string]bool, images map[string]string, err error) {
+func (c *TwitchChecker) CheckMany(channels []string) (online map[string]bool, images map[string]string, err error) {
 	httpClient := c.clientsLoop.nextClient()
-	onlineModels = map[string]bool{}
+	online = map[string]bool{}
 	images = map[string]string{}
 	client, err := helix.NewClient(&helix.Options{
 		ClientID:     c.specificConfig["client_id"],
@@ -89,7 +89,7 @@ func (c *TwitchChecker) CheckMany(subscriptions []string) (onlineModels map[stri
 		return nil, nil, errors.New(accessResponse.ErrorMessage)
 	}
 	client.SetAppAccessToken(accessResponse.Data.AccessToken)
-	for _, chunk := range chunks(subscriptions, 100) {
+	for _, chunk := range chunks(channels, 100) {
 		streamsResponse, err := client.GetStreams(&helix.StreamsParams{
 			First:      100,
 			UserLogins: chunk,
@@ -102,11 +102,11 @@ func (c *TwitchChecker) CheckMany(subscriptions []string) (onlineModels map[stri
 		}
 		for _, s := range streamsResponse.Data.Streams {
 			name := strings.ToLower(s.UserLogin)
-			onlineModels[name] = true
+			online[name] = true
 			images[name] = thumbnail(s.ThumbnailURL)
 		}
 	}
-	return onlineModels, images, nil
+	return online, images, nil
 }
 
 // checkEndpoint returns all Twitch online channels on the endpoint
