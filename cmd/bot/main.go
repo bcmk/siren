@@ -1520,12 +1520,17 @@ func (w *worker) addSpecialModel(endpoint string, arguments string) {
 		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "MODEL_ID is invalid")
 		return
 	}
+	set := parts[0] == "set"
 	w.mustExec(`
 		insert into models (model_id, special) values (?,?)
 		on conflict(model_id) do update set special=excluded.special`,
 		modelID,
-		parts[0] == "set")
-	w.specialModels[modelID] = true
+		set)
+	if set {
+		w.specialModels[modelID] = true
+	} else {
+		delete(w.specialModels, modelID)
+	}
 	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
 }
 
