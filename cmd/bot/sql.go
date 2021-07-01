@@ -57,8 +57,7 @@ func (w *worker) mustString(query string, args ...interface{}) (result string) {
 	return result
 }
 
-func (w *worker) mustQuery(query string, args ...interface{}) *sql.Rows {
-	defer w.measure("db: " + query)()
+func (w *worker) mustQueryInternal(query string, args ...interface{}) *sql.Rows {
 	result, err := w.db.Query(query, args...)
 	checkErr(err)
 	return result
@@ -76,13 +75,17 @@ func (w *worker) maybeRecord(query string, args queryParams, record record) bool
 }
 
 func (w *worker) mustStrings(queryString string, args ...interface{}) (result []string) {
+	var current string
+	w.mustQuery(queryString, queryParams(args), record{&current}, func() { result = append(result, current) })
+	return
+}
+
+func (w *worker) mustQuery(queryString string, args queryParams, record record, store func()) {
 	defer w.measure("db: " + queryString)()
-	query := w.mustQuery(queryString)
+	query := w.mustQueryInternal(queryString, args...)
 	defer func() { checkErr(query.Close()) }()
 	for query.Next() {
-		var str string
-		checkErr(query.Scan(&str))
-		result = append(result, str)
+		checkErr(query.Scan(record...))
+		store()
 	}
-	return
 }

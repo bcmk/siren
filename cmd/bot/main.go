@@ -558,7 +558,9 @@ func (w *worker) getLastOnlineModels() map[string]bool {
 }
 
 func (w *worker) lastSeenInfo(modelID string, now int) (begin int, end int, prevStatus lib.StatusKind) {
-	query := w.mustQuery(`
+	var maybeEnd *int
+	var maybePrevStatus *lib.StatusKind
+	if !w.maybeRecord(`
 		select timestamp, end, prev_status from (
 			select
 				*,
@@ -568,15 +570,11 @@ func (w *worker) lastSeenInfo(modelID string, now int) (begin int, end int, prev
 			where model_id=?)
 		where status=?
 		order by timestamp desc limit 1`,
-		modelID,
-		lib.StatusOnline)
-	defer func() { checkErr(query.Close()) }()
-	if !query.Next() {
+		queryParams{modelID, lib.StatusOnline},
+		record{&begin, &maybeEnd, &maybePrevStatus}) {
+
 		return 0, 0, lib.StatusUnknown
 	}
-	var maybeEnd *int
-	var maybePrevStatus *lib.StatusKind
-	checkErr(query.Scan(&begin, &maybeEnd, &maybePrevStatus))
 	if maybeEnd == nil {
 		zero := 0
 		maybeEnd = &zero
@@ -638,101 +636,88 @@ func (w *worker) confirm(updateModelStatusStmt *sql.Stmt, now int) []string {
 }
 
 func (w *worker) modelsToPoll() (models []string) {
-	modelsQuery := w.mustQuery(`
+	var modelID string
+	w.mustQuery(`
 		select distinct model_id from signals
 		left join block on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
 		where block.block is null or block.block<?
 		order by model_id`,
-		w.cfg.BlockThreshold)
-	defer func() { checkErr(modelsQuery.Close()) }()
-	for modelsQuery.Next() {
-		var modelID string
-		checkErr(modelsQuery.Scan(&modelID))
-		models = append(models, modelID)
-	}
+		queryParams{w.cfg.BlockThreshold},
+		record{&modelID},
+		func() { models = append(models, modelID) })
 	return
 }
 
 func (w *worker) usersForModels() (users map[string][]user, endpoints map[string][]string) {
 	users = map[string][]user{}
 	endpoints = make(map[string][]string)
-	chatsQuery := w.mustQuery(`
+	var modelID string
+	var chatID int64
+	var endpoint string
+	var offlineNotifications bool
+	w.mustQuery(`
 		select signals.model_id, signals.chat_id, signals.endpoint, users.offline_notifications
 		from signals
-		join users on users.chat_id=signals.chat_id`)
-	defer func() { checkErr(chatsQuery.Close()) }()
-	for chatsQuery.Next() {
-		var modelID string
-		var chatID int64
-		var endpoint string
-		var offlineNotifications bool
-		checkErr(chatsQuery.Scan(&modelID, &chatID, &endpoint, &offlineNotifications))
-		users[modelID] = append(users[modelID], user{chatID: chatID, offlineNotifications: offlineNotifications})
-		endpoints[modelID] = append(endpoints[modelID], endpoint)
-	}
+		join users on users.chat_id=signals.chat_id`,
+		nil,
+		record{&modelID, &chatID, &endpoint, &offlineNotifications},
+		func() {
+			users[modelID] = append(users[modelID], user{chatID: chatID, offlineNotifications: offlineNotifications})
+			endpoints[modelID] = append(endpoints[modelID], endpoint)
+		})
 	return
 }
 
 func (w *worker) chatsForModel(modelID string) (chats []int64, endpoints []string) {
-	chatsQuery := w.mustQuery(`select chat_id, endpoint from signals where model_id=? order by chat_id`, modelID)
-	defer func() { checkErr(chatsQuery.Close()) }()
-	for chatsQuery.Next() {
-		var chatID int64
-		var endpoint string
-		checkErr(chatsQuery.Scan(&chatID, &endpoint))
-		chats = append(chats, chatID)
-		endpoints = append(endpoints, endpoint)
-	}
+	var chatID int64
+	var endpoint string
+	w.mustQuery(
+		`select chat_id, endpoint from signals where model_id=? order by chat_id`,
+		queryParams{modelID},
+		record{&chatID, &endpoint},
+		func() {
+			chats = append(chats, chatID)
+			endpoints = append(endpoints, endpoint)
+		})
 	return
 }
 
 func (w *worker) broadcastChats(endpoint string) (chats []int64) {
-	chatsQuery := w.mustQuery(`select distinct chat_id from signals where endpoint=? order by chat_id`, endpoint)
-	defer func() { checkErr(chatsQuery.Close()) }()
-	for chatsQuery.Next() {
-		var chatID int64
-		checkErr(chatsQuery.Scan(&chatID))
-		chats = append(chats, chatID)
-	}
+	var chatID int64
+	w.mustQuery(
+		`select distinct chat_id from signals where endpoint=? order by chat_id`,
+		queryParams{endpoint},
+		record{&chatID},
+		func() { chats = append(chats, chatID) })
 	return
 }
 
-func (w *worker) modelsForChat(endpoint string, chatID int64) []string {
-	query := w.mustQuery(`
+func (w *worker) modelsForChat(endpoint string, chatID int64) (models []string) {
+	var modelID string
+	w.mustQuery(`
 		select model_id
 		from signals
 		where chat_id=? and endpoint=?
 		order by model_id`,
-		chatID,
-		endpoint)
-	defer func() { checkErr(query.Close()) }()
-	var models []string
-	for query.Next() {
-		var modelID string
-		checkErr(query.Scan(&modelID))
-		models = append(models, modelID)
-	}
-	return models
+		queryParams{chatID, endpoint},
+		record{&modelID},
+		func() { models = append(models, modelID) })
+	return
 }
 
-func (w *worker) statusesForChat(endpoint string, chatID int64) []model {
-	statusesQuery := w.mustQuery(`
+func (w *worker) statusesForChat(endpoint string, chatID int64) (statuses []model) {
+	var modelID string
+	var status lib.StatusKind
+	w.mustQuery(`
 		select models.model_id, models.status
 		from models
 		join signals on signals.model_id=models.model_id
 		where signals.chat_id=? and signals.endpoint=?
 		order by models.model_id`,
-		chatID,
-		endpoint)
-	defer func() { checkErr(statusesQuery.Close()) }()
-	var statuses []model
-	for statusesQuery.Next() {
-		var modelID string
-		var status lib.StatusKind
-		checkErr(statusesQuery.Scan(&modelID, &status))
-		statuses = append(statuses, model{modelID: modelID, status: status})
-	}
-	return statuses
+		queryParams{chatID, endpoint},
+		record{&modelID, &status},
+		func() { statuses = append(statuses, model{modelID: modelID, status: status}) })
+	return
 }
 
 func (w *worker) notifyOfStatuses(queue chan outgoingPacket, notifications []notification, social bool) {
@@ -1210,7 +1195,12 @@ func (w *worker) week(modelID string) ([]bool, time.Time) {
 	today := now.Truncate(24 * time.Hour)
 	start := today.Add(-6 * 24 * time.Hour)
 	weekTimestamp := int(start.Unix())
-	query := w.mustQuery(`
+	var changes []statusChange
+	first := true
+	var change statusChange
+	var firstStatus *lib.StatusKind
+	var firstTimestamp *int
+	w.mustQuery(`
 		select status, timestamp, prev_status, prev_timestamp
 		from(
 			select
@@ -1221,21 +1211,15 @@ func (w *worker) week(modelID string) ([]bool, time.Time) {
 			where model_id=?)
 		where timestamp>=?
 		order by timestamp`,
-		modelID,
-		weekTimestamp)
-	var changes []statusChange
-	first := true
-	for query.Next() {
-		var change statusChange
-		var firstStatus *lib.StatusKind
-		var firstTimestamp *int
-		checkErr(query.Scan(&change.status, &change.timestamp, &firstStatus, &firstTimestamp))
-		if first && firstStatus != nil && firstTimestamp != nil {
-			changes = append(changes, statusChange{status: *firstStatus, timestamp: *firstTimestamp})
-			first = false
-		}
-		changes = append(changes, change)
-	}
+		queryParams{modelID, weekTimestamp},
+		record{&change.status, &change.timestamp, &firstStatus, &firstTimestamp},
+		func() {
+			if first && firstStatus != nil && firstTimestamp != nil {
+				changes = append(changes, statusChange{status: *firstStatus, timestamp: *firstTimestamp})
+				first = false
+			}
+			changes = append(changes, change)
+		})
 
 	changes = append(changes, statusChange{timestamp: nowTimestamp})
 	hours := make([]bool, (nowTimestamp-weekTimestamp+3599)/3600)
@@ -1309,15 +1293,14 @@ func (w *worker) reports() int {
 
 func (w *worker) interactions(endpoint string) map[int]int {
 	timestamp := time.Now().Add(time.Hour * -24).Unix()
-	query := w.mustQuery("select result, count(*) from interactions where endpoint=? and timestamp>? group by result", endpoint, timestamp)
-	defer func() { checkErr(query.Close()) }()
 	results := map[int]int{}
-	for query.Next() {
-		var result int
-		var count int
-		checkErr(query.Scan(&result, &count))
-		results[result] = count
-	}
+	var result int
+	var count int
+	w.mustQuery(
+		"select result, count(*) from interactions where endpoint=? and timestamp>? group by result",
+		queryParams{endpoint, timestamp},
+		record{&result, &count},
+		func() { results[result] = count })
 	return results
 }
 
@@ -1588,11 +1571,12 @@ func splitAddress(a string) (string, string) {
 }
 
 func (w *worker) recordForEmail(username string) *email {
-	modelsQuery := w.mustQuery(`select chat_id, endpoint from emails where email=?`, username)
-	defer func() { checkErr(modelsQuery.Close()) }()
-	if modelsQuery.Next() {
-		email := email{email: username}
-		checkErr(modelsQuery.Scan(&email.chatID, &email.endpoint))
+	email := email{email: username}
+	if w.maybeRecord(
+		`select chat_id, endpoint from emails where email=?`,
+		queryParams{username},
+		record{&email.chatID, &email.endpoint}) {
+
 		return &email
 	}
 	return nil
@@ -1844,34 +1828,34 @@ func (w *worker) initiateRequests(statusRequests chan lib.StatusRequest) {
 }
 
 func (w *worker) queryLastStatusChanges() map[string]statusChange {
-	query := w.mustQuery(`select model_id, status, timestamp from last_status_changes`)
-	defer func() { checkErr(query.Close()) }()
 	statusChanges := map[string]statusChange{}
-	for query.Next() {
-		var statusChange statusChange
-		checkErr(query.Scan(&statusChange.modelID, &statusChange.status, &statusChange.timestamp))
-		statusChanges[statusChange.modelID] = statusChange
-	}
+	var statusChange statusChange
+	w.mustQuery(
+		`select model_id, status, timestamp from last_status_changes`,
+		nil,
+		record{&statusChange.modelID, &statusChange.status, &statusChange.timestamp},
+		func() { statusChanges[statusChange.modelID] = statusChange })
 	return statusChanges
 }
 
 func (w *worker) queryConfirmedModels() (map[string]bool, map[string]bool) {
-	query := w.mustQuery("select model_id, status, special from models")
-	defer func() { checkErr(query.Close()) }()
 	statuses := map[string]bool{}
 	specialModels := map[string]bool{}
-	for query.Next() {
-		var modelID string
-		var status lib.StatusKind
-		var special bool
-		checkErr(query.Scan(&modelID, &status, &special))
-		if status == lib.StatusOnline {
-			statuses[modelID] = true
-		}
-		if special {
-			specialModels[modelID] = true
-		}
-	}
+	var modelID string
+	var status lib.StatusKind
+	var special bool
+	w.mustQuery(
+		"select model_id, status, special from models",
+		nil,
+		record{&modelID, &status, &special},
+		func() {
+			if status == lib.StatusOnline {
+				statuses[modelID] = true
+			}
+			if special {
+				specialModels[modelID] = true
+			}
+		})
 	return statuses, specialModels
 }
 

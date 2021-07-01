@@ -361,29 +361,25 @@ func TestCleanStatuses(t *testing.T) {
 }
 
 func checkInv(w *worker, t *testing.T) {
-	lastStatusesQueryA := w.mustQuery(`
+	a := map[string]statusChange{}
+	b := map[string]statusChange{}
+	var recStatus statusChange
+	w.mustQuery(`
 		select model_id, status, timestamp
 		from (
 			select *, row_number() over (partition by model_id order by timestamp desc) as row
 			from status_changes
 		)
-		where row = 1
-	`)
-	defer func() { checkErr(lastStatusesQueryA.Close()) }()
-	a := map[string]statusChange{}
-	for lastStatusesQueryA.Next() {
-		var rec statusChange
-		checkErr(lastStatusesQueryA.Scan(&rec.modelID, &rec.status, &rec.timestamp))
-		a[rec.modelID] = rec
-	}
-	lastStatusesQueryB := w.mustQuery(`select model_id, status, timestamp from last_status_changes`)
-	defer func() { checkErr(lastStatusesQueryB.Close()) }()
-	b := map[string]statusChange{}
-	for lastStatusesQueryB.Next() {
-		var rec statusChange
-		checkErr(lastStatusesQueryB.Scan(&rec.modelID, &rec.status, &rec.timestamp))
-		b[rec.modelID] = rec
-	}
+		where row = 1`,
+		nil,
+		record{&recStatus.modelID, &recStatus.status, &recStatus.timestamp},
+		func() { a[recStatus.modelID] = recStatus })
+	w.mustQuery(
+		`select model_id, status, timestamp from last_status_changes`,
+		nil,
+		record{&recStatus.modelID, &recStatus.status, &recStatus.timestamp},
+		func() { b[recStatus.modelID] = recStatus })
+
 	if !reflect.DeepEqual(a, b) {
 		t.Errorf("unexpected inv check result, statuses: %v, last statuses: %v", a, b)
 		t.Log(string(debug.Stack()))
@@ -392,16 +388,17 @@ func checkInv(w *worker, t *testing.T) {
 		t.Errorf("unexpected inv check result, statuses: %v, site statuses: %v", a, w.siteStatuses)
 		t.Log(string(debug.Stack()))
 	}
-	confOnlineQuery := w.mustQuery(`select model_id, status from models`)
-	defer func() { checkErr(confOnlineQuery.Close()) }()
 	confOnline := map[string]bool{}
-	for confOnlineQuery.Next() {
-		var rec model
-		checkErr(confOnlineQuery.Scan(&rec.modelID, &rec.status))
-		if rec.status == lib.StatusOnline {
-			confOnline[rec.modelID] = true
-		}
-	}
+	var rec model
+	w.mustQuery(
+		`select model_id, status from models`,
+		nil,
+		record{&rec.modelID, &rec.status},
+		func() {
+			if rec.status == lib.StatusOnline {
+				confOnline[rec.modelID] = true
+			}
+		})
 	if !reflect.DeepEqual(w.ourOnline, confOnline) {
 		t.Errorf("unexpected inv check result, left: %v, right: %v", w.ourOnline, confOnline)
 		t.Log(string(debug.Stack()))
