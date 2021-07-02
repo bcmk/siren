@@ -4,15 +4,10 @@ import (
 	"time"
 )
 
-// SelectiveChecker retrieves a full list of online models
+// SelectiveChecker retrieves a specified list of online models
 type SelectiveChecker interface {
 	Checker
 	CheckMany(subscriptions []string) (onlineModels map[string]bool, images map[string]string, err error)
-}
-
-// SelectiveCheckerCommon contains common fields for a full checker
-type SelectiveCheckerCommon struct {
-	CheckerCommon
 }
 
 func selectKnowns(xs map[string]StatusKind) map[string]bool {
