@@ -100,6 +100,12 @@ type user struct {
 	offlineNotifications bool
 }
 
+type subscription struct {
+	chatID   int64
+	modelID  string
+	endpoint string
+}
+
 type worker struct {
 	clients                  []*lib.Client
 	bots                     map[string]*tg.BotAPI
@@ -131,6 +137,8 @@ type worker struct {
 	lowPriorityMsg           chan outgoingPacket
 	highPriorityMsg          chan outgoingPacket
 	outgoingMsgResults       chan msgSendResult
+	unconfirmedSubsResults   chan lib.StatusResults
+	onlineModelsChan         chan lib.StatusUpdateResults
 }
 
 type incomingPacket struct {
@@ -219,21 +227,23 @@ func newWorker() *worker {
 		template.Must(t.New("affiliate_link").Parse(cfg.AffiliateLink))
 	}
 	w := &worker{
-		bots:                 bots,
-		db:                   db,
-		cfg:                  cfg,
-		clients:              clients,
-		tr:                   tr,
-		tpl:                  tpl,
-		unsuccessfulRequests: make([]bool, cfg.errorDenominator),
-		downloadErrors:       make([]bool, cfg.errorDenominator),
-		mailTLS:              mailTLS,
-		durations:            map[string]queryDurationsData{},
-		images:               map[string]string{},
-		botNames:             map[string]string{},
-		lowPriorityMsg:       make(chan outgoingPacket, 10000),
-		highPriorityMsg:      make(chan outgoingPacket, 10000),
-		outgoingMsgResults:   make(chan msgSendResult),
+		bots:                   bots,
+		db:                     db,
+		cfg:                    cfg,
+		clients:                clients,
+		tr:                     tr,
+		tpl:                    tpl,
+		unsuccessfulRequests:   make([]bool, cfg.errorDenominator),
+		downloadErrors:         make([]bool, cfg.errorDenominator),
+		mailTLS:                mailTLS,
+		durations:              map[string]queryDurationsData{},
+		images:                 map[string]string{},
+		botNames:               map[string]string{},
+		lowPriorityMsg:         make(chan outgoingPacket, 10000),
+		highPriorityMsg:        make(chan outgoingPacket, 10000),
+		outgoingMsgResults:     make(chan msgSendResult),
+		unconfirmedSubsResults: make(chan lib.StatusResults),
+		onlineModelsChan:       make(chan lib.StatusUpdateResults),
 	}
 
 	if cp := cfg.CoinPayments; cp != nil {
@@ -571,7 +581,7 @@ func (w *worker) lastSeenInfo(modelID string, now int) (begin int, end int, prev
 		where status=?
 		order by timestamp desc limit 1`,
 		queryParams{modelID, lib.StatusOnline},
-		record{&begin, &maybeEnd, &maybePrevStatus}) {
+		scanTo{&begin, &maybeEnd, &maybePrevStatus}) {
 
 		return 0, 0, lib.StatusUnknown
 	}
@@ -615,7 +625,7 @@ func (w *worker) updateStatus(insertStatusChangeStmt, updateLastStatusChangeStmt
 	}
 }
 
-func (w *worker) confirm(updateModelStatusStmt *sql.Stmt, now int) []string {
+func (w *worker) confirmStatus(updateModelStatusStmt *sql.Stmt, now int) []string {
 	all := lib.HashDiffAll(w.ourOnline, w.siteOnline)
 	var confirmations []string
 	for _, c := range all {
@@ -643,7 +653,7 @@ func (w *worker) modelsToPoll() (models []string) {
 		where block.block is null or block.block<?
 		order by model_id`,
 		queryParams{w.cfg.BlockThreshold},
-		record{&modelID},
+		scanTo{&modelID},
 		func() { models = append(models, modelID) })
 	return
 }
@@ -660,7 +670,7 @@ func (w *worker) usersForModels() (users map[string][]user, endpoints map[string
 		from signals
 		join users on users.chat_id=signals.chat_id`,
 		nil,
-		record{&modelID, &chatID, &endpoint, &offlineNotifications},
+		scanTo{&modelID, &chatID, &endpoint, &offlineNotifications},
 		func() {
 			users[modelID] = append(users[modelID], user{chatID: chatID, offlineNotifications: offlineNotifications})
 			endpoints[modelID] = append(endpoints[modelID], endpoint)
@@ -674,7 +684,7 @@ func (w *worker) chatsForModel(modelID string) (chats []int64, endpoints []strin
 	w.mustQuery(
 		`select chat_id, endpoint from signals where model_id=? order by chat_id`,
 		queryParams{modelID},
-		record{&chatID, &endpoint},
+		scanTo{&chatID, &endpoint},
 		func() {
 			chats = append(chats, chatID)
 			endpoints = append(endpoints, endpoint)
@@ -687,27 +697,23 @@ func (w *worker) broadcastChats(endpoint string) (chats []int64) {
 	w.mustQuery(
 		`select distinct chat_id from signals where endpoint=? order by chat_id`,
 		queryParams{endpoint},
-		record{&chatID},
+		scanTo{&chatID},
 		func() { chats = append(chats, chatID) })
 	return
 }
 
 func (w *worker) modelsForChat(endpoint string, chatID int64) (models []string) {
 	var modelID string
-	w.mustQuery(`
-		select model_id
-		from signals
-		where chat_id=? and endpoint=?
-		order by model_id`,
+	w.mustQuery(
+		`select model_id from signals where chat_id=? and endpoint=? order by model_id`,
 		queryParams{chatID, endpoint},
-		record{&modelID},
+		scanTo{&modelID},
 		func() { models = append(models, modelID) })
 	return
 }
 
 func (w *worker) statusesForChat(endpoint string, chatID int64) (statuses []model) {
-	var modelID string
-	var status lib.StatusKind
+	var iter model
 	w.mustQuery(`
 		select models.model_id, models.status
 		from models
@@ -715,9 +721,20 @@ func (w *worker) statusesForChat(endpoint string, chatID int64) (statuses []mode
 		where signals.chat_id=? and signals.endpoint=?
 		order by models.model_id`,
 		queryParams{chatID, endpoint},
-		record{&modelID, &status},
-		func() { statuses = append(statuses, model{modelID: modelID, status: status}) })
+		scanTo{&iter.modelID, &iter.status},
+		func() { statuses = append(statuses, iter) })
 	return
+}
+
+func (w *worker) notifyOfAddResults(queue chan outgoingPacket, notifications []notification, social bool) {
+	for _, n := range notifications {
+		data := tplData{"model": n.modelID}
+		if n.status&(lib.StatusOnline|lib.StatusOffline|lib.StatusDenied) != 0 {
+			w.sendTr(queue, n.endpoint, n.chatID, false, w.tr[n.endpoint].ModelAdded, data)
+		} else {
+			w.sendTr(queue, n.endpoint, n.chatID, false, w.tr[n.endpoint].AddError, data)
+		}
+	}
 }
 
 func (w *worker) notifyOfStatuses(queue chan outgoingPacket, notifications []notification, social bool) {
@@ -786,7 +803,7 @@ func (w *worker) subscriptionsNumber(endpoint string, chatID int64) int {
 func (w *worker) user(chatID int64) (user user, found bool) {
 	found = w.maybeRecord("select chat_id, max_models, reports, blacklist, show_images, offline_notifications from users where chat_id=?",
 		queryParams{chatID},
-		record{&user.chatID, &user.maxModels, &user.reports, &user.blacklist, &user.showImages, &user.offlineNotifications})
+		scanTo{&user.chatID, &user.maxModels, &user.reports, &user.blacklist, &user.showImages, &user.offlineNotifications})
 	return
 }
 
@@ -860,24 +877,21 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 	} else if _, ok := w.siteStatuses[modelID]; ok {
 		confirmedStatus = lib.StatusOffline
 	} else {
-		checkedStatus := w.checker.CheckSingle(modelID)
-		if checkedStatus == lib.StatusUnknown || checkedStatus == lib.StatusNotFound {
-			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].AddError, tplData{"model": modelID})
-			return false
-		}
-		confirmedStatus = lib.StatusOffline
+		w.mustExec("insert into signals (chat_id, model_id, endpoint, confirmed) values (?,?,?,?)", chatID, modelID, endpoint, false)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].CheckingModel, nil)
+		return false
 	}
-	w.mustExec("insert into signals (chat_id, model_id, endpoint) values (?,?,?)", chatID, modelID, endpoint)
+	w.mustExec("insert into signals (chat_id, model_id, endpoint, confirmed) values (?,?,?,?)", chatID, modelID, endpoint, true)
 	w.mustExec("insert or ignore into models (model_id, status) values (?,?)", modelID, confirmedStatus)
 	subscriptionsNumber++
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ModelAdded, tplData{"model": modelID})
-	w.notifyOfStatuses(w.highPriorityMsg, []notification{{
+	nots := []notification{{
 		endpoint: endpoint,
 		chatID:   chatID,
 		modelID:  modelID,
 		status:   confirmedStatus,
-		timeDiff: w.modelTimeDiff(modelID, now)}},
-		false)
+		timeDiff: w.modelTimeDiff(modelID, now)}}
+	w.notifyOfStatuses(w.highPriorityMsg, nots, false)
 	if subscriptionsNumber >= user.maxModels-w.cfg.HeavyUserRemainder {
 		w.subscriptionUsage(endpoint, chatID, true)
 	}
@@ -992,7 +1006,7 @@ func (w *worker) email(endpoint string, chatID int64) string {
 func (w *worker) transaction(uuid string) (status payments.StatusKind, chatID int64, endpoint string, found bool) {
 	found = w.maybeRecord("select status, chat_id, endpoint from transactions where local_id=?",
 		queryParams{uuid},
-		record{&status, &chatID, &endpoint})
+		scanTo{&status, &chatID, &endpoint})
 	return
 }
 
@@ -1212,7 +1226,7 @@ func (w *worker) week(modelID string) ([]bool, time.Time) {
 		where timestamp>=?
 		order by timestamp`,
 		queryParams{modelID, weekTimestamp},
-		record{&change.status, &change.timestamp, &firstStatus, &firstTimestamp},
+		scanTo{&change.status, &change.timestamp, &firstStatus, &firstTimestamp},
 		func() {
 			if first && firstStatus != nil && firstTimestamp != nil {
 				changes = append(changes, statusChange{status: *firstStatus, timestamp: *firstTimestamp})
@@ -1299,7 +1313,7 @@ func (w *worker) interactions(endpoint string) map[int]int {
 	w.mustQuery(
 		"select result, count(*) from interactions where endpoint=? and timestamp>? group by result",
 		queryParams{endpoint, timestamp},
-		record{&result, &count},
+		scanTo{&result, &count},
 		func() { results[result] = count })
 	return results
 }
@@ -1575,7 +1589,7 @@ func (w *worker) recordForEmail(username string) *email {
 	if w.maybeRecord(
 		`select chat_id, endpoint from emails where email=?`,
 		queryParams{username},
-		record{&email.chatID, &email.endpoint}) {
+		scanTo{&email.chatID, &email.endpoint}) {
 
 		return &email
 	}
@@ -1689,6 +1703,7 @@ func (w *worker) start(endpoint string, chatID int64, referrer string, now int) 
 	switch {
 	case strings.HasPrefix(referrer, "m-"):
 		modelID = referrer[2:]
+		modelID = w.modelIDPreprocessing(modelID)
 		referrer = ""
 	case referrer != "":
 		referralID := w.referralID(chatID)
@@ -1714,10 +1729,28 @@ func (w *worker) start(endpoint string, chatID int64, referrer string, now int) 
 	w.addUser(endpoint, chatID)
 	if modelID != "" {
 		if w.addModel(endpoint, chatID, modelID, now) {
-			w.mustExec("insert or ignore into models (model_id) values (?)", modelID)
 			w.mustExec("update models set referred_users=referred_users+1 where model_id=?", modelID)
 		}
 	}
+}
+
+func (w *worker) queryUnconfirmedSubs() {
+	unconfirmed := map[string]bool{}
+	var modelID string
+	w.mustQuery("select model_id from signals where confirmed=0", nil, scanTo{&modelID}, func() { unconfirmed[modelID] = true })
+	if len(unconfirmed) > 0 {
+		ldbg("queueing unconfirmed subscriptions check for %d channels", len(unconfirmed))
+		w.initiateSpecificQuery(w.unconfirmedSubsResults, unconfirmed)
+	}
+}
+
+func (w *worker) confirmSub(sub subscription) {
+	w.mustExec("insert or ignore into models (model_id) values (?)", sub.modelID)
+	w.mustExec("update signals set confirmed=1 where endpoint=? and chat_id=? and model_id=?", sub.endpoint, sub.chatID, sub.modelID)
+}
+
+func (w *worker) denySub(sub subscription) {
+	w.mustExec("delete from signals where endpoint=? and chat_id=? and model_id=?", sub.endpoint, sub.chatID, sub.modelID)
 }
 
 func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, arguments string, now int) bool {
@@ -1812,7 +1845,7 @@ func (w *worker) subscriptions() map[string]lib.StatusKind {
 	return result
 }
 
-func (w *worker) initiateRequests(statusRequests chan lib.StatusRequest) {
+func (w *worker) periodic() {
 	unsuccessfulRequestsCount := w.unsuccessfulRequestsCount()
 	now := time.Now()
 	if w.nextErrorReport.Before(now) && unsuccessfulRequestsCount > w.cfg.errorThreshold {
@@ -1820,10 +1853,27 @@ func (w *worker) initiateRequests(statusRequests chan lib.StatusRequest) {
 		w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, lib.ParseRaw, text)
 		w.nextErrorReport = now.Add(time.Minute * time.Duration(w.cfg.ErrorReportingPeriodMinutes))
 	}
-	select {
-	case statusRequests <- lib.StatusRequest{SpecialModels: w.specialModels, Subscriptions: w.subscriptions()}:
-	default:
-		linf("the queue is full")
+	w.initiateOnlineQuery()
+}
+
+func (w *worker) initiateOnlineQuery() {
+	err := w.checker.Updater().QueryUpdates(lib.StatusUpdateRequest{
+		Callback:      func(res lib.StatusUpdateResults) { w.onlineModelsChan <- res },
+		SpecialModels: w.specialModels,
+		Subscriptions: w.subscriptions(),
+	})
+	if err != nil {
+		lerr("%v", err)
+	}
+}
+
+func (w *worker) initiateSpecificQuery(resultsCh chan lib.StatusResults, specific map[string]bool) {
+	err := w.checker.QueryStatuses(lib.StatusRequest{
+		Callback:  func(res lib.StatusResults) { resultsCh <- res },
+		Specific:  specific,
+		CheckMode: lib.CheckStatuses})
+	if err != nil {
+		lerr("%v", err)
 	}
 }
 
@@ -1833,7 +1883,7 @@ func (w *worker) queryLastStatusChanges() map[string]statusChange {
 	w.mustQuery(
 		`select model_id, status, timestamp from last_status_changes`,
 		nil,
-		record{&statusChange.modelID, &statusChange.status, &statusChange.timestamp},
+		scanTo{&statusChange.modelID, &statusChange.status, &statusChange.timestamp},
 		func() { statusChanges[statusChange.modelID] = statusChange })
 	return statusChanges
 }
@@ -1847,7 +1897,7 @@ func (w *worker) queryConfirmedModels() (map[string]bool, map[string]bool) {
 	w.mustQuery(
 		"select model_id, status, special from models",
 		nil,
-		record{&modelID, &status, &special},
+		scanTo{&modelID, &status, &special},
 		func() {
 			if status == lib.StatusOnline {
 				statuses[modelID] = true
@@ -1859,10 +1909,7 @@ func (w *worker) queryConfirmedModels() (map[string]bool, map[string]bool) {
 	return statuses, specialModels
 }
 
-func (w *worker) processStatusUpdates(
-	updates []lib.StatusUpdate,
-	now int,
-) (
+func (w *worker) processStatusUpdates(updates []lib.StatusUpdate, now int) (
 	changesCount int,
 	confirmedChangesCount int,
 	notifications []notification,
@@ -1890,7 +1937,7 @@ func (w *worker) processStatusUpdates(
 	statusDone()
 
 	confirmationsDone := w.measure("db: confirmations")
-	confirmations := w.confirm(updateModelStatusStmt, now)
+	confirmations := w.confirmStatus(updateModelStatusStmt, now)
 	confirmationsDone()
 
 	if w.cfg.Debug {
@@ -2177,7 +2224,7 @@ func loadTLS(certFile string, keyFile string) (*tls.Config, error) {
 
 func (w *worker) referralID(chatID int64) *string {
 	var referralID string
-	if !w.maybeRecord("select referral_id from referrals where chat_id=?", queryParams{chatID}, record{&referralID}) {
+	if !w.maybeRecord("select referral_id from referrals where chat_id=?", queryParams{chatID}, scanTo{&referralID}) {
 		return nil
 	}
 	return &referralID
@@ -2185,7 +2232,7 @@ func (w *worker) referralID(chatID int64) *string {
 
 func (w *worker) chatForReferralID(referralID string) *int64 {
 	var chatID int64
-	if !w.maybeRecord("select chat_id from referrals where referral_id=?", queryParams{referralID}, record{&chatID}) {
+	if !w.maybeRecord("select chat_id from referrals where referral_id=?", queryParams{referralID}, scanTo{&chatID}) {
 		return nil
 	}
 	return &chatID
@@ -2195,9 +2242,11 @@ func (q queryDurationsData) total() float64 {
 	return q.avg * float64(q.count)
 }
 
-func (w *worker) logQuerySuccess(success bool) {
-	w.unsuccessfulRequests[w.successfulRequestsPos] = !success
-	w.successfulRequestsPos = (w.successfulRequestsPos + 1) % w.cfg.errorDenominator
+func (w *worker) logQuerySuccess(success bool, errors int) {
+	for i := 0; i < errors; i++ {
+		w.unsuccessfulRequests[w.successfulRequestsPos] = !success
+		w.successfulRequestsPos = (w.successfulRequestsPos + 1) % w.cfg.errorDenominator
+	}
 }
 
 func (w *worker) cleanStatusChanges(now int64) time.Duration {
@@ -2243,6 +2292,43 @@ func (w *worker) maintenanceReply(incoming chan incomingPacket, done chan bool) 
 		case <-w.outgoingMsgResults:
 		}
 	}
+}
+
+func (w *worker) processSubsConfirmations(res lib.StatusResults) {
+	statusesNumber := 0
+	if res.Data != nil {
+		statusesNumber = len(res.Data.Statuses)
+	}
+	ldbg("processing subscription confirmations for %d channels", statusesNumber)
+	unconfirmed := map[string][]subscription{}
+	var iter subscription
+	w.mustQuery(
+		"select endpoint, model_id, chat_id from signals where confirmed=0",
+		nil,
+		scanTo{&iter.endpoint, &iter.modelID, &iter.chatID},
+		func() { unconfirmed[iter.modelID] = append(unconfirmed[iter.modelID], iter) })
+	var nots []notification
+	if res.Data != nil {
+		for modelID, status := range res.Data.Statuses {
+			for _, sub := range unconfirmed[modelID] {
+				if status&(lib.StatusOnline|lib.StatusOffline|lib.StatusDenied) != 0 {
+					w.confirmSub(sub)
+				} else {
+					w.denySub(sub)
+				}
+				nots = append(nots, notification{
+					endpoint: sub.endpoint,
+					chatID:   sub.chatID,
+					modelID:  modelID,
+					status:   status,
+				})
+			}
+		}
+	} else {
+		lerr("confirmations query failed")
+	}
+	w.notifyOfAddResults(w.highPriorityMsg, nots, false)
+	w.notifyOfStatuses(w.highPriorityMsg, nots, false)
 }
 
 func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacket) bool {
@@ -2356,35 +2442,49 @@ func main() {
 
 	var requestTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
 	var cleaningTimer = time.NewTicker(time.Duration(w.cfg.CleaningPeriodSeconds) * time.Second)
-	w.checker.Init(w.cfg.UsersOnlineEndpoint, w.clients, w.cfg.Headers, w.cfg.Debug, w.cfg.SpecificConfig)
-	statusRequestsChan, onlineModelsChan, errorsChan, elapsed := w.checker.Start(w.siteOnline, w.subscriptions(), w.cfg.IntervalMs, w.cfg.Debug)
-	statusRequestsChan <- lib.StatusRequest{SpecialModels: w.specialModels}
+	var subsConfirmTimer = time.NewTicker(time.Duration(w.cfg.SubsConfirmationPeriodSeconds) * time.Second)
+	w.checker.Init(w.checker, lib.CheckerConfig{
+		UsersOnlineEndpoints: w.cfg.UsersOnlineEndpoint,
+		Clients:              w.clients,
+		Headers:              w.cfg.Headers,
+		Dbg:                  w.cfg.Debug,
+		SpecificConfig:       w.cfg.SpecificConfig,
+		QueueSize:            5,
+		SiteOnlineModels:     w.siteOnline,
+		Subscriptions:        w.subscriptions(),
+		IntervalMs:           w.cfg.IntervalMs,
+	})
+	w.checker.Start()
 	signals := make(chan os.Signal, 16)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT, syscall.SIGTSTP, syscall.SIGCONT)
 	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, lib.ParseRaw, "bot is up")
+	w.initiateOnlineQuery()
 	for {
 		select {
-		case e := <-elapsed:
-			w.httpQueriesDuration = e
 		case <-requestTimer.C:
 			runtime.GC()
-			w.initiateRequests(statusRequestsChan)
+			w.periodic()
 		case <-cleaningTimer.C:
 			w.cleaningDuration = w.cleanStatusChanges(time.Now().Unix())
-		case onlineModels := <-onlineModelsChan:
-			now := int(time.Now().Unix())
-			w.images = onlineModels.Images
-			changesInPeriod, confirmedChangesInPeriod, notifications, elapsed := w.processStatusUpdates(onlineModels.Updates, now)
-			w.updatesDuration = elapsed
-			w.changesInPeriod = changesInPeriod
-			w.confirmedChangesInPeriod = confirmedChangesInPeriod
-			w.notifyOfStatuses(w.lowPriorityMsg, notifications, true)
-			if w.cfg.Debug {
-				ldbg("status updates processed in %v", elapsed)
+		case <-subsConfirmTimer.C:
+			w.queryUnconfirmedSubs()
+		case onlineModels := <-w.onlineModelsChan:
+			if onlineModels.Data != nil {
+				w.httpQueriesDuration = onlineModels.Data.Elapsed
+				now := int(time.Now().Unix())
+				w.images = onlineModels.Data.Images
+				changesInPeriod, confirmedChangesInPeriod, notifications, elapsed := w.processStatusUpdates(onlineModels.Data.Updates, now)
+				w.updatesDuration = elapsed
+				w.changesInPeriod = changesInPeriod
+				w.confirmedChangesInPeriod = confirmedChangesInPeriod
+				w.notifyOfStatuses(w.lowPriorityMsg, notifications, true)
+				if w.cfg.Debug {
+					ldbg("status updates processed in %v", elapsed)
+				}
+				w.logQuerySuccess(true, onlineModels.Errors)
+			} else {
+				w.logQuerySuccess(false, onlineModels.Errors)
 			}
-			w.logQuerySuccess(true)
-		case <-errorsChan:
-			w.logQuerySuccess(false)
 		case u := <-incoming:
 			if w.processTGUpdate(u) {
 				if !w.maintenance(signals, incoming) {
@@ -2415,13 +2515,10 @@ func main() {
 			case messageSent:
 				w.resetBlock(r.endpoint, r.chatID)
 			}
-			w.mustExec("insert into interactions (timestamp, chat_id, result, endpoint, priority, delay) values (?,?,?,?,?,?)",
-				r.timestamp,
-				r.chatID,
-				r.result,
-				r.endpoint,
-				r.priority,
-				r.delay)
+			query := "insert into interactions (timestamp, chat_id, result, endpoint, priority, delay) values (?,?,?,?,?,?)"
+			w.mustExec(query, r.timestamp, r.chatID, r.result, r.endpoint, r.priority, r.delay)
+		case r := <-w.unconfirmedSubsResults:
+			w.processSubsConfirmations(r)
 		}
 	}
 }

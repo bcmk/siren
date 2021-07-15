@@ -20,9 +20,12 @@ func main() {
 	}
 	flag.Parse()
 	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
-	checker := lib.StreamateChecker{}
-	checker.Init([]string{"http://affiliate.streamate.com/SMLive/SMLResult.xml"}, []*lib.Client{client}, nil, *verbose, nil)
-	models, images, err := checker.CheckFull()
+	checker := &lib.StreamateChecker{}
+	checker.Init(checker, lib.CheckerConfig{
+		UsersOnlineEndpoints: []string{"http://affiliate.streamate.com/SMLive/SMLResult.xml"},
+		Clients:              []*lib.Client{client},
+		Dbg:                  *verbose})
+	models, images, err := checker.CheckStatusesMany(nil, lib.CheckOnline)
 
 	if err != nil {
 		fmt.Printf("error occurred: %v", err)

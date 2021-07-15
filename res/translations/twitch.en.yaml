@@ -10,6 +10,9 @@ add_error:
     Could not add the channel {{ .model }}
     Check the channel name or try later
     Syntax: /add <code>CHANNEL</code>
+checking_model:
+  parse: raw
+  str: Give us a second. We are checking this channel
 help:
   parse: html
   disable_preview: true
@@ -127,3 +130,15 @@ faq_pricing:
 
     The basic service is free.
     If you need to subscribe to more than {{ .max_models }} channels you either pay {{ .dollars }}$ for additional {{ .number_of_subscriptions }} subscriptions or you may earn them by sharing.
+invalid_symbols:
+  parse: raw
+  disable_preview: true
+  str: 'The channel name {{ .model }} has invalid symbols'
+profile_removed:
+  parse: raw
+  str: 'The channel {{ .model }} is probably removed'
+payment_complete:
+  parse: raw
+  str: |-
+    Your payment is complete
+    You can subscribe up to {{ .max_models }} channels now

@@ -6,7 +6,7 @@ import (
 )
 
 type queryParams []interface{}
-type record []interface{}
+type scanTo []interface{}
 
 var insertStatusChange = "insert into status_changes (model_id, status, timestamp) values (?,?,?)"
 var updateLastStatusChange = `
@@ -57,13 +57,7 @@ func (w *worker) mustString(query string, args ...interface{}) (result string) {
 	return result
 }
 
-func (w *worker) mustQueryInternal(query string, args ...interface{}) *sql.Rows {
-	result, err := w.db.Query(query, args...)
-	checkErr(err)
-	return result
-}
-
-func (w *worker) maybeRecord(query string, args queryParams, record record) bool {
+func (w *worker) maybeRecord(query string, args queryParams, record scanTo) bool {
 	defer w.measure("db: " + query)()
 	row := w.db.QueryRow(query, args...)
 	err := row.Scan(record...)
@@ -76,16 +70,17 @@ func (w *worker) maybeRecord(query string, args queryParams, record record) bool
 
 func (w *worker) mustStrings(queryString string, args ...interface{}) (result []string) {
 	var current string
-	w.mustQuery(queryString, queryParams(args), record{&current}, func() { result = append(result, current) })
+	w.mustQuery(queryString, queryParams(args), scanTo{&current}, func() { result = append(result, current) })
 	return
 }
 
-func (w *worker) mustQuery(queryString string, args queryParams, record record, store func()) {
+func (w *worker) mustQuery(queryString string, args queryParams, record scanTo, store func()) {
 	defer w.measure("db: " + queryString)()
-	query := w.mustQueryInternal(queryString, args...)
-	defer func() { checkErr(query.Close()) }()
+	query, err := w.db.Query(queryString, args...)
+	checkErr(err)
 	for query.Next() {
 		checkErr(query.Scan(record...))
 		store()
 	}
+	checkErr(query.Close())
 }

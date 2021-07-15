@@ -7,13 +7,12 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // StreamateChecker impolements a checker for Streamate
 type StreamateChecker struct{ CheckerCommon }
 
-var _ FullChecker = &StreamateChecker{}
+var _ Checker = &StreamateChecker{}
 
 type descriptionsRequest struct {
 	XMLName xml.Name `xml:"Descriptions"`
@@ -110,8 +109,8 @@ type streamateResponse struct {
 	AvailablePerformers availablePerformersResponse
 }
 
-// CheckSingle checks Streamate model status
-func (c *StreamateChecker) CheckSingle(modelID string) StatusKind {
+// CheckStatusSingle checks Streamate model status
+func (c *StreamateChecker) CheckStatusSingle(modelID string) StatusKind {
 	client := c.clientsLoop.nextClient()
 	reqData := streamateRequest{
 		Options: optionsRequest{MaxResults: 1},
@@ -130,7 +129,7 @@ func (c *StreamateChecker) CheckSingle(modelID string) StatusKind {
 	reqString := fmt.Sprintf("%s%s\n", xml.Header, string(output))
 	req, err := http.NewRequest("POST", "https://affiliate.streamate.com/SMLive/SMLResult.xml", strings.NewReader(reqString))
 	CheckErr(err)
-	for _, h := range c.headers {
+	for _, h := range c.Headers {
 		req.Header.Set(h[0], h[1])
 	}
 	req.Header.Set("Content-Type", "text/xml")
@@ -142,7 +141,7 @@ func (c *StreamateChecker) CheckSingle(modelID string) StatusKind {
 	defer func() {
 		CheckErr(resp.Body.Close())
 	}()
-	if c.dbg {
+	if c.Dbg {
 		Ldbg("[%v] query status for %s: %d", client.Addr, modelID, resp.StatusCode)
 	}
 	if resp.StatusCode == 404 {
@@ -159,7 +158,7 @@ func (c *StreamateChecker) CheckSingle(modelID string) StatusKind {
 	err = decoder.Decode(parsed)
 	if err != nil {
 		Lerr("[%v] cannot parse response for model %s, %v", client.Addr, modelID, err)
-		if c.dbg {
+		if c.Dbg {
 			Ldbg("response: %s", buf.String())
 		}
 		return StatusUnknown
@@ -177,9 +176,9 @@ func (c *StreamateChecker) CheckSingle(modelID string) StatusKind {
 }
 
 // checkEndpoint returns Streamate online models
-func (c *StreamateChecker) checkEndpoint(endpoint string) (onlineModels map[string]bool, images map[string]string, err error) {
+func (c *StreamateChecker) checkEndpoint(endpoint string) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	client := c.clientsLoop.nextClient()
-	onlineModels = map[string]bool{}
+	onlineModels = map[string]StatusKind{}
 	images = map[string]string{}
 	page := 500
 	i := 0
@@ -205,7 +204,7 @@ func (c *StreamateChecker) checkEndpoint(endpoint string) (onlineModels map[stri
 		reqString := fmt.Sprintf("%s%s\n", xml.Header, string(output))
 		req, err := http.NewRequest("POST", endpoint, strings.NewReader(reqString))
 		CheckErr(err)
-		for _, h := range c.headers {
+		for _, h := range c.Headers {
 			req.Header.Set(h[0], h[1])
 		}
 		req.Header.Set("Content-Type", "text/xml")
@@ -217,7 +216,7 @@ func (c *StreamateChecker) checkEndpoint(endpoint string) (onlineModels map[stri
 		parsed := &streamateResponse{}
 		err = decoder.Decode(parsed)
 		if err != nil {
-			if c.dbg {
+			if c.Dbg {
 				Ldbg("response: %s", buf.String())
 			}
 			return nil, nil, fmt.Errorf("[%v] cannot parse response %v", client.Addr, err)
@@ -228,7 +227,7 @@ func (c *StreamateChecker) checkEndpoint(endpoint string) (onlineModels map[stri
 				image = "https:" + m.Media.Pic.Full.Src
 			}
 			modelID := strings.ToLower(m.Name)
-			onlineModels[modelID] = true
+			onlineModels[modelID] = StatusOnline
 			images[modelID] = image
 		}
 		if parsed.AvailablePerformers.ExactMatches != page {
@@ -238,17 +237,11 @@ func (c *StreamateChecker) checkEndpoint(endpoint string) (onlineModels map[stri
 	return
 }
 
-// CheckFull returns Streamate online models
-func (c *StreamateChecker) CheckFull() (onlineModels map[string]bool, images map[string]string, err error) {
-	return checkEndpoints(c, c.usersOnlineEndpoint, c.dbg)
+// CheckStatusesMany returns Streamate online models
+func (c *StreamateChecker) CheckStatusesMany([]string, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
+	return checkEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 
 // Start starts a daemon
-func (c *StreamateChecker) Start(siteOnlineModels map[string]bool, subscriptions map[string]StatusKind, intervalMs int, dbg bool) (
-	statusRequests chan StatusRequest,
-	resultsCh chan CheckerResults,
-	errorsCh chan struct{},
-	elapsedCh chan time.Duration,
-) {
-	return fullDaemonStart(c, siteOnlineModels, intervalMs, dbg)
-}
+func (c *StreamateChecker) Start()                 { c.startFullCheckerDaemon(c) }
+func (c *StreamateChecker) createUpdater() Updater { return c.createFullUpdater(c) }

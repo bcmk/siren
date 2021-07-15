@@ -7,13 +7,12 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // CamSodaChecker implements a checker for CamSoda
 type CamSodaChecker struct{ CheckerCommon }
 
-var _ FullChecker = &CamSodaChecker{}
+var _ Checker = &CamSodaChecker{}
 
 type camSodaUserResponse struct {
 	Status bool
@@ -35,12 +34,12 @@ type camSodaOnlineResponse struct {
 	}
 }
 
-// CheckSingle checks CamSoda model status
-func (c *CamSodaChecker) CheckSingle(modelID string) StatusKind {
+// CheckStatusSingle checks CamSoda model status
+func (c *CamSodaChecker) CheckStatusSingle(modelID string) StatusKind {
 	client := c.clientsLoop.nextClient()
 	req, err := http.NewRequest("GET", fmt.Sprintf("https://feed.camsoda.com/api/v1/user/%s", modelID), nil)
 	CheckErr(err)
-	for _, h := range c.headers {
+	for _, h := range c.Headers {
 		req.Header.Set(h[0], h[1])
 	}
 	resp, err := client.Client.Do(req)
@@ -51,7 +50,7 @@ func (c *CamSodaChecker) CheckSingle(modelID string) StatusKind {
 	defer func() {
 		CheckErr(resp.Body.Close())
 	}()
-	if c.dbg {
+	if c.Dbg {
 		Ldbg("[%v] query status for %s: %d", client.Addr, modelID, resp.StatusCode)
 	}
 	if resp.StatusCode == 401 {
@@ -71,7 +70,7 @@ func (c *CamSodaChecker) CheckSingle(modelID string) StatusKind {
 	err = decoder.Decode(parsed)
 	if err != nil {
 		Lerr("[%v] cannot parse response for model %s, %v", client.Addr, modelID, err)
-		if c.dbg {
+		if c.Dbg {
 			Ldbg("response: %s", buf.String())
 		}
 		return StatusUnknown
@@ -99,11 +98,11 @@ func camSodaStatus(roomStatus string) StatusKind {
 }
 
 // checkEndpoint returns CamSoda online models on the endpoint
-func (c *CamSodaChecker) checkEndpoint(endpoint string) (onlineModels map[string]bool, images map[string]string, err error) {
+func (c *CamSodaChecker) checkEndpoint(endpoint string) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	client := c.clientsLoop.nextClient()
-	onlineModels = map[string]bool{}
+	onlineModels = map[string]StatusKind{}
 	images = map[string]string{}
-	resp, buf, err := onlineQuery(endpoint, client, c.headers)
+	resp, buf, err := onlineQuery(endpoint, client, c.Headers)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot send a query, %v", err)
 	}
@@ -114,7 +113,7 @@ func (c *CamSodaChecker) checkEndpoint(endpoint string) (onlineModels map[string
 	var parsed camSodaOnlineResponse
 	err = decoder.Decode(&parsed)
 	if err != nil {
-		if c.dbg {
+		if c.Dbg {
 			Ldbg("response: %s", buf.String())
 		}
 		return nil, nil, fmt.Errorf("cannot parse response, %v", err)
@@ -124,23 +123,17 @@ func (c *CamSodaChecker) checkEndpoint(endpoint string) (onlineModels map[string
 	}
 	for _, m := range parsed.Results {
 		modelID := strings.ToLower(m.Username)
-		onlineModels[modelID] = true
+		onlineModels[modelID] = StatusOnline
 		images[modelID] = m.Thumb
 	}
 	return
 }
 
-// CheckFull returns CamSoda online models
-func (c *CamSodaChecker) CheckFull() (onlineModels map[string]bool, images map[string]string, err error) {
-	return checkEndpoints(c, c.usersOnlineEndpoint, c.dbg)
+// CheckStatusesMany returns CamSoda online models
+func (c *CamSodaChecker) CheckStatusesMany([]string, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
+	return checkEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 
 // Start starts a daemon
-func (c *CamSodaChecker) Start(siteOnlineModels map[string]bool, subscriptions map[string]StatusKind, intervalMs int, dbg bool) (
-	statusRequests chan StatusRequest,
-	resultsCh chan CheckerResults,
-	errorsCh chan struct{},
-	elapsedCh chan time.Duration,
-) {
-	return fullDaemonStart(c, siteOnlineModels, intervalMs, dbg)
-}
+func (c *CamSodaChecker) Start()                 { c.startFullCheckerDaemon(c) }
+func (c *CamSodaChecker) createUpdater() Updater { return c.createFullUpdater(c) }

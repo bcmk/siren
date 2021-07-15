@@ -2,9 +2,9 @@ package lib
 
 import (
 	"errors"
+	"os"
 	"reflect"
 	"testing"
-	"time"
 )
 
 type TestChecker struct {
@@ -23,67 +23,73 @@ type testSelectiveChecker struct {
 	TestChecker
 }
 
-func (c *TestChecker) CheckSingle(string) StatusKind {
+var queueSize = 1000
+
+func (c *TestChecker) CheckStatusSingle(string) StatusKind {
 	return c.status
 }
 
-func (c *testSelectiveChecker) CheckMany(xs []string) (onlineModels map[string]bool, images map[string]string, err error) {
+func (c *testSelectiveChecker) CheckStatusesMany([]string, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	if c.err != nil {
 		return nil, nil, c.err
 	}
-	return c.online, c.images, nil
+	return onlineMapToStatus(c.online), c.images, nil
 }
 
-func (c *testFullChecker) checkEndpoint(endpoint string) (onlineModels map[string]bool, images map[string]string, err error) {
+func (c *testFullChecker) checkEndpoint(endpoint string) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	if c.err != nil {
 		return nil, nil, c.err
 	}
-	return c.online, c.images, nil
+	return onlineMapToStatus(c.online), c.images, nil
 }
 
-func (c *testFullChecker) CheckFull() (onlineModels map[string]bool, images map[string]string, err error) {
-	return checkEndpoints(c, c.usersOnlineEndpoint, c.dbg)
+func (c *testFullChecker) CheckStatusesMany([]string, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
+	return checkEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 
-func (c *testFullChecker) Start(siteOnlineModels map[string]bool, subscriptions map[string]StatusKind, intervalMs int, dbg bool) (
-	statusRequests chan StatusRequest,
-	resultsCh chan CheckerResults,
-	errorsCh chan struct{},
-	elapsedCh chan time.Duration,
-) {
-	return fullDaemonStart(c, siteOnlineModels, intervalMs, dbg)
-}
+// Start starts a daemon
+func (c *testFullChecker) Start()                 { c.startFullCheckerDaemon(c) }
+func (c *testFullChecker) createUpdater() Updater { return c.createFullUpdater(c) }
 
-func (c *testSelectiveChecker) Start(siteOnlineModels map[string]bool, subscriptions map[string]StatusKind, intervalMs int, dbg bool) (
-	statusRequests chan StatusRequest,
-	resultsCh chan CheckerResults,
-	errorsCh chan struct{},
-	elapsedCh chan time.Duration,
-) {
-	return selectiveDaemonStart(c, siteOnlineModels, subscriptions, dbg)
-}
+// Start starts a daemon
+func (c *testSelectiveChecker) Start()                 { c.startSelectiveCheckerDaemon(c) }
+func (c *testSelectiveChecker) createUpdater() Updater { return c.createSelectiveUpdater(c) }
 
 func TestFullChecker(t *testing.T) {
-	checker := testFullChecker{}
-	checker.Init([]string{""}, nil, nil, false, nil)
-	reqs, resultsCh, errs, elapsed := checker.Start(toSet("a", "b"), nil, 0, false)
+	checker := &testFullChecker{}
+	checker.Init(checker, CheckerConfig{UsersOnlineEndpoints: []string{""}, QueueSize: queueSize, SiteOnlineModels: toSet("a", "b")})
+	resultsCh := make(chan StatusUpdateResults)
+	callback := func(res StatusUpdateResults) { resultsCh <- res }
+	checker.Start()
+	up := checker.Updater()
 	checker.online = toSet("b", "c")
-	reqs <- StatusRequest{SpecialModels: toSet(), Subscriptions: map[string]StatusKind{}}
-	<-elapsed
-	uSet := updatesSet((<-resultsCh).Updates)
+	if err := up.QueryUpdates(StatusUpdateRequest{Callback: callback, SpecialModels: toSet(), Subscriptions: map[string]StatusKind{}}); err != nil {
+		t.Errorf("cannot query updates, %v", err)
+		return
+	}
+	uSet := updatesSet((<-resultsCh).Data.Updates)
 	expected := map[string]StatusKind{"a": StatusOffline, "c": StatusOnline}
 	if !reflect.DeepEqual(uSet, expected) {
 		t.Errorf("wrong updates, expected: %v, got: %v", expected, uSet)
 	}
 	checker.err = errors.New("error")
-	reqs <- StatusRequest{SpecialModels: toSet(), Subscriptions: map[string]StatusKind{}}
-	<-errs
+	if err := up.QueryUpdates(StatusUpdateRequest{Callback: callback, SpecialModels: toSet(), Subscriptions: map[string]StatusKind{}}); err != nil {
+		t.Errorf("cannot query updates, %v", err)
+		return
+	}
+	upd := <-resultsCh
+	if upd.Data != nil {
+		t.Error("unexpected updates")
+	}
 	checker.err = nil
 	checker.status = StatusOnline
 	checker.online = toSet("a", "b")
-	reqs <- StatusRequest{SpecialModels: toSet("d"), Subscriptions: map[string]StatusKind{}}
-	<-elapsed
-	uSet = updatesSet((<-resultsCh).Updates)
+	if err := up.QueryUpdates(StatusUpdateRequest{Callback: callback, SpecialModels: toSet("d"), Subscriptions: map[string]StatusKind{}}); err != nil {
+		t.Errorf("cannot query updates, %v", err)
+		return
+	}
+	checker.err = nil
+	uSet = updatesSet((<-resultsCh).Data.Updates)
 	expected = map[string]StatusKind{"a": StatusOnline, "c": StatusOffline, "d": StatusOnline}
 	if !reflect.DeepEqual(uSet, expected) {
 		t.Errorf("wrong updates, expected: %v, got: %v", expected, uSet)
@@ -91,37 +97,66 @@ func TestFullChecker(t *testing.T) {
 }
 
 func TestSelectiveChecker(t *testing.T) {
-	checker := testSelectiveChecker{}
-	checker.Init(nil, nil, nil, false, nil)
-	reqs, resultsCh, errs, elapsed := checker.Start(toSet("a", "b"), map[string]StatusKind{"a": StatusOnline, "b": StatusOnline}, 0, false)
-
+	checker := &testSelectiveChecker{}
+	checker.Init(checker, CheckerConfig{
+		QueueSize:        queueSize,
+		SiteOnlineModels: toSet("a", "b"),
+		Subscriptions:    map[string]StatusKind{"a": StatusOnline, "b": StatusOnline}})
+	resultsCh := make(chan StatusUpdateResults)
+	callback := func(res StatusUpdateResults) { resultsCh <- res }
+	checker.Start()
+	up := checker.Updater()
 	checker.online = toSet("c")
-	reqs <- StatusRequest{SpecialModels: toSet(), Subscriptions: map[string]StatusKind{"a": StatusOnline, "c": StatusUnknown}}
-	<-elapsed
-	uSet := updatesSet((<-resultsCh).Updates)
+	if err := up.QueryUpdates(StatusUpdateRequest{
+		Callback:      callback,
+		SpecialModels: toSet(),
+		Subscriptions: map[string]StatusKind{"a": StatusOnline, "c": StatusUnknown},
+	}); err != nil {
+		t.Errorf("cannot query updates, %v", err)
+		return
+	}
+	uSet := updatesSet((<-resultsCh).Data.Updates)
 	expected := map[string]StatusKind{"a": StatusOffline, "b": StatusUnknown, "c": StatusOnline}
 	if !reflect.DeepEqual(uSet, expected) {
 		t.Errorf("wrong updates, expected: %v, got: %v", expected, uSet)
 	}
 
 	checker.online = toSet("b", "c")
-	reqs <- StatusRequest{SpecialModels: toSet(), Subscriptions: map[string]StatusKind{"b": StatusUnknown, "c": StatusOnline}}
-	<-elapsed
-	uSet = updatesSet((<-resultsCh).Updates)
+	if err := up.QueryUpdates(StatusUpdateRequest{
+		Callback:      callback,
+		SpecialModels: toSet(),
+		Subscriptions: map[string]StatusKind{"b": StatusUnknown, "c": StatusOnline},
+	}); err != nil {
+		t.Errorf("cannot query updates, %v", err)
+		return
+	}
+	uSet = updatesSet((<-resultsCh).Data.Updates)
 	expected = map[string]StatusKind{"a": StatusUnknown, "b": StatusOnline}
 	if !reflect.DeepEqual(uSet, expected) {
 		t.Errorf("wrong updates, expected: %v, got: %v", expected, uSet)
 	}
 
 	checker.err = errors.New("error")
-	reqs <- StatusRequest{SpecialModels: toSet(), Subscriptions: map[string]StatusKind{}}
-	<-errs
+	if err := up.QueryUpdates(StatusUpdateRequest{Callback: callback, SpecialModels: toSet(), Subscriptions: map[string]StatusKind{}}); err != nil {
+		t.Errorf("cannot query updates, %v", err)
+		return
+	}
+	upd := <-resultsCh
+	if upd.Data != nil {
+		t.Error("unexpected updates")
+	}
 
 	checker.err = nil
 	checker.online = toSet("b")
-	reqs <- StatusRequest{SpecialModels: toSet(), Subscriptions: map[string]StatusKind{"b": StatusOnline, "c": StatusOnline}}
-	<-elapsed
-	uSet = updatesSet((<-resultsCh).Updates)
+	if err := up.QueryUpdates(StatusUpdateRequest{
+		Callback:      callback,
+		SpecialModels: toSet(),
+		Subscriptions: map[string]StatusKind{"b": StatusOnline, "c": StatusOnline},
+	}); err != nil {
+		t.Errorf("cannot query updates, %v", err)
+		return
+	}
+	uSet = updatesSet((<-resultsCh).Data.Updates)
 	expected = map[string]StatusKind{"c": StatusOffline}
 	if !reflect.DeepEqual(uSet, expected) {
 		t.Errorf("wrong updates, expected: %v, got: %v", expected, uSet)
@@ -142,4 +177,9 @@ func updatesSet(updates []StatusUpdate) map[string]StatusKind {
 		result[x.ModelID] = x.Status
 	}
 	return result
+}
+
+func TestMain(m *testing.M) {
+	Verbosity = SilentVerbosity
+	os.Exit(m.Run())
 }

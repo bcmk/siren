@@ -3,7 +3,6 @@ package lib
 import (
 	"errors"
 	"strings"
-	"time"
 
 	"github.com/nicklaw5/helix"
 )
@@ -13,15 +12,14 @@ type TwitchChecker struct {
 	CheckerCommon
 }
 
-var _ SelectiveChecker = &TwitchChecker{}
-var _ FullChecker = &TwitchChecker{}
+var _ Checker = &TwitchChecker{}
 
-// CheckSingle checks Twitch channel status
-func (c *TwitchChecker) CheckSingle(modelID string) StatusKind {
+// CheckStatusSingle checks Twitch channel status
+func (c *TwitchChecker) CheckStatusSingle(modelID string) StatusKind {
 	client := c.clientsLoop.nextClient()
 	helixClient, err := helix.NewClient(&helix.Options{
-		ClientID:     c.specificConfig["client_id"],
-		ClientSecret: c.specificConfig["client_secret"],
+		ClientID:     c.SpecificConfig["client_id"],
+		ClientSecret: c.SpecificConfig["client_secret"],
 		HTTPClient:   client.Client,
 	})
 	if err != nil {
@@ -63,19 +61,65 @@ func (c *TwitchChecker) CheckSingle(modelID string) StatusKind {
 	return StatusNotFound
 }
 
+// CheckStatusesMany checks Twitch channel status
+func (c *TwitchChecker) CheckStatusesMany(channels []string, checkMode CheckMode) (results map[string]StatusKind, images map[string]string, err error) {
+	if checkMode == CheckOnline {
+		return c.checkOnlineMany(channels)
+	}
+	results = map[string]StatusKind{}
+	for _, c := range channels {
+		results[c] = StatusNotFound
+	}
+	client := c.clientsLoop.nextClient()
+	helixClient, err := helix.NewClient(&helix.Options{
+		ClientID:     c.SpecificConfig["client_id"],
+		ClientSecret: c.SpecificConfig["client_secret"],
+		HTTPClient:   client.Client,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	accessResponse, err := helixClient.RequestAppAccessToken(nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	if accessResponse.ErrorMessage != "" {
+		return nil, nil, errors.New(accessResponse.ErrorMessage)
+	}
+
+	helixClient.SetAppAccessToken(accessResponse.Data.AccessToken)
+	for _, chunk := range chunks(channels, 100) {
+		chanResponse, err := helixClient.GetUsers(&helix.UsersParams{
+			Logins: chunk,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		if chanResponse.ErrorMessage != "" {
+			return nil, nil, errors.New(chanResponse.ErrorMessage)
+		}
+		for _, u := range chanResponse.Data.Users {
+			results[u.Login] = StatusOnline | StatusOffline
+		}
+	}
+	return results, images, nil
+}
+
 func thumbnail(s string) string {
 	s = strings.Replace(s, "{width}", "1280", 1)
 	return strings.Replace(s, "{height}", "720", 1)
 }
 
-// CheckMany returns Twitch online models
-func (c *TwitchChecker) CheckMany(channels []string) (online map[string]bool, images map[string]string, err error) {
+func (c *TwitchChecker) checkOnlineMany(channels []string) (online map[string]StatusKind, images map[string]string, err error) {
+	if channels == nil {
+		return checkEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
+	}
 	httpClient := c.clientsLoop.nextClient()
-	online = map[string]bool{}
+	online = map[string]StatusKind{}
 	images = map[string]string{}
 	client, err := helix.NewClient(&helix.Options{
-		ClientID:     c.specificConfig["client_id"],
-		ClientSecret: c.specificConfig["client_secret"],
+		ClientID:     c.SpecificConfig["client_id"],
+		ClientSecret: c.SpecificConfig["client_secret"],
 		HTTPClient:   httpClient.Client,
 	})
 	if err != nil {
@@ -102,7 +146,7 @@ func (c *TwitchChecker) CheckMany(channels []string) (online map[string]bool, im
 		}
 		for _, s := range streamsResponse.Data.Streams {
 			name := strings.ToLower(s.UserLogin)
-			online[name] = true
+			online[name] = StatusOnline
 			images[name] = thumbnail(s.ThumbnailURL)
 		}
 	}
@@ -110,13 +154,13 @@ func (c *TwitchChecker) CheckMany(channels []string) (online map[string]bool, im
 }
 
 // checkEndpoint returns all Twitch online channels on the endpoint
-func (c *TwitchChecker) checkEndpoint(endpoint string) (onlineModels map[string]bool, images map[string]string, err error) {
+func (c *TwitchChecker) checkEndpoint(endpoint string) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	httpClient := c.clientsLoop.nextClient()
-	onlineModels = map[string]bool{}
+	onlineModels = map[string]StatusKind{}
 	images = map[string]string{}
 	client, err := helix.NewClient(&helix.Options{
-		ClientID:     c.specificConfig["client_id"],
-		ClientSecret: c.specificConfig["client_secret"],
+		ClientID:     c.SpecificConfig["client_id"],
+		ClientSecret: c.SpecificConfig["client_secret"],
 		HTTPClient:   httpClient.Client,
 	})
 	if err != nil {
@@ -146,7 +190,7 @@ func (c *TwitchChecker) checkEndpoint(endpoint string) (onlineModels map[string]
 		}
 		for _, s := range streamsResponse.Data.Streams {
 			name := strings.ToLower(s.UserLogin)
-			onlineModels[name] = true
+			onlineModels[name] = StatusOnline
 			images[name] = thumbnail(s.ThumbnailURL)
 		}
 		if len(streamsResponse.Data.Streams) == 0 {
@@ -157,17 +201,6 @@ func (c *TwitchChecker) checkEndpoint(endpoint string) (onlineModels map[string]
 	return onlineModels, images, nil
 }
 
-// CheckFull returns Twitch online models
-func (c *TwitchChecker) CheckFull() (onlineModels map[string]bool, images map[string]string, err error) {
-	return checkEndpoints(c, c.usersOnlineEndpoint, c.dbg)
-}
-
 // Start starts a daemon
-func (c *TwitchChecker) Start(siteOnlineModels map[string]bool, subscriptions map[string]StatusKind, intervalMs int, dbg bool) (
-	statusRequests chan StatusRequest,
-	resultsCh chan CheckerResults,
-	errorsCh chan struct{},
-	elapsedCh chan time.Duration,
-) {
-	return selectiveDaemonStart(c, siteOnlineModels, subscriptions, dbg)
-}
+func (c *TwitchChecker) Start()                 { c.startSelectiveCheckerDaemon(c) }
+func (c *TwitchChecker) createUpdater() Updater { return c.createSelectiveUpdater(c) }

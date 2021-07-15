@@ -100,6 +100,15 @@ var migrations = []func(w *worker){
 	func(w *worker) {
 		w.mustExec("create index ix_status_changes_timestamp on status_changes(timestamp);")
 	},
+	func(w *worker) {
+		w.mustExec("alter table signals add confirmed integer not null default 1;")
+		w.mustExec("create index ix_signals_confirmed on signals(confirmed);")
+	},
+	func(w *worker) {
+		w.mustExec("update models set status = 1 << (status - 1);")
+		w.mustExec("update status_changes set status = 1 << (status - 1);")
+		w.mustExec("update last_status_changes set status = 1 << (status - 1);")
+	},
 }
 
 func (w *worker) applyMigrations() {

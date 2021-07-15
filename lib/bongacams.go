@@ -8,13 +8,12 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // BongaCamsChecker implements a checker for BongaCams
 type BongaCamsChecker struct{ CheckerCommon }
 
-var _ FullChecker = &BongaCamsChecker{}
+var _ Checker = &BongaCamsChecker{}
 
 type bongacamsModel struct {
 	Username      string `json:"username"`
@@ -23,12 +22,12 @@ type bongacamsModel struct {
 	} `json:"profile_images"`
 }
 
-// CheckSingle checks BongaCams model status
-func (c *BongaCamsChecker) CheckSingle(modelID string) StatusKind {
+// CheckStatusSingle checks BongaCams model status
+func (c *BongaCamsChecker) CheckStatusSingle(modelID string) StatusKind {
 	client := c.clientsLoop.nextClient()
 	req, err := http.NewRequest("GET", fmt.Sprintf("https://en.bongacams.com/%s", modelID), nil)
 	CheckErr(err)
-	for _, h := range c.headers {
+	for _, h := range c.Headers {
 		req.Header.Set(h[0], h[1])
 	}
 	resp, err := client.Client.Do(req)
@@ -37,7 +36,7 @@ func (c *BongaCamsChecker) CheckSingle(modelID string) StatusKind {
 		return StatusUnknown
 	}
 	CheckErr(resp.Body.Close())
-	if c.dbg {
+	if c.Dbg {
 		Ldbg("query status for %s: %d", modelID, resp.StatusCode)
 	}
 	switch resp.StatusCode {
@@ -52,12 +51,12 @@ func (c *BongaCamsChecker) CheckSingle(modelID string) StatusKind {
 }
 
 // checkEndpoint returns BongaCams online models on the endpoint
-func (c *BongaCamsChecker) checkEndpoint(endpoint string) (onlineModels map[string]bool, images map[string]string, err error) {
+func (c *BongaCamsChecker) checkEndpoint(endpoint string) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	client := c.clientsLoop.nextClient()
-	onlineModels = map[string]bool{}
+	onlineModels = map[string]StatusKind{}
 	images = map[string]string{}
 
-	resp, buf, err := onlineQuery(endpoint, client, c.headers)
+	resp, buf, err := onlineQuery(endpoint, client, c.Headers)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot send a query, %v", err)
 	}
@@ -68,7 +67,7 @@ func (c *BongaCamsChecker) checkEndpoint(endpoint string) (onlineModels map[stri
 	var parsed []bongacamsModel
 	err = decoder.Decode(&parsed)
 	if err != nil {
-		if c.dbg {
+		if c.Dbg {
 			Ldbg("response: %s", buf.String())
 		}
 		return nil, nil, fmt.Errorf("cannot parse response, %v", err)
@@ -80,23 +79,17 @@ func (c *BongaCamsChecker) checkEndpoint(endpoint string) (onlineModels map[stri
 
 	for _, m := range parsed {
 		modelID := strings.ToLower(m.Username)
-		onlineModels[modelID] = true
+		onlineModels[modelID] = StatusOnline
 		images[modelID] = "https:" + m.ProfileImages.ThumbnailImageMediumLive
 	}
 	return
 }
 
-// CheckFull returns BongaCams online models
-func (c *BongaCamsChecker) CheckFull() (onlineModels map[string]bool, images map[string]string, err error) {
-	return checkEndpoints(c, c.usersOnlineEndpoint, c.dbg)
+// CheckStatusesMany returns BongaCams online models
+func (c *BongaCamsChecker) CheckStatusesMany([]string, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
+	return checkEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 
 // Start starts a daemon
-func (c *BongaCamsChecker) Start(siteOnlineModels map[string]bool, subscriptions map[string]StatusKind, intervalMs int, dbg bool) (
-	statusRequests chan StatusRequest,
-	resultsCh chan CheckerResults,
-	errorsCh chan struct{},
-	elapsedCh chan time.Duration,
-) {
-	return fullDaemonStart(c, siteOnlineModels, intervalMs, dbg)
-}
+func (c *BongaCamsChecker) Start()                 { c.startFullCheckerDaemon(c) }
+func (c *BongaCamsChecker) createUpdater() Updater { return c.createFullUpdater(c) }

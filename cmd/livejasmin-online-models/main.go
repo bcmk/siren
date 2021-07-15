@@ -30,9 +30,9 @@ func main() {
 	}
 	flag.Parse()
 	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
-	checker := lib.LiveJasminChecker{}
-	checker.Init(toSlice(endpoints), []*lib.Client{client}, nil, *verbose, nil)
-	models, images, err := checker.CheckFull()
+	checker := &lib.LiveJasminChecker{}
+	checker.Init(checker, lib.CheckerConfig{UsersOnlineEndpoints: toSlice(endpoints), Clients: []*lib.Client{client}, Dbg: *verbose})
+	models, images, err := checker.CheckStatusesMany(nil, lib.CheckOnline)
 	if err != nil {
 		fmt.Printf("error occurred: %v", err)
 		return

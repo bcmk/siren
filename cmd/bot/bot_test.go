@@ -372,12 +372,12 @@ func checkInv(w *worker, t *testing.T) {
 		)
 		where row = 1`,
 		nil,
-		record{&recStatus.modelID, &recStatus.status, &recStatus.timestamp},
+		scanTo{&recStatus.modelID, &recStatus.status, &recStatus.timestamp},
 		func() { a[recStatus.modelID] = recStatus })
 	w.mustQuery(
 		`select model_id, status, timestamp from last_status_changes`,
 		nil,
-		record{&recStatus.modelID, &recStatus.status, &recStatus.timestamp},
+		scanTo{&recStatus.modelID, &recStatus.status, &recStatus.timestamp},
 		func() { b[recStatus.modelID] = recStatus })
 
 	if !reflect.DeepEqual(a, b) {
@@ -393,7 +393,7 @@ func checkInv(w *worker, t *testing.T) {
 	w.mustQuery(
 		`select model_id, status from models`,
 		nil,
-		record{&rec.modelID, &rec.status},
+		scanTo{&rec.modelID, &rec.status},
 		func() {
 			if rec.status == lib.StatusOnline {
 				confOnline[rec.modelID] = true

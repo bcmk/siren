@@ -16,7 +16,7 @@ import (
 // StripchatChecker impolements a checker for Stripchat
 type StripchatChecker struct{ CheckerCommon }
 
-var _ FullChecker = &StripchatChecker{}
+var _ Checker = &StripchatChecker{}
 
 type stripchatModel struct {
 	Username    string `json:"username"`
@@ -38,8 +38,8 @@ var statusesOnline = map[string]bool{
 	"status-idle":      true,
 }
 
-// CheckSingle checks Stripchat model status
-func (c *StripchatChecker) CheckSingle(modelID string) StatusKind {
+// CheckStatusSingle checks Stripchat model status
+func (c *StripchatChecker) CheckStatusSingle(modelID string) StatusKind {
 	client := c.clientsLoop.nextClient()
 	ctx, cancel := chromedp.NewContext(context.Background(), chromedp.WithLogf(Ldbg))
 	defer cancel()
@@ -64,19 +64,19 @@ func (c *StripchatChecker) CheckSingle(modelID string) StatusKind {
 		return StatusUnknown
 	}
 	if len(videoNode) > 0 {
-		if c.dbg {
+		if c.Dbg {
 			Ldbg("video found")
 		}
 		return StatusOnline
 	}
 	if len(notFoundNode) > 0 {
-		if c.dbg {
+		if c.Dbg {
 			Ldbg(".not-found-error found")
 		}
 		return StatusNotFound
 	}
 	if len(disabledNode) > 0 {
-		if c.dbg {
+		if c.Dbg {
 			Ldbg(".account-disabled-page found")
 		}
 		return StatusDenied
@@ -85,13 +85,13 @@ func (c *StripchatChecker) CheckSingle(modelID string) StatusKind {
 		classes := strings.Split(statusNode[0].AttributeValue("class"), " ")
 		for _, class := range classes {
 			if statusesOffline[class] {
-				if c.dbg {
+				if c.Dbg {
 					Ldbg("offline status found")
 				}
 				return StatusOffline
 			}
 			if statusesOnline[class] {
-				if c.dbg {
+				if c.Dbg {
 					Ldbg("online status found")
 				}
 				return StatusOnline
@@ -104,11 +104,11 @@ func (c *StripchatChecker) CheckSingle(modelID string) StatusKind {
 }
 
 // checkEndpoint returns Stripchat online models
-func (c *StripchatChecker) checkEndpoint(endpoint string) (onlineModels map[string]bool, images map[string]string, err error) {
+func (c *StripchatChecker) checkEndpoint(endpoint string) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	client := c.clientsLoop.nextClient()
-	onlineModels = map[string]bool{}
+	onlineModels = map[string]StatusKind{}
 	images = map[string]string{}
-	resp, buf, err := onlineQuery(endpoint, client, c.headers)
+	resp, buf, err := onlineQuery(endpoint, client, c.Headers)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot send a query, %v", err)
 	}
@@ -119,30 +119,24 @@ func (c *StripchatChecker) checkEndpoint(endpoint string) (onlineModels map[stri
 	parsed := &stripchatResponse{}
 	err = decoder.Decode(parsed)
 	if err != nil {
-		if c.dbg {
+		if c.Dbg {
 			Ldbg("response: %s", buf.String())
 		}
 		return nil, nil, fmt.Errorf("cannot parse response, %v", err)
 	}
 	for _, m := range parsed.Models {
 		modelID := strings.ToLower(m.Username)
-		onlineModels[modelID] = true
+		onlineModels[modelID] = StatusOnline
 		images[modelID] = m.SnapshotURL
 	}
 	return
 }
 
-// CheckFull returns Stripchat online models
-func (c *StripchatChecker) CheckFull() (onlineModels map[string]bool, images map[string]string, err error) {
-	return checkEndpoints(c, c.usersOnlineEndpoint, c.dbg)
+// CheckStatusesMany returns Stripchat online models
+func (c *StripchatChecker) CheckStatusesMany([]string, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
+	return checkEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 
 // Start starts a daemon
-func (c *StripchatChecker) Start(siteOnlineModels map[string]bool, subscriptions map[string]StatusKind, intervalMs int, dbg bool) (
-	statusRequests chan StatusRequest,
-	resultsCh chan CheckerResults,
-	errorsCh chan struct{},
-	elapsedCh chan time.Duration,
-) {
-	return fullDaemonStart(c, siteOnlineModels, intervalMs, dbg)
-}
+func (c *StripchatChecker) Start()                 { c.startFullCheckerDaemon(c) }
+func (c *StripchatChecker) createUpdater() Updater { return c.createFullUpdater(c) }

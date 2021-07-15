@@ -48,42 +48,43 @@ type statusConfirmationSeconds struct {
 }
 
 type config struct {
-	ListenAddress               string                    `json:"listen_address"`                 // the address to listen to
-	Website                     string                    `json:"website"`                        // one of the following strings: "bongacams", "stripchat", "chaturbate", "livejasmin", "flirt4free", "streamate"
-	WebsiteLink                 string                    `json:"website_link"`                   // affiliate link to website
-	PeriodSeconds               int                       `json:"period_seconds"`                 // the period of querying models statuses
-	CleaningPeriodSeconds       int                       `json:"cleaning_period_seconds"`        // the cleaning period
-	MaxModels                   int                       `json:"max_models"`                     // maximum models per user
-	TimeoutSeconds              int                       `json:"timeout_seconds"`                // HTTP timeout
-	AdminID                     int64                     `json:"admin_id"`                       // admin Telegram ID
-	AdminEndpoint               string                    `json:"admin_endpoint"`                 // admin endpoint
-	DBPath                      string                    `json:"db_path"`                        // path to the database
-	BlockThreshold              int                       `json:"block_threshold"`                // do not send a message to the user after being blocked by him this number of times
-	Debug                       bool                      `json:"debug"`                          // debug mode
-	IntervalMs                  int                       `json:"interval_ms"`                    // queries interval per IP address for rate limited access
-	SourceIPAddresses           []string                  `json:"source_ip_addresses"`            // source IP addresses for rate limited access
-	DangerousErrorRate          string                    `json:"dangerous_error_rate"`           // dangerous error rate, warn admin if it is reached, format "1000/10000"
-	EnableCookies               bool                      `json:"enable_cookies"`                 // enable cookies, it can be useful to mitigate rate limits
-	Headers                     [][2]string               `json:"headers"`                        // HTTP headers to make queries with
-	StatPassword                string                    `json:"stat_password"`                  // password for statistics
-	ErrorReportingPeriodMinutes int                       `json:"error_reporting_period_minutes"` // the period of the error reports
-	Endpoints                   map[string]endpoint       `json:"endpoints"`                      // the endpoints by simple name, used for the support of the bots in different languages accessing the same database
-	HeavyUserRemainder          int                       `json:"heavy_user_remainder"`           // the maximum remainder of models to treat an user as heavy
-	CoinPayments                *coinPaymentsConfig       `json:"coin_payments"`                  // CoinPayments integration
-	Mail                        *mailConfig               `json:"mail"`                           // mail config
-	ReferralBonus               int                       `json:"referral_bonus"`                 // number of emails for a referrer
-	FollowerBonus               int                       `json:"follower_bonus"`                 // number of emails for a new user registered by a referral link
-	UsersOnlineEndpoint         []string                  `json:"users_online_endpoint"`          // the endpoint to fetch online users
-	StatusConfirmationSeconds   statusConfirmationSeconds `json:"status_confirmation_seconds"`    // a status is confirmed only if it lasts for at least this number of seconds
-	OfflineNotifications        bool                      `json:"offline_notifications"`          // enable offline notifications
-	SQLPrelude                  []string                  `json:"sql_prelude"`                    // run these SQL commands before any other
-	EnableWeek                  bool                      `json:"enable_week"`                    // enable week command
-	AffiliateLink               string                    `json:"affiliate_link"`                 // affiliate link template
-	SpecificConfig              map[string]string         `json:"specific_config"`                // the config for specific website
-	TelegramTimeoutSeconds      int                       `json:"telegram_timeout_seconds"`       // the timeout for Telegram queries
-	MaxSubscriptionsForPics     int                       `json:"max_subscriptions_for_pics"`     // the maximum amount of subscriptions for pics in a group chat
-	KeepStatusesForDays         int                       `json:"keep_statuses_for_days"`         // keep statuses for this number of days
-	MaxCleanSeconds             int                       `json:"max_clean_seconds"`              // maximum number of seconds to clean
+	ListenAddress                 string                    `json:"listen_address"`                   // the address to listen to
+	Website                       string                    `json:"website"`                          // one of the following strings: "bongacams", "stripchat", "chaturbate", "livejasmin", "flirt4free", "streamate"
+	WebsiteLink                   string                    `json:"website_link"`                     // affiliate link to website
+	PeriodSeconds                 int                       `json:"period_seconds"`                   // the period of querying models statuses
+	CleaningPeriodSeconds         int                       `json:"cleaning_period_seconds"`          // the cleaning period
+	MaxModels                     int                       `json:"max_models"`                       // maximum models per user
+	TimeoutSeconds                int                       `json:"timeout_seconds"`                  // HTTP timeout
+	AdminID                       int64                     `json:"admin_id"`                         // admin Telegram ID
+	AdminEndpoint                 string                    `json:"admin_endpoint"`                   // admin endpoint
+	DBPath                        string                    `json:"db_path"`                          // path to the database
+	BlockThreshold                int                       `json:"block_threshold"`                  // do not send a message to the user after being blocked by him this number of times
+	Debug                         bool                      `json:"debug"`                            // debug mode
+	IntervalMs                    int                       `json:"interval_ms"`                      // queries interval per IP address for rate limited access
+	SourceIPAddresses             []string                  `json:"source_ip_addresses"`              // source IP addresses for rate limited access
+	DangerousErrorRate            string                    `json:"dangerous_error_rate"`             // dangerous error rate, warn admin if it is reached, format "1000/10000"
+	EnableCookies                 bool                      `json:"enable_cookies"`                   // enable cookies, it can be useful to mitigate rate limits
+	Headers                       [][2]string               `json:"headers"`                          // HTTP headers to make queries with
+	StatPassword                  string                    `json:"stat_password"`                    // password for statistics
+	ErrorReportingPeriodMinutes   int                       `json:"error_reporting_period_minutes"`   // the period of the error reports
+	Endpoints                     map[string]endpoint       `json:"endpoints"`                        // the endpoints by simple name, used for the support of the bots in different languages accessing the same database
+	HeavyUserRemainder            int                       `json:"heavy_user_remainder"`             // the maximum remainder of models to treat an user as heavy
+	CoinPayments                  *coinPaymentsConfig       `json:"coin_payments"`                    // CoinPayments integration
+	Mail                          *mailConfig               `json:"mail"`                             // mail config
+	ReferralBonus                 int                       `json:"referral_bonus"`                   // number of emails for a referrer
+	FollowerBonus                 int                       `json:"follower_bonus"`                   // number of emails for a new user registered by a referral link
+	UsersOnlineEndpoint           []string                  `json:"users_online_endpoint"`            // the endpoint to fetch online users
+	StatusConfirmationSeconds     statusConfirmationSeconds `json:"status_confirmation_seconds"`      // a status is confirmed only if it lasts for at least this number of seconds
+	OfflineNotifications          bool                      `json:"offline_notifications"`            // enable offline notifications
+	SQLPrelude                    []string                  `json:"sql_prelude"`                      // run these SQL commands before any other
+	EnableWeek                    bool                      `json:"enable_week"`                      // enable week command
+	AffiliateLink                 string                    `json:"affiliate_link"`                   // affiliate link template
+	SpecificConfig                map[string]string         `json:"specific_config"`                  // the config for specific website
+	TelegramTimeoutSeconds        int                       `json:"telegram_timeout_seconds"`         // the timeout for Telegram queries
+	MaxSubscriptionsForPics       int                       `json:"max_subscriptions_for_pics"`       // the maximum amount of subscriptions for pics in a group chat
+	KeepStatusesForDays           int                       `json:"keep_statuses_for_days"`           // keep statuses for this number of days
+	MaxCleanSeconds               int                       `json:"max_clean_seconds"`                // maximum number of seconds to clean
+	SubsConfirmationPeriodSeconds int                       `json:"subs_confirmation_period_seconds"` // subscriptions confirmation period
 
 	errorThreshold   int
 	errorDenominator int
@@ -198,6 +199,9 @@ func checkConfig(cfg *config) error {
 	}
 	if cfg.MaxCleanSeconds == 0 {
 		return errors.New("configure max_clean_seconds")
+	}
+	if cfg.SubsConfirmationPeriodSeconds == 0 {
+		return errors.New("configure subs_confirmation_period_seconds")
 	}
 
 	if m := fractionRegexp.FindStringSubmatch(cfg.DangerousErrorRate); len(m) == 3 {

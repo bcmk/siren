@@ -10,25 +10,25 @@ type RandomChecker struct{ CheckerCommon }
 
 var _ Checker = &RandomChecker{}
 
-// CheckSingle mimics checker
-func (c *RandomChecker) CheckSingle(modelID string) StatusKind {
+// CheckStatusSingle mimics checker
+func (c *RandomChecker) CheckStatusSingle(modelID string) StatusKind {
 	return StatusOnline
 }
 
 // checkEndpoint returns random online models
-func (c *RandomChecker) checkEndpoint(endpoint string) (onlineModels map[string]bool, images map[string]string, err error) {
+func (c *RandomChecker) checkEndpoint(endpoint string) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	now := time.Now()
 	seconds := now.Sub(now.Truncate(time.Minute))
-	onlineModels = map[string]bool{}
+	onlineModels = map[string]StatusKind{}
 	images = map[string]string{}
 	if seconds < time.Second*30 {
 		toggle := "toggle"
-		onlineModels[toggle] = true
+		onlineModels[toggle] = StatusOnline
 		images[toggle] = ""
 	}
 	for i := 0; i < 300; i++ {
 		modelID := randString(4)
-		onlineModels[modelID] = true
+		onlineModels[modelID] = StatusOnline
 		images[modelID] = ""
 	}
 	return
@@ -48,17 +48,11 @@ func randString(n int) string {
 	return string(b)
 }
 
-// CheckFull returns Test online models
-func (c *RandomChecker) CheckFull() (onlineModels map[string]bool, images map[string]string, err error) {
-	return checkEndpoints(c, c.usersOnlineEndpoint, c.dbg)
+// CheckStatusesMany returns Random online models
+func (c *RandomChecker) CheckStatusesMany([]string, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
+	return checkEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 
 // Start starts a daemon
-func (c *RandomChecker) Start(siteOnlineModels map[string]bool, subscriptions map[string]StatusKind, intervalMs int, dbg bool) (
-	statusRequests chan StatusRequest,
-	resultsCh chan CheckerResults,
-	errorsCh chan struct{},
-	elapsedCh chan time.Duration,
-) {
-	return fullDaemonStart(c, siteOnlineModels, intervalMs, dbg)
-}
+func (c *RandomChecker) Start()                 { c.startFullCheckerDaemon(c) }
+func (c *RandomChecker) createUpdater() Updater { return c.createFullUpdater(c) }

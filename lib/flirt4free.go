@@ -8,13 +8,12 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // Flirt4FreeChecker implements a checker for Flirt4Free
 type Flirt4FreeChecker struct{ CheckerCommon }
 
-var _ FullChecker = &Flirt4FreeChecker{}
+var _ Checker = &Flirt4FreeChecker{}
 
 type flirt4FreeCheckResponse struct {
 	Status string `json:"status"`
@@ -36,12 +35,12 @@ type flirt4FreeOnlineResponse struct {
 	Trans map[int]flirt4FreeOnlineModel
 }
 
-// CheckSingle checks Flirt4Free model status
-func (c *Flirt4FreeChecker) CheckSingle(modelID string) StatusKind {
+// CheckStatusSingle checks Flirt4Free model status
+func (c *Flirt4FreeChecker) CheckStatusSingle(modelID string) StatusKind {
 	client := c.clientsLoop.nextClient()
 	req, err := http.NewRequest("GET", fmt.Sprintf("https://ws.vs3.com/rooms/check-model-status.php?model_name=%s", modelID), nil)
 	CheckErr(err)
-	for _, h := range c.headers {
+	for _, h := range c.Headers {
 		req.Header.Set(h[0], h[1])
 	}
 	resp, err := client.Client.Do(req)
@@ -52,7 +51,7 @@ func (c *Flirt4FreeChecker) CheckSingle(modelID string) StatusKind {
 	defer func() {
 		CheckErr(resp.Body.Close())
 	}()
-	if c.dbg {
+	if c.Dbg {
 		Ldbg("[%v] query status for %s: %d", client.Addr, modelID, resp.StatusCode)
 	}
 	if resp.StatusCode != 200 {
@@ -69,7 +68,7 @@ func (c *Flirt4FreeChecker) CheckSingle(modelID string) StatusKind {
 	err = decoder.Decode(parsed)
 	if err != nil {
 		Lerr("[%v] cannot parse response for model %s, %v", client.Addr, modelID, err)
-		if c.dbg {
+		if c.Dbg {
 			Ldbg("response: %s", buf.String())
 		}
 		return StatusUnknown
@@ -104,11 +103,11 @@ func Flirt4FreeCanonicalModelID(name string) string {
 }
 
 // checkEndpoint returns Flirt4Free online models
-func (c *Flirt4FreeChecker) checkEndpoint(endpoint string) (onlineModels map[string]bool, images map[string]string, err error) {
+func (c *Flirt4FreeChecker) checkEndpoint(endpoint string) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	client := c.clientsLoop.nextClient()
-	onlineModels = map[string]bool{}
+	onlineModels = map[string]StatusKind{}
 	images = map[string]string{}
-	resp, buf, err := onlineQuery(endpoint, client, c.headers)
+	resp, buf, err := onlineQuery(endpoint, client, c.Headers)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot send a query, %v", err)
 	}
@@ -119,7 +118,7 @@ func (c *Flirt4FreeChecker) checkEndpoint(endpoint string) (onlineModels map[str
 	var parsed flirt4FreeOnlineResponse
 	err = decoder.Decode(&parsed)
 	if err != nil {
-		if c.dbg {
+		if c.Dbg {
 			Ldbg("response: %s", buf.String())
 		}
 		return nil, nil, fmt.Errorf("cannot parse response, %v", err)
@@ -132,33 +131,27 @@ func (c *Flirt4FreeChecker) checkEndpoint(endpoint string) (onlineModels map[str
 	}
 	for _, m := range parsed.Girls {
 		modelID := flirt4FreeCanonicalAPIModelID(m.Name)
-		onlineModels[modelID] = true
+		onlineModels[modelID] = StatusOnline
 		images[modelID] = m.ScreencapImage
 	}
 	for _, m := range parsed.Guys {
 		modelID := flirt4FreeCanonicalAPIModelID(m.Name)
-		onlineModels[modelID] = true
+		onlineModels[modelID] = StatusOnline
 		images[modelID] = m.ScreencapImage
 	}
 	for _, m := range parsed.Trans {
 		modelID := flirt4FreeCanonicalAPIModelID(m.Name)
-		onlineModels[modelID] = true
+		onlineModels[modelID] = StatusOnline
 		images[modelID] = m.ScreencapImage
 	}
 	return
 }
 
-// CheckFull returns Flirt4Free online models
-func (c *Flirt4FreeChecker) CheckFull() (onlineModels map[string]bool, images map[string]string, err error) {
-	return checkEndpoints(c, c.usersOnlineEndpoint, c.dbg)
+// CheckStatusesMany returns Flirt4Free online models
+func (c *Flirt4FreeChecker) CheckStatusesMany([]string, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
+	return checkEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 
 // Start starts a daemon
-func (c *Flirt4FreeChecker) Start(siteOnlineModels map[string]bool, subscriptions map[string]StatusKind, intervalMs int, dbg bool) (
-	statusRequests chan StatusRequest,
-	resultsCh chan CheckerResults,
-	errorsCh chan struct{},
-	elapsedCh chan time.Duration,
-) {
-	return fullDaemonStart(c, siteOnlineModels, intervalMs, dbg)
-}
+func (c *Flirt4FreeChecker) Start()                 { c.startFullCheckerDaemon(c) }
+func (c *Flirt4FreeChecker) createUpdater() Updater { return c.createFullUpdater(c) }

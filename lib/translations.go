@@ -62,6 +62,7 @@ type Translations struct {
 	ModelAdded                  *Translation `yaml:"model_added"`
 	ModelNotInList              *Translation `yaml:"model_not_in_list"`
 	ModelRemoved                *Translation `yaml:"model_removed"`
+	CheckingModel               *Translation `yaml:"checking_model"`
 	Feedback                    *Translation `yaml:"feedback"`
 	Social                      *Translation `yaml:"social"`
 	UnknownCommand              *Translation `yaml:"unknown_command"`

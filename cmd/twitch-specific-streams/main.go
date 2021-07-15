@@ -22,17 +22,20 @@ func main() {
 	}
 	flag.Parse()
 	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
-	checker := lib.TwitchChecker{}
-	checker.Init([]string{""}, []*lib.Client{client}, nil, *verbose, map[string]string{
-		"client_id":     *clientID,
-		"client_secret": *secret,
-	})
-	models, images, err := checker.CheckMany(flag.Args())
+	checker := &lib.TwitchChecker{}
+	checker.Init(checker, lib.CheckerConfig{
+		Clients: []*lib.Client{client},
+		Dbg:     *verbose,
+		SpecificConfig: map[string]string{
+			"client_id":     *clientID,
+			"client_secret": *secret,
+		}})
+	models, images, err := checker.CheckStatusesMany(flag.Args(), lib.CheckStatuses)
 	if err != nil {
 		fmt.Printf("error occurred: %v", err)
 		return
 	}
-	for model := range models {
-		fmt.Printf("%s %s\n", model, images[model])
+	for model, status := range models {
+		fmt.Printf("%s %s %s\n", model, status, images[model])
 	}
 }

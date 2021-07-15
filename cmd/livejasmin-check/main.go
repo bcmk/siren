@@ -39,7 +39,10 @@ func main() {
 		return
 	}
 	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
-	checker := lib.LiveJasminChecker{}
-	checker.Init([]string{""}, []*lib.Client{client}, nil, *verbose, map[string]string{"ps_id": *psID, "access_key": *accessKey})
-	fmt.Println(checker.CheckSingle(modelID))
+	checker := &lib.LiveJasminChecker{}
+	checker.Init(checker, lib.CheckerConfig{
+		Clients:        []*lib.Client{client},
+		Dbg:            *verbose,
+		SpecificConfig: map[string]string{"ps_id": *psID, "access_key": *accessKey}})
+	fmt.Println(checker.CheckStatusSingle(modelID))
 }

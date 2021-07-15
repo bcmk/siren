@@ -21,9 +21,9 @@ func main() {
 	}
 	flag.Parse()
 	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
-	checker := lib.Flirt4FreeChecker{}
-	checker.Init([]string{*endpoint}, []*lib.Client{client}, nil, *verbose, nil)
-	models, images, err := checker.CheckFull()
+	checker := &lib.Flirt4FreeChecker{}
+	checker.Init(checker, lib.CheckerConfig{UsersOnlineEndpoints: []string{*endpoint}, Clients: []*lib.Client{client}, Dbg: *verbose})
+	models, images, err := checker.CheckStatusesMany(nil, lib.CheckOnline)
 	if err != nil {
 		fmt.Printf("error occurred: %v", err)
 		return

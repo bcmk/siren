@@ -1,27 +1,35 @@
 package lib
 
+import "strings"
+
 // StatusKind represents a status of a model
 type StatusKind int
 
 // Model statuses
 const (
-	StatusUnknown StatusKind = iota
-	StatusOffline
-	StatusOnline
-	StatusNotFound
-	StatusDenied
+	StatusUnknown  StatusKind = 0
+	StatusOffline  StatusKind = 1
+	StatusOnline   StatusKind = 2
+	StatusNotFound StatusKind = 4
+	StatusDenied   StatusKind = 8
 )
 
 func (s StatusKind) String() string {
-	switch s {
-	case StatusOffline:
-		return "offline"
-	case StatusOnline:
-		return "online"
-	case StatusNotFound:
-		return "not found"
-	case StatusDenied:
-		return "denied"
+	if s == StatusUnknown || s == StatusOffline|StatusOnline|StatusNotFound|StatusDenied {
+		return "unknown"
 	}
-	return "unknown"
+	words := []string{}
+	if s&StatusOffline != 0 {
+		words = append(words, "offline")
+	}
+	if s&StatusOnline != 0 {
+		words = append(words, "online")
+	}
+	if s&StatusNotFound != 0 {
+		words = append(words, "not found")
+	}
+	if s&StatusDenied != 0 {
+		words = append(words, "denied")
+	}
+	return strings.Join(words, "|")
 }

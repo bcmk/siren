@@ -23,6 +23,9 @@ add_error:
     Could not add the model {{ .model }}
     Check the camname or try later
     Syntax: /add <code>CAMNAME</code>
+checking_model:
+  parse: raw
+  str: Give us a second. We are checking this model
 all_models_removed:
   parse: raw
   str: All your subscriptions removed
