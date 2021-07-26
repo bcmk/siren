@@ -737,23 +737,33 @@ func (w *worker) notifyOfAddResults(queue chan outgoingPacket, notifications []n
 	}
 }
 
-func (w *worker) notifyOfStatuses(queue chan outgoingPacket, notifications []notification, social bool) {
+func (w *worker) downloadImages(notifications []notification) map[string][]byte {
 	models := map[string]bool{}
-	chats := map[int64]bool{}
 	for _, n := range notifications {
 		models[n.modelID] = true
-		chats[n.chatID] = true
 	}
 	images := map[string][]byte{}
-	users := map[int64]user{}
 	for m := range models {
 		if url := w.images[m]; url != "" {
 			images[m] = w.download(url)
 		}
 	}
+	return images
+}
+
+func (w *worker) notifyOfStatuses(queue chan outgoingPacket, notifications []notification, social bool) {
+	images := w.downloadImages(notifications)
+
+	chats := map[int64]bool{}
+	for _, n := range notifications {
+		chats[n.chatID] = true
+	}
+
+	users := map[int64]user{}
 	for c := range chats {
 		users[c] = w.mustUser(c)
 	}
+
 	for _, n := range notifications {
 		var image []byte = nil
 		if users[n.chatID].showImages {
