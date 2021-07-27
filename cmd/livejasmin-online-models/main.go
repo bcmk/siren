@@ -32,7 +32,7 @@ func main() {
 	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
 	checker := &lib.LiveJasminChecker{}
 	checker.Init(checker, lib.CheckerConfig{UsersOnlineEndpoints: toSlice(endpoints), Clients: []*lib.Client{client}, Dbg: *verbose})
-	models, images, err := checker.CheckStatusesMany(nil, lib.CheckOnline)
+	models, images, err := checker.CheckStatusesMany(lib.AllModels, lib.CheckOnline)
 	if err != nil {
 		fmt.Printf("error occurred: %v", err)
 		return

@@ -29,21 +29,21 @@ func (c *TestChecker) CheckStatusSingle(string) StatusKind {
 	return c.status
 }
 
-func (c *testSelectiveChecker) CheckStatusesMany([]string, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
+func (c *testSelectiveChecker) CheckStatusesMany(QueryModelList, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	if c.err != nil {
 		return nil, nil, c.err
 	}
-	return onlineMapToStatus(c.online), c.images, nil
+	return onlineStatuses(c.online), c.images, nil
 }
 
 func (c *testFullChecker) checkEndpoint(endpoint string) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	if c.err != nil {
 		return nil, nil, c.err
 	}
-	return onlineMapToStatus(c.online), c.images, nil
+	return onlineStatuses(c.online), c.images, nil
 }
 
-func (c *testFullChecker) CheckStatusesMany([]string, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
+func (c *testFullChecker) CheckStatusesMany(QueryModelList, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	return checkEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 
@@ -55,7 +55,7 @@ func (c *testFullChecker) createUpdater() Updater { return c.createFullUpdater(c
 func (c *testSelectiveChecker) Start()                 { c.startSelectiveCheckerDaemon(c) }
 func (c *testSelectiveChecker) createUpdater() Updater { return c.createSelectiveUpdater(c) }
 
-func TestFullChecker(t *testing.T) {
+func TestFullUpdater(t *testing.T) {
 	checker := &testFullChecker{}
 	checker.Init(checker, CheckerConfig{UsersOnlineEndpoints: []string{""}, QueueSize: queueSize, SiteOnlineModels: toSet("a", "b")})
 	resultsCh := make(chan StatusUpdateResults)
@@ -63,7 +63,7 @@ func TestFullChecker(t *testing.T) {
 	checker.Start()
 	up := checker.Updater()
 	checker.online = toSet("b", "c")
-	if err := up.QueryUpdates(StatusUpdateRequest{Callback: callback, SpecialModels: toSet(), Subscriptions: map[string]StatusKind{}}); err != nil {
+	if err := up.QueryUpdates(StatusUpdateRequest{Callback: callback, Subscriptions: map[string]StatusKind{}}); err != nil {
 		t.Errorf("cannot query updates, %v", err)
 		return
 	}
@@ -73,7 +73,7 @@ func TestFullChecker(t *testing.T) {
 		t.Errorf("wrong updates, expected: %v, got: %v", expected, uSet)
 	}
 	checker.err = errors.New("error")
-	if err := up.QueryUpdates(StatusUpdateRequest{Callback: callback, SpecialModels: toSet(), Subscriptions: map[string]StatusKind{}}); err != nil {
+	if err := up.QueryUpdates(StatusUpdateRequest{Callback: callback, Subscriptions: map[string]StatusKind{}}); err != nil {
 		t.Errorf("cannot query updates, %v", err)
 		return
 	}
@@ -94,9 +94,19 @@ func TestFullChecker(t *testing.T) {
 	if !reflect.DeepEqual(uSet, expected) {
 		t.Errorf("wrong updates, expected: %v, got: %v", expected, uSet)
 	}
+	checker.status = StatusOffline
+	if err := up.QueryUpdates(StatusUpdateRequest{Callback: callback, SpecialModels: toSet("d"), Subscriptions: map[string]StatusKind{}}); err != nil {
+		t.Errorf("cannot query updates, %v", err)
+		return
+	}
+	uSet = updatesSet((<-resultsCh).Data.Updates)
+	expected = map[string]StatusKind{"d": StatusOffline}
+	if !reflect.DeepEqual(uSet, expected) {
+		t.Errorf("wrong updates, expected: %v, got: %v", expected, uSet)
+	}
 }
 
-func TestSelectiveChecker(t *testing.T) {
+func TestSelectiveUpdater(t *testing.T) {
 	checker := &testSelectiveChecker{}
 	checker.Init(checker, CheckerConfig{
 		QueueSize:        queueSize,
@@ -109,7 +119,6 @@ func TestSelectiveChecker(t *testing.T) {
 	checker.online = toSet("c")
 	if err := up.QueryUpdates(StatusUpdateRequest{
 		Callback:      callback,
-		SpecialModels: toSet(),
 		Subscriptions: map[string]StatusKind{"a": StatusOnline, "c": StatusUnknown},
 	}); err != nil {
 		t.Errorf("cannot query updates, %v", err)
@@ -124,7 +133,6 @@ func TestSelectiveChecker(t *testing.T) {
 	checker.online = toSet("b", "c")
 	if err := up.QueryUpdates(StatusUpdateRequest{
 		Callback:      callback,
-		SpecialModels: toSet(),
 		Subscriptions: map[string]StatusKind{"b": StatusUnknown, "c": StatusOnline},
 	}); err != nil {
 		t.Errorf("cannot query updates, %v", err)
@@ -137,7 +145,7 @@ func TestSelectiveChecker(t *testing.T) {
 	}
 
 	checker.err = errors.New("error")
-	if err := up.QueryUpdates(StatusUpdateRequest{Callback: callback, SpecialModels: toSet(), Subscriptions: map[string]StatusKind{}}); err != nil {
+	if err := up.QueryUpdates(StatusUpdateRequest{Callback: callback, Subscriptions: map[string]StatusKind{}}); err != nil {
 		t.Errorf("cannot query updates, %v", err)
 		return
 	}
@@ -150,7 +158,6 @@ func TestSelectiveChecker(t *testing.T) {
 	checker.online = toSet("b")
 	if err := up.QueryUpdates(StatusUpdateRequest{
 		Callback:      callback,
-		SpecialModels: toSet(),
 		Subscriptions: map[string]StatusKind{"b": StatusOnline, "c": StatusOnline},
 	}); err != nil {
 		t.Errorf("cannot query updates, %v", err)

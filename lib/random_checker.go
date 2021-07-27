@@ -49,7 +49,7 @@ func randString(n int) string {
 }
 
 // CheckStatusesMany returns Random online models
-func (c *RandomChecker) CheckStatusesMany([]string, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
+func (c *RandomChecker) CheckStatusesMany(QueryModelList, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	return checkEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 

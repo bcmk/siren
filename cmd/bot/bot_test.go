@@ -360,6 +360,65 @@ func TestCleanStatuses(t *testing.T) {
 	_ = w.db.Close()
 }
 
+func TestNotificationsStorage(t *testing.T) {
+	timeDiff := 2
+	nots := []notification{
+		{
+			endpoint: "endpoint_a",
+			chatID:   1,
+			modelID:  "model_a",
+			status:   lib.StatusUnknown,
+			timeDiff: nil,
+			imageURL: "image_a",
+			social:   false,
+			priority: 1,
+			sound:    false,
+		},
+		{
+			endpoint: "endpoint_b",
+			chatID:   2,
+			modelID:  "model_b",
+			status:   lib.StatusOffline,
+			timeDiff: &timeDiff,
+			imageURL: "image_b",
+			social:   true,
+			priority: 2,
+			sound:    true,
+		},
+	}
+	w := newTestWorker()
+	w.createDatabase(make(chan bool, 1))
+	w.storeNotifications(nots)
+	newNots := w.newNotifications()
+	nots[0].id = 1
+	nots[1].id = 2
+	if !reflect.DeepEqual(nots, newNots) {
+		t.Errorf("unexpected notifications, expocted: %v, got: %v", nots, newNots)
+	}
+	nots = []notification{
+		{
+			endpoint: "endpoint_c",
+			chatID:   3,
+			modelID:  "model_c",
+			status:   lib.StatusOnline,
+			timeDiff: nil,
+			imageURL: "image_c",
+			social:   true,
+			priority: 3,
+		},
+	}
+	w.storeNotifications(nots)
+	newNots = w.newNotifications()
+	nots[0].id = 3
+	if !reflect.DeepEqual(nots, newNots) {
+		t.Errorf("unexpected notifications, expocted: %v, got: %v", nots, newNots)
+	}
+	count := w.mustInt("select count(*) from notification_queue")
+	if count != 3 {
+		t.Errorf("unexpected notifications count %d", count)
+	}
+}
+
 func checkInv(w *worker, t *testing.T) {
 	a := map[string]statusChange{}
 	b := map[string]statusChange{}

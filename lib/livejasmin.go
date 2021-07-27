@@ -120,7 +120,7 @@ func (c *LiveJasminChecker) checkEndpoint(endpoint string) (onlineModels map[str
 }
 
 // CheckStatusesMany returns LiveJasmin online models
-func (c *LiveJasminChecker) CheckStatusesMany([]string, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
+func (c *LiveJasminChecker) CheckStatusesMany(QueryModelList, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	return checkEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 

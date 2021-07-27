@@ -238,7 +238,7 @@ func (c *StreamateChecker) checkEndpoint(endpoint string) (onlineModels map[stri
 }
 
 // CheckStatusesMany returns Streamate online models
-func (c *StreamateChecker) CheckStatusesMany([]string, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
+func (c *StreamateChecker) CheckStatusesMany(QueryModelList, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	return checkEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 

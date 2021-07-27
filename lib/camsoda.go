@@ -130,7 +130,7 @@ func (c *CamSodaChecker) checkEndpoint(endpoint string) (onlineModels map[string
 }
 
 // CheckStatusesMany returns CamSoda online models
-func (c *CamSodaChecker) CheckStatusesMany([]string, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
+func (c *CamSodaChecker) CheckStatusesMany(QueryModelList, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	return checkEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 

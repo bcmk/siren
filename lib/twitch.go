@@ -62,14 +62,7 @@ func (c *TwitchChecker) CheckStatusSingle(modelID string) StatusKind {
 }
 
 // CheckStatusesMany checks Twitch channel status
-func (c *TwitchChecker) CheckStatusesMany(channels []string, checkMode CheckMode) (results map[string]StatusKind, images map[string]string, err error) {
-	if checkMode == CheckOnline {
-		return c.checkOnlineMany(channels)
-	}
-	results = map[string]StatusKind{}
-	for _, c := range channels {
-		results[c] = StatusNotFound
-	}
+func (c *TwitchChecker) CheckStatusesMany(channels QueryModelList, checkMode CheckMode) (results map[string]StatusKind, images map[string]string, err error) {
 	client := c.clientsLoop.nextClient()
 	helixClient, err := helix.NewClient(&helix.Options{
 		ClientID:     c.SpecificConfig["client_id"],
@@ -88,21 +81,14 @@ func (c *TwitchChecker) CheckStatusesMany(channels []string, checkMode CheckMode
 	}
 
 	helixClient.SetAppAccessToken(accessResponse.Data.AccessToken)
-	for _, chunk := range chunks(channels, 100) {
-		chanResponse, err := helixClient.GetUsers(&helix.UsersParams{
-			Logins: chunk,
-		})
-		if err != nil {
-			return nil, nil, err
-		}
-		if chanResponse.ErrorMessage != "" {
-			return nil, nil, errors.New(chanResponse.ErrorMessage)
-		}
-		for _, u := range chanResponse.Data.Users {
-			results[u.Login] = StatusOnline | StatusOffline
-		}
+
+	if checkMode == CheckOnline && channels.all {
+		return checkEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
+	} else if checkMode == CheckOnline {
+		return c.checkOnlineMany(helixClient, channels.list)
+	} else {
+		return c.checkExistingMany(helixClient, channels.list)
 	}
-	return results, images, nil
 }
 
 func thumbnail(s string) string {
@@ -110,29 +96,7 @@ func thumbnail(s string) string {
 	return strings.Replace(s, "{height}", "720", 1)
 }
 
-func (c *TwitchChecker) checkOnlineMany(channels []string) (online map[string]StatusKind, images map[string]string, err error) {
-	if channels == nil {
-		return checkEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
-	}
-	httpClient := c.clientsLoop.nextClient()
-	online = map[string]StatusKind{}
-	images = map[string]string{}
-	client, err := helix.NewClient(&helix.Options{
-		ClientID:     c.SpecificConfig["client_id"],
-		ClientSecret: c.SpecificConfig["client_secret"],
-		HTTPClient:   httpClient.Client,
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	accessResponse, err := client.RequestAppAccessToken(nil)
-	if err != nil {
-		return nil, nil, err
-	}
-	if accessResponse.ErrorMessage != "" {
-		return nil, nil, errors.New(accessResponse.ErrorMessage)
-	}
-	client.SetAppAccessToken(accessResponse.Data.AccessToken)
+func (c *TwitchChecker) checkOnlineMany(client *helix.Client, channels []string) (online map[string]StatusKind, images map[string]string, err error) {
 	for _, chunk := range chunks(channels, 100) {
 		streamsResponse, err := client.GetStreams(&helix.StreamsParams{
 			First:      100,
@@ -153,8 +117,30 @@ func (c *TwitchChecker) checkOnlineMany(channels []string) (online map[string]St
 	return online, images, nil
 }
 
-// checkEndpoint returns all Twitch online channels on the endpoint
-func (c *TwitchChecker) checkEndpoint(endpoint string) (onlineModels map[string]StatusKind, images map[string]string, err error) {
+func (c *TwitchChecker) checkExistingMany(helixClient *helix.Client, channels []string) (results map[string]StatusKind, images map[string]string, err error) {
+	results = map[string]StatusKind{}
+	for _, c := range channels {
+		results[c] = StatusNotFound
+	}
+	for _, chunk := range chunks(channels, 100) {
+		chanResponse, err := helixClient.GetUsers(&helix.UsersParams{
+			Logins: chunk,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		if chanResponse.ErrorMessage != "" {
+			return nil, nil, errors.New(chanResponse.ErrorMessage)
+		}
+		for _, u := range chanResponse.Data.Users {
+			results[u.Login] = StatusOnline | StatusOffline
+		}
+	}
+	return results, images, nil
+}
+
+// checkEndpoint returns all Twitch online channels
+func (c *TwitchChecker) checkEndpoint(string) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	httpClient := c.clientsLoop.nextClient()
 	onlineModels = map[string]StatusKind{}
 	images = map[string]string{}

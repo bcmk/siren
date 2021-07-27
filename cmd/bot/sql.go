@@ -17,6 +17,9 @@ var updateModelStatus = `
 	insert into models (model_id, status)
 	values (?,?)
 	on conflict(model_id) do update set status=excluded.status`
+var storeNotification = `
+	insert into notification_queue (endpoint, chat_id, model_id, status, time_diff, image_url, social, priority, sound)
+	values (?,?,?,?,?,?,?,?,?)`
 
 func (w *worker) measure(query string) func() {
 	now := time.Now()

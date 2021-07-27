@@ -24,13 +24,14 @@ func main() {
 	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
 	checker := &lib.TwitchChecker{}
 	checker.Init(checker, lib.CheckerConfig{
-		Clients: []*lib.Client{client},
-		Dbg:     *verbose,
+		UsersOnlineEndpoints: []string{""},
+		Clients:              []*lib.Client{client},
+		Dbg:                  *verbose,
 		SpecificConfig: map[string]string{
 			"client_id":     *clientID,
 			"client_secret": *secret,
 		}})
-	models, images, err := checker.CheckStatusesMany(nil, lib.CheckOnline)
+	models, images, err := checker.CheckStatusesMany(lib.AllModels, lib.CheckOnline)
 	if err != nil {
 		fmt.Printf("error occurred: %v", err)
 		return

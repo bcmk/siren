@@ -109,6 +109,21 @@ var migrations = []func(w *worker){
 		w.mustExec("update status_changes set status = 1 << (status - 1);")
 		w.mustExec("update last_status_changes set status = 1 << (status - 1);")
 	},
+	func(w *worker) {
+		w.mustExec(`
+			create table notification_queue (
+				id integer primary key autoincrement,
+				endpoint text not null,
+				chat_id integer not null,
+				model_id text not null,
+				status integer not null,
+				time_diff integer,
+				image_url text,
+				social integer not null default 0,
+				priority integer not null default 0,
+				sound integer not null default 0,
+				sending integer not null default 0);`)
+	},
 }
 
 func (w *worker) applyMigrations() {

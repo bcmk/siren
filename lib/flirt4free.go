@@ -148,7 +148,7 @@ func (c *Flirt4FreeChecker) checkEndpoint(endpoint string) (onlineModels map[str
 }
 
 // CheckStatusesMany returns Flirt4Free online models
-func (c *Flirt4FreeChecker) CheckStatusesMany([]string, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
+func (c *Flirt4FreeChecker) CheckStatusesMany(QueryModelList, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	return checkEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 

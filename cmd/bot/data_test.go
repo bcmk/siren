@@ -59,3 +59,17 @@ func newTestWorker() *testWorker {
 	}
 	return w
 }
+
+func (w *testWorker) chatsForModel(modelID string) (chats []int64, endpoints []string) {
+	var chatID int64
+	var endpoint string
+	w.mustQuery(
+		`select chat_id, endpoint from signals where model_id=? order by chat_id`,
+		queryParams{modelID},
+		scanTo{&chatID, &endpoint},
+		func() {
+			chats = append(chats, chatID)
+			endpoints = append(endpoints, endpoint)
+		})
+	return
+}

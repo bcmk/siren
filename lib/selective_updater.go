@@ -10,7 +10,7 @@ func (f *selectiveUpdater) QueryUpdates(updateRequest StatusUpdateRequest) error
 	subsSet := subscriptionsSet(updateRequest.Subscriptions)
 	return f.checker.QueryStatuses(selectiveUpdateReqToStatus(updateRequest, func(res StatusResults) {
 		if res.Data != nil {
-			stMap := statusMapToOnline(res.Data.Statuses)
+			stMap := onlyOnline(res.Data.Statuses)
 			updates := getUpdates(f.siteOnlineModels, stMap)
 			f.siteOnlineModels = stMap
 			_, unknowns := HashDiffNewRemoved(f.knowns, subsSet)

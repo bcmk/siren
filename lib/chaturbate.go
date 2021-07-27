@@ -144,7 +144,7 @@ func (c *ChaturbateChecker) checkEndpoint(endpoint string) (onlineModels map[str
 }
 
 // CheckStatusesMany returns Chaturbate online models
-func (c *ChaturbateChecker) CheckStatusesMany([]string, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
+func (c *ChaturbateChecker) CheckStatusesMany(QueryModelList, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	return checkEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 

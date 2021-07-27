@@ -55,11 +55,16 @@ type timeDiff struct {
 }
 
 type notification struct {
+	id       int
 	endpoint string
 	chatID   int64
 	modelID  string
 	status   lib.StatusKind
-	timeDiff *timeDiff
+	timeDiff *int
+	imageURL string
+	social   bool
+	sound    bool
+	priority int
 }
 
 type model struct {
@@ -125,7 +130,8 @@ type worker struct {
 	modelIDPreprocessing     func(string) string
 	checker                  lib.Checker
 	unsuccessfulRequests     []bool
-	successfulRequestsPos    int
+	unsuccessfulRequestsPos  int
+	downloadResults          chan bool
 	downloadErrors           []bool
 	downloadResultsPos       int
 	nextErrorReport          time.Time
@@ -139,6 +145,8 @@ type worker struct {
 	outgoingMsgResults       chan msgSendResult
 	unconfirmedSubsResults   chan lib.StatusResults
 	onlineModelsChan         chan lib.StatusUpdateResults
+	sendingNotifications     chan []notification
+	sentNotifications        chan []notification
 }
 
 type incomingPacket struct {
@@ -235,6 +243,7 @@ func newWorker() *worker {
 		tpl:                    tpl,
 		unsuccessfulRequests:   make([]bool, cfg.errorDenominator),
 		downloadErrors:         make([]bool, cfg.errorDenominator),
+		downloadResults:        make(chan bool),
 		mailTLS:                mailTLS,
 		durations:              map[string]queryDurationsData{},
 		images:                 map[string]string{},
@@ -244,6 +253,8 @@ func newWorker() *worker {
 		outgoingMsgResults:     make(chan msgSendResult),
 		unconfirmedSubsResults: make(chan lib.StatusResults),
 		onlineModelsChan:       make(chan lib.StatusUpdateResults),
+		sendingNotifications:   make(chan []notification, 1000),
+		sentNotifications:      make(chan []notification),
 	}
 
 	if cp := cfg.CoinPayments; cp != nil {
@@ -628,18 +639,18 @@ func (w *worker) updateStatus(insertStatusChangeStmt, updateLastStatusChangeStmt
 func (w *worker) confirmStatus(updateModelStatusStmt *sql.Stmt, now int) []string {
 	all := lib.HashDiffAll(w.ourOnline, w.siteOnline)
 	var confirmations []string
-	for _, c := range all {
-		statusChange := w.siteStatuses[c]
+	for _, modelID := range all {
+		statusChange := w.siteStatuses[modelID]
 		confirmationSeconds := w.confirmationSeconds(statusChange.status)
 		durationConfirmed := confirmationSeconds == 0 || statusChange.timestamp == 0 || (now-statusChange.timestamp >= confirmationSeconds)
 		if durationConfirmed {
 			if statusChange.status == lib.StatusOnline {
-				w.ourOnline[c] = true
+				w.ourOnline[modelID] = true
 			} else {
-				delete(w.ourOnline, c)
+				delete(w.ourOnline, modelID)
 			}
-			w.mustExecPrepared(updateModelStatus, updateModelStatusStmt, c, statusChange.status)
-			confirmations = append(confirmations, c)
+			w.mustExecPrepared(updateModelStatus, updateModelStatusStmt, modelID, statusChange.status)
+			confirmations = append(confirmations, modelID)
 		}
 	}
 	return confirmations
@@ -665,29 +676,16 @@ func (w *worker) usersForModels() (users map[string][]user, endpoints map[string
 	var chatID int64
 	var endpoint string
 	var offlineNotifications bool
+	var showImages bool
 	w.mustQuery(`
-		select signals.model_id, signals.chat_id, signals.endpoint, users.offline_notifications
+		select signals.model_id, signals.chat_id, signals.endpoint, users.offline_notifications, users.show_images
 		from signals
 		join users on users.chat_id=signals.chat_id`,
-		nil,
-		scanTo{&modelID, &chatID, &endpoint, &offlineNotifications},
+		queryParams{},
+		scanTo{&modelID, &chatID, &endpoint, &offlineNotifications, &showImages},
 		func() {
-			users[modelID] = append(users[modelID], user{chatID: chatID, offlineNotifications: offlineNotifications})
+			users[modelID] = append(users[modelID], user{chatID: chatID, offlineNotifications: offlineNotifications, showImages: showImages})
 			endpoints[modelID] = append(endpoints[modelID], endpoint)
-		})
-	return
-}
-
-func (w *worker) chatsForModel(modelID string) (chats []int64, endpoints []string) {
-	var chatID int64
-	var endpoint string
-	w.mustQuery(
-		`select chat_id, endpoint from signals where model_id=? order by chat_id`,
-		queryParams{modelID},
-		scanTo{&chatID, &endpoint},
-		func() {
-			chats = append(chats, chatID)
-			endpoints = append(endpoints, endpoint)
 		})
 	return
 }
@@ -738,38 +736,26 @@ func (w *worker) notifyOfAddResults(queue chan outgoingPacket, notifications []n
 }
 
 func (w *worker) downloadImages(notifications []notification) map[string][]byte {
-	models := map[string]bool{}
-	for _, n := range notifications {
-		models[n.modelID] = true
-	}
 	images := map[string][]byte{}
-	for m := range models {
-		if url := w.images[m]; url != "" {
-			images[m] = w.download(url)
+	for _, n := range notifications {
+		if n.imageURL != "" {
+			images[n.imageURL] = nil
 		}
+	}
+	for url := range images {
+		images[url] = w.downloadImage(url)
 	}
 	return images
 }
 
-func (w *worker) notifyOfStatuses(queue chan outgoingPacket, notifications []notification, social bool) {
+func (w *worker) notifyOfStatuses(highPriorityQueue chan outgoingPacket, lowPriorityQueue chan outgoingPacket, notifications []notification) {
 	images := w.downloadImages(notifications)
-
-	chats := map[int64]bool{}
 	for _, n := range notifications {
-		chats[n.chatID] = true
-	}
-
-	users := map[int64]user{}
-	for c := range chats {
-		users[c] = w.mustUser(c)
-	}
-
-	for _, n := range notifications {
-		var image []byte = nil
-		if users[n.chatID].showImages {
-			image = images[n.modelID]
+		queue := lowPriorityQueue
+		if n.priority > 0 {
+			queue = highPriorityQueue
 		}
-		w.notifyOfStatus(queue, n, image, social)
+		w.notifyOfStatus(queue, n, images[n.imageURL], n.social)
 	}
 }
 
@@ -777,7 +763,12 @@ func (w *worker) notifyOfStatus(queue chan outgoingPacket, n notification, image
 	if w.cfg.Debug {
 		ldbg("notifying of status of the model %s", n.modelID)
 	}
-	data := tplData{"model": n.modelID, "time_diff": n.timeDiff}
+	var timeDiff *timeDiff
+	if n.timeDiff != nil {
+		temp := calcTimeDiff(*n.timeDiff)
+		timeDiff = &temp
+	}
+	data := tplData{"model": n.modelID, "time_diff": timeDiff}
 	switch n.status {
 	case lib.StatusOnline:
 		if image == nil {
@@ -900,11 +891,13 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 		chatID:   chatID,
 		modelID:  modelID,
 		status:   confirmedStatus,
-		timeDiff: w.modelTimeDiff(modelID, now)}}
-	w.notifyOfStatuses(w.highPriorityMsg, nots, false)
+		timeDiff: w.modelDuration(modelID, now),
+		social:   false,
+		priority: 1}}
 	if subscriptionsNumber >= user.maxModels-w.cfg.HeavyUserRemainder {
 		w.subscriptionUsage(endpoint, chatID, true)
 	}
+	w.storeNotifications(nots)
 	return true
 }
 
@@ -1085,10 +1078,10 @@ func (w *worker) buyWith(endpoint string, chatID int64, currency string) {
 }
 
 // calcTimeDiff calculates time difference ignoring summer time and leap seconds
-func calcTimeDiff(t1, t2 time.Time) timeDiff {
+func calcTimeDiff(dur int) timeDiff {
+	d := (time.Duration(dur) * time.Second).Nanoseconds()
 	var diff timeDiff
 	day := int64(time.Hour * 24)
-	d := t2.Sub(t1).Nanoseconds()
 	diff.Days = int(d / day)
 	d -= int64(diff.Days) * day
 	diff.Hours = int(d / int64(time.Hour))
@@ -1125,61 +1118,61 @@ func (w *worker) listModels(endpoint string, chatID int64, now int) {
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].List, tplData{"online": online, "offline": offline, "denied": denied})
 }
 
-func (w *worker) modelTimeDiff(modelID string, now int) *timeDiff {
+func (w *worker) modelDuration(modelID string, now int) *int {
 	begin, end, prevStatus := w.lastSeenInfo(modelID, now)
 	if end != 0 {
-		timeDiff := calcTimeDiff(time.Unix(int64(end), 0), time.Unix(int64(now), 0))
+		timeDiff := now - end
 		return &timeDiff
 	}
 	if begin != 0 && prevStatus != lib.StatusUnknown {
-		timeDiff := calcTimeDiff(time.Unix(int64(begin), 0), time.Unix(int64(now), 0))
+		timeDiff := now - begin
 		return &timeDiff
 	}
 	return nil
 }
 
-func (w *worker) downloadSuccess(success bool) {
-	w.downloadErrors[w.downloadResultsPos] = !success
-	w.downloadResultsPos = (w.downloadResultsPos + 1) % w.cfg.errorDenominator
+func (w *worker) modelTimeDiff(modelID string, now int) *timeDiff {
+	dur := w.modelDuration(modelID, now)
+	if dur != nil {
+		timeDiff := calcTimeDiff(*dur)
+		return &timeDiff
+	}
+	return nil
 }
 
-func (w *worker) download(url string) []byte {
-	resp, err := w.clients[0].Client.Get(url)
+func (w *worker) downloadSuccess(success bool) { w.downloadResults <- success }
+
+func (w *worker) downloadImage(url string) []byte {
+	image, err := w.downloadImageInternal(url)
 	if err != nil {
 		if w.cfg.Debug {
-			ldbg("cannot make image query")
+			ldbg("cannot download image, %v", err)
 		}
-		w.downloadSuccess(false)
-		return nil
+	}
+	w.downloadSuccess(err != nil)
+	return image
+}
+
+func (w *worker) downloadImageInternal(url string) ([]byte, error) {
+	resp, err := w.clients[0].Client.Get(url)
+	if err != nil {
+		return nil, errors.New("cannot make image query")
 	}
 	defer func() { checkErr(resp.Body.Close()) }()
 	if resp.StatusCode != 200 {
-		if w.cfg.Debug {
-			ldbg("cannot download image data")
-		}
-		w.downloadSuccess(false)
-		return nil
+		return nil, errors.New("cannot download image data")
 	}
 	buf := new(bytes.Buffer)
 	_, err = buf.ReadFrom(resp.Body)
 	if err != nil {
-		if w.cfg.Debug {
-			ldbg("cannot read image")
-		}
-		w.downloadSuccess(false)
-		return nil
+		return nil, errors.New("cannot read image")
 	}
 	data := buf.Bytes()
 	_, _, err = image.Decode(bytes.NewReader(data))
 	if err != nil {
-		if w.cfg.Debug {
-			ldbg("cannot decode image")
-		}
-		w.downloadSuccess(false)
-		return nil
+		return nil, errors.New("cannot decode image")
 	}
-	w.downloadSuccess(true)
-	return data
+	return data, nil
 }
 
 func (w *worker) listOnlineModels(endpoint string, chatID int64, now int) {
@@ -1195,22 +1188,24 @@ func (w *worker) listOnlineModels(endpoint string, chatID int64, now int) {
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].TooManySubscriptionsForPics, data)
 		return
 	}
-	for _, s := range online {
-		imageURL := w.images[s.modelID]
-		var image []byte
-		if imageURL != "" {
-			image = w.download(imageURL)
-		}
-		data := tplData{"model": s.modelID, "time_diff": w.modelTimeDiff(s.modelID, now)}
-		if image == nil {
-			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Online, data)
-		} else {
-			w.sendTrImage(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Online, data, image)
-		}
-	}
 	if len(online) == 0 {
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].NoOnlineModels, nil)
+		return
 	}
+	nots := []notification{}
+	for _, s := range online {
+		not := notification{
+			priority: 1,
+			endpoint: endpoint,
+			chatID:   chatID,
+			modelID:  s.modelID,
+			status:   lib.StatusOnline,
+			imageURL: w.images[s.modelID],
+			timeDiff: w.modelDuration(s.modelID, now),
+		}
+		nots = append(nots, not)
+	}
+	w.storeNotifications(nots)
 }
 
 func (w *worker) week(modelID string) ([]bool, time.Time) {
@@ -1960,12 +1955,11 @@ func (w *worker) processStatusUpdates(updates []lib.StatusUpdate, now int) (
 		for i, user := range users {
 			status := w.siteStatuses[c].status
 			if (w.cfg.OfflineNotifications && user.offlineNotifications) || status != lib.StatusOffline {
-				notifications = append(notifications, notification{
-					endpoint: endpoints[i],
-					chatID:   user.chatID,
-					modelID:  c,
-					status:   status,
-				})
+				n := notification{endpoint: endpoints[i], chatID: user.chatID, modelID: c, status: status, social: true, sound: status == lib.StatusOnline}
+				if user.showImages {
+					n.imageURL = w.images[c]
+				}
+				notifications = append(notifications, n)
 			}
 		}
 	}
@@ -2254,8 +2248,8 @@ func (q queryDurationsData) total() float64 {
 
 func (w *worker) logQuerySuccess(success bool, errors int) {
 	for i := 0; i < errors; i++ {
-		w.unsuccessfulRequests[w.successfulRequestsPos] = !success
-		w.successfulRequestsPos = (w.successfulRequestsPos + 1) % w.cfg.errorDenominator
+		w.unsuccessfulRequests[w.unsuccessfulRequestsPos] = !success
+		w.unsuccessfulRequestsPos = (w.unsuccessfulRequestsPos + 1) % w.cfg.errorDenominator
 	}
 }
 
@@ -2304,6 +2298,40 @@ func (w *worker) maintenanceReply(incoming chan incomingPacket, done chan bool) 
 	}
 }
 
+func (w *worker) newNotifications() []notification {
+	var nots []notification
+	var iter notification
+	w.mustQuery(
+		"select id, endpoint, chat_id, model_id, status, time_diff, image_url, social, priority, sound from notification_queue where sending=0 order by id",
+		nil,
+		scanTo{&iter.id, &iter.endpoint, &iter.chatID, &iter.modelID, &iter.status, &iter.timeDiff, &iter.imageURL, &iter.social, &iter.priority, &iter.sound},
+		func() { nots = append(nots, iter) },
+	)
+	w.mustExec("update notification_queue set sending=1 where sending=0")
+	return nots
+}
+
+func (w *worker) sendReadyNotifications() { w.sendingNotifications <- w.newNotifications() }
+
+func (w *worker) storeNotifications(nots []notification) {
+	tx, err := w.db.Begin()
+	checkErr(err)
+	stmt, err := tx.Prepare(storeNotification)
+	checkErr(err)
+	for _, n := range nots {
+		w.mustExecPrepared(storeNotification, stmt, n.endpoint, n.chatID, n.modelID, n.status, n.timeDiff, n.imageURL, n.social, n.priority, n.sound)
+	}
+	checkErr(stmt.Close())
+	checkErr(tx.Commit())
+}
+
+func (w *worker) sendNotificationsDaemon() {
+	for nots := range w.sendingNotifications {
+		w.notifyOfStatuses(w.highPriorityMsg, w.lowPriorityMsg, nots)
+		w.sentNotifications <- nots
+	}
+}
+
 func (w *worker) processSubsConfirmations(res lib.StatusResults) {
 	statusesNumber := 0
 	if res.Data != nil {
@@ -2326,19 +2354,15 @@ func (w *worker) processSubsConfirmations(res lib.StatusResults) {
 				} else {
 					w.denySub(sub)
 				}
-				nots = append(nots, notification{
-					endpoint: sub.endpoint,
-					chatID:   sub.chatID,
-					modelID:  modelID,
-					status:   status,
-				})
+				n := notification{endpoint: sub.endpoint, chatID: sub.chatID, modelID: modelID, status: status, social: false, priority: 1}
+				nots = append(nots, n)
 			}
 		}
 	} else {
 		lerr("confirmations query failed")
 	}
 	w.notifyOfAddResults(w.highPriorityMsg, nots, false)
-	w.notifyOfStatuses(w.highPriorityMsg, nots, false)
+	w.storeNotifications(nots)
 }
 
 func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacket) bool {
@@ -2423,9 +2447,11 @@ func main() {
 	go w.sender(w.highPriorityMsg, 0)
 	go w.sender(w.lowPriorityMsg, 1)
 	go w.maintenanceReply(incoming, databaseDone)
+	go w.sendNotificationsDaemon()
 	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, lib.ParseRaw, "bot started")
 	w.createDatabase(databaseDone)
 	w.initCache()
+	w.mustExec("update notification_queue set sending=0")
 
 	statRequests := make(chan statRequest)
 	w.handleStatEndpoints(statRequests)
@@ -2453,6 +2479,7 @@ func main() {
 	var requestTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
 	var cleaningTimer = time.NewTicker(time.Duration(w.cfg.CleaningPeriodSeconds) * time.Second)
 	var subsConfirmTimer = time.NewTicker(time.Duration(w.cfg.SubsConfirmationPeriodSeconds) * time.Second)
+	var notificationSenderTimer = time.NewTicker(time.Duration(w.cfg.NotificationsReadyPeriodSeconds) * time.Second)
 	w.checker.Init(w.checker, lib.CheckerConfig{
 		UsersOnlineEndpoints: w.cfg.UsersOnlineEndpoint,
 		Clients:              w.clients,
@@ -2478,6 +2505,8 @@ func main() {
 			w.cleaningDuration = w.cleanStatusChanges(time.Now().Unix())
 		case <-subsConfirmTimer.C:
 			w.queryUnconfirmedSubs()
+		case <-notificationSenderTimer.C:
+			w.sendReadyNotifications()
 		case onlineModels := <-w.onlineModelsChan:
 			if onlineModels.Data != nil {
 				w.httpQueriesDuration = onlineModels.Data.Elapsed
@@ -2487,7 +2516,7 @@ func main() {
 				w.updatesDuration = elapsed
 				w.changesInPeriod = changesInPeriod
 				w.confirmedChangesInPeriod = confirmedChangesInPeriod
-				w.notifyOfStatuses(w.lowPriorityMsg, notifications, true)
+				w.storeNotifications(notifications)
 				if w.cfg.Debug {
 					ldbg("status updates processed in %v", elapsed)
 				}
@@ -2529,6 +2558,13 @@ func main() {
 			w.mustExec(query, r.timestamp, r.chatID, r.result, r.endpoint, r.priority, r.delay)
 		case r := <-w.unconfirmedSubsResults:
 			w.processSubsConfirmations(r)
+		case nots := <-w.sentNotifications:
+			for _, n := range nots {
+				w.mustExec("delete from notification_queue where id=?", n.id)
+			}
+		case r := <-w.downloadResults:
+			w.downloadErrors[w.downloadResultsPos] = !r
+			w.downloadResultsPos = (w.downloadResultsPos + 1) % w.cfg.errorDenominator
 		}
 	}
 }

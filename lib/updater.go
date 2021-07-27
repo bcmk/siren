@@ -76,7 +76,7 @@ func selectiveUpdateReqToStatus(r StatusUpdateRequest, callback func(StatusResul
 	}
 }
 
-func statusMapToOnline(ss map[string]StatusKind) map[string]bool {
+func onlyOnline(ss map[string]StatusKind) map[string]bool {
 	boolMap := map[string]bool{}
 	for k, s := range ss {
 		if s == StatusOnline {
@@ -86,7 +86,7 @@ func statusMapToOnline(ss map[string]StatusKind) map[string]bool {
 	return boolMap
 }
 
-func onlineMapToStatus(ss map[string]bool) map[string]StatusKind {
+func onlineStatuses(ss map[string]bool) map[string]StatusKind {
 	boolMap := map[string]StatusKind{}
 	for k, s := range ss {
 		if s {

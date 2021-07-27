@@ -30,7 +30,7 @@ func main() {
 			"client_id":     *clientID,
 			"client_secret": *secret,
 		}})
-	models, images, err := checker.CheckStatusesMany(flag.Args(), lib.CheckStatuses)
+	models, images, err := checker.CheckStatusesMany(lib.NewQueryModelList(flag.Args()), lib.CheckStatuses)
 	if err != nil {
 		fmt.Printf("error occurred: %v", err)
 		return

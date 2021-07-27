@@ -133,7 +133,7 @@ func (c *StripchatChecker) checkEndpoint(endpoint string) (onlineModels map[stri
 }
 
 // CheckStatusesMany returns Stripchat online models
-func (c *StripchatChecker) CheckStatusesMany([]string, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
+func (c *StripchatChecker) CheckStatusesMany(QueryModelList, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	return checkEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 

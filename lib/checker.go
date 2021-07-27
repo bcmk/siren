@@ -42,7 +42,7 @@ type CheckerConfig struct {
 // Checker is the interface for a checker for specific site
 type Checker interface {
 	CheckStatusSingle(modelID string) StatusKind
-	CheckStatusesMany(specific []string, checkMode CheckMode) (statuses map[string]StatusKind, images map[string]string, err error)
+	CheckStatusesMany(specific QueryModelList, checkMode CheckMode) (statuses map[string]StatusKind, images map[string]string, err error)
 	Start()
 	Init(checker Checker, config CheckerConfig)
 	Updater() Updater
@@ -58,8 +58,20 @@ type CheckerCommon struct {
 	statusRequests chan StatusRequest
 }
 
+// QueryModelList represents a model list to query
+type QueryModelList struct {
+	all  bool
+	list []string
+}
+
 // ErrFullQueue emerges whenever we unable to add a request because the queue is full
 var ErrFullQueue = errors.New("queue is full")
+
+// AllModels should be used to query all statuses
+var AllModels = QueryModelList{all: true}
+
+// NewQueryModelList returns a query list for specific models
+func NewQueryModelList(list []string) QueryModelList { return QueryModelList{list: list} }
 
 // Updater returns default updater
 func (c *CheckerCommon) Updater() Updater { return c.updater }
@@ -94,24 +106,24 @@ func (c *CheckerCommon) Init(checker Checker, config CheckerConfig) {
 }
 
 func checkEndpoints(c endpointChecker, endpoints []string, dbg bool) (map[string]StatusKind, map[string]string, error) {
-	allNextOnline := map[string]StatusKind{}
+	allStatuses := map[string]StatusKind{}
 	allImages := map[string]string{}
 	for _, endpoint := range endpoints {
-		nextOnline, images, err := c.checkEndpoint(endpoint)
+		statuses, images, err := c.checkEndpoint(endpoint)
 		if err != nil {
 			return nil, nil, err
 		}
 		if dbg {
-			Ldbg("online models for endpoint: %d", len(nextOnline))
+			Ldbg("got statuses for endpoint: %d", len(statuses))
 		}
-		for m, s := range nextOnline {
-			allNextOnline[m] = s
+		for m, s := range statuses {
+			allStatuses[m] = s
 		}
 		for k, v := range images {
 			allImages[k] = v
 		}
 	}
-	return allNextOnline, allImages, nil
+	return allStatuses, allImages, nil
 }
 
 func (c *CheckerCommon) startFullCheckerDaemon(checker Checker) {
@@ -123,7 +135,7 @@ func (c *CheckerCommon) startFullCheckerDaemon(checker Checker) {
 			images := map[string]string{}
 			var err error
 			if request.Specific == nil {
-				statuses, images, err = checker.CheckStatusesMany(nil, request.CheckMode)
+				statuses, images, err = checker.CheckStatusesMany(AllModels, request.CheckMode)
 				if err != nil {
 					Lerr("%v", err)
 					request.Callback(StatusResults{Errors: 1})
@@ -131,11 +143,11 @@ func (c *CheckerCommon) startFullCheckerDaemon(checker Checker) {
 				}
 			}
 			errors := 0
-			special := request.SpecialModels
+			manual := request.SpecialModels
 			if request.Specific != nil {
-				special = request.Specific
+				manual = request.Specific
 			}
-			for modelID := range special {
+			for modelID := range manual {
 				time.Sleep(time.Duration(c.IntervalMs) * time.Millisecond)
 				status := checker.CheckStatusSingle(modelID)
 				if status == StatusUnknown || status|StatusNotFound != 0 {
@@ -159,10 +171,10 @@ func (c *CheckerCommon) startSelectiveCheckerDaemon(checker Checker) {
 	requests:
 		for request := range c.statusRequests {
 			start := time.Now()
-			statuses := map[string]StatusKind{}
-			images := map[string]string{}
+			var statuses map[string]StatusKind
+			var images map[string]string
 			var err error
-			statuses, images, err = checker.CheckStatusesMany(setToSlice(request.Specific), request.CheckMode)
+			statuses, images, err = checker.CheckStatusesMany(NewQueryModelList(setToSlice(request.Specific)), request.CheckMode)
 			if err != nil {
 				Lerr("%v", err)
 				request.Callback(StatusResults{Errors: 1})

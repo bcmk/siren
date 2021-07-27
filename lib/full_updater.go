@@ -8,7 +8,7 @@ type fullUpdater struct {
 func (f *fullUpdater) QueryUpdates(updateRequest StatusUpdateRequest) error {
 	return f.checker.QueryStatuses(fullUpdateReqToStatus(updateRequest, func(res StatusResults) {
 		if res.Data != nil {
-			stMap := statusMapToOnline(res.Data.Statuses)
+			stMap := onlyOnline(res.Data.Statuses)
 			updateRequest.Callback(StatusUpdateResults{
 				Data: &StatusUpdateResultsData{
 					Updates: getUpdates(f.siteOnlineModels, stMap),

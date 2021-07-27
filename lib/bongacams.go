@@ -86,7 +86,7 @@ func (c *BongaCamsChecker) checkEndpoint(endpoint string) (onlineModels map[stri
 }
 
 // CheckStatusesMany returns BongaCams online models
-func (c *BongaCamsChecker) CheckStatusesMany([]string, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
+func (c *BongaCamsChecker) CheckStatusesMany(QueryModelList, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	return checkEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 
