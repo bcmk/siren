@@ -37,7 +37,6 @@ import (
 )
 
 var (
-	version  = "5.0"
 	checkErr = lib.CheckErr
 	lerr     = lib.Lerr
 	linf     = lib.Linf
