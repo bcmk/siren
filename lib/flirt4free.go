@@ -80,6 +80,8 @@ func flirt4FreeStatus(roomStatus string) StatusKind {
 	switch roomStatus {
 	case "failed":
 		return StatusNotFound
+	case "offline":
+		return StatusOffline
 	case "online":
 		return StatusOnline
 	}
