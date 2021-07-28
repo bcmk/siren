@@ -18,7 +18,7 @@ sites:
     Streamate: <a href="https://t.me/RuStreamateSirenBot">RuStreamateSirenBot</a>
 add_example:
   parse: html
-  str: /add bbwebcam
+  str: /add alica_webcam
 faq_no_notifications:
   parse: html
   str: >
