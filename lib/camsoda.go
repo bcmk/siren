@@ -13,16 +13,6 @@ type CamSodaChecker struct{ CheckerCommon }
 
 var _ Checker = &CamSodaChecker{}
 
-type camSodaUserResponse struct {
-	Status bool
-	Error  string
-	User   struct {
-		Chat struct {
-			Status string
-		}
-	}
-}
-
 type camSodaOnlineResponse struct {
 	Status  bool
 	Error   string
