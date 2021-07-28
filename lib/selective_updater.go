@@ -10,9 +10,9 @@ func (f *selectiveUpdater) QueryUpdates(updateRequest StatusUpdateRequest) error
 	subsSet := subscriptionsSet(updateRequest.Subscriptions)
 	return f.checker.QueryStatuses(selectiveUpdateReqToStatus(updateRequest, func(res StatusResults) {
 		if res.Data != nil {
-			stMap := onlyOnline(res.Data.Statuses)
-			updates := getUpdates(f.siteOnlineModels, stMap)
-			f.siteOnlineModels = stMap
+			online := onlyOnline(res.Data.Statuses)
+			updates := getUpdates(f.siteOnlineModels, online)
+			f.siteOnlineModels = online
 			_, unknowns := HashDiffNewRemoved(f.knowns, subsSet)
 			f.knowns = subsSet
 			for _, u := range unknowns {
@@ -25,7 +25,7 @@ func (f *selectiveUpdater) QueryUpdates(updateRequest StatusUpdateRequest) error
 					Elapsed: res.Data.Elapsed,
 				},
 				Errors: res.Errors})
-			f.siteOnlineModels = stMap
+			f.siteOnlineModels = online
 		} else {
 			updateRequest.Callback(StatusUpdateResults{Errors: res.Errors})
 		}
