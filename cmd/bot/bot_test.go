@@ -11,7 +11,7 @@ import (
 func TestSql(t *testing.T) {
 	linf = func(string, ...interface{}) {}
 	w := newTestWorker()
-	w.createDatabase(make(chan bool, 1))
+	w.createDatabase()
 	w.initCache()
 	w.mustExec("insert into signals (endpoint, chat_id, model_id) values (?,?,?)", "ep1", 1, "a")
 	w.mustExec("insert into signals (endpoint, chat_id, model_id) values (?,?,?)", "ep1", 2, "b")
@@ -107,7 +107,7 @@ func TestSql(t *testing.T) {
 
 func TestUpdateStatus(t *testing.T) {
 	w := newTestWorker()
-	w.createDatabase(make(chan bool, 1))
+	w.createDatabase()
 	w.initCache()
 	checkInv(&w.worker, t)
 	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 18); n == 0 {
@@ -297,7 +297,7 @@ func TestCleanStatuses(t *testing.T) {
 	const day = 60 * 60 * 24
 	w := newTestWorker()
 	w.cfg.StatusConfirmationSeconds.Offline = day + 2
-	w.createDatabase(make(chan bool, 1))
+	w.createDatabase()
 	w.initCache()
 	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 18)
 	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}, {ModelID: "b", Status: lib.StatusOnline}}, 53)
@@ -387,7 +387,7 @@ func TestNotificationsStorage(t *testing.T) {
 		},
 	}
 	w := newTestWorker()
-	w.createDatabase(make(chan bool, 1))
+	w.createDatabase()
 	w.storeNotifications(nots)
 	newNots := w.newNotifications()
 	nots[0].id = 1
