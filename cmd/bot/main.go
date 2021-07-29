@@ -2285,7 +2285,7 @@ func (w *worker) maintenanceStartupReply(incoming chan incomingPacket, done chan
 		select {
 		case u := <-incoming:
 			command, args := getCommandAndArgs(&u.message)
-			if command != "" {
+			if u.message.Message != nil && u.message.Message.Chat != nil && command != "" {
 				waitingUsers[waitingUser{chatID: u.message.Message.Chat.ID, endpoint: u.endpoint}] = true
 				w.sendTr(w.highPriorityMsg, u.endpoint, u.message.Message.Chat.ID, false, w.tr[u.endpoint].Maintenance, nil)
 				linf("ignoring command %s %s", command, args)
