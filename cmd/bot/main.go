@@ -548,13 +548,14 @@ func (w *worker) sendTrImage(
 	w.sendImage(queue, endpoint, chatID, notify, translation.Parse, text, image)
 }
 
-func (w *worker) createDatabase() {
+func (w *worker) createDatabase(done chan bool) {
 	linf("creating database if needed...")
 	for _, prelude := range w.cfg.SQLPrelude {
 		w.mustExec(prelude)
 	}
 	w.mustExec(`create table if not exists schema_version (version integer);`)
 	w.applyMigrations()
+	done <- true
 }
 
 func (w *worker) initCache() {
@@ -2439,13 +2440,15 @@ func main() {
 	w.setWebhook()
 	w.setCommands()
 	w.initBotNames()
+	databaseDone := make(chan bool)
 	w.serveEndpoints()
 	incoming := w.incoming()
 	go w.sender(w.highPriorityMsg, 0)
 	go w.sender(w.lowPriorityMsg, 1)
+	go w.maintenanceReply(incoming, databaseDone)
 	go w.sendNotificationsDaemon()
 	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, lib.ParseRaw, "bot started")
-	w.createDatabase()
+	w.createDatabase(databaseDone)
 	w.initCache()
 	w.mustExec("update notification_queue set sending=0")
 
