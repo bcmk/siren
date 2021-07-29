@@ -97,8 +97,8 @@ func thumbnail(s string) string {
 }
 
 func (c *TwitchChecker) checkOnlineMany(client *helix.Client, channels []string) (online map[string]StatusKind, images map[string]string, err error) {
-	online := map[string]StatusKind{}
-	images := map[string]string{}
+	online = map[string]StatusKind{}
+	images = map[string]string{}
 	for _, chunk := range chunks(channels, 100) {
 		streamsResponse, err := client.GetStreams(&helix.StreamsParams{
 			First:      100,
