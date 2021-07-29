@@ -96,8 +96,6 @@ type Translations struct {
 	Settings                    *Translation `yaml:"settings"`
 	OK                          *Translation `yaml:"ok"`
 	TooManySubscriptionsForPics *Translation `yaml:"too_many_subscriptions_for_pics"`
-	Twitter                     *Translation `yaml:"twitter"`
-	TelegramChannel             *Translation `yaml:"telegram_channel"`
 	Maintenance                 *Translation `yaml:"maintenance"`
 	WeAreUp                     *Translation `yaml:"we_are_up"`
 }
@@ -119,13 +117,38 @@ func LoadEndpointTranslations(files []string) (*Translations, AllTranslations) {
 }
 
 // LoadAllTranslations loads all translations
-func LoadAllTranslations(files map[string][]string) (trans map[string]*Translations, tpl map[string]*template.Template) {
-	trans = make(map[string]*Translations)
+func LoadAllTranslations(files map[string][]string) (trMap map[string]*Translations, tpl map[string]*template.Template) {
+	trMap = make(map[string]*Translations)
 	tpl = make(map[string]*template.Template)
-	for e, x := range files {
+	for endpoint, x := range files {
 		tr, allTr := LoadEndpointTranslations(x)
-		trans[e] = tr
-		tpl[e] = setupTemplates(allTr)
+		trMap[endpoint] = tr
+		tpl[endpoint] = setupTemplates(allTr)
+	}
+	return
+}
+
+// LoadAds loads ads for a specific endpoint
+func LoadAds(files []string) AllTranslations {
+	allTr := AllTranslations{}
+	for _, t := range files {
+		parsed := loadTranslations(t)
+		for k, v := range parsed {
+			v.Key = k
+			allTr[k] = v
+		}
+	}
+	return allTr
+}
+
+// LoadAllAds loads all ads
+func LoadAllAds(files map[string][]string) (trMap map[string]map[string]*Translation, tpl map[string]*template.Template) {
+	trMap = make(map[string]map[string]*Translation)
+	tpl = make(map[string]*template.Template)
+	for endpoint, x := range files {
+		allTr := LoadAds(x)
+		trMap[endpoint] = allTr
+		tpl[endpoint] = setupTemplates(allTr)
 	}
 	return
 }

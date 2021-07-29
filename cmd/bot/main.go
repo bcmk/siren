@@ -126,6 +126,8 @@ type worker struct {
 	siteOnline               map[string]bool
 	tr                       map[string]*lib.Translations
 	tpl                      map[string]*template.Template
+	trAds                    map[string]map[string]*lib.Translation
+	tplAds                   map[string]*template.Template
 	modelIDPreprocessing     func(string) string
 	checker                  lib.Checker
 	unsuccessfulRequests     []bool
@@ -230,6 +232,7 @@ func newWorker() *worker {
 	db, err := sql.Open("sqlite3", cfg.DBPath)
 	checkErr(err)
 	tr, tpl := lib.LoadAllTranslations(trsByEndpoint(cfg))
+	trAds, tplAds := lib.LoadAllAds(trsAdsByEndpoint(cfg))
 	for _, t := range tpl {
 		template.Must(t.New("affiliate_link").Parse(cfg.AffiliateLink))
 	}
@@ -240,6 +243,8 @@ func newWorker() *worker {
 		clients:                clients,
 		tr:                     tr,
 		tpl:                    tpl,
+		trAds:                  trAds,
+		tplAds:                 tplAds,
 		unsuccessfulRequests:   make([]bool, cfg.errorDenominator),
 		downloadErrors:         make([]bool, cfg.errorDenominator),
 		downloadResults:        make(chan bool),
@@ -299,6 +304,14 @@ func trsByEndpoint(cfg *config) map[string][]string {
 	result := make(map[string][]string)
 	for k, v := range cfg.Endpoints {
 		result[k] = v.Translation
+	}
+	return result
+}
+
+func trsAdsByEndpoint(cfg *config) map[string][]string {
+	result := map[string][]string{}
+	for k, v := range cfg.Endpoints {
+		result[k] = v.Ads
 	}
 	return result
 }
@@ -534,6 +547,19 @@ func (w *worker) sendTr(
 	w.sendText(queue, endpoint, chatID, notify, translation.DisablePreview, translation.Parse, text)
 }
 
+func (w *worker) sendAdsTr(
+	queue chan outgoingPacket,
+	endpoint string,
+	chatID int64,
+	notify bool,
+	translation *lib.Translation,
+	data map[string]interface{},
+) {
+	tpl := w.tplAds[endpoint]
+	text := templateToString(tpl, translation.Key, data)
+	w.sendText(queue, endpoint, chatID, notify, translation.DisablePreview, translation.Parse, text)
+}
+
 func (w *worker) sendTrImage(
 	queue chan outgoingPacket,
 	endpoint string,
@@ -758,6 +784,24 @@ func (w *worker) notifyOfStatuses(highPriorityQueue chan outgoingPacket, lowPrio
 	}
 }
 
+func (w *worker) trAdsSlice(endpoint string) []*lib.Translation {
+	var res []*lib.Translation
+	for _, v := range w.trAds[endpoint] {
+		res = append(res, v)
+	}
+	sort.Slice(res, func(i, j int) bool { return res[i].Key < res[j].Key })
+	return res
+}
+
+func (w *worker) ad(queue chan outgoingPacket, endpoint string, chatID int64) {
+	trAds := w.trAdsSlice(endpoint)
+	if len(trAds) == 0 {
+		return
+	}
+	adNum := rand.Intn(len(trAds))
+	w.sendAdsTr(queue, endpoint, chatID, false, trAds[adNum], nil)
+}
+
 func (w *worker) notifyOfStatus(queue chan outgoingPacket, n notification, image []byte, social bool) {
 	if w.cfg.Debug {
 		ldbg("notifying of status of the model %s", n.modelID)
@@ -781,12 +825,7 @@ func (w *worker) notifyOfStatus(queue chan outgoingPacket, n notification, image
 		w.sendTr(queue, n.endpoint, n.chatID, false, w.tr[n.endpoint].Denied, data)
 	}
 	if social && rand.Intn(10) == 0 {
-		switch rand.Intn(2) {
-		case 0:
-			w.sendTr(queue, n.endpoint, n.chatID, false, w.tr[n.endpoint].Twitter, nil)
-		case 1:
-			w.sendTr(queue, n.endpoint, n.chatID, false, w.tr[n.endpoint].TelegramChannel, nil)
-		}
+		w.ad(queue, n.endpoint, n.chatID)
 	}
 	w.mustExec("update users set reports=reports+1 where chat_id=?", n.chatID)
 }
@@ -1523,6 +1562,9 @@ func (w *worker) logConfig() {
 	cfgString, err := json.MarshalIndent(w.cfg, "", "    ")
 	checkErr(err)
 	linf("config: " + string(cfgString))
+	for k, v := range w.trAds {
+		linf("ads for %s: %d", k, len(v))
+	}
 }
 
 func (w *worker) myEmail(endpoint string) {
@@ -1786,6 +1828,8 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		w.listOnlineModels(endpoint, chatID, now)
 	case "start", "help":
 		w.start(endpoint, chatID, arguments, now)
+	case "ad":
+		w.ad(w.highPriorityMsg, endpoint, chatID)
 	case "faq":
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].FAQ, tplData{
 			"dollars":                 w.cfg.CoinPayments.subscriptionPacketPrice,

@@ -18,7 +18,8 @@ type endpoint struct {
 	WebhookDomain   string   `json:"webhook_domain"`   // the domain listening to the webhook
 	CertificatePath string   `json:"certificate_path"` // a path to your certificate, it is used to setup a webhook and to setup this HTTP server
 	BotToken        string   `json:"bot_token"`        // your Telegram bot token
-	Translation     []string `json:"translation"`      // translation strings
+	Translation     []string `json:"translation"`      // translation files
+	Ads             []string `json:"ads"`              // ads files
 }
 
 type coinPaymentsConfig struct {

@@ -364,10 +364,6 @@ faq_pricing:
     Если вы хотите подписаться на более чем {{ .max_models }} моделей, вам нужно либо заплатить {{ .dollars }}$ за дополнительные {{ .number_of_subscriptions }} моделей, либо вы можете зарабатывать подписки, делясь реферальными ссылками.
 too_many_subscriptions_for_pics:
   str: Эта команда поддерживает до {{ .max_subs }} подписок в групповом чате
-twitter:
-  str: Не забывайте подписываться на наш Twitter https://twitter.com/siren_tlg
-telegram_channel:
-  str: Не забывайте подписываться на наш канал в Telegram https://t.me/siren_telegram_bot
 maintenance:
   str: Извините, сейчас у нас запланированное техническое обслуживание
 we_are_up:

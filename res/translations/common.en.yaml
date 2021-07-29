@@ -364,10 +364,6 @@ faq_pricing:
     If you need to subscribe to more than {{ .max_models }} models you either pay {{ .dollars }}$ for additional {{ .number_of_subscriptions }} models or you may earn subscriptions by sharing.
 too_many_subscriptions_for_pics:
   str: This command supports up to {{ .max_subs }} subscriptions in a group chat
-twitter:
-  str: Do not forget to subscribe to our Twitter https://twitter.com/siren_tlg
-telegram_channel:
-  str: Do not forget to subscribe to our Telegram channel https://t.me/siren_telegram_bot
 maintenance:
   str: Sorry, we're down for scheduled maintenance right now
 we_are_up:
