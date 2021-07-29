@@ -2,7 +2,7 @@ __[Русский](README-ru.md)__
 
 <img src="docs/icons/siren-dia.svg" height="23">&ensp;SIREN
 ===========================================================
-Telegram bot for adult webcasts alerts
+Telegram bot for webcasts alerts
 
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
 [![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)
