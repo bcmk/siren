@@ -1975,6 +1975,9 @@ func (w *worker) processStatusUpdates(updates []lib.StatusUpdate, now int) (
 }
 
 func getCommandAndArgs(u *tg.Update) (string, string) {
+	if u.Message == nil {
+		return "", ""
+	}
 	if u.Message.IsCommand() {
 		return u.Message.Command(), strings.TrimSpace(u.Message.CommandArguments())
 	}
@@ -2276,7 +2279,7 @@ func (w *worker) vacuum() time.Duration {
 	return time.Since(start)
 }
 
-func (w *worker) maintenanceReply(incoming chan incomingPacket, done chan bool) {
+func (w *worker) maintenanceStartupReply(incoming chan incomingPacket, done chan bool) {
 	waitingUsers := map[waitingUser]bool{}
 	for {
 		select {
@@ -2445,7 +2448,7 @@ func main() {
 	incoming := w.incoming()
 	go w.sender(w.highPriorityMsg, 0)
 	go w.sender(w.lowPriorityMsg, 1)
-	go w.maintenanceReply(incoming, databaseDone)
+	go w.maintenanceStartupReply(incoming, databaseDone)
 	go w.sendNotificationsDaemon()
 	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, lib.ParseRaw, "bot started")
 	w.createDatabase(databaseDone)
