@@ -2,12 +2,12 @@ __[English](README.md)__
 
 <img src="docs/icons/siren-dia.svg" height="23">&ensp;SIREN
 ======================================================================
-Telegram-бот для оповещений о вебкам-шоу
+Telegram-бот для оповещений о вебкастах
 
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
 [![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)
 
-Это бот в Telegram для оповещений о вебкам-шоу.
+Это бот в Telegram для оповещений о вебкастах.
 Вы подписываетесь на любимых моделей командой __/add__.
 Мы оповестим вас, когда они начнут трансляцию.
 Опрос статуса моделей происходит раз в минуту.
