@@ -7,6 +7,7 @@ import (
 )
 
 var testConfig = config{
+	CheckGID:  true,
 	MaxModels: 3,
 	AdminID:   1,
 	StatusConfirmationSeconds: statusConfirmationSeconds{
@@ -55,6 +56,7 @@ func newTestWorker() *testWorker {
 			durations:       map[string]queryDurationsData{},
 			lowPriorityMsg:  make(chan outgoingPacket, 10000),
 			highPriorityMsg: make(chan outgoingPacket, 10000),
+			mainGID:         gid(),
 		},
 	}
 	return w

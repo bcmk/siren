@@ -148,6 +148,7 @@ type worker struct {
 	onlineModelsChan         chan lib.StatusUpdateResults
 	sendingNotifications     chan []notification
 	sentNotifications        chan []notification
+	mainGID                  int
 }
 
 type incomingPacket struct {
@@ -259,6 +260,7 @@ func newWorker() *worker {
 		onlineModelsChan:       make(chan lib.StatusUpdateResults),
 		sendingNotifications:   make(chan []notification, 1000),
 		sentNotifications:      make(chan []notification),
+		mainGID:                gid(),
 	}
 
 	if cp := cfg.CoinPayments; cp != nil {
@@ -827,7 +829,6 @@ func (w *worker) notifyOfStatus(queue chan outgoingPacket, n notification, image
 	if social && rand.Intn(10) == 0 {
 		w.ad(queue, n.endpoint, n.chatID)
 	}
-	w.mustExec("update users set reports=reports+1 where chat_id=?", n.chatID)
 }
 
 func (w *worker) subscriptionExists(endpoint string, chatID int64, modelID string) bool {
@@ -2607,6 +2608,7 @@ func main() {
 		case nots := <-w.sentNotifications:
 			for _, n := range nots {
 				w.mustExec("delete from notification_queue where id=?", n.id)
+				w.mustExec("update users set reports=reports+1 where chat_id=?", n.chatID)
 			}
 		case r := <-w.downloadResults:
 			w.downloadErrors[w.downloadResultsPos] = !r

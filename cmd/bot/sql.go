@@ -2,6 +2,10 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
+	"runtime"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -21,8 +25,30 @@ var storeNotification = `
 	insert into notification_queue (endpoint, chat_id, model_id, status, time_diff, image_url, social, priority, sound)
 	values (?,?,?,?,?,?,?,?,?)`
 
+func gid() int {
+	var buf [64]byte
+	n := runtime.Stack(buf[:], false)
+	idField := strings.Fields(strings.TrimPrefix(string(buf[:n]), "goroutine "))[0]
+	id, err := strconv.Atoi(idField)
+	if err != nil {
+		checkErr(fmt.Errorf("cannot get goroutine id: %v", err))
+	}
+	return id
+}
+
+func (w *worker) checkTID() {
+	if !w.cfg.CheckGID {
+		return
+	}
+	current := gid()
+	if w.mainGID != current {
+		checkErr(fmt.Errorf("database queries should be run from single thread, expected: %d, actual: %d", w.mainGID, current))
+	}
+}
+
 func (w *worker) measure(query string) func() {
 	now := time.Now()
+	w.checkTID()
 	return func() {
 		elapsed := time.Since(now).Seconds()
 		data := w.durations[query]
@@ -42,6 +68,7 @@ func (w *worker) mustExec(query string, args ...interface{}) {
 }
 
 func (w *worker) mustExecPrepared(query string, stmt *sql.Stmt, args ...interface{}) {
+	w.checkTID()
 	_, err := stmt.Exec(args...)
 	checkErr(err)
 }

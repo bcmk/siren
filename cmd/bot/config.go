@@ -49,6 +49,8 @@ type statusConfirmationSeconds struct {
 }
 
 type config struct {
+	Debug                           bool                      `json:"debug"`                              // debug mode
+	CheckGID                        bool                      `json:"check_gid"`                          // check goroutines ids
 	ListenAddress                   string                    `json:"listen_address"`                     // the address to listen to
 	Website                         string                    `json:"website"`                            // one of the following strings: "bongacams", "stripchat", "chaturbate", "livejasmin", "flirt4free", "streamate"
 	WebsiteLink                     string                    `json:"website_link"`                       // affiliate link to website
@@ -60,7 +62,6 @@ type config struct {
 	AdminEndpoint                   string                    `json:"admin_endpoint"`                     // admin endpoint
 	DBPath                          string                    `json:"db_path"`                            // path to the database
 	BlockThreshold                  int                       `json:"block_threshold"`                    // do not send a message to the user after being blocked by him this number of times
-	Debug                           bool                      `json:"debug"`                              // debug mode
 	IntervalMs                      int                       `json:"interval_ms"`                        // queries interval per IP address for rate limited access
 	SourceIPAddresses               []string                  `json:"source_ip_addresses"`                // source IP addresses for rate limited access
 	DangerousErrorRate              string                    `json:"dangerous_error_rate"`               // dangerous error rate, warn admin if it is reached, format "1000/10000"
