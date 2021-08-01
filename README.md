@@ -7,10 +7,10 @@ Telegram bot for webcasts alerts
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
 [![GoReportCard](https://goreportcard.com/badge/bcmk/siren)](https://goreportcard.com/report/bcmk/siren)
 
-This is the Telegram bot notifying you whenever cam models are online.
-You subscribe to your favorite webcam models with __/add__ command.
+This is the Telegram bot notifying you whenever webcasts are online.
+You subscribe to your favorite streamers with __/add__ command.
 We notify you whenever they start broadcasting.
-The bot queries models statuses every minute.
+The bot queries channels statuses every minute.
 
 Installation
 ------------
@@ -28,28 +28,30 @@ Installation
 Commands
 --------
 
-* __add__ _MODEL_ID_ — Add model
-* __remove__ _MODEL_ID_ — Remove model
-* __remove_all__ — Remove all models
-* __list__ — Your model subscriptions
-* __pics__ — Pictures of your models online
-* __week__ _MODEL_ID_ — Working hours in the previous 7 days
+* __add__ _CHANNEL_ — Subscribe to a channel
+* __remove__ _CHANNEL_ — Remove a channel
+* __remove_all__ — Remove all subscriptions
+* __list__ — List your subscriptions
+* __pics__ — Pictures of your online subscriptions
+* __week__ _CHANNEL_ — Online hours in the previous 7 days
 * __help__ — Help
 * __settings__ — Show settings
 * __feedback__ _YOUR_MESSAGE_ — Send feedback
 
-Substitute ___MODEL_ID___ with the actual model ID.
+Substitute ___CHANNEL___ with the actual channel or model ID.
 It is the same as __model name__ in Chaturbate and Stripchat.
 For BongaCams you can find a model ID in the address line of your browser.
 
-For models
-----------
+For streamers
+-------------
 
 Add a link to your profile page and share it on Twitter, Instagram or other social media.
 Telegram users clicking it follow you in our bot.
 From that moment they receive a notification whenever you start broadcasting.
 Use following links:
 
+* Twitch:  
+  <pre>https://siren.chat/tw/<b><i>YOUR_CHANNEL</i></b></pre>
 * Chaturbate:  
   <pre>https://siren.chat/cb/<b><i>YOUR_USERNAME</i></b></pre>
 * Stripchat and xHamster Live:  
