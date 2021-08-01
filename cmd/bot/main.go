@@ -1473,16 +1473,39 @@ func (w *worker) stat(endpoint string) {
 	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, true, true, lib.ParseRaw, strings.Join(w.statStrings(endpoint), "\n"))
 }
 
-func (w *worker) performanceStat(endpoint string) {
+func (w *worker) performanceStat(endpoint string, arguments string) {
+	parts := strings.Split(arguments, " ")
+	if len(parts) > 2 {
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "wrong number of arguments")
+		return
+	}
+	n := int64(10)
+	if len(parts) == 2 {
+		var err error
+		n, err = strconv.ParseInt(parts[1], 10, 32)
+		if err != nil {
+			w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "cannot parse arguments")
+			return
+		}
+	}
 	durations := w.durations
 	var queries []string
 	for x := range durations {
 		queries = append(queries, x)
 	}
-	sort.SliceStable(queries, func(i, j int) bool {
-		return durations[queries[i]].total() > durations[queries[j]].total()
-	})
+	if len(parts) >= 1 && parts[0] == "avg" {
+		sort.SliceStable(queries, func(i, j int) bool {
+			return durations[queries[i]].avg > durations[queries[j]].avg
+		})
+	} else {
+		sort.SliceStable(queries, func(i, j int) bool {
+			return durations[queries[i]].total() > durations[queries[j]].total()
+		})
+	}
 	for _, x := range queries {
+		if n == 0 {
+			return
+		}
 		lines := []string{
 			fmt.Sprintf("<b>Desc</b>: %s", html.EscapeString(x)),
 			fmt.Sprintf("<b>Total</b>: %d", int(durations[x].avg*float64(durations[x].count)*1000.)),
@@ -1491,6 +1514,7 @@ func (w *worker) performanceStat(endpoint string) {
 		}
 		entry := strings.Join(lines, "\n")
 		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseHTML, entry)
+		n--
 	}
 }
 
@@ -1589,7 +1613,7 @@ func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arg
 		w.stat(endpoint)
 		return true, false
 	case "performance":
-		w.performanceStat(endpoint)
+		w.performanceStat(endpoint, arguments)
 		return true, false
 	case "email":
 		w.myEmail(endpoint)
