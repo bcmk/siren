@@ -419,6 +419,18 @@ func TestNotificationsStorage(t *testing.T) {
 	}
 }
 
+func TestModels(t *testing.T) {
+	w := newTestWorker()
+	w.createDatabase(make(chan bool, 1))
+	w.mustExec("insert into models (model_id, status) values (?,?)", "a", lib.StatusUnknown)
+	if w.maybeModel("a") == nil {
+		t.Error("unexpected result")
+	}
+	if w.maybeModel("b") != nil {
+		t.Error("unexpected result")
+	}
+}
+
 func checkInv(w *worker, t *testing.T) {
 	a := map[string]statusChange{}
 	b := map[string]statusChange{}

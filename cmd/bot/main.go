@@ -889,6 +889,14 @@ func (w *worker) showWeekForModel(endpoint string, chatID int64, modelID string)
 	})
 }
 
+func (w *worker) maybeModel(modelID string) *model {
+	var result model
+	if w.maybeRecord("select model_id, status from models where model_id=?", queryParams{modelID}, scanTo{&result.modelID, &result.status}) {
+		return &result
+	}
+	return nil
+}
+
 func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int) bool {
 	if modelID == "" {
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].SyntaxAdd, nil)
@@ -915,6 +923,8 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 	if w.ourOnline[modelID] {
 		confirmedStatus = lib.StatusOnline
 	} else if _, ok := w.siteStatuses[modelID]; ok {
+		confirmedStatus = lib.StatusOffline
+	} else if w.maybeModel(modelID) != nil {
 		confirmedStatus = lib.StatusOffline
 	} else {
 		w.mustExec("insert into signals (chat_id, model_id, endpoint, confirmed) values (?,?,?,?)", chatID, modelID, endpoint, false)
