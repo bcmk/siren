@@ -5,7 +5,7 @@ __[Русский](README-ru.md)__
 Telegram bot for webcasts alerts
 
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
-[![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)
+[![GoReportCard](https://goreportcard.com/badge/bcmk/siren)](https://goreportcard.com/report/bcmk/siren)
 
 This is the Telegram bot notifying you whenever cam models are online.
 You subscribe to your favorite webcam models with __/add__ command.
