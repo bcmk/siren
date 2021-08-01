@@ -15,6 +15,7 @@ Telegram-бот для оповещений о вебкастах
 Установка
 ---------
 
+* Twitch: [t.me/TwitchSirenBot](https://t.me/TwitchSirenBot)
 * BongaCams: [t.me/BongacamsSirenBot](https://t.me/BongacamsSirenBot)
 * Chaturbate: [t.me/ChaturbateSirenBot](https://t.me/ChaturbateSirenBot)
 * Stripchat и xHamster Live: [t.me/StripchatSirenBot](https://t.me/StripchatSirenBot)
