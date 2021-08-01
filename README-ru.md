@@ -5,7 +5,7 @@ __[English](README.md)__
 Telegram-бот для оповещений о вебкастах
 
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
-[![GoReportCard](http://goreportcard.com/badge/bcmk/siren)](http://goreportcard.com/report/bcmk/siren)
+[![GoReportCard](https://goreportcard.com/badge/bcmk/siren)](https://goreportcard.com/report/bcmk/siren)
 
 Это бот в Telegram для оповещений о вебкастах.
 Вы подписываетесь на любимых стримеров командой __/add__.
