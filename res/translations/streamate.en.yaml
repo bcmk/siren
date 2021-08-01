@@ -41,6 +41,7 @@ sites:
     LiveJasmin: <a href="https://t.me/LiveJasminSirenBot">LiveJasminSirenBot</a>
     CamSoda: <a href="https://t.me/CamSodaSirenBot">CamSodaSirenBot</a>
     Flirt4Free: <a href="https://t.me/Flirt4FreeSirenBot">Flirt4FreeSirenBot</a>
+    Twitch: <a href="https://t.me/TwitchSirenBot">TwitchSirenBot</a>
 add_example:
   parse: html
   str: /add melinarose91
