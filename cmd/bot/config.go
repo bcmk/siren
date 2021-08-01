@@ -170,7 +170,7 @@ func checkConfig(cfg *config) error {
 			return errors.New("configure specific_config/ps_id")
 		}
 		if cfg.SpecificConfig["access_key"] == "" {
-			return errors.New("configure specific_config/website")
+			return errors.New("configure specific_config/access_key")
 		}
 	}
 	if cfg.StatPassword == "" {
