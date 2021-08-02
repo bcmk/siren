@@ -1,6 +1,6 @@
 package lib
 
-// HashDiffAll returns symmetric differenct between before and after
+// HashDiffAll returns symmetric difference between before and after
 func HashDiffAll(before, after map[string]bool) []string {
 	var changes []string
 	for k := range after {

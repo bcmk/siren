@@ -36,11 +36,11 @@ type StatusUpdateResults struct {
 
 func getUpdates(prev, next map[string]bool) []StatusUpdate {
 	var result []StatusUpdate
-	new, removed := HashDiffNewRemoved(prev, next)
+	newElems, removed := HashDiffNewRemoved(prev, next)
 	for _, i := range removed {
 		result = append(result, StatusUpdate{ModelID: i, Status: StatusOffline})
 	}
-	for _, i := range new {
+	for _, i := range newElems {
 		result = append(result, StatusUpdate{ModelID: i, Status: StatusOnline})
 	}
 	return result

@@ -15,7 +15,7 @@ type ChaturbateChecker struct{ CheckerCommon }
 
 var _ Checker = &ChaturbateChecker{}
 
-var chaturbateModelRegex = regexp.MustCompile(`^(?:http(?:s)?://)?(?:[A-Za-z]+\.)?chaturbate\.com(?:/p|/b)?/([A-Za-z0-9\-_@]+)(?:/)?(?:\?.*)?$`)
+var chaturbateModelRegex = regexp.MustCompile(`^(?:https?://)?(?:[A-Za-z]+\.)?chaturbate\.com(?:/p|/b)?/([A-Za-z0-9\-_@]+)/?(?:\?.*)?$`)
 
 // ChaturbateCanonicalModelID preprocesses model ID string to canonical for Chaturbate form
 func ChaturbateCanonicalModelID(name string) string {

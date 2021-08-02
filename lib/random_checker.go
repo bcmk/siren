@@ -38,6 +38,7 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 }
 
+//goland:noinspection SpellCheckingInspection
 var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 func randString(n int) string {

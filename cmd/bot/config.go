@@ -16,7 +16,7 @@ type endpoint struct {
 	ListenPath      string   `json:"listen_path"`      // the path excluding domain to listen to, the good choice is "/your-telegram-bot-token"
 	StatPath        string   `json:"stat_path"`        // the path for statistics
 	WebhookDomain   string   `json:"webhook_domain"`   // the domain listening to the webhook
-	CertificatePath string   `json:"certificate_path"` // a path to your certificate, it is used to setup a webhook and to setup this HTTP server
+	CertificatePath string   `json:"certificate_path"` // a path to your certificate, it is used to set up a webhook and to set up this HTTP server
 	BotToken        string   `json:"bot_token"`        // your Telegram bot token
 	Translation     []string `json:"translation"`      // translation files
 	Ads             []string `json:"ads"`              // ads files
@@ -70,7 +70,7 @@ type config struct {
 	StatPassword                    string                    `json:"stat_password"`                      // password for statistics
 	ErrorReportingPeriodMinutes     int                       `json:"error_reporting_period_minutes"`     // the period of the error reports
 	Endpoints                       map[string]endpoint       `json:"endpoints"`                          // the endpoints by simple name, used for the support of the bots in different languages accessing the same database
-	HeavyUserRemainder              int                       `json:"heavy_user_remainder"`               // the maximum remainder of models to treat an user as heavy
+	HeavyUserRemainder              int                       `json:"heavy_user_remainder"`               // the maximum remainder of models to treat a user as heavy
 	CoinPayments                    *coinPaymentsConfig       `json:"coin_payments"`                      // CoinPayments integration
 	Mail                            *mailConfig               `json:"mail"`                               // mail config
 	ReferralBonus                   int                       `json:"referral_bonus"`                     // number of emails for a referrer

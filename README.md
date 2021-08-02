@@ -79,7 +79,7 @@ Write to siren.chat@gmail.com in case of any questions.
 Running your own bot
 --------------------
 
-Create and setup your bot using [@BotFather](https://telegram.me/BotFather) bot.
+Create and set up your bot using [@BotFather](https://telegram.me/BotFather) bot.
 
 You need an SSL certificate and a key for your bot.
 You can obtain a certificate in Let's Encrypt or other certificate authority.

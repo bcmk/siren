@@ -1194,14 +1194,14 @@ func (w *worker) modelTimeDiff(modelID string, now int) *timeDiff {
 func (w *worker) downloadSuccess(success bool) { w.downloadResults <- success }
 
 func (w *worker) downloadImage(url string) []byte {
-	image, err := w.downloadImageInternal(url)
+	imageBytes, err := w.downloadImageInternal(url)
 	if err != nil {
 		if w.cfg.Debug {
 			ldbg("cannot download image, %v", err)
 		}
 	}
 	w.downloadSuccess(err != nil)
-	return image
+	return imageBytes
 }
 
 func (w *worker) downloadImageInternal(url string) ([]byte, error) {
@@ -1243,7 +1243,7 @@ func (w *worker) listOnlineModels(endpoint string, chatID int64, now int) {
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].NoOnlineModels, nil)
 		return
 	}
-	nots := []notification{}
+	var nots []notification
 	for _, s := range online {
 		not := notification{
 			priority: 1,

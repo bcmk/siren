@@ -111,7 +111,7 @@ func LoadEndpointTranslations(files []string) (*Translations, AllTranslations) {
 			allTr[k] = v
 		}
 	}
-	copy(allTr, tr)
+	copyTranslations(allTr, tr)
 	CheckErr(noNils(tr))
 	return tr, allTr
 }
@@ -164,7 +164,7 @@ func setupTemplates(trs AllTranslations) *template.Template {
 	return tpl
 }
 
-func copy(from AllTranslations, to *Translations) {
+func copyTranslations(from AllTranslations, to *Translations) {
 	value := reflect.ValueOf(to).Elem()
 	toType := reflect.TypeOf(to).Elem()
 	for k, v := range from {

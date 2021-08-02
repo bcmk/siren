@@ -142,7 +142,7 @@ func (c *CheckerCommon) startFullCheckerDaemon(checker Checker) {
 					continue requests
 				}
 			}
-			errors := 0
+			nErrors := 0
 			manual := request.SpecialModels
 			if request.Specific != nil {
 				manual = request.Specific
@@ -152,7 +152,7 @@ func (c *CheckerCommon) startFullCheckerDaemon(checker Checker) {
 				status := checker.CheckStatusSingle(modelID)
 				if status == StatusUnknown || status&StatusNotFound != 0 {
 					Lerr("status for model %s reported: %v", modelID, status)
-					errors++
+					nErrors++
 				}
 				statuses[modelID] = status
 			}
@@ -161,7 +161,7 @@ func (c *CheckerCommon) startFullCheckerDaemon(checker Checker) {
 			if c.Dbg {
 				Ldbg("got statuses: %d", len(statuses))
 			}
-			request.Callback(StatusResults{Data: &StatusResultsData{Statuses: statuses, Images: images, Elapsed: elapsed}, Errors: errors})
+			request.Callback(StatusResults{Data: &StatusResultsData{Statuses: statuses, Images: images, Elapsed: elapsed}, Errors: nErrors})
 		}
 	}()
 }

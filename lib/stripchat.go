@@ -13,7 +13,7 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// StripchatChecker impolements a checker for Stripchat
+// StripchatChecker implements a checker for Stripchat
 type StripchatChecker struct{ CheckerCommon }
 
 var _ Checker = &StripchatChecker{}

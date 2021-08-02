@@ -18,7 +18,7 @@ func (s StatusKind) String() string {
 	if s == StatusUnknown || s == StatusOffline|StatusOnline|StatusNotFound|StatusDenied {
 		return "unknown"
 	}
-	words := []string{}
+	var words []string
 	if s&StatusOffline != 0 {
 		words = append(words, "offline")
 	}

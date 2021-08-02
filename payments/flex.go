@@ -5,8 +5,7 @@ import (
 	"strconv"
 )
 
-// dest_tag is a number
-// but probably it can be a string as well
+// dest_tag is a number, but probably it can be a string as well
 type flex string
 
 func (f *flex) UnmarshalJSON(b []byte) error {

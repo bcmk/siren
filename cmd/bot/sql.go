@@ -100,7 +100,7 @@ func (w *worker) maybeRecord(query string, args queryParams, record scanTo) bool
 
 func (w *worker) mustStrings(queryString string, args ...interface{}) (result []string) {
 	var current string
-	w.mustQuery(queryString, queryParams(args), scanTo{&current}, func() { result = append(result, current) })
+	w.mustQuery(queryString, args, scanTo{&current}, func() { result = append(result, current) })
 	return
 }
 

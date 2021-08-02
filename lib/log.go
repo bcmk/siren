@@ -5,7 +5,7 @@ import "log"
 // VerbosityKind represents logging verbosity
 type VerbosityKind int
 
-// Verbosities
+// Verbosity constants
 const (
 	SilentVerbosity = 0
 	ErrVerbosity    = 1

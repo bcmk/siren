@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// StreamateChecker impolements a checker for Streamate
+// StreamateChecker implements a checker for Streamate
 type StreamateChecker struct{ CheckerCommon }
 
 var _ Checker = &StreamateChecker{}

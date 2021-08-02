@@ -18,7 +18,7 @@ type Client struct {
 	Addr net.Addr
 }
 
-// NoRedirect tells HTTP client to not to redirect
+// NoRedirect tells HTTP client not to redirect
 func NoRedirect(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 
 // HTTPClientWithTimeoutAndAddress returns HTTP client bound to specific IP address
