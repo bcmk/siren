@@ -149,6 +149,7 @@ type worker struct {
 	sendingNotifications     chan []notification
 	sentNotifications        chan []notification
 	mainGID                  int
+	ourIDs                   []int64
 }
 
 type incomingPacket struct {
@@ -261,6 +262,7 @@ func newWorker() *worker {
 		sendingNotifications:   make(chan []notification, 1000),
 		sentNotifications:      make(chan []notification),
 		mainGID:                gid(),
+		ourIDs:                 cfg.getOurIDs(),
 	}
 
 	if cp := cfg.CoinPayments; cp != nil {
@@ -2053,62 +2055,65 @@ func (w *worker) processStatusUpdates(updates []lib.StatusUpdate, now int) (
 	return
 }
 
-func getCommandAndArgs(u *tg.Update) (string, string) {
-	if u.Message == nil {
-		return "", ""
+func getCommandAndArgs(update tg.Update, mention string, ourIDs []int64) (int64, string, string) {
+	var text string
+	var chatID int64
+	var forceMention bool
+	if update.Message != nil && update.Message.Chat != nil {
+		text = update.Message.Text
+		chatID = update.Message.Chat.ID
+		if update.Message.NewChatMembers != nil {
+			for _, m := range *update.Message.NewChatMembers {
+				for _, ourID := range ourIDs {
+					if int64(m.ID) == ourID {
+						return chatID, "start", ""
+					}
+				}
+			}
+		}
+	} else if update.ChannelPost != nil && update.ChannelPost.Chat != nil {
+		text = update.ChannelPost.Text
+		chatID = update.ChannelPost.Chat.ID
+		forceMention = true
+	} else if update.CallbackQuery != nil {
+		text = update.CallbackQuery.Data
+		chatID = int64(update.CallbackQuery.From.ID)
 	}
-	if u.Message.IsCommand() {
-		return u.Message.Command(), strings.TrimSpace(u.Message.CommandArguments())
+	if text == "" {
+		return 0, "", ""
 	}
-	if u.Message.Text == "" {
-		return "", ""
-	}
-	parts := strings.SplitN(u.Message.Text, " ", 2)
+	parts := strings.SplitN(text, " ", 2)
 	if parts[0] == "" {
-		return "", ""
+		return 0, "", ""
+	}
+	if len(parts) != 0 {
+		parts[0] = strings.TrimLeft(parts[0], " /")
+		if strings.HasSuffix(parts[0], mention) {
+			parts[0] = parts[0][:len(parts[0])-len(mention)]
+		} else if forceMention {
+			return 0, "", ""
+		}
 	}
 	for len(parts) < 2 {
 		parts = append(parts, "")
 	}
-	return parts[0], strings.TrimSpace(parts[1])
+	return chatID, parts[0], strings.TrimSpace(parts[1])
 }
 
 func (w *worker) processTGUpdate(p incomingPacket) bool {
 	now := int(time.Now().Unix())
 	u := p.message
-	if u.Message != nil && u.Message.Chat != nil {
-		if newMembers := u.Message.NewChatMembers; newMembers != nil && len(*newMembers) > 0 {
-			ourIDs := w.ourIDs()
-		addedToChat:
-			for _, m := range *newMembers {
-				for _, ourID := range ourIDs {
-					if int64(m.ID) == ourID {
-						w.sendTr(w.highPriorityMsg, p.endpoint, u.Message.Chat.ID, false, w.tr[p.endpoint].Help, tplData{
-							"website_link": w.cfg.WebsiteLink,
-						})
-						break addedToChat
-					}
-				}
-			}
-		} else {
-			command, args := getCommandAndArgs(&u)
-			if command != "" {
-				return w.processIncomingCommand(p.endpoint, u.Message.Chat.ID, command, args, now)
-			}
-		}
-	}
+	mention := "@" + w.botNames[p.endpoint]
+	chatID, command, args := getCommandAndArgs(u, mention, w.ourIDs)
 	if u.CallbackQuery != nil {
 		callback := tg.CallbackConfig{CallbackQueryID: u.CallbackQuery.ID}
 		_, err := w.bots[p.endpoint].AnswerCallbackQuery(callback)
 		if err != nil {
 			lerr("cannot answer callback query, %v", err)
 		}
-		data := strings.SplitN(u.CallbackQuery.Data, " ", 2)
-		chatID := int64(u.CallbackQuery.From.ID)
-		if len(data) < 2 {
-			data = append(data, "")
-		}
-		return w.processIncomingCommand(p.endpoint, chatID, data[0], data[1], now)
+	}
+	if command != "" {
+		return w.processIncomingCommand(p.endpoint, chatID, command, args, now)
 	}
 	return false
 }
@@ -2285,9 +2290,9 @@ func (w *worker) incoming() chan incomingPacket {
 	return result
 }
 
-func (w *worker) ourIDs() []int64 {
+func (c *config) getOurIDs() []int64 {
 	var ids []int64
-	for _, e := range w.cfg.Endpoints {
+	for _, e := range c.Endpoints {
 		if idx := strings.Index(e.BotToken, ":"); idx != -1 {
 			id, err := strconv.ParseInt(e.BotToken[:idx], 10, 64)
 			checkErr(err)
@@ -2363,10 +2368,11 @@ func (w *worker) maintenanceStartupReply(incoming chan incomingPacket, done chan
 	for {
 		select {
 		case u := <-incoming:
-			command, args := getCommandAndArgs(&u.message)
-			if u.message.Message != nil && u.message.Message.Chat != nil && command != "" {
-				waitingUsers[waitingUser{chatID: u.message.Message.Chat.ID, endpoint: u.endpoint}] = true
-				w.sendTr(w.highPriorityMsg, u.endpoint, u.message.Message.Chat.ID, false, w.tr[u.endpoint].Maintenance, nil)
+			mention := "@" + w.botNames[u.endpoint]
+			chatID, command, args := getCommandAndArgs(u.message, mention, w.ourIDs)
+			if command != "" {
+				waitingUsers[waitingUser{chatID: chatID, endpoint: u.endpoint}] = true
+				w.sendTr(w.highPriorityMsg, u.endpoint, chatID, false, w.tr[u.endpoint].Maintenance, nil)
 				linf("ignoring command %s %s", command, args)
 			}
 		case <-done:
@@ -2462,8 +2468,9 @@ func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacke
 				return true
 			}
 		case u := <-incoming:
-			command, args := getCommandAndArgs(&u.message)
-			if u.message.Message.Chat.ID == w.cfg.AdminID {
+			mention := "@" + w.botNames[u.endpoint]
+			chatID, command, args := getCommandAndArgs(u.message, mention, w.ourIDs)
+			if chatID == w.cfg.AdminID {
 				switch command {
 				case "continue":
 					if processing {
@@ -2471,7 +2478,7 @@ func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacke
 					} else {
 						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK")
 						for user := range users {
-							w.sendTr(w.highPriorityMsg, user.endpoint, user.chatID, false, w.tr[user.endpoint].WeAreUp, nil)
+							w.sendTr(w.highPriorityMsg, user.endpoint, chatID, false, w.tr[user.endpoint].WeAreUp, nil)
 						}
 						return true
 					}
@@ -2497,12 +2504,12 @@ func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacke
 					}
 				case "":
 				default:
-					w.sendTr(w.highPriorityMsg, u.endpoint, u.message.Message.Chat.ID, false, w.tr[u.endpoint].Maintenance, nil)
+					w.sendTr(w.highPriorityMsg, u.endpoint, chatID, false, w.tr[u.endpoint].Maintenance, nil)
 				}
 			} else {
 				if command != "" {
-					users[waitingUser{chatID: u.message.Message.Chat.ID, endpoint: u.endpoint}] = true
-					w.sendTr(w.highPriorityMsg, u.endpoint, u.message.Message.Chat.ID, false, w.tr[u.endpoint].Maintenance, nil)
+					users[waitingUser{chatID: chatID, endpoint: u.endpoint}] = true
+					w.sendTr(w.highPriorityMsg, u.endpoint, chatID, false, w.tr[u.endpoint].Maintenance, nil)
 					linf("ignoring command %s %s", command, args)
 				}
 			}
