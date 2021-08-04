@@ -2075,10 +2075,11 @@ func getCommandAndArgs(update tg.Update, mention string, ourIDs []int64) (int64,
 		text = update.ChannelPost.Text
 		chatID = update.ChannelPost.Chat.ID
 		forceMention = true
-	} else if update.CallbackQuery != nil {
+	} else if update.CallbackQuery != nil && update.CallbackQuery.From != nil {
 		text = update.CallbackQuery.Data
 		chatID = int64(update.CallbackQuery.From.ID)
 	}
+	text = strings.TrimLeft(text, " /")
 	if text == "" {
 		return 0, "", ""
 	}
@@ -2086,16 +2087,13 @@ func getCommandAndArgs(update tg.Update, mention string, ourIDs []int64) (int64,
 	if parts[0] == "" {
 		return 0, "", ""
 	}
-	if len(parts) != 0 {
-		parts[0] = strings.TrimLeft(parts[0], " /")
-		if strings.HasSuffix(parts[0], mention) {
-			parts[0] = parts[0][:len(parts[0])-len(mention)]
-		} else if forceMention {
-			return 0, "", ""
-		}
+	if strings.HasSuffix(parts[0], mention) {
+		parts[0] = parts[0][:len(parts[0])-len(mention)]
+	} else if forceMention {
+		return 0, "", ""
 	}
 	for len(parts) < 2 {
-		parts = append(parts, "")
+		return chatID, parts[0], ""
 	}
 	return chatID, parts[0], strings.TrimSpace(parts[1])
 }
