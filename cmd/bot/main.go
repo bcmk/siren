@@ -2084,9 +2084,6 @@ func getCommandAndArgs(update tg.Update, mention string, ourIDs []int64) (int64,
 		return 0, "", ""
 	}
 	parts := strings.SplitN(text, " ", 2)
-	if parts[0] == "" {
-		return 0, "", ""
-	}
 	if strings.HasSuffix(parts[0], mention) {
 		parts[0] = parts[0][:len(parts[0])-len(mention)]
 	} else if forceMention {
