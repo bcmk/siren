@@ -124,6 +124,10 @@ var migrations = []func(w *worker){
 				sound integer not null default 0,
 				sending integer not null default 0);`)
 	},
+	func(w *worker) {
+		w.mustExec("create index ix_interactions_endpoint on interactions(endpoint);")
+		w.mustExec("create index ix_interactions_timestamp on interactions(timestamp);")
+	},
 }
 
 func (w *worker) applyMigrations() {
