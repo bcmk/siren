@@ -240,7 +240,7 @@ func (w *worker) interactionsByKindToday(endpoint string) map[packetKind]int {
 	var kind packetKind
 	var count int
 	w.mustQuery(
-		"select kind, count(*) from interactions where endpoint=? and timestamp>? group by kind",
+		"select kind, count(*) from interactions where endpoint=? and timestamp>? and result=200 group by kind",
 		queryParams{endpoint, timestamp},
 		scanTo{&kind, &count},
 		func() { results[kind] = count })
