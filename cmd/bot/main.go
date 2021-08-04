@@ -1361,7 +1361,7 @@ func (w *worker) reports() int {
 	return w.mustInt("select coalesce(sum(reports), 0) from users")
 }
 
-func (w *worker) interactions(endpoint string) map[int]int {
+func (w *worker) interactionsToday(endpoint string) map[int]int {
 	timestamp := time.Now().Add(time.Hour * -24).Unix()
 	results := map[int]int{}
 	var result int
@@ -2165,7 +2165,7 @@ func (w *worker) getStat(endpoint string) statistics {
 		ReportsCount:                   w.reports(),
 		ChangesInPeriod:                w.changesInPeriod,
 		ConfirmedChangesInPeriod:       w.confirmedChangesInPeriod,
-		Interactions:                   w.interactions(endpoint),
+		Interactions:                   w.interactionsToday(endpoint),
 	}
 }
 
