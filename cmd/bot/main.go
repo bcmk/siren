@@ -1724,7 +1724,7 @@ func (w *worker) processStatusUpdates(updates []lib.StatusUpdate, now int) (
 					chatID:   user.chatID,
 					modelID:  c,
 					status:   status,
-					social:   true,
+					social:   user.chatID > 0,
 					sound:    status == lib.StatusOnline,
 					kind:     notificationPacket}
 				if user.showImages {
