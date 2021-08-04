@@ -374,6 +374,7 @@ func TestNotificationsStorage(t *testing.T) {
 			social:   false,
 			priority: 1,
 			sound:    false,
+			kind:     notificationPacket,
 		},
 		{
 			endpoint: "endpoint_b",
@@ -385,6 +386,7 @@ func TestNotificationsStorage(t *testing.T) {
 			social:   true,
 			priority: 2,
 			sound:    true,
+			kind:     replyPacket,
 		},
 	}
 	w := newTestWorker()

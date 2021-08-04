@@ -128,6 +128,10 @@ var migrations = []func(w *worker){
 		w.mustExec("create index ix_interactions_endpoint on interactions(endpoint);")
 		w.mustExec("create index ix_interactions_timestamp on interactions(timestamp);")
 	},
+	func(w *worker) {
+		w.mustExec("alter table interactions add kind integer not null default 0;")
+		w.mustExec("alter table notification_queue add kind integer not null default 0;")
+	},
 }
 
 func (w *worker) applyMigrations() {
