@@ -24,10 +24,10 @@ ssr-window@^3.0.0, ssr-window@^3.0.0-alpha.1:
   resolved "https://registry.yarnpkg.com/ssr-window/-/ssr-window-3.0.0.tgz#fd5b82801638943e0cc704c4691801435af7ac37"
   integrity sha512-q+8UfWDg9Itrg0yWK7oe5p/XRCJpJF9OBtXfOPgSJl+u3Xd5KI328RUEvUqSMVM9CiQUEf1QdBzJMkYGErj9QA==
 
-swiper@^6.4.5:
-  version "6.5.0"
-  resolved "https://registry.yarnpkg.com/swiper/-/swiper-6.5.0.tgz#4ca2243b44fccef47ee28199377666607d8c5141"
-  integrity sha512-cSx1SpfgrHlgwku++3Ce3cjPBpXgB7P+bGik5S3+F+j6ID0NUeV6qtmedFdr3C8jXR/W+TJPVNIT9fH/cwVAiA==
+swiper@^6.5.1:
+  version "6.5.1"
+  resolved "https://registry.yarnpkg.com/swiper/-/swiper-6.5.1.tgz#795630e45bbebb3b3b2945d55c22ffdcf5536c1b"
+  integrity sha512-iuyg4cr+L7wo5EI0fWUuW+lT3BnNtVTYtInhUC5JImTr0i8jNranx8BPyN8AOSKa6jBYN+oaCzj8DAwGK+ngRg==
   dependencies:
     dom7 "^3.0.0"
     ssr-window "^3.0.0"
