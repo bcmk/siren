@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -151,6 +152,7 @@ type worker struct {
 	sentNotifications        chan []notification
 	mainGID                  int
 	ourIDs                   []int64
+	modelIDRegexp            *regexp.Regexp
 }
 
 type incomingPacket struct {
@@ -169,9 +171,9 @@ type packetKind int
 
 const (
 	notificationPacket packetKind = 0
-	replyPacket                   = 1
-	adPacket                      = 2
-	messagePacket                 = 3
+	replyPacket        packetKind = 1
+	adPacket           packetKind = 2
+	messagePacket      packetKind = 3
 )
 
 type email struct {
@@ -285,30 +287,39 @@ func newWorker() *worker {
 	case "test":
 		w.checker = &lib.RandomChecker{}
 		w.modelIDPreprocessing = lib.CanonicalModelID
+		w.modelIDRegexp = lib.ModelIDRegexp
 	case "bongacams":
 		w.checker = &lib.BongaCamsChecker{}
 		w.modelIDPreprocessing = lib.CanonicalModelID
+		w.modelIDRegexp = lib.ModelIDRegexp
 	case "chaturbate":
 		w.checker = &lib.ChaturbateChecker{}
 		w.modelIDPreprocessing = lib.ChaturbateCanonicalModelID
+		w.modelIDRegexp = lib.ModelIDRegexp
 	case "stripchat":
 		w.checker = &lib.StripchatChecker{}
 		w.modelIDPreprocessing = lib.CanonicalModelID
+		w.modelIDRegexp = lib.ModelIDRegexp
 	case "livejasmin":
 		w.checker = &lib.LiveJasminChecker{}
 		w.modelIDPreprocessing = lib.CanonicalModelID
+		w.modelIDRegexp = lib.ModelIDRegexp
 	case "camsoda":
 		w.checker = &lib.CamSodaChecker{}
 		w.modelIDPreprocessing = lib.CanonicalModelID
+		w.modelIDRegexp = lib.ModelIDRegexp
 	case "flirt4free":
 		w.checker = &lib.Flirt4FreeChecker{}
 		w.modelIDPreprocessing = lib.Flirt4FreeCanonicalModelID
+		w.modelIDRegexp = lib.ModelIDRegexp
 	case "streamate":
 		w.checker = &lib.StreamateChecker{}
 		w.modelIDPreprocessing = lib.CanonicalModelID
+		w.modelIDRegexp = lib.ModelIDRegexp
 	case "twitch":
 		w.checker = &lib.TwitchChecker{}
-		w.modelIDPreprocessing = lib.CanonicalModelID
+		w.modelIDPreprocessing = lib.TwitchCanonicalModelID
+		w.modelIDRegexp = lib.TwitchModelIDRegexp
 	default:
 		panic("wrong website")
 	}
@@ -766,7 +777,7 @@ func (w *worker) showWeek(endpoint string, chatID int64, modelID string) {
 
 func (w *worker) showWeekForModel(endpoint string, chatID int64, modelID string) {
 	modelID = w.modelIDPreprocessing(modelID)
-	if !lib.ModelIDRegexp.MatchString(modelID) {
+	if !w.modelIDRegexp.MatchString(modelID) {
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"model": modelID}, replyPacket)
 		return
 	}
@@ -784,7 +795,7 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 		return false
 	}
 	modelID = w.modelIDPreprocessing(modelID)
-	if !lib.ModelIDRegexp.MatchString(modelID) {
+	if !w.modelIDRegexp.MatchString(modelID) {
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"model": modelID}, replyPacket)
 		return false
 	}
@@ -898,7 +909,7 @@ func (w *worker) removeModel(endpoint string, chatID int64, modelID string) {
 		return
 	}
 	modelID = w.modelIDPreprocessing(modelID)
-	if !lib.ModelIDRegexp.MatchString(modelID) {
+	if !w.modelIDRegexp.MatchString(modelID) {
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"model": modelID}, replyPacket)
 		return
 	}
@@ -1314,7 +1325,7 @@ func (w *worker) addSpecialModel(endpoint string, arguments string) {
 		return
 	}
 	modelID := w.modelIDPreprocessing(parts[1])
-	if !lib.ModelIDRegexp.MatchString(modelID) {
+	if !w.modelIDRegexp.MatchString(modelID) {
 		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "MODEL_ID is invalid", replyPacket)
 		return
 	}

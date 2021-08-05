@@ -2,6 +2,7 @@ package lib
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 
 	"github.com/nicklaw5/helix"
@@ -13,6 +14,14 @@ type TwitchChecker struct {
 }
 
 var _ Checker = &TwitchChecker{}
+
+// TwitchModelIDRegexp is a regular expression to check model IDs
+var TwitchModelIDRegexp = regexp.MustCompile(`^@?[a-z0-9\-_]+$`)
+
+// TwitchCanonicalModelID preprocesses channel string to canonical form
+func TwitchCanonicalModelID(name string) string {
+	return strings.ToLower(strings.TrimPrefix(name, "@"))
+}
 
 // CheckStatusSingle checks Twitch channel status
 func (c *TwitchChecker) CheckStatusSingle(modelID string) StatusKind {
