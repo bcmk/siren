@@ -6,10 +6,13 @@ require (
 	github.com/chromedp/cdproto v0.0.0-20200209033844-7e00b02ea7d2
 	github.com/chromedp/chromedp v0.5.3
 	github.com/google/uuid v1.1.1
+	github.com/gorilla/handlers v1.5.1
+	github.com/gorilla/mux v1.8.0
 	github.com/jhillyerd/enmime v0.7.0
 	github.com/mattn/go-sqlite3 v1.14.6
 	github.com/nicklaw5/helix v1.7.1
 	github.com/shopspring/decimal v0.0.0-20200105231215-408a2507e114
+	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.0-20200506231410-2ff61e1afc86
 )
 

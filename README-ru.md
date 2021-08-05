@@ -98,11 +98,11 @@ Telegram-бот для оповещений о вебкастах
 Ссылки
 ------
 
+[Сайт](https://siren.chat/ru)
+
 [Twitter](https://twitter.com/siren_tlg)
 
 [WeCamgirls](https://www.wecamgirls.com/users/sirenbot)
-
-[GitHub Pages](https://siren.chat/ru.html)
 
 [Канал Telegram](https://t.me/siren_telegram_bot)
 

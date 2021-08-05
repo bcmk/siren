@@ -102,11 +102,11 @@ Telegram chat ID is just a number which we use to send you notifications.
 Links
 -----
 
+[Site](https://siren.chat)
+
 [Twitter](https://twitter.com/siren_tlg)
 
 [WeCamgirls](https://www.wecamgirls.com/users/sirenbot)
-
-[GitHub Pages](https://siren.chat)
 
 [News Telegram channel](https://t.me/siren_telegram_bot)
 
