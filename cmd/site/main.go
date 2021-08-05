@@ -100,7 +100,7 @@ func parseHTMLTemplate(filenames ...string) *ht.Template {
 }
 
 func (s *server) indexHandler(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "" && r.URL.Path != "/" {
+	if r.URL.Path != "/" {
 		notFoundError(w)
 		return
 	}
@@ -108,12 +108,12 @@ func (s *server) indexHandler(w http.ResponseWriter, r *http.Request) {
 	checkErr(t.Execute(w, nil))
 }
 
-func (s *server) modelHandler(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/model" && r.URL.Path != "/model/" {
+func (s *server) streamerHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/streamer" {
 		notFoundError(w)
 		return
 	}
-	t := parseHTMLTemplate("model.gohtml", "head.gohtml", "header.gohtml", "header-en.gohtml", "footer.gohtml")
+	t := parseHTMLTemplate("streamer.gohtml", "head.gohtml", "header.gohtml", "header-en.gohtml", "footer.gohtml")
 	checkErr(t.Execute(w, nil))
 }
 
@@ -126,12 +126,12 @@ func (s *server) indexRuHandler(w http.ResponseWriter, r *http.Request) {
 	checkErr(t.Execute(w, nil))
 }
 
-func (s *server) modelRuHandler(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/model-ru" && r.URL.Path != "/model-ru/" {
+func (s *server) streamerRuHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/streamer-ru" {
 		notFoundError(w)
 		return
 	}
-	t := parseHTMLTemplate("model-ru.gohtml", "head.gohtml", "header.gohtml", "header-ru.gohtml", "footer.gohtml")
+	t := parseHTMLTemplate("streamer-ru.gohtml", "head.gohtml", "header.gohtml", "header-ru.gohtml", "footer.gohtml")
 	checkErr(t.Execute(w, nil))
 }
 
@@ -153,10 +153,10 @@ func main() {
 	r.Handle("/", handlers.CompressHandler(http.HandlerFunc(srv.indexHandler)))
 	r.Handle("/ru", handlers.CompressHandler(http.HandlerFunc(srv.indexRuHandler)))
 	r.Handle("/ru.html", http.RedirectHandler("/ru", 301))
-	r.Handle("/model", handlers.CompressHandler(http.HandlerFunc(srv.modelHandler)))
-	r.Handle("/model.html", http.RedirectHandler("/model", 301))
-	r.Handle("/model-ru", handlers.CompressHandler(http.HandlerFunc(srv.modelRuHandler)))
-	r.Handle("/model-ru.html", http.RedirectHandler("/model-ru", 301))
+	r.Handle("/streamer", handlers.CompressHandler(http.HandlerFunc(srv.streamerHandler)))
+	r.Handle("/model.html", http.RedirectHandler("/streamer", 301))
+	r.Handle("/streamer-ru", handlers.CompressHandler(http.HandlerFunc(srv.streamerRuHandler)))
+	r.Handle("/model-ru.html", http.RedirectHandler("/streamer-ru", 301))
 	r.PathPrefix("/icons/").Handler(http.StripPrefix("/icons", cacheControlHandler(http.FileServer(http.Dir("icons")))))
 	r.PathPrefix("/social/").Handler(http.StripPrefix("/social", cacheControlHandler(http.FileServer(http.Dir("social")))))
 	r.PathPrefix("/node_modules/").Handler(http.StripPrefix("/node_modules", handlers.CompressHandler(http.FileServer(http.Dir("node_modules")))))
