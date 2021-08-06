@@ -153,12 +153,13 @@ func main() {
 	r.Handle("/", handlers.CompressHandler(http.HandlerFunc(srv.indexHandler)))
 	r.Handle("/ru", handlers.CompressHandler(http.HandlerFunc(srv.indexRuHandler)))
 	r.Handle("/ru.html", http.RedirectHandler("/ru", 301))
+
 	r.Handle("/streamer", handlers.CompressHandler(http.HandlerFunc(srv.streamerHandler)))
 	r.Handle("/model.html", http.RedirectHandler("/streamer", 301))
 	r.Handle("/streamer-ru", handlers.CompressHandler(http.HandlerFunc(srv.streamerRuHandler)))
 	r.Handle("/model-ru.html", http.RedirectHandler("/streamer-ru", 301))
+
 	r.PathPrefix("/icons/").Handler(http.StripPrefix("/icons", cacheControlHandler(http.FileServer(http.Dir("icons")))))
-	r.PathPrefix("/social/").Handler(http.StripPrefix("/social", cacheControlHandler(http.FileServer(http.Dir("social")))))
 	r.PathPrefix("/node_modules/").Handler(http.StripPrefix("/node_modules", handlers.CompressHandler(http.FileServer(http.Dir("node_modules")))))
 	r.PathPrefix("/wwwroot/").Handler(http.StripPrefix("/wwwroot", handlers.CompressHandler(http.FileServer(http.Dir("wwwroot")))))
 	checkErr(http.ListenAndServe(srv.cfg.ListenAddress, r))
