@@ -641,12 +641,12 @@ progress {
 }
 @media (min-width: 992px) {
   .container-lg, .container-md, .container-sm, .container {
-    max-width: 960px;
+    max-width: 860px;
   }
 }
 @media (min-width: 1200px) {
   .container-xl, .container-lg, .container-md, .container-sm, .container {
-    max-width: 1100px;
+    max-width: 900px;
   }
 }
 .row {
