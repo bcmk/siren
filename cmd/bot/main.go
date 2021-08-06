@@ -1679,7 +1679,7 @@ func (w *worker) initiateOnlineQuery() {
 	}
 }
 
-func (w *worker) initiateSpecificQuery(resultsCh chan lib.StatusResults, specific map[string]bool) {
+func (w *worker) initiateSpecificQuery(resultsCh chan lib.StatusResults, specific map[string]bool) error {
 	err := w.checker.QueryStatuses(lib.StatusRequest{
 		Callback:  func(res lib.StatusResults) { resultsCh <- res },
 		Specific:  specific,
@@ -1687,6 +1687,7 @@ func (w *worker) initiateSpecificQuery(resultsCh chan lib.StatusResults, specifi
 	if err != nil {
 		lerr("%v", err)
 	}
+	return err
 }
 
 func (w *worker) processStatusUpdates(updates []lib.StatusUpdate, now int) (
@@ -2084,8 +2085,11 @@ func (w *worker) queryUnconfirmedSubs() {
 	var modelID string
 	w.mustQuery("select model_id from signals where confirmed=0", nil, scanTo{&modelID}, func() { unconfirmed[modelID] = true })
 	if len(unconfirmed) > 0 {
+		w.mustExec("update signals set confirmed=2 where confirmed=0")
 		ldbg("queueing unconfirmed subscriptions check for %d channels", len(unconfirmed))
-		w.initiateSpecificQuery(w.unconfirmedSubsResults, unconfirmed)
+		if w.initiateSpecificQuery(w.unconfirmedSubsResults, unconfirmed) != nil {
+			w.mustExec("update signals set confirmed=0 where confirmed=2")
+		}
 	}
 }
 
@@ -2095,17 +2099,17 @@ func (w *worker) processSubsConfirmations(res lib.StatusResults) {
 		statusesNumber = len(res.Data.Statuses)
 	}
 	ldbg("processing subscription confirmations for %d channels", statusesNumber)
-	unconfirmed := map[string][]subscription{}
+	confirmationsInWork := map[string][]subscription{}
 	var iter subscription
 	w.mustQuery(
-		"select endpoint, model_id, chat_id from signals where confirmed=0",
+		"select endpoint, model_id, chat_id from signals where confirmed=2",
 		nil,
 		scanTo{&iter.endpoint, &iter.modelID, &iter.chatID},
-		func() { unconfirmed[iter.modelID] = append(unconfirmed[iter.modelID], iter) })
+		func() { confirmationsInWork[iter.modelID] = append(confirmationsInWork[iter.modelID], iter) })
 	var nots []notification
 	if res.Data != nil {
 		for modelID, status := range res.Data.Statuses {
-			for _, sub := range unconfirmed[modelID] {
+			for _, sub := range confirmationsInWork[modelID] {
 				if status&(lib.StatusOnline|lib.StatusOffline|lib.StatusDenied) != 0 {
 					w.confirmSub(sub)
 				} else {
@@ -2211,6 +2215,7 @@ func main() {
 	w.createDatabase(databaseDone)
 	w.initCache()
 	w.mustExec("update notification_queue set sending=0")
+	w.mustExec("update signals set confirmed=0 where confirmed=2")
 
 	statRequests := make(chan statRequest)
 	w.handleStatEndpoints(statRequests)

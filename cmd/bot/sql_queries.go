@@ -12,9 +12,24 @@ func (w *worker) newNotifications() []notification {
 	var nots []notification
 	var iter notification
 	w.mustQuery(
-		"select id, endpoint, chat_id, model_id, status, time_diff, image_url, social, priority, sound, kind from notification_queue where sending=0 order by id",
+		`select id, endpoint, chat_id, model_id, status, time_diff, image_url, social, priority, sound, kind
+		from notification_queue
+		where sending=0
+		order by id`,
 		nil,
-		scanTo{&iter.id, &iter.endpoint, &iter.chatID, &iter.modelID, &iter.status, &iter.timeDiff, &iter.imageURL, &iter.social, &iter.priority, &iter.sound, &iter.kind},
+		scanTo{
+			&iter.id,
+			&iter.endpoint,
+			&iter.chatID,
+			&iter.modelID,
+			&iter.status,
+			&iter.timeDiff,
+			&iter.imageURL,
+			&iter.social,
+			&iter.priority,
+			&iter.sound,
+			&iter.kind,
+		},
 		func() { nots = append(nots, iter) },
 	)
 	w.mustExec("update notification_queue set sending=1 where sending=0")
