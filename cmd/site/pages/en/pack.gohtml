@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<!--suppress HtmlUnknownTarget -->
+
+{{ $pack := .pack }}
+{{ $params := .params }}
+{{ $likes := .likes }}
+
+<html lang="en" xmlns:og="http://ogp.me/ns#">
+<head>
+    {{ template "head" }}
+    <meta property="og:image" content="/chic/i/{{ $pack.Name }}/siren.{{ $pack.FinalType }}" />
+    <title>SIREN — Chaturbate icons constructor</title>
+    <script>
+        function like_changed(what, val) {
+            fetch(`/chic/like/${what}`, {method: "POST", body: JSON.stringify({pack: what, like: val})});
+            const likes = document.getElementById(`likes-${what}`)
+            const count = parseInt(likes.dataset.initial) + (val ? 1 : -1)
+            likes.innerText = (count < 0 ? "" : "+") + count
+        }
+
+        function siren_updated() {
+            const inp = document.getElementsByName('siren')[0]
+            document.getElementById('fanclub-string').value = inp.value
+            document.getElementById('submit').disabled = inp.value === ''
+        }
+
+        function remove_empties(form) {
+            const inputs = form.querySelectorAll("input");
+            for (let i = 0; i < inputs.length; i++) {
+                if (inputs[i].value === "") {
+                    inputs[i].disabled = true
+                }
+            }
+            return true;
+        }
+    </script>
+</head>
+
+<body onload="siren_updated()">
+<div class="container" style="margin-bottom: 75px;">
+    {{ template "header" }}
+    <main>
+        <h2 class="text-center mt-4">Chaturbate icons constructor</h2>
+        <p class="pt-2">
+            These floating icons are free.
+            You can use them in your Chaturbate bio.
+            Additionally you will get an icon for our service.
+            We will automatically notify our users in Telegram whenever you are online if they subscribe using this icon.
+        </p>
+        <div class="mt-2">
+            <a class="btn btn-dark px-3" href="/chic">see all the packs</a>
+        </div>
+        <form onsubmit="return remove_empties(this)" action="/chic/code/{{ .pack.Name }}">
+            <div class="mt-4">
+                <h3>Select the icon size</h3>
+                <div class="row mt-4">
+                    <div class="col-xl-10 col-12">
+                        {{ define "size_input" }}
+                            <input type="radio"
+                                   class="outlined-selection"
+                                   id="size-{{ .n }}"
+                                   name="size"
+                                   value="{{ .n }}"
+                                    {{ if or (eq .n .sel) (and (eq .n "5") (not .sel)) -}} checked {{- end }}>
+                            <label for="size-{{ .n }}">
+                                <img src="/chic/i/{{ .pack.Name }}/siren.{{ .pack.FinalType }}"
+                                     alt=""
+                                     style="height: {{ mul_div .h .pack.Scale 100 }}px;">
+                            </label>
+                        {{ end }}
+                        <table class="size-selection">
+                            <tr>
+                                <td>
+                                    {{ template "size_input" map "n" "1" "h" (index .sizes "1") "sel" $params.size "pack" $pack }}
+                                </td>
+                                <td>
+                                    {{ template "size_input" map "n" "2" "h" (index .sizes "2") "sel" $params.size "pack" $pack }}
+                                </td>
+                                <td>
+                                    {{ template "size_input" map "n" "3" "h" (index .sizes "3") "sel" $params.size "pack" $pack }}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    {{ template "size_input" map "n" "4" "h" (index .sizes "4") "sel" $params.size "pack" $pack }}
+                                </td>
+                                <td>
+                                    {{ template "size_input" map "n" "5" "h" (index .sizes "5") "sel" $params.size "pack" $pack }}
+                                </td>
+                                <td>
+                                    {{ template "size_input" map "n" "6" "h" (index .sizes "6") "sel" $params.size "pack" $pack }}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    {{ template "size_input" map "n" "7" "h" (index .sizes "7") "sel" $params.size "pack" $pack }}
+                                </td>
+                                <td>
+                                    {{ template "size_input" map "n" "8" "h" (index .sizes "8") "sel" $params.size "pack" $pack }}
+                                </td>
+                                <td>
+                                    {{ template "size_input" map "n" "9" "h" (index .sizes "9") "sel" $params.size "pack" $pack }}
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <h3 class="mt-4">Fill in your social media</h3>
+            <div class="mx-auto mt-2">
+                {{ define "simple_input" }}
+                    <div class="row">
+                        <div class="col-12 col-md-6 order-md-last mt-3 mt-md-0 d-flex">
+                            <label class="input-tip d-flex" for="{{ .name }}">
+                                <span class="d-inline-flex d-md-none form-icon align-self-center">
+                                    <img src="/chic/i/{{ .pack.Name }}/{{ .name }}.{{ .pack.FinalType }}"
+                                         alt=""
+                                         style="height: {{ .pack.Scale }}%;"
+                                         class="align-self-center">
+                                </span>
+                                <span class="align-self-center ms-4 ms-md-0">{{ .comment }}</span>
+                            </label>
+                        </div>
+                        <div class="col-12 col-md-6 col-lg-5 d-flex">
+                            <div class="d-none d-md-flex form-icon align-self-center">
+                                <img src="/chic/i/{{ .pack.Name }}/{{ .name }}.{{ .pack.FinalType }}"
+                                     alt=""
+                                     style="height: {{ .pack.Scale }}%;"
+                                     class="align-self-center">
+                            </div>
+                            <div class="align-self-center flex-fill ms-md-4">
+                                <input id="{{ .name }}"
+                                       name="{{ .name }}"
+                                       value="{{ .value }}"
+                                       {{ if not .text }}
+                                           pattern="https://.*"
+                                           title="https://YOUR_LINK"
+                                       {{ end }}
+                                       class="form-control"
+                                       placeholder="{{ .placeholder }}"
+                                       onkeydown="{{- if eq .name "siren" -}} siren_updated() {{- end -}}"
+                                       oninput="{{- if eq .name "siren" -}} siren_updated() {{- end }}"/>
+                            </div>
+                        </div>
+                    </div>
+                {{ end }}
+                {{ if contains_icon $pack.Icons "siren" }}
+                    {{ template "simple_input" map "pack" .pack "name" "siren" "comment" (raw_html "Your Chaturbate username <b>(required)</b>") "value" $params.siren "placeholder" "username" "text" true }}
+                {{ end }}
+                {{ if contains_icon $pack.Icons "fanclub" }}
+                    <div class="row">
+                        <div class="col-12 col-md-6 col-lg-5 order-md-last mt-3 mt-md-0 d-flex">
+                            <label class="input-tip d-flex" for="fanclub">
+                                <span class="d-inline-flex d-md-none form-icon align-self-center">
+                                    <img src="/chic/i/{{ $pack.Name }}/fanclub.{{ $pack.FinalType }}"
+                                         alt=""
+                                         style="height: {{ $pack.Scale }}%;"
+                                         class="align-self-center">
+                                </span>
+                                <span class="align-self-center ms-4 ms-md-0">Add your Chaturbate fan club icon</span>
+                            </label>
+                        </div>
+                        <div class="col-12 col-md-6 col-lg-5 d-flex">
+                            <div class="d-none d-md-flex form-icon align-self-center">
+                                <img src="/chic/i/{{ $pack.Name }}/fanclub.{{ $pack.FinalType }}"
+                                     alt=""
+                                     style="height: {{ .pack.Scale }}%;"
+                                     class="align-self-center">
+                            </div>
+                            <div class="align-self-center flex-fill ms-md-4">
+                                <!--suppress HtmlFormInputWithoutLabel -->
+                                <input id="fanclub-string" class="form-control" disabled/>
+                            </div>
+                            <div class="align-self-center ms-4 d-flex">
+                                <label class="switch align-self-center" for="fanclub">
+                                    <input id="fanclub"
+                                           name="fanclub"
+                                           type="checkbox"
+                                            {{ if eq $params.fanclub "on" -}} checked {{- end }}>
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                {{ end }}
+                {{ if contains_icon $pack.Icons "instagram" }}
+                    {{ template "simple_input" map "pack" .pack "name" "instagram" "comment" "Your Instagram link" "value" $params.instagram "placeholder" "https://www.instagram.com/username" }}
+                {{ end }}
+                {{ if contains_icon $pack.Icons "twitter" }}
+                    {{ template "simple_input" map "pack" .pack "name" "twitter" "comment" "Your Twitter link" "value" $params.twitter "placeholder" "https://twitter.com/username" }}
+                {{ end }}
+                {{ if contains_icon $pack.Icons "onlyfans" }}
+                    {{ template "simple_input" map "pack" .pack "name" "onlyfans" "comment" "Your Onlyfans link" "value" $params.onlyfans "placeholder" "https://onlyfans.com/username" }}
+                {{ end }}
+                {{ if contains_icon $pack.Icons "amazon" }}
+                    {{ template "simple_input" map "pack" .pack "name" "amazon" "comment" "Your Amazon wish list link" "value" $params.amazon }}
+                {{ end }}
+                {{ if contains_icon $pack.Icons "lovense" }}
+                    {{ template "simple_input" map "pack" .pack "name" "lovense" "comment" "Your Lovense wish list link" "value" $params.lovense }}
+                {{ end }}
+                {{ if contains_icon $pack.Icons "pornhub" }}
+                    {{ template "simple_input" map "pack" .pack "name" "pornhub" "comment" "Your Pornhub link" "value" $params.pornhub }}
+                {{ end }}
+                {{ if contains_icon $pack.Icons "dmca" }}
+                    {{ template "simple_input" map "pack" .pack "name" "dmca" "comment" "Your DMCA link" "value" $params.dmca }}
+                {{ end }}
+                {{ if contains_icon $pack.Icons "allmylinks" }}
+                    {{ template "simple_input" map "pack" .pack "name" "allmylinks" "comment" "Your AllMyLinks link" "value" $params.allmylinks }}
+                {{ end }}
+                {{ if contains_icon $pack.Icons "onemylink" }}
+                    {{ template "simple_input" map "pack" .pack "name" "onemylink" "comment" "Your Onemylink link" "value" $params.onemylink }}
+                {{ end }}
+                {{ if contains_icon $pack.Icons "fancentro" }}
+                    {{ template "simple_input" map "pack" .pack "name" "fancentro" "comment" "Your FanCentro link" "value" $params.fancentro }}
+                {{ end }}
+                {{ if contains_icon $pack.Icons "manyvids" }}
+                    {{ template "simple_input" map "pack" .pack "name" "manyvids" "comment" "Your ManyVids link" "value" $params.manyvids }}
+                {{ end }}
+                {{ if contains_icon $pack.Icons "frisk" }}
+                    {{ template "simple_input" map "pack" .pack "name" "frisk" "comment" "Your Frisk link" "value" $params.frisk }}
+                {{ end }}
+                {{ if contains_icon $pack.Icons "mail" }}
+                    {{ template "simple_input" map "pack" .pack "name" "mail" "comment" "Your email ralated link" "value" $params.mail }}
+                {{ end }}
+                {{ if contains_icon $pack.Icons "snapchat" }}
+                    {{ template "simple_input" map "pack" .pack "name" "snapchat" "comment" "Your Snapchat link" "value" $params.snapchat }}
+                {{ end }}
+                {{ if contains_icon $pack.Icons "telegram" }}
+                    {{ template "simple_input" map "pack" .pack "name" "telegram" "comment" "Your Telegram link" "value" $params.telegram }}
+                {{ end }}
+                {{ if contains_icon $pack.Icons "whatsapp" }}
+                    {{ template "simple_input" map "pack" .pack "name" "whatsapp" "comment" "Your WhatsApp link" "value" $params.whatsapp }}
+                {{ end }}
+                {{ if contains_icon $pack.Icons "youtube" }}
+                    {{ template "simple_input" map "pack" .pack "name" "youtube" "comment" "Your YouTube link" "value" $params.youtube }}
+                {{ end }}
+                {{ if contains_icon $pack.Icons "tiktok" }}
+                    {{ template "simple_input" map "pack" .pack "name" "tiktok" "comment" "Your TikTok link" "value" $params.tiktok }}
+                {{ end }}
+                {{ if contains_icon $pack.Icons "reddit" }}
+                    {{ template "simple_input" map "pack" .pack "name" "reddit" "comment" "Your Reddit link" "value" $params.reddit }}
+                {{ end }}
+                {{ if contains_icon $pack.Icons "twitch" }}
+                    {{ template "simple_input" map "pack" .pack "name" "twitch" "comment" "Your Twitch link" "value" $params.twitch }}
+                {{ end }}
+                {{ if contains_icon $pack.Icons "discord" }}
+                    {{ template "simple_input" map "pack" .pack "name" "discord" "comment" "Your Discord link" "value" $params.discord }}
+                {{ end }}
+                <div class="row mt-4">
+                    <div class="col-12 col-md-6 col-lg-5 d-flex">
+                        <hr class="w-100"/>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-12 col-md-6 col-lg-5 d-flex align-items-center" style="font-size: 24px;">
+                        <div class="flex-fill"></div>
+                        <div class="d-inline-flex align-items-center">
+                            <input id="like" name="like" type="radio" class="like-selection" onchange="like_changed('{{ $pack.Name }}', true)"/>
+                            <label for="like" class="d-inline-flex align-items-center btn-siren btn btn-dark"><i class="fas fa-thumbs-up"></i></label>
+                        </div>
+                        <div class="d-inline-flex align-items-center ms-2" style="margin-left: 0.35rem;">
+                            <input id="dislike" name="like"  type="radio" class="like-selection" onchange="like_changed('{{ $pack.Name }}', false)"/>
+                            <label for="dislike" class="d-inline-flex align-items-center btn-siren btn btn-dark"><i class="fas fa-thumbs-down"></i></label>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <b id="likes-{{ $pack.Name }}"
+                                style="font-size: 13px; min-width: 45px;"
+                                data-initial="{{ printf "%+d" $likes }}"
+                                class="text-end">
+                                {{- printf "%+d" $likes -}}
+                            </b>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-5">
+                    <div class="col-12 col-md-6 col-lg-5">
+                        <button id="submit" class="btn btn-primary w-100" disabled>get the code for your bio</button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </main>
+    {{ template "footer" . }}
+</div>
+</body>
+</html>

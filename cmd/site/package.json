@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "@fortawesome/fontawesome-free": "^5.15.2",
-    "bootstrap": "^5.1.0"
+    "bootstrap": "^5.1.0",
+    "swiper": "^6.5.1"
   }
 }

@@ -2,13 +2,13 @@
     <footer class="pt-4 my-md-5 pt-md-5 border-top">
         <div class="row">
             <div class="col-12 col-md">
-                <img class="mb-2" src="icons/siren.svg" alt="" style="max-width:100%;" width="40" height="40">
+                <img class="mb-2" src="/icons/siren.svg" alt="" style="max-width:100%;" width="40" height="40">
                 <small class="d-block mb-0 text-muted">&copy; 2019-2021</small>
                 <small class="d-block mb-3 text-muted"><a
                         href="mailto:siren.chat@gmail.com">siren.chat@gmail.com</a></small>
             </div>
             <div class="col-6 col-md">
-                <h5>Links</h5>
+                <h5>{{ template "footer-links" }}</h5>
                 <ul class="list-unstyled text-small">
                     <li><a class="text-muted" href="https://github.com/bcmk/siren"><i class="fab fa-github"></i> GitHub</a></li>
                     <li><a class="text-muted" href="https://twitter.com/siren_tlg"><i class="fab fa-twitter"></i> Twitter</a></li>
@@ -19,15 +19,15 @@
                 </ul>
             </div>
             <div class="col-6 col-md">
-                <h5>Languages</h5>
+                <h5>{{ template "footer-langs" }}</h5>
                 <ul class="list-unstyled text-small">
-                    {{ if .en }}
-                        <li><a class="text-muted" href="{{ .en }}">English</a></li>
+                    {{ if eq .hostname .ru_domain }}
+                        <li><a class="text-muted" href="{{ .lang.en }}">English</a></li>
                     {{ else }}
                         <li><span class="text-muted">English</span></li>
                     {{ end }}
-                    {{ if .ru }}
-                        <li><a class="text-muted" href="{{ .ru }}">Русский</a></li>
+                    {{ if eq .hostname .base_domain }}
+                        <li><a class="text-muted" href="{{ .lang.ru }}">Русский</a></li>
                     {{ else }}
                         <li><span class="text-muted">Русский</span></li>
                     {{ end }}

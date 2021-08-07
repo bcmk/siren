@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<!--suppress HtmlUnknownTarget -->
+
+{{ $likes := .likes }}
+
+<html lang="en" xmlns:og="http://ogp.me/ns#">
+<head>
+    {{ template "head" }}
+    <title>SIREN — Chaturbate icons constructor</title>
+    <meta property="og:image" content="/chic/i/water/siren.png" />
+    <link rel="stylesheet" href="/node_modules/swiper/swiper-bundle.min.css">
+    <script>
+        function like_changed(what, val) {
+            fetch(`/chic/like/${what}`, {method: "POST", body: JSON.stringify({pack: what, like: val})});
+            const likes = document.getElementById(`likes-${what}`)
+            const count = parseInt(likes.dataset.initial) + (val ? 1 : -1)
+            likes.innerText = (count < 0 ? "" : "+") + count
+        }
+    </script>
+</head>
+
+<body>
+<div class="container">
+    {{ template "header" }}
+    <main>
+        <h2 class="text-center mt-4">Chaturbate icons constructor</h2>
+        <p class="pt-2">
+            These floating icons are free.
+            You can use them in your Chaturbate bio.
+            Additionally you will get an icon for our service SIREN.
+            We will automatically notify our users in Telegram whenever you are online if they subscribe using this icon.
+        </p>
+        <h3 class="pt-2">Usage</h3>
+        <ol>
+            <li>Make sure your age is verified by Chaturbate</li>
+            <li>Select a pack</li>
+            <li>Fill in your social media</li>
+            <li>Press "get the code for you bio"</li>
+            <li>Paste the code at the end of the About Me section of your bio</li>
+            <li>Enjoy your new icons!</li>
+        </ol>
+        <p>
+            It can take some time for Chaturbate to load images into their cache.
+            If icons don't show up immediately, please check them in several minutes.
+            If your age is not verified by Chaturbate, then the icons and other code in your bio will not work.
+        </p>
+        <div class="pt-2 mx-auto">
+            {{ range $index, $pack := .packs }}
+                {{ $icon_size := mul_div 90 $pack.Scale 100 }}
+                {{ $slide_width := add $icon_size 75 }}
+                {{ $top := mul_div (add $pack.VerticalPosition 50) (sub 90 $icon_size) 100 }}
+                <div class="row my-3">
+                    <div class="col-12 col-xl-10 col-lg-9">
+                        <div class="swiper-container dark-stripes">
+                            <div class="swiper-wrapper no-select">
+                                {{ range $icon := $pack.Icons }}
+                                    {{ if $icon.Enabled }}
+                                        <div class="swiper-slide" style="height: 90px; width: {{ $slide_width }}px;">
+                                            <div class="d-flex align-items-center justify-content-center"
+                                                 style="position: absolute; width: 100%; height: {{ $icon_size }}px; top: {{ $top }}px;">
+                                                <img style="width: auto; height: 100%;"
+                                                     data-src="/chic/i/{{ $pack.Name }}/{{ $icon.Name }}.{{ $pack.FinalType }}"
+                                                     alt=""
+                                                     class="index-icon swiper-lazy">
+                                            </div>
+                                            <div class="siren-lazy-preloader"></div>
+                                        </div>
+                                    {{ end }}
+                                {{ end }}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-lg-2 d-flex justify-content-center flex-column mt-lg-0 mt-2 order-lg-first">
+                        <a class="btn btn-dark w-100 d-block" href="/chic/p/{{ $pack.Name }}">use</a>
+                        <div class="w-100 d-flex align-items-center" style="margin-top: 0.45rem;">
+                            <div class="d-inline-flex align-items-center">
+                                <input id="like-{{ $pack.Name }}" name="like-{{ $pack.Name }}" type="radio" class="like-selection" onchange="like_changed('{{ $pack.Name }}', true)"/>
+                                <label for="like-{{ $pack.Name }}" class="d-inline-flex align-items-center btn btn-dark btn-like"><i class="fas fa-thumbs-up"></i></label>
+                            </div>
+                            <div class="d-inline-flex align-items-center" style="margin-left: 0.35rem;">
+                                <input id="dislike-{{ $pack.Name }}" name="like-{{ $pack.Name }}" type="radio" class="like-selection" onchange="like_changed('{{ $pack.Name }}', false)"/>
+                                <label for="dislike-{{ $pack.Name }}" class="d-inline-flex align-items-center btn btn-dark btn-like"><i class="fas fa-thumbs-down"></i></label>
+                            </div>
+                            <div class="flex-fill"></div>
+                            <div class="d-flex align-items-center">
+                                <b id="likes-{{ $pack.Name }}" style="font-size: 13px;" data-initial="{{ printf "%+d" (index $likes $pack.Name) }}">
+                                    {{- printf "%+d" (index $likes $pack.Name) -}}
+                                </b>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {{ end }}
+        </div>
+    </main>
+    {{ template "footer" . }}
+</div>
+<script src="/node_modules/swiper/swiper-bundle.min.js"></script>
+<!--suppress JSUnresolvedFunction -->
+<script>
+    const swiper = new Swiper('.swiper-container', {
+        direction: 'horizontal',
+        slidesPerView: 'auto',
+        freeMode: true,
+        spaceBetween: -45,
+        lazy: {
+            checkInView: true,
+            loadPrevNext: true,
+            preloaderClass: 'siren-lazy-preloader',
+            loadOnTransitionStart: true,
+        },
+        watchSlidesVisibility: true,
+        preloadImages: false,
+    });
+</script>
+</body>
+</html>

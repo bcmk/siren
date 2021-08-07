@@ -17208,6 +17208,179 @@ readers do not read off random characters that represent icons */
   font-weight: 400;
 }
 
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 60px;
+  height: 34px;
+  margin: 0;
+}
+
+.switch input {
+  display: none;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  -webkit-transition: 0.4s;
+  transition: 0.4s;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 26px;
+  width: 26px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  -webkit-transition: 0.4s;
+  transition: 0.4s;
+}
+
+input:checked + .slider {
+  background-color: var(--bs-primary);
+}
+
+input:focus + .slider {
+  box-shadow: 0 0 1px var(--bs-primary);
+}
+
+input:checked + .slider:before {
+  -webkit-transform: translateX(26px);
+  -ms-transform: translateX(26px);
+  transform: translateX(26px);
+}
+
+.slider.round {
+  border-radius: 34px;
+}
+
+.slider.round:before {
+  border-radius: 50%;
+}
+
+.index-icon:not([src]) {
+  opacity: 0;
+}
+
+.no-select {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+.dark-stripes {
+  background: linear-gradient(135deg, white, white 60%, #e1e1e1 60.1%, #e1e1e1 65%, #bcbcbc 65.1%, #bcbcbc 70%, #959595 70.1%, #959595 75%, #6c6c6c 75.1%, #6c6c6c 80%, #3f3f3f 80.1%, #3f3f3f 85%, black 85.1%, black 100%);
+}
+
+.dark-stripes-banner {
+  background: linear-gradient(215deg, white, white 50%, #333 50.1%, #333 60%, black 60.1%, black 100%);
+}
+
+.swiper-container {
+  width: 100%;
+  height: 100%;
+  border-radius: 15px;
+  border: 2px solid #ddd;
+  cursor: grab;
+}
+
+.form-icon {
+  height: 64px;
+}
+
+.input-nick {
+  width: 100%;
+  align-self: center;
+}
+
+.input-tip {
+  align-self: center;
+  margin: 0;
+}
+
+.size-selection {
+  margin: -20px;
+  border-spacing: 20px;
+  border-collapse: separate;
+}
+
+.size-selection td {
+  width: 100px;
+  height: 100px;
+}
+
+input[type=radio].outlined-selection {
+  display: none;
+}
+
+input[type=radio].outlined-selection + label {
+  width: 100%;
+  height: 100%;
+  background-color: white;
+  border-radius: 10px;
+  border: 1px solid var(--light) !important;
+  display: flex;
+  -ms-flex-pack: center;
+  justify-content: center;
+  -ms-flex-align: center;
+  align-items: center;
+}
+
+input[type=radio].outlined-selection:checked + label {
+  box-shadow: 0 0 0 5px var(--bs-primary);
+  cursor: default;
+}
+
+input[type=radio].like-selection {
+  display: none;
+}
+
+input[type=radio].like-selection + label {
+  width: 40px;
+  height: 30px;
+  display: flex;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  -ms-flex-pack: center;
+  justify-content: center;
+  -ms-flex-align: center;
+  align-items: center;
+}
+
+input[type=radio].like-selection:checked + label {
+  background-color: var(--bs-primary);
+}
+
+.btn-like {
+  border-radius: 15px !important;
+}
+
+.siren-lazy-preloader {
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  margin-left: -10px;
+  margin-top: -10px;
+  z-index: 10;
+  box-sizing: border-box;
+  border: 10px solid #cc2222;
+  border-radius: 10px;
+}
+
 body {
   background-color: #eeeeee !important;
   color: #333333;

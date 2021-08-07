@@ -1,0 +1,67 @@
+{{- raw_html "<!-- FLOATING ICONS BEGIN -->" -}}
+<b style="display: block; height: auto; position: fixed; top: 240px; left: 4px;">
+    {{- if .params.siren -}}
+        <a href="https://siren.chat/cb/{{ .params.siren }}"
+           target="_blank"
+           rel="nofollow"
+           style="height: {{ .size }}px; display: block;">
+            {{- print "" -}}
+            <img src="{{ .base_url }}/chic/i/{{ .pack.Name }}/siren.{{ .pack.FinalType }}"
+                 style="height: 100%; width: auto;"
+                 rel="nofollow"
+                 alt=""/>
+            {{- print "" -}}
+        </a>
+    {{- end -}}
+    {{- if eq .params.fanclub "on" -}}
+        <a href="https://chaturbate.com/fanclub/join/{{ .params.siren }}/"
+           target="_blank"
+           rel="nofollow"
+           style="height: {{ .size }}px; display: block; margin-top: {{ .margin }}px;">
+            {{- print "" -}}
+            <img src="{{ .base_url }}/chic/i/{{ .pack.Name }}/fanclub.{{ .pack.FinalType }}"
+                 style="height: 100%; width: auto;"
+                 rel="nofollow"
+                 alt=""/>
+            {{- print "" -}}
+        </a>
+    {{- end -}}
+    {{- define "simple_icon" -}}
+        {{- if .value -}}
+            <a href="{{ .value }}"
+               target="_blank"
+               rel="nofollow"
+               style="height: {{ .size }}px; display: block; margin-top: {{ .margin }}px;">
+                {{- print "" -}}
+                <img src="{{ .base_url }}/chic/i/{{ .pack.Name }}/{{ .name }}.{{ .pack.FinalType }}"
+                     style="height: 100%; width: auto;"
+                     rel="nofollow"
+                     alt=""/>
+                {{- print "" -}}
+            </a>
+        {{- end -}}
+    {{- end -}}
+    {{- $base_map := map "base_url" .base_url "pack" .pack "size" .size "margin" .margin -}}
+    {{- template "simple_icon" enhance $base_map (map "name" "instagram" "value" .params.instagram) -}}
+    {{- template "simple_icon" enhance $base_map (map "name" "twitter" "value" .params.twitter) -}}
+    {{- template "simple_icon" enhance $base_map (map "name" "onlyfans" "value" .params.onlyfans) -}}
+    {{- template "simple_icon" enhance $base_map (map "name" "amazon" "value" .params.amazon) -}}
+    {{- template "simple_icon" enhance $base_map (map "name" "lovense" "value" .params.lovense) -}}
+    {{- template "simple_icon" enhance $base_map (map "name" "pornhub" "value" .params.pornhub) -}}
+    {{- template "simple_icon" enhance $base_map (map "name" "dmca" "value" .params.dmca) -}}
+    {{- template "simple_icon" enhance $base_map (map "name" "allmylinks" "value" .params.allmylinks) -}}
+    {{- template "simple_icon" enhance $base_map (map "name" "onemylink" "value" .params.onemylink) -}}
+    {{- template "simple_icon" enhance $base_map (map "name" "fancentro" "value" .params.fancentro) -}}
+    {{- template "simple_icon" enhance $base_map (map "name" "manyvids" "value" .params.manyvids) -}}
+    {{- template "simple_icon" enhance $base_map (map "name" "frisk" "value" .params.frisk) -}}
+    {{- template "simple_icon" enhance $base_map (map "name" "mail" "value" .params.mail) -}}
+    {{- template "simple_icon" enhance $base_map (map "name" "snapchat" "value" .params.snapchat) -}}
+    {{- template "simple_icon" enhance $base_map (map "name" "telegram" "value" .params.telegram) -}}
+    {{- template "simple_icon" enhance $base_map (map "name" "whatsapp" "value" .params.whatsapp) -}}
+    {{- template "simple_icon" enhance $base_map (map "name" "youtube" "value" .params.youtube) -}}
+    {{- template "simple_icon" enhance $base_map (map "name" "tiktok" "value" .params.tiktok) -}}
+    {{- template "simple_icon" enhance $base_map (map "name" "reddit" "value" .params.reddit) -}}
+    {{- template "simple_icon" enhance $base_map (map "name" "twitch" "value" .params.twitch) -}}
+    {{- template "simple_icon" enhance $base_map (map "name" "discord" "value" .params.discord) -}}
+</b>
+{{- raw_html "<!-- FLOATING ICONS END -->" -}}

@@ -12,6 +12,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.6
 	github.com/nicklaw5/helix v1.7.1
 	github.com/shopspring/decimal v0.0.0-20200105231215-408a2507e114
+	github.com/tdewolff/minify/v2 v2.9.21
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.0-20200506231410-2ff61e1afc86
 )

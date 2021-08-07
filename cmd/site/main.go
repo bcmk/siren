@@ -1,26 +1,43 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	ht "html/template"
+	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
-	"os"
+	"net/url"
 	"path/filepath"
+	"regexp"
+	"strings"
+	"time"
 
+	"github.com/bcmk/siren/lib"
+	"github.com/bcmk/siren/sitelib"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
-	"gopkg.in/yaml.v2"
+	"github.com/tdewolff/minify/v2"
+	hmin "github.com/tdewolff/minify/v2/html"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type server struct {
-	cfg config
+	cfg          sitelib.Config
+	enabledPacks []sitelib.Pack
+	db           *sql.DB
 }
 
-type config struct {
-	ListenAddress string `yaml:"listen_address"`
+type likeForPack struct {
+	Pack string `yaml:"pack"`
+	Like bool   `yaml:"like"`
 }
 
 var funcMap = ht.FuncMap{
@@ -66,26 +83,63 @@ var funcMap = ht.FuncMap{
 	"div": func(x, y int) int {
 		return x / y
 	},
+	"contains_icon": func(ss []sitelib.Icon, s string) bool {
+		for _, i := range ss {
+			if i.Name == s && i.Enabled {
+				return true
+			}
+		}
+		return false
+	},
+	"trimPrefix": func(s, prefix string) string {
+		return strings.TrimPrefix(prefix, s)
+	},
 }
+
+var sizes = map[string]int{
+	"1": 40,
+	"2": 46,
+	"3": 52,
+	"4": 58,
+	"5": 64,
+	"6": 70,
+	"7": 76,
+	"8": 82,
+	"9": 88,
+}
+
+var packParams = []string{
+	"siren",
+	"fanclub",
+	"instagram",
+	"twitter",
+	"onlyfans",
+	"amazon",
+	"lovense",
+	"pornhub",
+	"dmca",
+	"allmylinks",
+	"onemylink",
+	"fancentro",
+	"manyvids",
+	"frisk",
+	"mail",
+	"snapchat",
+	"telegram",
+	"whatsapp",
+	"youtube",
+	"tiktok",
+	"reddit",
+	"twitch",
+	"discord",
+	"size",
+}
+
+var chaturbateModelRegex = regexp.MustCompile(`^(?:https?://)?(?:www\.|ar\.|de\.|el\.|en\.|es\.|fr\.|hi\.|it\.|ja\.|ko\.|nl\.|pt\.|ru\.|tr\.|zh\.|m\.)?chaturbate\.com(?:/p|/b)?/([A-Za-z0-9\-_@]+)/?(?:\?.*)?$`)
 
 func linf(format string, v ...interface{}) { log.Printf("[INFO] "+format, v...) }
 
-func checkErr(err error) {
-	if err != nil {
-		panic(err)
-	}
-}
-
-func readConfig(path string) config {
-	file, err := os.Open(filepath.Clean(path))
-	checkErr(err)
-	defer func() { checkErr(file.Close()) }()
-	decoder := yaml.NewDecoder(file)
-	parsed := config{}
-	err = decoder.Decode(&parsed)
-	checkErr(err)
-	return parsed
-}
+var checkErr = lib.CheckErr
 
 func notFoundError(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/html")
@@ -94,45 +148,198 @@ func notFoundError(w http.ResponseWriter) {
 }
 
 func parseHTMLTemplate(filenames ...string) *ht.Template {
-	t, err := ht.New(filenames[0]).Funcs(funcMap).ParseFiles(filenames...)
+	var relative []string
+	for _, f := range filenames {
+		relative = append(relative, "pages/"+f)
+	}
+	t, err := ht.New(filepath.Base(filenames[0])).Funcs(funcMap).ParseFiles(relative...)
 	checkErr(err)
 	return t
 }
 
-func (s *server) indexHandler(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		notFoundError(w)
-		return
+func langs(url url.URL, ls ...string) map[string]ht.URL {
+	for _, l := range ls {
+		url.Host = strings.TrimPrefix(url.Host, l+".")
 	}
-	t := parseHTMLTemplate("index.gohtml", "head.gohtml", "header.gohtml", "header-en.gohtml", "footer.gohtml")
-	checkErr(t.Execute(w, nil))
+	res := map[string]ht.URL{}
+	res["en"] = ht.URL(url.String())
+	host := url.Host
+	for _, l := range ls {
+		url.Host = l + "." + host
+		res[l] = ht.URL(url.String())
+	}
+	return res
 }
 
-func (s *server) streamerHandler(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/streamer" {
-		notFoundError(w)
-		return
+func (s *server) tparams(r *http.Request, more map[string]interface{}) map[string]interface{} {
+	res := map[string]interface{}{}
+	url := *r.URL
+	res["full_path"] = url.String()
+	url.Host = r.Host
+	res["hostname"] = url.Hostname()
+	res["base_domain"] = s.cfg.BaseDomain
+	res["ru_domain"] = "ru." + s.cfg.BaseDomain
+	res["lang"] = langs(url, "ru")
+	if more != nil {
+		for k, v := range more {
+			res[k] = v
+		}
 	}
-	t := parseHTMLTemplate("streamer.gohtml", "head.gohtml", "header.gohtml", "header-en.gohtml", "footer.gohtml")
-	checkErr(t.Execute(w, nil))
+	return res
 }
 
-func (s *server) indexRuHandler(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/ru" {
-		notFoundError(w)
-		return
-	}
-	t := parseHTMLTemplate("ru.gohtml", "head.gohtml", "header.gohtml", "header-ru.gohtml", "footer.gohtml")
-	checkErr(t.Execute(w, nil))
+func (s *server) enIndexHandler(w http.ResponseWriter, r *http.Request) {
+	t := parseHTMLTemplate("en/index.gohtml", "common/head.gohtml", "common/header.gohtml", "en/trans.gohtml", "common/footer.gohtml")
+	checkErr(t.Execute(w, s.tparams(r, nil)))
 }
 
-func (s *server) streamerRuHandler(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/streamer-ru" {
+func (s *server) ruIndexHandler(w http.ResponseWriter, r *http.Request) {
+	t := parseHTMLTemplate("ru/index.gohtml", "common/head.gohtml", "common/header.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
+	checkErr(t.Execute(w, s.tparams(r, nil)))
+}
+
+func (s *server) enStreamerHandler(w http.ResponseWriter, r *http.Request) {
+	t := parseHTMLTemplate("en/streamer.gohtml", "common/head.gohtml", "common/header.gohtml", "en/trans.gohtml", "common/footer.gohtml")
+	checkErr(t.Execute(w, s.tparams(r, nil)))
+}
+
+func (s *server) ruStreamerHandler(w http.ResponseWriter, r *http.Request) {
+	t := parseHTMLTemplate("ru/streamer.gohtml", "common/head.gohtml", "common/header.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
+	checkErr(t.Execute(w, s.tparams(r, nil)))
+}
+
+func (s *server) enChicHandler(w http.ResponseWriter, r *http.Request) {
+	t := parseHTMLTemplate("en/chic.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "en/trans.gohtml", "common/footer.gohtml")
+	checkErr(t.Execute(w, s.tparams(r, map[string]interface{}{"packs": s.enabledPacks, "likes": s.likes()})))
+}
+
+func (s *server) enPackHandler(w http.ResponseWriter, r *http.Request) {
+	pack := s.findPack(mux.Vars(r)["pack"])
+	if pack == nil {
 		notFoundError(w)
 		return
 	}
-	t := parseHTMLTemplate("streamer-ru.gohtml", "head.gohtml", "header.gohtml", "header-ru.gohtml", "footer.gohtml")
-	checkErr(t.Execute(w, nil))
+	paramDict := getParamDict(packParams, r)
+	t := parseHTMLTemplate("en/pack.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "en/trans.gohtml", "common/footer.gohtml")
+	checkErr(t.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack, "params": paramDict, "sizes": sizes, "likes": s.likesForPack(pack.Name)})))
+}
+
+func (s *server) enBannerHandler(w http.ResponseWriter, r *http.Request) {
+	pack := s.findPack(mux.Vars(r)["pack"])
+	if pack == nil {
+		notFoundError(w)
+		return
+	}
+	t := parseHTMLTemplate("common/banner.gohtml", "common/head.gohtml")
+	checkErr(t.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack})))
+}
+
+func (s *server) enCodeHandler(w http.ResponseWriter, r *http.Request) {
+	pack := s.findPack(mux.Vars(r)["pack"])
+	if pack == nil {
+		notFoundError(w)
+		return
+	}
+	paramDict := getParamDict(packParams, r)
+	siren := paramDict["siren"]
+	if siren == "" {
+		target := "/chic/p/" + pack.Name
+		if r.URL.RawQuery != "" {
+			target += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+		return
+	}
+	m := chaturbateModelRegex.FindStringSubmatch(siren)
+	if len(m) == 2 {
+		paramDict["siren"] = m[1]
+	}
+	code := s.chaturbateCode(pack, paramDict)
+	t := parseHTMLTemplate("en/code.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "en/trans.gohtml", "common/footer.gohtml")
+	checkErr(t.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack, "params": paramDict, "code": code})))
+}
+
+func (s *server) likeHandler(w http.ResponseWriter, r *http.Request) {
+	pack := s.findPack(mux.Vars(r)["pack"])
+	if pack == nil {
+		notFoundError(w)
+		return
+	}
+	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1000))
+	if err != nil {
+		notFoundError(w)
+		return
+	}
+	checkErr(r.Body.Close())
+	var like likeForPack
+	if err := json.Unmarshal(body, &like); err != nil {
+		notFoundError(w)
+		return
+	}
+	if like.Pack != pack.Name {
+		notFoundError(w)
+		return
+	}
+	ip := r.Header.Get("X-Forwarded-For")
+	s.mustExec(`
+		insert into likes (address, pack, like, timestamp) values (?, ?, ?, ?)
+		on conflict(address, pack) do update set like=excluded.like, timestamp=excluded.timestamp`,
+		ip,
+		like.Pack,
+		like.Like,
+		int32(time.Now().Unix()),
+	)
+}
+
+func (s server) likes() map[string]int {
+	query := s.mustQuery("select pack, sum(like) * 2 - count(*) from likes group by pack")
+	defer func() { checkErr(query.Close()) }()
+	results := map[string]int{}
+	for query.Next() {
+		var pack string
+		var count int
+		checkErr(query.Scan(&pack, &count))
+		results[pack] = count
+	}
+	return results
+}
+
+func (s *server) findPack(name string) *sitelib.Pack {
+	for _, pack := range s.cfg.Packs {
+		if pack.Name == name {
+			return &pack
+		}
+	}
+	return nil
+}
+
+func (s *server) chaturbateCode(pack *sitelib.Pack, params map[string]string) string {
+	t := parseHTMLTemplate("common/links.gohtml")
+	var b bytes.Buffer
+	w := bufio.NewWriter(&b)
+	size := sizes[params["size"]] * pack.Scale / 100
+	margin := pack.Margin
+	if margin == nil {
+		var defaultMargin = 25
+		margin = &defaultMargin
+	}
+	if params["siren"] != "" {
+		checkErr(t.Execute(w, map[string]interface{}{
+			"pack":     pack,
+			"params":   params,
+			"size":     size,
+			"margin":   size * (*margin + 100 - pack.Scale) / 100,
+			"base_url": s.cfg.BaseURL,
+		}))
+	}
+	checkErr(w.Flush())
+	m := minify.New()
+	m.Add("text/html", &hmin.Minifier{KeepQuotes: true, KeepComments: true})
+	str, err := m.String("text/html", b.String())
+	if err != nil {
+		panic(err)
+	}
+	return str
 }
 
 func cacheControlHandler(h http.Handler) http.Handler {
@@ -142,25 +349,65 @@ func cacheControlHandler(h http.Handler) http.Handler {
 	})
 }
 
+func (s server) likesForPack(pack string) int {
+	return s.mustInt("select coalesce(sum(like) * 2 - count(*), 0) from likes where pack=?", pack)
+}
+
+func (s *server) iconsCount() int {
+	count := 0
+	for _, i := range s.cfg.Packs {
+		count += len(i.Icons)
+	}
+	return count
+}
+
+func (s *server) fillEnabledPacks() {
+	packs := make([]sitelib.Pack, 0, len(s.cfg.Packs))
+	for _, pack := range s.cfg.Packs {
+		if !pack.Disable {
+			packs = append(packs, pack)
+		}
+	}
+	s.enabledPacks = packs
+}
+
 func main() {
 	linf("starting...")
 	flag.Parse()
 	if flag.NArg() != 1 {
 		panic("usage: site <config>")
 	}
-	srv := &server{cfg: readConfig(flag.Arg(0))}
+	srv := &server{cfg: sitelib.ReadConfig(flag.Arg(0))}
+	srv.fillEnabledPacks()
+	db, err := sql.Open("sqlite3", srv.cfg.DBPath)
+	checkErr(err)
+	srv.db = db
+	srv.createDatabase()
+	fmt.Printf("%d packs loaded, %d icons\n", len(srv.cfg.Packs), srv.iconsCount())
+	ruDomain := "ru." + srv.cfg.BaseDomain
 	r := mux.NewRouter().StrictSlash(true)
-	r.Handle("/", handlers.CompressHandler(http.HandlerFunc(srv.indexHandler)))
-	r.Handle("/ru", handlers.CompressHandler(http.HandlerFunc(srv.indexRuHandler)))
-	r.Handle("/ru.html", http.RedirectHandler("/ru", 301))
+	r.Handle("/", handlers.CompressHandler(http.HandlerFunc(srv.ruIndexHandler))).Host(ruDomain)
+	r.Handle("/", handlers.CompressHandler(http.HandlerFunc(srv.enIndexHandler)))
 
-	r.Handle("/streamer", handlers.CompressHandler(http.HandlerFunc(srv.streamerHandler)))
-	r.Handle("/model.html", http.RedirectHandler("/streamer", 301))
-	r.Handle("/streamer-ru", handlers.CompressHandler(http.HandlerFunc(srv.streamerRuHandler)))
-	r.Handle("/model-ru.html", http.RedirectHandler("/streamer-ru", 301))
+	r.Handle("/streamer", handlers.CompressHandler(http.HandlerFunc(srv.ruStreamerHandler))).Host(ruDomain)
+	r.Handle("/streamer", handlers.CompressHandler(http.HandlerFunc(srv.enStreamerHandler)))
 
+	r.Handle("/chic", handlers.CompressHandler(http.HandlerFunc(srv.enChicHandler)))
+	r.Handle("/chic/p/{pack}", handlers.CompressHandler(http.HandlerFunc(srv.enPackHandler)))
+	r.Handle("/chic/banner/{pack}", handlers.CompressHandler(http.HandlerFunc(srv.enBannerHandler)))
+	r.Handle("/chic/code/{pack}", handlers.CompressHandler(http.HandlerFunc(srv.enCodeHandler)))
+	r.HandleFunc("/chic/like/{pack}", srv.likeHandler)
+
+	r.PathPrefix("/chic/i/").Handler(http.StripPrefix("/chic/i", cacheControlHandler(http.FileServer(http.Dir(srv.cfg.Files)))))
 	r.PathPrefix("/icons/").Handler(http.StripPrefix("/icons", cacheControlHandler(http.FileServer(http.Dir("icons")))))
 	r.PathPrefix("/node_modules/").Handler(http.StripPrefix("/node_modules", handlers.CompressHandler(http.FileServer(http.Dir("node_modules")))))
 	r.PathPrefix("/wwwroot/").Handler(http.StripPrefix("/wwwroot", handlers.CompressHandler(http.FileServer(http.Dir("wwwroot")))))
+
+	r.Handle("/ru", newRedirectSubdHandler("ru", "", http.StatusMovedPermanently))
+	r.Handle("/ru.html", newRedirectSubdHandler("ru", "", http.StatusMovedPermanently))
+	r.Handle("/streamer-ru", newRedirectSubdHandler("ru", "/streamer", http.StatusMovedPermanently))
+	r.Handle("/model.html", http.RedirectHandler("/streamer", http.StatusMovedPermanently))
+	r.Handle("/model-ru.html", newRedirectSubdHandler("ru", "/streamer", http.StatusMovedPermanently))
+
 	checkErr(http.ListenAndServe(srv.cfg.ListenAddress, r))
 }

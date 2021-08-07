@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    {{ template "head" }}
+    <title>SIREN — Telegram-бот для оповещений о вебкастах</title>
+</head>
+
+<body>
+<div class="container">
+    {{ template "header" }}
+    <main>
+        <p class="pt-3 pt-md-4">
+            Получайте оповещения в Telegram, когда стримеры выходят в сеть!
+            Вы подписываетесь на любимых стримеров командой <strong>/add</strong>.
+            Мы оповестим вас, когда они начнут трансляцию.
+        </p>
+
+        <h2>Установка</h2>
+
+        <ul>
+            <li>Twitch: <a href="https://t.me/TwitchSirenBot">t.me/TwitchSirenBot</a></li>
+            <li>Русский бот для BongaCams: <a href="https://t.me/BongacamsSirenBot">t.me/BongacamsSirenBot</a></li>
+            <li>Русский бот для Chaturbate: <a href="https://t.me/ChaturbateSirenBot">t.me/ChaturbateSirenBot</a></li>
+            <li>Русский бот для Stripchat и xHamster Live: <a href="https://t.me/StripchatSirenBot">t.me/StripchatSirenBot</a></li>
+            <li>Русский бот для LiveJasmin: <a href="https://t.me/RuLiveJasminSirenBot">t.me/RuLiveJasminSirenBot</a></li>
+            <li>Русский бот для CamSoda: <a href="https://t.me/RuCamSodaSirenBot">t.me/RuCamSodaSirenBot</a></li>
+            <li>Русский бот для Flirt4Free: <a href="https://t.me/RuFlirt4FreeSirenBot">t.me/RuFlirt4FreeSirenBot</a></li>
+            <li>Русский бот Streamate: <a href="https://t.me/RuStreamateSirenBot">t.me/RuStreamateSirenBot</a></li>
+            <li>Английский бот для BongaCams: <a href="https://t.me/BongacamsOnlineBot">t.me/BongacamsOnlineBot</a></li>
+            <li>Английский бот для Chaturbate: <a href="https://t.me/ChaturbateAlarmBot">t.me/ChaturbateAlarmBot</a></li>
+            <li>Английский бот для Stripchat и xHamster Live: <a href="https://t.me/StripchatOnlineBot">t.me/StripchatOnlineBot</a></li>
+            <li>Английский бот для LiveJasmin: <a href="https://t.me/LiveJasminSirenBot">t.me/LiveJasminSirenBot</a></li>
+            <li>Английский бот для CamSoda: <a href="https://t.me/CamSodaSirenBot">t.me/CamSodaSirenBot</a></li>
+            <li>Английский бот для Flirt4Free: <a href="https://t.me/Flirt4FreeSirenBot">t.me/Flirt4FreeSirenBot</a></li>
+            <li>Английский бот для Streamate: <a href="https://t.me/StreamateSirenBot">t.me/StreamateSirenBot</a></li>
+        </ul>
+
+        <h2>Команды</h2>
+
+        <ul>
+            <li><b>add</b> <em><strong>КАНАЛ</strong></em> — Добавить канал</li>
+            <li><b>remove</b> <em><strong>КАНАЛ</strong></em> — Удалить канал</li>
+            <li><b>remove_all</b> — Удалить все каналы</li>
+            <li><b>list</b> — Список подписок</li>
+            <li><b>pics</b> — Кадры трансляций в этот момент</li>
+            <li><b>week</b> — График канала в предыдущие 7 дней</li>
+            <li><b>help</b> — Список команд</li>
+            <li><b>settings</b> — Настройки</li>
+            <li><b>feedback</b> <em><strong>ВАШЕ_СООБЩЕНИЕ</strong></em> — Обратная связь</li>
+        </ul>
+
+        <p>
+            Подставьте вместо <em><strong>КАНАЛ</strong></em> идентификатор канала.
+            Это то же самое, что и имя модели в Chaturbate и Stripchat.
+            Для BongaCams идентификатор канала можно посмотреть в адресной строке браузера.
+        </p>
+
+        <h2>Реферальные ссылки</h2>
+        <p>
+            Наберите команду <strong>/referral</strong> и получите вашу реферальную ссылку.
+            За каждого зарегистрировавшегося по такой ссылке пользователя вы получите по две дополнительных подписке.
+            Пользователи, зарегистрировавшиеся по такой ссылке, также получат две дополнительных подписки.
+            Делитесь ей в Twitter, Instagram или других социальных медиа.
+        </p>
+
+        <h2>Политика конфиденциальности</h2>
+        <p>
+            Мы не храним никакой персональной информации.
+            Мы храним только идентификатор чата Telegram, необходимый для функционирования бота.
+            Идентификатор чата Telegram — это просто число, которое мы используем для отсылки вам оповещений.
+        </p>
+
+        <h2><a href="streamer">Я стример</a></h2>
+    </main>
+    {{ template "footer" . }}
+</div>
+</body>
+</html>
