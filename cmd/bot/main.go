@@ -1079,9 +1079,7 @@ func (w *worker) downloadSuccess(success bool) { w.downloadResults <- success }
 func (w *worker) downloadImage(url string) []byte {
 	imageBytes, err := w.downloadImageInternal(url)
 	if err != nil {
-		if w.cfg.Debug {
-			ldbg("cannot download image, %v", err)
-		}
+		lerr("cannot download image, %v", err)
 	}
 	w.downloadSuccess(err != nil)
 	return imageBytes
@@ -1090,21 +1088,21 @@ func (w *worker) downloadImage(url string) []byte {
 func (w *worker) downloadImageInternal(url string) ([]byte, error) {
 	resp, err := w.clients[0].Client.Get(url)
 	if err != nil {
-		return nil, errors.New("cannot make image query")
+		return nil, fmt.Errorf("cannot query the image %s, %v", url, err)
 	}
 	defer func() { checkErr(resp.Body.Close()) }()
 	if resp.StatusCode != 200 {
-		return nil, errors.New("cannot download image data")
+		return nil, fmt.Errorf("cannot download the image %s, status code %v", url, resp.StatusCode)
 	}
 	buf := new(bytes.Buffer)
 	_, err = buf.ReadFrom(resp.Body)
 	if err != nil {
-		return nil, errors.New("cannot read image")
+		return nil, fmt.Errorf("cannot read the image %s, %v", url, err)
 	}
 	data := buf.Bytes()
 	_, _, err = image.Decode(bytes.NewReader(data))
 	if err != nil {
-		return nil, errors.New("cannot decode image")
+		return nil, errors.New("cannot decode the image %s, %v", err)
 	}
 	return data, nil
 }
