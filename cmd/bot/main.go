@@ -1102,7 +1102,7 @@ func (w *worker) downloadImageInternal(url string) ([]byte, error) {
 	data := buf.Bytes()
 	_, _, err = image.Decode(bytes.NewReader(data))
 	if err != nil {
-		return nil, errors.New("cannot decode the image %s, %v", err)
+		return nil, fmt.Errorf("cannot decode the image %s, %v", url, err)
 	}
 	return data, nil
 }
