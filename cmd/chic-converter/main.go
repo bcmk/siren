@@ -130,7 +130,7 @@ func (s *worker) fillEnabledPacks() {
 func main() {
 	flag.Parse()
 	if flag.NArg() < 2 {
-		panic("usage: chic <config> <icons...>")
+		panic("usage: chic-converter <config> <icons...>")
 	}
 	w := &worker{cfg: sitelib.ReadConfig(flag.Arg(0))}
 	w.fillEnabledPacks()
