@@ -4,19 +4,19 @@
 {{ $pack := .pack }}
 {{ $params := .params }}
 
-<html lang="en">
+<html lang="ru">
 <head>
     <meta property="og:image" content="/chic/i/{{ $pack.Name }}/siren.{{ $pack.FinalType }}" />
     {{ template "head" }}
-    <title>SIREN — Chaturbate icons constructor</title>
+    <title>SIREN — Конструктор иконок для Chaturbate</title>
     <script>
         function copyTextToClipboard(text) {
             navigator.clipboard.writeText(text).then(
                 function () {
-                    document.getElementById('copy-button').innerText = 'copied'
+                    document.getElementById('copy-button').innerText = 'скопировано'
                 },
                 function () {
-                    document.getElementById('copy-button').innerText = 'could not copy'
+                    document.getElementById('copy-button').innerText = 'не получилось'
                 });
         }
     </script>
@@ -26,16 +26,16 @@
 <div class="container" style="margin-bottom: 75px;">
     {{ template "header" }}
     <main>
-        <h2 class="text-center mt-4">Chaturbate icons constructor</h2>
+        <h2 class="text-center mt-4">Конструктор иконок для Chaturbate</h2>
         {{ if .code }}
             <div class="mt-4">
                 <div class="row">
                     <div class="col-12 d-flex">
-                        <span class="align-self-end me-4">Copy this code and paste it at the end of the About Me section of your bio</span>
+                        <span class="align-self-end me-4">Скопируйте этот код и вставьте в конец секции "Обо Мне" / "About Me" вашего профиля в Chaturbate</span>
                         <button id="copy-button"
                                 class="ms-auto align-self-end ms-2 btn btn-primary"
                                 onclick="copyTextToClipboard(document.getElementById('code').innerText)">
-                            copy
+                            скопировать
                         </button>
                     </div>
                 </div>
@@ -48,14 +48,14 @@
                 </div>
             </div>
             <p class="mt-2">
-                It can take some time for Chaturbate to load images into their cache.
-                If icons don't show up immediately, please check them in several minutes.
-                If your age is not verified by Chaturbate, then the icons and other code in your bio will not work.
+                Загрузка иконок в кэш Chaturbate может занять некоторое время.
+                Если иконки не появились сразу, попробуйте зайти на страницу профиля через несколько минут.
+                Если ваш возраст не потдверждён в Chaturbate, иконки, как и другой код в вашем профиле не будут работать.
             </p>
         {{ end }}
         <div class="row mt-3">
             <div class="col-4 col-lg-2">
-                <button class="btn btn-secondary w-100" onclick="window.history.back()">back / edit</button>
+                <button class="btn btn-secondary w-100" onclick="window.history.back()">назад / изменить</button>
             </div>
         </div>
     </main>

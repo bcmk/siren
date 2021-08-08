@@ -213,6 +213,11 @@ func (s *server) enChicHandler(w http.ResponseWriter, r *http.Request) {
 	checkErr(t.Execute(w, s.tparams(r, map[string]interface{}{"packs": s.enabledPacks, "likes": s.likes()})))
 }
 
+func (s *server) ruChicHandler(w http.ResponseWriter, r *http.Request) {
+	t := parseHTMLTemplate("ru/chic.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
+	checkErr(t.Execute(w, s.tparams(r, map[string]interface{}{"packs": s.enabledPacks, "likes": s.likes()})))
+}
+
 func (s *server) enPackHandler(w http.ResponseWriter, r *http.Request) {
 	pack := s.findPack(mux.Vars(r)["pack"])
 	if pack == nil {
@@ -221,6 +226,17 @@ func (s *server) enPackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	paramDict := getParamDict(packParams, r)
 	t := parseHTMLTemplate("en/pack.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "en/trans.gohtml", "common/footer.gohtml")
+	checkErr(t.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack, "params": paramDict, "sizes": sizes, "likes": s.likesForPack(pack.Name)})))
+}
+
+func (s *server) ruPackHandler(w http.ResponseWriter, r *http.Request) {
+	pack := s.findPack(mux.Vars(r)["pack"])
+	if pack == nil {
+		notFoundError(w)
+		return
+	}
+	paramDict := getParamDict(packParams, r)
+	t := parseHTMLTemplate("ru/pack.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
 	checkErr(t.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack, "params": paramDict, "sizes": sizes, "likes": s.likesForPack(pack.Name)})))
 }
 
@@ -256,6 +272,31 @@ func (s *server) enCodeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	code := s.chaturbateCode(pack, paramDict)
 	t := parseHTMLTemplate("en/code.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "en/trans.gohtml", "common/footer.gohtml")
+	checkErr(t.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack, "params": paramDict, "code": code})))
+}
+
+func (s *server) ruCodeHandler(w http.ResponseWriter, r *http.Request) {
+	pack := s.findPack(mux.Vars(r)["pack"])
+	if pack == nil {
+		notFoundError(w)
+		return
+	}
+	paramDict := getParamDict(packParams, r)
+	siren := paramDict["siren"]
+	if siren == "" {
+		target := "/chic/p/" + pack.Name
+		if r.URL.RawQuery != "" {
+			target += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, target, http.StatusTemporaryRedirect)
+		return
+	}
+	m := chaturbateModelRegex.FindStringSubmatch(siren)
+	if len(m) == 2 {
+		paramDict["siren"] = m[1]
+	}
+	code := s.chaturbateCode(pack, paramDict)
+	t := parseHTMLTemplate("ru/code.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
 	checkErr(t.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack, "params": paramDict, "code": code})))
 }
 
@@ -392,9 +433,12 @@ func main() {
 	r.Handle("/streamer", handlers.CompressHandler(http.HandlerFunc(srv.ruStreamerHandler))).Host(ruDomain)
 	r.Handle("/streamer", handlers.CompressHandler(http.HandlerFunc(srv.enStreamerHandler)))
 
+	r.Handle("/chic", handlers.CompressHandler(http.HandlerFunc(srv.ruChicHandler))).Host(ruDomain)
 	r.Handle("/chic", handlers.CompressHandler(http.HandlerFunc(srv.enChicHandler)))
+	r.Handle("/chic/p/{pack}", handlers.CompressHandler(http.HandlerFunc(srv.ruPackHandler))).Host(ruDomain)
 	r.Handle("/chic/p/{pack}", handlers.CompressHandler(http.HandlerFunc(srv.enPackHandler)))
 	r.Handle("/chic/banner/{pack}", handlers.CompressHandler(http.HandlerFunc(srv.enBannerHandler)))
+	r.Handle("/chic/code/{pack}", handlers.CompressHandler(http.HandlerFunc(srv.ruCodeHandler))).Host(ruDomain)
 	r.Handle("/chic/code/{pack}", handlers.CompressHandler(http.HandlerFunc(srv.enCodeHandler)))
 	r.HandleFunc("/chic/like/{pack}", srv.likeHandler)
 
