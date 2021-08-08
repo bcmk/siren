@@ -150,7 +150,7 @@ func (c *CheckerCommon) startFullCheckerDaemon(checker Checker) {
 			for modelID := range manual {
 				time.Sleep(time.Duration(c.IntervalMs) * time.Millisecond)
 				status := checker.CheckStatusSingle(modelID)
-				if status == StatusUnknown || status&StatusNotFound != 0 {
+				if status == StatusUnknown || (status&StatusNotFound != 0 && request.Specific == nil) {
 					Lerr("status for model %s reported: %v", modelID, status)
 					nErrors++
 				}
