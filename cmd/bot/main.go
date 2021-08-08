@@ -1081,7 +1081,7 @@ func (w *worker) downloadImage(url string) []byte {
 	if err != nil {
 		lerr("cannot download image, %v", err)
 	}
-	w.downloadSuccess(err != nil)
+	w.downloadSuccess(err == nil)
 	return imageBytes
 }
 
