@@ -33,6 +33,18 @@ type server struct {
 	cfg          sitelib.Config
 	enabledPacks []sitelib.Pack
 	db           *sql.DB
+
+	enIndexTemplate    *ht.Template
+	ruIndexTemplate    *ht.Template
+	enStreamerTemplate *ht.Template
+	ruStreamerTemplate *ht.Template
+	enChicTemplate     *ht.Template
+	ruChicTemplate     *ht.Template
+	enPackTemplate     *ht.Template
+	ruPackTemplate     *ht.Template
+	bannerTemplate     *ht.Template
+	enCodeTemplate     *ht.Template
+	ruCodeTemplate     *ht.Template
 }
 
 type likeForPack struct {
@@ -187,33 +199,27 @@ func (s *server) tparams(r *http.Request, more map[string]interface{}) map[strin
 }
 
 func (s *server) enIndexHandler(w http.ResponseWriter, r *http.Request) {
-	t := parseHTMLTemplate("en/index.gohtml", "common/head.gohtml", "common/header.gohtml", "en/trans.gohtml", "common/footer.gohtml")
-	checkErr(t.Execute(w, s.tparams(r, nil)))
+	checkErr(s.enIndexTemplate.Execute(w, s.tparams(r, nil)))
 }
 
 func (s *server) ruIndexHandler(w http.ResponseWriter, r *http.Request) {
-	t := parseHTMLTemplate("ru/index.gohtml", "common/head.gohtml", "common/header.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
-	checkErr(t.Execute(w, s.tparams(r, nil)))
+	checkErr(s.ruIndexTemplate.Execute(w, s.tparams(r, nil)))
 }
 
 func (s *server) enStreamerHandler(w http.ResponseWriter, r *http.Request) {
-	t := parseHTMLTemplate("en/streamer.gohtml", "common/head.gohtml", "common/header.gohtml", "en/trans.gohtml", "common/footer.gohtml")
-	checkErr(t.Execute(w, s.tparams(r, nil)))
+	checkErr(s.enStreamerTemplate.Execute(w, s.tparams(r, nil)))
 }
 
 func (s *server) ruStreamerHandler(w http.ResponseWriter, r *http.Request) {
-	t := parseHTMLTemplate("ru/streamer.gohtml", "common/head.gohtml", "common/header.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
-	checkErr(t.Execute(w, s.tparams(r, nil)))
+	checkErr(s.ruStreamerTemplate.Execute(w, s.tparams(r, nil)))
 }
 
 func (s *server) enChicHandler(w http.ResponseWriter, r *http.Request) {
-	t := parseHTMLTemplate("en/chic.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "en/trans.gohtml", "common/footer.gohtml")
-	checkErr(t.Execute(w, s.tparams(r, map[string]interface{}{"packs": s.enabledPacks, "likes": s.likes()})))
+	checkErr(s.enChicTemplate.Execute(w, s.tparams(r, map[string]interface{}{"packs": s.enabledPacks, "likes": s.likes()})))
 }
 
 func (s *server) ruChicHandler(w http.ResponseWriter, r *http.Request) {
-	t := parseHTMLTemplate("ru/chic.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
-	checkErr(t.Execute(w, s.tparams(r, map[string]interface{}{"packs": s.enabledPacks, "likes": s.likes()})))
+	checkErr(s.ruChicTemplate.Execute(w, s.tparams(r, map[string]interface{}{"packs": s.enabledPacks, "likes": s.likes()})))
 }
 
 func (s *server) enPackHandler(w http.ResponseWriter, r *http.Request) {
@@ -223,8 +229,7 @@ func (s *server) enPackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	paramDict := getParamDict(packParams, r)
-	t := parseHTMLTemplate("en/pack.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "en/trans.gohtml", "common/footer.gohtml")
-	checkErr(t.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack, "params": paramDict, "sizes": sizes, "likes": s.likesForPack(pack.Name)})))
+	checkErr(s.enPackTemplate.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack, "params": paramDict, "sizes": sizes, "likes": s.likesForPack(pack.Name)})))
 }
 
 func (s *server) ruPackHandler(w http.ResponseWriter, r *http.Request) {
@@ -234,8 +239,7 @@ func (s *server) ruPackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	paramDict := getParamDict(packParams, r)
-	t := parseHTMLTemplate("ru/pack.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
-	checkErr(t.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack, "params": paramDict, "sizes": sizes, "likes": s.likesForPack(pack.Name)})))
+	checkErr(s.ruPackTemplate.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack, "params": paramDict, "sizes": sizes, "likes": s.likesForPack(pack.Name)})))
 }
 
 func (s *server) enBannerHandler(w http.ResponseWriter, r *http.Request) {
@@ -244,8 +248,7 @@ func (s *server) enBannerHandler(w http.ResponseWriter, r *http.Request) {
 		notFoundError(w)
 		return
 	}
-	t := parseHTMLTemplate("common/banner.gohtml", "common/head.gohtml")
-	checkErr(t.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack})))
+	checkErr(s.bannerTemplate.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack})))
 }
 
 func (s *server) enCodeHandler(w http.ResponseWriter, r *http.Request) {
@@ -269,8 +272,7 @@ func (s *server) enCodeHandler(w http.ResponseWriter, r *http.Request) {
 		paramDict["siren"] = m[1]
 	}
 	code := s.chaturbateCode(pack, paramDict)
-	t := parseHTMLTemplate("en/code.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "en/trans.gohtml", "common/footer.gohtml")
-	checkErr(t.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack, "params": paramDict, "code": code})))
+	checkErr(s.enCodeTemplate.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack, "params": paramDict, "code": code})))
 }
 
 func (s *server) ruCodeHandler(w http.ResponseWriter, r *http.Request) {
@@ -294,8 +296,7 @@ func (s *server) ruCodeHandler(w http.ResponseWriter, r *http.Request) {
 		paramDict["siren"] = m[1]
 	}
 	code := s.chaturbateCode(pack, paramDict)
-	t := parseHTMLTemplate("ru/code.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
-	checkErr(t.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack, "params": paramDict, "code": code})))
+	checkErr(s.ruCodeTemplate.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack, "params": paramDict, "code": code})))
 }
 
 func (s *server) likeHandler(w http.ResponseWriter, r *http.Request) {
@@ -400,6 +401,20 @@ func (s *server) iconsCount() int {
 	return count
 }
 
+func (s *server) fillTemplates() {
+	s.enIndexTemplate = parseHTMLTemplate("en/index.gohtml", "common/head.gohtml", "common/header.gohtml", "en/trans.gohtml", "common/footer.gohtml")
+	s.ruIndexTemplate = parseHTMLTemplate("ru/index.gohtml", "common/head.gohtml", "common/header.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
+	s.enStreamerTemplate = parseHTMLTemplate("en/streamer.gohtml", "common/head.gohtml", "common/header.gohtml", "en/trans.gohtml", "common/footer.gohtml")
+	s.ruStreamerTemplate = parseHTMLTemplate("ru/streamer.gohtml", "common/head.gohtml", "common/header.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
+	s.enChicTemplate = parseHTMLTemplate("en/chic.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "en/trans.gohtml", "common/footer.gohtml")
+	s.ruChicTemplate = parseHTMLTemplate("ru/chic.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
+	s.enPackTemplate = parseHTMLTemplate("en/pack.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "en/trans.gohtml", "common/footer.gohtml")
+	s.ruPackTemplate = parseHTMLTemplate("ru/pack.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
+	s.bannerTemplate = parseHTMLTemplate("common/banner.gohtml", "common/head.gohtml")
+	s.enCodeTemplate = parseHTMLTemplate("en/code.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "en/trans.gohtml", "common/footer.gohtml")
+	s.ruCodeTemplate = parseHTMLTemplate("ru/code.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
+}
+
 func (s *server) fillEnabledPacks() {
 	packs := make([]sitelib.Pack, 0, len(s.cfg.Packs))
 	for _, pack := range s.cfg.Packs {
@@ -417,6 +432,7 @@ func main() {
 		panic("usage: site <config>")
 	}
 	srv := &server{cfg: sitelib.ReadConfig(flag.Arg(0))}
+	srv.fillTemplates()
 	srv.fillEnabledPacks()
 	db, err := sql.Open("sqlite3", srv.cfg.DBPath)
 	checkErr(err)
