@@ -2,3 +2,5 @@ twitter:
   str: Do not forget to subscribe to our Twitter https://twitter.com/siren_tlg
 telegram_channel:
   str: Do not forget to subscribe to our Telegram channel https://t.me/siren_telegram_bot
+other:
+  str: Try this bot for other sites. Type /help to see the links
