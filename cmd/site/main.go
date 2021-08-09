@@ -45,6 +45,8 @@ type server struct {
 	bannerTemplate     *ht.Template
 	enCodeTemplate     *ht.Template
 	ruCodeTemplate     *ht.Template
+
+	css string
 }
 
 type likeForPack struct {
@@ -185,6 +187,7 @@ func langs(url url.URL, ls ...string) map[string]ht.URL {
 
 func (s *server) tparams(r *http.Request, more map[string]interface{}) map[string]interface{} {
 	res := map[string]interface{}{}
+	res["css"] = ht.CSS(s.css)
 	url := *r.URL
 	res["full_path"] = url.String()
 	url.Host = r.Host
@@ -425,6 +428,12 @@ func (s *server) fillEnabledPacks() {
 	s.enabledPacks = packs
 }
 
+func (s *server) fillCSS() {
+	bs, err := ioutil.ReadFile("wwwroot/styles.css")
+	checkErr(err)
+	s.css = string(bs)
+}
+
 func main() {
 	linf("starting...")
 	flag.Parse()
@@ -434,6 +443,7 @@ func main() {
 	srv := &server{cfg: sitelib.ReadConfig(flag.Arg(0))}
 	srv.fillTemplates()
 	srv.fillEnabledPacks()
+	srv.fillCSS()
 	db, err := sql.Open("sqlite3", srv.cfg.DBPath)
 	checkErr(err)
 	srv.db = db
