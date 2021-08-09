@@ -1,3 +1,8 @@
+.index-icon {
+    width: auto !important;
+    height: 100% !important;
+}
+
 .index-icon:not([src]) {
     opacity: 0;
 }
@@ -125,3 +130,14 @@ input[type="radio"].like-selection:checked + label {
     border-radius: 10px;
 }
 
+.slide-center {
+    position: absolute !important;
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+.swiper-slide {
+    height: 90px !important;
+}

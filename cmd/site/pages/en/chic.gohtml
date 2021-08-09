@@ -53,20 +53,16 @@
                     <div class="col-12 col-xl-10 col-lg-9">
                         <div class="swiper-container dark-stripes">
                             <div class="swiper-wrapper no-select">
-                                {{ range $icon := $pack.Icons }}
-                                    {{ if $icon.Enabled }}
-                                        <div class="swiper-slide" style="height: 90px; width: {{ $slide_width }}px;">
-                                            <div class="d-flex align-items-center justify-content-center"
-                                                 style="position: absolute; width: 100%; height: {{ $icon_size }}px; top: {{ $top }}px;">
-                                                <img style="width: auto; height: 100%;"
-                                                     data-src="/chic/i/{{ $pack.Name }}/{{ $icon.Name }}.{{ $pack.FinalType }}"
-                                                     alt=""
-                                                     class="index-icon swiper-lazy">
+                                {{- range $icon := $pack.Icons -}}
+                                    {{- if $icon.Enabled }}
+                                        <div class="swiper-slide" style="width: {{ $slide_width }}px;">
+                                            <div class="slide-center" style="height: {{ $icon_size }}px; top: {{ $top }}px;">
+                                                <img data-src="/chic/i/{{ $pack.Name }}/{{ $icon.Name }}.{{ $pack.FinalType }}" alt="" class="index-icon swiper-lazy">
                                             </div>
                                             <div class="siren-lazy-preloader"></div>
                                         </div>
-                                    {{ end }}
-                                {{ end }}
+                                    {{- end -}}
+                                {{ end -}}
                             </div>
                         </div>
                     </div>
