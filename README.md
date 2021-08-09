@@ -45,34 +45,13 @@ For BongaCams you can find a model ID in the address line of your browser.
 For streamers
 -------------
 
-Add a link to your profile page and share it on Twitter, Instagram or other social media.
-Telegram users clicking it follow you in our bot.
-From that moment they receive a notification whenever you start broadcasting.
-Use following links:
+Here are details [For streamers](https://siren.chat/streamer)
 
-* Twitch:  
-  <pre>https://siren.chat/tw/<b><i>YOUR_CHANNEL</i></b></pre>
-* Chaturbate:  
-  <pre>https://siren.chat/cb/<b><i>YOUR_USERNAME</i></b></pre>
-* Stripchat and xHamster Live:  
-  <pre>https://siren.chat/sc/<b><i>YOUR_USERNAME</i></b></pre>
-* BongaCams:  
-  <pre>https://siren.chat/bc/<b><i>YOUR_USERNAME</i></b></pre>
-* LiveJasmin:  
-  <pre>https://siren.chat/lj/<b><i>YOUR_USERNAME</i></b></pre>
-* CamSoda:  
-  <pre>https://siren.chat/cs/<b><i>YOUR_USERNAME</i></b></pre>
-* Flirt4Free:  
-  <pre>https://siren.chat/f4f/<b><i>YOUR_USERNAME</i></b></pre>
-* Streamate:  
-  <pre>https://siren.chat/sm/<b><i>YOUR_USERNAME</i></b></pre>
+We offer several ways you can use our bot:
 
-Substitute ___YOUR_USERNAME___ with your actual model ID.
-It is the same as model name in Chaturbate and Stripchat.
-
-Recommended text: "Get a notification in Telegram whenever I'm online ___YOUR LINK___".
-
-You can use these [floating icons](https://siren.chat/chic) for your Chaturbate profile.
+* You can share your own notification link to your users. They will be notified in Telegram whenever you are online
+* You can add our bot to your Telegram channel or group. Subscribers will be notified whenever you are online
+* You can use our floting icons in your Chaturbate profile via [Chaturbate icons constructor](https://siren.chat/chic)
 
 Write to siren.chat@gmail.com in case of any questions.
 
