@@ -382,9 +382,9 @@ func (s *server) chaturbateCode(pack *sitelib.Pack, params map[string]string) st
 	return str
 }
 
-func cacheControlHandler(h http.Handler) http.Handler {
+func cacheControlHandler(h http.Handler, mins int) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "max-age=7200")
+		w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%d", mins*60))
 		h.ServeHTTP(w, r)
 	})
 }
@@ -456,10 +456,10 @@ func main() {
 	r.Handle("/chic/code/{pack}", handlers.CompressHandler(http.HandlerFunc(srv.enCodeHandler)))
 	r.HandleFunc("/chic/like/{pack}", srv.likeHandler)
 
-	r.PathPrefix("/chic/i/").Handler(http.StripPrefix("/chic/i", cacheControlHandler(http.FileServer(http.Dir(srv.cfg.Files)))))
-	r.PathPrefix("/icons/").Handler(http.StripPrefix("/icons", cacheControlHandler(http.FileServer(http.Dir("icons")))))
-	r.PathPrefix("/node_modules/").Handler(http.StripPrefix("/node_modules", handlers.CompressHandler(http.FileServer(http.Dir("node_modules")))))
-	r.PathPrefix("/wwwroot/").Handler(http.StripPrefix("/wwwroot", handlers.CompressHandler(http.FileServer(http.Dir("wwwroot")))))
+	r.PathPrefix("/chic/i/").Handler(http.StripPrefix("/chic/i", cacheControlHandler(http.FileServer(http.Dir(srv.cfg.Files)), 120)))
+	r.PathPrefix("/icons/").Handler(http.StripPrefix("/icons", cacheControlHandler(http.FileServer(http.Dir("icons")), 120)))
+	r.PathPrefix("/node_modules/").Handler(http.StripPrefix("/node_modules", cacheControlHandler(handlers.CompressHandler(http.FileServer(http.Dir("node_modules"))), 120)))
+	r.PathPrefix("/wwwroot/").Handler(http.StripPrefix("/wwwroot", cacheControlHandler(handlers.CompressHandler(http.FileServer(http.Dir("wwwroot"))), 120)))
 
 	r.Handle("/ru", newRedirectSubdHandler("ru", "", http.StatusMovedPermanently))
 	r.Handle("/ru.html", newRedirectSubdHandler("ru", "", http.StatusMovedPermanently))
