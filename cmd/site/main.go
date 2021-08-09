@@ -180,10 +180,8 @@ func (s *server) tparams(r *http.Request, more map[string]interface{}) map[strin
 	res["base_domain"] = s.cfg.BaseDomain
 	res["ru_domain"] = "ru." + s.cfg.BaseDomain
 	res["lang"] = langs(url, "ru")
-	if more != nil {
-		for k, v := range more {
-			res[k] = v
-		}
+	for k, v := range more {
+		res[k] = v
 	}
 	return res
 }
