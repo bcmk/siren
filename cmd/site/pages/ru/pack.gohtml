@@ -21,7 +21,6 @@
         function siren_updated() {
             const inp = document.getElementsByName('siren')[0]
             document.getElementById('fanclub-string').value = inp.value
-            document.getElementById('submit').disabled = inp.value === ''
         }
 
         function remove_empties(form) {
@@ -50,7 +49,7 @@
         <div class="mt-2">
             <a class="btn btn-dark px-3" href="/chic">показать все пакеты</a>
         </div>
-        <form onsubmit="return remove_empties(this)" action="/chic/code/{{ .pack.Name }}">
+        <form novalidate action="/chic/code/{{ .pack.Name }}" class="needs-validation">
             <div class="mt-4">
                 <h3>Выберите размер иконок</h3>
                 <div class="row mt-4">
@@ -109,37 +108,39 @@
             <h3 class="mt-4">Заполните свои социальные сети</h3>
             <div class="mx-auto mt-2">
                 {{ define "simple_input" }}
-                    <div class="row">
-                        <div class="col-12 col-md-6 order-md-last mt-3 mt-md-0 d-flex">
-                            <label class="input-tip d-flex" for="{{ .name }}">
-                                <span class="d-inline-flex d-md-none form-icon align-self-center">
-                                    <img src="/chic/i/{{ .pack.Name }}/{{ .name }}.{{ .pack.FinalType }}"
-                                         alt=""
-                                         style="height: {{ .pack.Scale }}%;"
-                                         class="align-self-center">
-                                </span>
-                                <span class="align-self-center ms-4 ms-md-0">{{ .comment }}</span>
-                            </label>
-                        </div>
-                        <div class="col-12 col-md-6 col-lg-5 d-flex">
-                            <div class="d-none d-md-flex form-icon align-self-center">
+                    <div class="row mt-4"/>
+                        <div class="d-flex col-12 col-lg-9" height="50px;">
+                            <span class="d-inline-flex form-icon align-self-center">
                                 <img src="/chic/i/{{ .pack.Name }}/{{ .name }}.{{ .pack.FinalType }}"
                                      alt=""
                                      style="height: {{ .pack.Scale }}%;"
                                      class="align-self-center">
-                            </div>
-                            <div class="align-self-center flex-fill ms-md-4">
-                                <input id="{{ .name }}"
-                                       name="{{ .name }}"
-                                       value="{{ .value }}"
-                                       {{ if not .text }}
-                                           pattern="https://.*"
-                                           title="https://YOUR_LINK"
-                                       {{ end }}
-                                       class="form-control"
-                                       placeholder="{{ .placeholder }}"
-                                       onkeydown="{{- if eq .name "siren" -}} siren_updated() {{- end -}}"
-                                       oninput="{{- if eq .name "siren" -}} siren_updated() {{- end }}"/>
+                            </span>
+                            <div class="w-100 d-flex align-self-center h-100 ms-3 flex-column">
+                                <div class="w-100">
+                                    <label for="{{ .name }}" class="form-label input-tip">{{ .comment }}</label>
+                                </div>
+                                <div class="w-100">
+                                    <input id="{{ .name }}"
+                                           name="{{ .name }}"
+                                           value="{{ .value }}"
+                                           {{ if not .text }}
+                                               pattern="https://.*"
+                                               title="https://ВАША_ССЫЛКА"
+                                           {{ else }}
+                                               required
+                                           {{ end }}
+                                           class="form-control"
+                                           aria-describedby="invalid-feedback-{{ .name }}"
+                                           placeholder="{{ .placeholder }}"
+                                           onkeydown="{{- if eq .name "siren" -}} siren_updated() {{- end -}}"
+                                           oninput="{{- if eq .name "siren" -}} siren_updated() {{- end }}"/>
+                                    {{ if not .text }}
+                                        <div id="invalid-feedback-{{ .name }}" class="invalid-feedback">Формат: https://ВАША_ССЫЛКА</div>
+                                    {{ else }}
+                                        <div id="invalid-feedback-{{ .name }}" class="invalid-feedback">Обязательное поле</div>
+                                    {{ end }}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -148,37 +149,33 @@
                     {{ template "simple_input" map "pack" .pack "name" "siren" "comment" (raw_html "Ваш ник на Chaturbate <b>(обязательно)</b>") "value" $params.siren "placeholder" "ник" "text" true }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "fanclub" }}
-                    <div class="row">
-                        <div class="col-12 col-md-6 col-lg-5 order-md-last mt-3 mt-md-0 d-flex">
-                            <label class="input-tip d-flex" for="fanclub">
-                                <span class="d-inline-flex d-md-none form-icon align-self-center">
-                                    <img src="/chic/i/{{ $pack.Name }}/fanclub.{{ $pack.FinalType }}"
-                                         alt=""
-                                         style="height: {{ $pack.Scale }}%;"
-                                         class="align-self-center">
-                                </span>
-                                <span class="align-self-center ms-4 ms-md-0">Добавить иконку для фан-клуба</span>
-                            </label>
-                        </div>
-                        <div class="col-12 col-md-6 col-lg-5 d-flex">
-                            <div class="d-none d-md-flex form-icon align-self-center">
+                    <div class="row mt-4"/>
+                        <div class="d-flex col-12 col-lg-9" height="50px;">
+                            <span class="d-inline-flex form-icon align-self-center">
                                 <img src="/chic/i/{{ $pack.Name }}/fanclub.{{ $pack.FinalType }}"
                                      alt=""
-                                     style="height: {{ .pack.Scale }}%;"
+                                     style="height: {{ $pack.Scale }}%;"
                                      class="align-self-center">
-                            </div>
-                            <div class="align-self-center flex-fill ms-md-4">
-                                <!--suppress HtmlFormInputWithoutLabel -->
-                                <input id="fanclub-string" class="form-control" disabled/>
-                            </div>
-                            <div class="align-self-center ms-4 d-flex">
-                                <label class="switch align-self-center" for="fanclub">
-                                    <input id="fanclub"
-                                           name="fanclub"
-                                           type="checkbox"
-                                            {{ if eq $params.fanclub "on" -}} checked {{- end }}>
-                                    <span class="slider round"></span>
-                                </label>
+                            </span>
+                            <div class="w-100 d-flex align-self-center h-100 ms-3 flex-column">
+                                <div class="w-100">
+                                    <label for="{{ .name }}" class="form-label input-tip">Добавить иконку для фан-клуба</label>
+                                </div>
+                                <div class="w-100 d-flex">
+                                    <div class="align-self-center flex-fill">
+                                        <!--suppress HtmlFormInputWithoutLabel -->
+                                        <input id="fanclub-string" class="form-control" disabled/>
+                                    </div>
+                                    <div class="align-self-center ms-4 d-flex">
+                                        <label class="switch align-self-center" for="fanclub">
+                                            <input id="fanclub"
+                                                   name="fanclub"
+                                                   type="checkbox"
+                                                    {{ if eq $params.fanclub "on" -}} checked {{- end }}>
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -247,12 +244,12 @@
                     {{ template "simple_input" map "pack" .pack "name" "discord" "comment" "Ссылка на Discord" "value" $params.discord }}
                 {{ end }}
                 <div class="row mt-4">
-                    <div class="col-12 col-md-6 col-lg-5 d-flex">
+                    <div class="col-12 col-lg-9">
                         <hr class="w-100"/>
                     </div>
                 </div>
                 <div class="row">
-                    <div class="col-12 col-md-6 col-lg-5 d-flex align-items-center" style="font-size: 24px;">
+                    <div class="col-12 col-lg-9 d-flex align-items-center" style="font-size: 24px;">
                         <div class="flex-fill"></div>
                         <div class="d-inline-flex align-items-center">
                             <input id="like" name="like" type="radio" class="like-selection" onchange="like_changed('{{ $pack.Name }}', true)"/>
@@ -273,8 +270,9 @@
                     </div>
                 </div>
                 <div class="row mt-5">
-                    <div class="col-12 col-md-6 col-lg-5">
-                        <button id="submit" class="btn btn-primary w-100" disabled>получить код для профиля</button>
+                    <div class="col-12 col-lg-9">
+                        <button id="submit" class="btn btn-primary w-100">получить код для профиля</button>
+                        <div id="validation-alert" class="alert alert-danger mt-3 collapse" role="alert">Пожалуйста, исправьте ошибки и попробуйте ещё</div>
                     </div>
                 </div>
             </div>
@@ -282,5 +280,24 @@
     </main>
     {{ template "footer" . }}
 </div>
+<script>
+    (function () {
+        'use strict'
+        var forms = document.querySelectorAll('.needs-validation')
+        Array.prototype.slice.call(forms).forEach(function (form) {
+            form.addEventListener('submit', function (event) {
+                if (form.checkValidity()) {
+                    remove_empties(form)
+                } else {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    let validationAlert = document.getElementById('validation-alert')
+                    validationAlert.classList.remove("collapse");
+                }
+                form.classList.add('was-validated')
+            }, false)
+        })
+    })()
+</script>
 </body>
 </html>
