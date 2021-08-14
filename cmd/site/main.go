@@ -149,7 +149,7 @@ var packParams = []string{
 	"size",
 }
 
-var chaturbateModelRegex = regexp.MustCompile(`^(?:https?://)?(?:www\.|ar\.|de\.|el\.|en\.|es\.|fr\.|hi\.|it\.|ja\.|ko\.|nl\.|pt\.|ru\.|tr\.|zh\.|m\.)?chaturbate\.com(?:/p|/b)?/([A-Za-z0-9\-_@]+)/?(?:\?.*)?$`)
+var chaturbateModelRegex = regexp.MustCompile(`^(?:https?://)?(?:www\.|ar\.|de\.|el\.|en\.|es\.|fr\.|hi\.|it\.|ja\.|ko\.|nl\.|pt\.|ru\.|tr\.|zh\.|m\.)?chaturbate\.com(?:/p|/b)?/([A-Za-z0-9\-_@]+)/?(?:\?.*)?$|^([A-Za-z0-9\-_@]+)$`)
 
 func linf(format string, v ...interface{}) { log.Printf("[INFO] "+format, v...) }
 
@@ -225,24 +225,27 @@ func (s *server) ruChicHandler(w http.ResponseWriter, r *http.Request) {
 	checkErr(s.ruChicTemplate.Execute(w, s.tparams(r, map[string]interface{}{"packs": s.enabledPacks, "likes": s.likes()})))
 }
 
-func (s *server) enPackHandler(w http.ResponseWriter, r *http.Request) {
+func (s *server) packHandler(w http.ResponseWriter, r *http.Request, t *ht.Template) {
 	pack := s.findPack(mux.Vars(r)["pack"])
 	if pack == nil {
 		notFoundError(w)
 		return
 	}
+	sirenError := false
 	paramDict := getParamDict(packParams, r)
-	checkErr(s.enPackTemplate.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack, "params": paramDict, "sizes": sizes, "likes": s.likesForPack(pack.Name)})))
+	siren := paramDict["siren"]
+	if siren != "" && checkSirenParam(siren) == "" {
+		sirenError = true
+	}
+	checkErr(t.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack, "params": paramDict, "sizes": sizes, "likes": s.likesForPack(pack.Name), "siren_error": sirenError})))
+}
+
+func (s *server) enPackHandler(w http.ResponseWriter, r *http.Request) {
+	s.packHandler(w, r, s.enPackTemplate)
 }
 
 func (s *server) ruPackHandler(w http.ResponseWriter, r *http.Request) {
-	pack := s.findPack(mux.Vars(r)["pack"])
-	if pack == nil {
-		notFoundError(w)
-		return
-	}
-	paramDict := getParamDict(packParams, r)
-	checkErr(s.ruPackTemplate.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack, "params": paramDict, "sizes": sizes, "likes": s.likesForPack(pack.Name)})))
+	s.packHandler(w, r, s.ruPackTemplate)
 }
 
 func (s *server) enBannerHandler(w http.ResponseWriter, r *http.Request) {
@@ -254,14 +257,29 @@ func (s *server) enBannerHandler(w http.ResponseWriter, r *http.Request) {
 	checkErr(s.bannerTemplate.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack})))
 }
 
-func (s *server) enCodeHandler(w http.ResponseWriter, r *http.Request) {
+func checkSirenParam(siren string) string {
+	m := chaturbateModelRegex.FindStringSubmatch(siren)
+	if len(m) == 3 {
+		siren = m[1]
+		if siren == "" {
+			siren = m[2]
+		}
+	}
+	if siren == "in" || siren == "p" || siren == "b" || siren == "affiliates" || siren == "external_link" {
+		return ""
+	}
+	return siren
+}
+
+func (s *server) codeHandler(w http.ResponseWriter, r *http.Request, t *ht.Template) {
 	pack := s.findPack(mux.Vars(r)["pack"])
 	if pack == nil {
 		notFoundError(w)
 		return
 	}
 	paramDict := getParamDict(packParams, r)
-	siren := paramDict["siren"]
+	siren := checkSirenParam(paramDict["siren"])
+	paramDict["siren"] = siren
 	if siren == "" {
 		target := "/chic/p/" + pack.Name
 		if r.URL.RawQuery != "" {
@@ -270,36 +288,16 @@ func (s *server) enCodeHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, target, http.StatusTemporaryRedirect)
 		return
 	}
-	m := chaturbateModelRegex.FindStringSubmatch(siren)
-	if len(m) == 2 {
-		paramDict["siren"] = m[1]
-	}
 	code := s.chaturbateCode(pack, paramDict)
-	checkErr(s.enCodeTemplate.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack, "params": paramDict, "code": code})))
+	checkErr(t.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack, "params": paramDict, "code": code})))
+}
+
+func (s *server) enCodeHandler(w http.ResponseWriter, r *http.Request) {
+	s.codeHandler(w, r, s.enCodeTemplate)
 }
 
 func (s *server) ruCodeHandler(w http.ResponseWriter, r *http.Request) {
-	pack := s.findPack(mux.Vars(r)["pack"])
-	if pack == nil {
-		notFoundError(w)
-		return
-	}
-	paramDict := getParamDict(packParams, r)
-	siren := paramDict["siren"]
-	if siren == "" {
-		target := "/chic/p/" + pack.Name
-		if r.URL.RawQuery != "" {
-			target += "?" + r.URL.RawQuery
-		}
-		http.Redirect(w, r, target, http.StatusTemporaryRedirect)
-		return
-	}
-	m := chaturbateModelRegex.FindStringSubmatch(siren)
-	if len(m) == 2 {
-		paramDict["siren"] = m[1]
-	}
-	code := s.chaturbateCode(pack, paramDict)
-	checkErr(s.ruCodeTemplate.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack, "params": paramDict, "code": code})))
+	s.codeHandler(w, r, s.ruCodeTemplate)
 }
 
 func (s *server) likeHandler(w http.ResponseWriter, r *http.Request) {
