@@ -108,7 +108,7 @@
             <h3 class="mt-4">Заполните свои социальные сети</h3>
             <div class="mx-auto mt-2">
                 {{ define "simple_input" }}
-                    <div class="row mt-4"/>
+                    <div class="row mt-2"/>
                         <div class="d-flex col-12 col-lg-9">
                             <div class="d-flex align-self-center form-icon">
                                 <img src="/chic/i/{{ .pack.Name }}/{{ .name }}.{{ .pack.FinalType }}"
@@ -149,7 +149,7 @@
                     {{ template "simple_input" map "pack" .pack "name" "siren" "comment" (raw_html "Ваш ник на Chaturbate <b>(обязательно)</b>") "value" $params.siren "placeholder" "ник" "text" true "error" .siren_error }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "fanclub" }}
-                    <div class="row mt-4"/>
+                    <div class="row mt-2"/>
                         <div class="d-flex col-12 col-lg-9">
                             <div class="d-flex align-self-center form-icon">
                                 <img src="/chic/i/{{ $pack.Name }}/fanclub.{{ $pack.FinalType }}"
