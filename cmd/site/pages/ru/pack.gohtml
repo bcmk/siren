@@ -146,7 +146,7 @@
                     </div>
                 {{ end }}
                 {{ if contains_icon $pack.Icons "siren" }}
-                    {{ template "simple_input" map "pack" .pack "name" "siren" "comment" (raw_html "Ваш ник на Chaturbate <b>(обязательно)</b>") "value" $params.siren "placeholder" "ник" "text" true "error" .siren_error }}
+                    {{ template "simple_input" map "pack" .pack "name" "siren" "comment" (raw_html "Ник на Chaturbate <b>(обязательно)</b>") "value" $params.siren "placeholder" "ник" "text" true "error" .siren_error }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "fanclub" }}
                     <div class="row mt-2"/>
