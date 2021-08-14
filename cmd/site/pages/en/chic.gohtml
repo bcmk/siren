@@ -55,11 +55,11 @@
                             <div class="swiper-wrapper no-select">
                                 {{ range $icon := $pack.Icons }}
                                     {{ if $icon.Enabled }}
-                                        <div class="swiper-slide d-flex align-items-center justify-content-center" style="height: 90px; width: {{ $slide_width }}px;">
+                                        <div class="swiper-slide" style="width: {{ $slide_width }}px;">
                                             <img style="width: auto; height: {{ $icon_size }}px; top: {{ $top }}px; position: absolute;"
                                                  data-src="/chic/i/{{ $pack.Name }}/{{ $icon.Name }}.{{ $pack.FinalType }}"
                                                  alt=""
-                                                 class="index-icon swiper-lazy">
+                                                 class="swiper-lazy">
                                             <div class="siren-lazy-preloader"></div>
                                         </div>
                                     {{ end }}

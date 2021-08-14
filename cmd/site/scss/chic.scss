@@ -1,7 +1,3 @@
-.index-icon:not([src]) {
-    opacity: 0;
-}
-
 .no-select {
     -webkit-touch-callout: none;
     -webkit-user-select: none;
@@ -123,5 +119,11 @@ input[type="radio"].like-selection:checked + label {
     box-sizing: border-box;
     border: 10px solid #cc2222;
     border-radius: 10px;
+}
+
+.swiper-slide {
+    display: flex;
+    justify-content: center;
+    height: 90px !important;
 }
 
