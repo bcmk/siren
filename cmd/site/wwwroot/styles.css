@@ -1147,7 +1147,11 @@ input:checked + .slider:before {
 }
 
 .form-icon {
-  height: 64px;
+  height: 70px;
+}
+
+.cont-label {
+  margin-top: -6px;
 }
 
 .input-tip {

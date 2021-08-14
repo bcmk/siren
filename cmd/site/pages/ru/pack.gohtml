@@ -109,15 +109,15 @@
             <div class="mx-auto mt-2">
                 {{ define "simple_input" }}
                     <div class="row mt-4"/>
-                        <div class="d-flex col-12 col-lg-9" height="50px;">
-                            <span class="d-inline-flex form-icon align-self-center">
+                        <div class="d-flex col-12 col-lg-9">
+                            <div class="d-flex align-self-center form-icon">
                                 <img src="/chic/i/{{ .pack.Name }}/{{ .name }}.{{ .pack.FinalType }}"
                                      alt=""
-                                     style="height: {{ .pack.Scale }}%;"
+                                     style="height: {{ .pack.Scale }}%; width: auto;"
                                      class="align-self-center">
-                            </span>
-                            <div class="w-100 d-flex align-self-center h-100 ms-3 flex-column">
-                                <div class="w-100">
+                            </div>
+                            <div class="w-100 d-flex align-self-center justify-content-center h-100 ms-3 flex-column">
+                                <div class="w-100 cont-label">
                                     <label for="{{ .name }}" class="form-label input-tip">{{ .comment }}</label>
                                 </div>
                                 <div class="w-100">
@@ -150,15 +150,15 @@
                 {{ end }}
                 {{ if contains_icon $pack.Icons "fanclub" }}
                     <div class="row mt-4"/>
-                        <div class="d-flex col-12 col-lg-9" height="50px;">
-                            <span class="d-inline-flex form-icon align-self-center">
+                        <div class="d-flex col-12 col-lg-9">
+                            <div class="d-flex align-self-center form-icon">
                                 <img src="/chic/i/{{ $pack.Name }}/fanclub.{{ $pack.FinalType }}"
                                      alt=""
                                      style="height: {{ $pack.Scale }}%;"
                                      class="align-self-center">
-                            </span>
-                            <div class="w-100 d-flex align-self-center h-100 ms-3 flex-column">
-                                <div class="w-100">
+                            </div>
+                            <div class="w-100 d-flex align-self-center justify-content-center h-100 ms-3 flex-column">
+                                <div class="w-100 cont-label">
                                     <label for="{{ .name }}" class="form-label input-tip">Добавить иконку для фан-клуба</label>
                                 </div>
                                 <div class="w-100 d-flex">
