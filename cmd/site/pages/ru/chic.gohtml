@@ -45,16 +45,16 @@
             Если ваш возраст не потдверждён в Chaturbate, иконки, как и другой код в вашем профиле не будут работать.
         </p>
         <div class="pt-2 mx-auto">
-            {{ range $index, $pack := .packs }}
-                {{ $icon_size := mul_div 90 $pack.Scale 100 }}
-                {{ $slide_width := add $icon_size 75 }}
-                {{ $top := mul_div (add $pack.VerticalPosition 50) (sub 90 $icon_size) 100 }}
+            {{- range $index, $pack := .packs -}}
+                {{- $icon_size := mul_div 90 $pack.Scale 100 -}}
+                {{- $slide_width := add $icon_size 75 -}}
+                {{- $top := mul_div (add $pack.VerticalPosition 50) (sub 90 $icon_size) 100 }}
                 <div class="row my-3">
                     <div class="col-12 col-xl-10 col-lg-9">
                         <div class="swiper-container dark-stripes">
                             <div class="swiper-wrapper no-select">
-                                {{ range $icon := $pack.Icons }}
-                                    {{ if $icon.Enabled }}
+                                {{- range $icon := $pack.Icons -}}
+                                    {{- if $icon.Enabled }}
                                         <div class="swiper-slide" style="width: {{ $slide_width }}px;">
                                             <img style="width: auto; height: {{ $icon_size }}px; top: {{ $top }}px; position: absolute;"
                                                  data-src="/chic/i/{{ $pack.Name }}/{{ $icon.Name }}.{{ $pack.FinalType }}"
@@ -62,8 +62,8 @@
                                                  class="swiper-lazy">
                                             <div class="siren-lazy-preloader"></div>
                                         </div>
-                                    {{ end }}
-                                {{ end }}
+                                    {{- end -}}
+                                {{- end }}
                             </div>
                         </div>
                     </div>
@@ -87,7 +87,7 @@
                         </div>
                     </div>
                 </div>
-            {{ end }}
+            {{- end }}
         </div>
     </main>
     {{ template "footer" . }}
