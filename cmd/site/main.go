@@ -152,6 +152,7 @@ var packParams = []string{
 var chaturbateModelRegex = regexp.MustCompile(`^(?:https?://)?(?:www\.|ar\.|de\.|el\.|en\.|es\.|fr\.|hi\.|it\.|ja\.|ko\.|nl\.|pt\.|ru\.|tr\.|zh\.|m\.)?chaturbate\.com(?:/p|/b)?/([A-Za-z0-9\-_@]+)/?(?:\?.*)?$|^([A-Za-z0-9\-_@]+)$`)
 
 func linf(format string, v ...interface{}) { log.Printf("[INFO] "+format, v...) }
+func ldbg(format string, v ...interface{}) { log.Printf("[DBG] "+format, v...) }
 
 var checkErr = lib.CheckErr
 
@@ -332,7 +333,7 @@ func (s *server) likeHandler(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
-func (s server) likes() map[string]int {
+func (s *server) likes() map[string]int {
 	query := s.mustQuery("select pack, sum(like) * 2 - count(*) from likes group by pack")
 	defer func() { checkErr(query.Close()) }()
 	results := map[string]int{}
@@ -390,7 +391,18 @@ func cacheControlHandler(h http.Handler, mins int) http.Handler {
 	})
 }
 
-func (s server) likesForPack(pack string) int {
+func (s *server) measure(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		now := time.Now()
+		h.ServeHTTP(w, r)
+		elapsed := time.Since(now).Milliseconds()
+		if s.cfg.Debug {
+			ldbg("performance for %s: %dms", r.URL.Path, elapsed)
+		}
+	})
+}
+
+func (s *server) likesForPack(pack string) int {
 	return s.mustInt("select coalesce(sum(like) * 2 - count(*), 0) from likes where pack=?", pack)
 }
 
@@ -449,25 +461,24 @@ func main() {
 	fmt.Printf("%d packs loaded, %d icons\n", len(srv.cfg.Packs), srv.iconsCount())
 	ruDomain := "ru." + srv.cfg.BaseDomain
 	r := mux.NewRouter().StrictSlash(true)
-	r.Handle("/", handlers.CompressHandler(http.HandlerFunc(srv.ruIndexHandler))).Host(ruDomain)
-	r.Handle("/", handlers.CompressHandler(http.HandlerFunc(srv.enIndexHandler)))
+	r.Handle("/", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.ruIndexHandler)))).Host(ruDomain)
+	r.Handle("/", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.enIndexHandler))))
 
-	r.Handle("/streamer", handlers.CompressHandler(http.HandlerFunc(srv.ruStreamerHandler))).Host(ruDomain)
-	r.Handle("/streamer", handlers.CompressHandler(http.HandlerFunc(srv.enStreamerHandler)))
+	r.Handle("/streamer", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.ruStreamerHandler)))).Host(ruDomain)
+	r.Handle("/streamer", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.enStreamerHandler))))
 
-	r.Handle("/chic", handlers.CompressHandler(http.HandlerFunc(srv.ruChicHandler))).Host(ruDomain)
-	r.Handle("/chic", handlers.CompressHandler(http.HandlerFunc(srv.enChicHandler)))
-	r.Handle("/chic/p/{pack}", handlers.CompressHandler(http.HandlerFunc(srv.ruPackHandler))).Host(ruDomain)
-	r.Handle("/chic/p/{pack}", handlers.CompressHandler(http.HandlerFunc(srv.enPackHandler)))
-	r.Handle("/chic/banner/{pack}", handlers.CompressHandler(http.HandlerFunc(srv.enBannerHandler)))
-	r.Handle("/chic/code/{pack}", handlers.CompressHandler(http.HandlerFunc(srv.ruCodeHandler))).Host(ruDomain)
-	r.Handle("/chic/code/{pack}", handlers.CompressHandler(http.HandlerFunc(srv.enCodeHandler)))
-	r.HandleFunc("/chic/like/{pack}", srv.likeHandler)
+	r.Handle("/chic", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.ruChicHandler)))).Host(ruDomain)
+	r.Handle("/chic", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.enChicHandler))))
+	r.Handle("/chic/p/{pack}", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.ruPackHandler)))).Host(ruDomain)
+	r.Handle("/chic/p/{pack}", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.enPackHandler))))
+	r.Handle("/chic/banner/{pack}", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.enBannerHandler))))
+	r.Handle("/chic/code/{pack}", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.ruCodeHandler)))).Host(ruDomain)
+	r.Handle("/chic/code/{pack}", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.enCodeHandler))))
+	r.Handle("/chic/like/{pack}", srv.measure(http.HandlerFunc(srv.likeHandler)))
 
 	r.PathPrefix("/chic/i/").Handler(http.StripPrefix("/chic/i", cacheControlHandler(http.FileServer(http.Dir(srv.cfg.Files)), 120)))
 	r.PathPrefix("/icons/").Handler(http.StripPrefix("/icons", cacheControlHandler(http.FileServer(http.Dir("icons")), 120)))
 	r.PathPrefix("/node_modules/").Handler(http.StripPrefix("/node_modules", cacheControlHandler(handlers.CompressHandler(http.FileServer(http.Dir("node_modules"))), 120)))
-	r.PathPrefix("/wwwroot/").Handler(http.StripPrefix("/wwwroot", cacheControlHandler(handlers.CompressHandler(http.FileServer(http.Dir("wwwroot"))), 120)))
 
 	r.Handle("/ru", newRedirectSubdHandler("ru", "", http.StatusMovedPermanently))
 	r.Handle("/ru.html", newRedirectSubdHandler("ru", "", http.StatusMovedPermanently))

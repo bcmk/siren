@@ -31,6 +31,7 @@ type Config struct {
 	Files         string `yaml:"files"`
 	Packs         []Pack `yaml:"packs"`
 	BaseDomain    string `yaml:"base_domain"`
+	Debug         bool   `yaml:"debug"`
 }
 
 // ReadConfig reads config file and parses it
