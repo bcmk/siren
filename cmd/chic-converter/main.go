@@ -18,8 +18,8 @@ import (
 )
 
 type worker struct {
-	cfg          sitelib.Config
-	enabledPacks []sitelib.Pack
+	cfg   sitelib.Config
+	packs []sitelib.Pack
 }
 
 func linf(format string, v ...interface{}) { log.Printf("[INFO] "+format, v...) }
@@ -117,14 +117,12 @@ func (s *worker) convert(icons []string) {
 
 var verbose = flag.Bool("v", false, "verbose output")
 
-func (s *worker) fillEnabledPacks() {
+func (s *worker) fillPacks() {
 	packs := make([]sitelib.Pack, 0, len(s.cfg.Packs))
 	for _, pack := range s.cfg.Packs {
-		if !pack.Disable {
-			packs = append(packs, pack)
-		}
+		packs = append(packs, pack)
 	}
-	s.enabledPacks = packs
+	s.packs = packs
 }
 
 func main() {
@@ -133,7 +131,7 @@ func main() {
 		panic("usage: chic-converter <config> <icons...>")
 	}
 	w := &worker{cfg: sitelib.ReadConfig(flag.Arg(0))}
-	w.fillEnabledPacks()
+	w.fillPacks()
 	linf("%d packs loaded, %d icons", len(w.cfg.Packs), w.iconsCount())
 	w.convert(flag.Args()[1:])
 }
