@@ -20,6 +20,24 @@
                 });
         }
     </script>
+    <script>
+        window.twttr = (function(d, s, id) {
+            var js, fjs = d.getElementsByTagName(s)[0],
+                t = window.twttr || {};
+            if (d.getElementById(id)) return t;
+            js = d.createElement(s);
+            js.id = id;
+            js.src = "https://platform.twitter.com/widgets.js";
+            fjs.parentNode.insertBefore(js, fjs);
+
+            t._e = [];
+            t.ready = function(f) {
+                t._e.push(f);
+            };
+
+            return t;
+        }(document, "script", "twitter-wjs"));
+    </script>
 </head>
 
 <body>
@@ -56,6 +74,18 @@
         <div class="row mt-3">
             <div class="col-4 col-lg-2">
                 <button class="btn btn-secondary w-100" onclick="window.history.back()">back / edit</button>
+            </div>
+        </div>
+        <div class="row mt-5">
+            <div class="col-12">
+                Please consider sharing this icon pack with your friends. It will help us to make more free icons.
+            </div>
+            <div class="col-12 mt-1">
+                <a class="twitter-share-button"
+                   data-size="large"
+                   href="https://twitter.com/intent/tweet?text=I use this icon pack by SIREN&url=https://siren.chat/chic/p/{{ $pack.Name }}&via=siren_tlg">
+                    Tweet
+                </a>
             </div>
         </div>
     </main>

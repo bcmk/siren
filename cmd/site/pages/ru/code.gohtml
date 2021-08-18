@@ -20,6 +20,24 @@
                 });
         }
     </script>
+    <script>
+        window.twttr = (function(d, s, id) {
+            var js, fjs = d.getElementsByTagName(s)[0],
+                t = window.twttr || {};
+            if (d.getElementById(id)) return t;
+            js = d.createElement(s);
+            js.id = id;
+            js.src = "https://platform.twitter.com/widgets.js";
+            fjs.parentNode.insertBefore(js, fjs);
+
+            t._e = [];
+            t.ready = function(f) {
+                t._e.push(f);
+            };
+
+            return t;
+        }(document, "script", "twitter-wjs"));
+    </script>
 </head>
 
 <body>
@@ -56,6 +74,18 @@
         <div class="row mt-3">
             <div class="col-4 col-lg-2">
                 <button class="btn btn-secondary w-100" onclick="window.history.back()">назад / изменить</button>
+            </div>
+        </div>
+        <div class="row mt-5">
+            <div class="col-12">
+                Поделитесь этим пакетом иконок с друзьями. Это поможет нам нарисовать ещё больше бесплатных иконок.
+            </div>
+            <div class="col-12 mt-1">
+                <a class="twitter-share-button"
+                   data-size="large"
+                   href="https://twitter.com/intent/tweet?text=Я использую этот пакет иконок, сделанный SIREN&url=https://ru.siren.chat/chic/p/{{ $pack.Name }}&via=siren_tlg">
+                    Tweet
+                </a>
             </div>
         </div>
     </main>
