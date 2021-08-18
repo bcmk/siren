@@ -13,8 +13,6 @@ import (
 
 	"github.com/bcmk/siren/lib"
 	"github.com/bcmk/siren/sitelib"
-
-	_ "github.com/mattn/go-sqlite3"
 )
 
 type worker struct {
@@ -27,36 +25,24 @@ func lerr(format string, v ...interface{}) { log.Printf("[ERROR] "+format, v...)
 
 var checkErr = lib.CheckErr
 
-func (s *worker) iconsCount() int {
-	count := 0
-	for _, i := range s.cfg.Packs {
-		count += len(i.Icons)
-	}
-	return count
-}
-
 func copyFile(src, dst string) error {
 	stat, err := os.Stat(src)
 	if err != nil {
 		return err
 	}
-
 	if stat.Mode().IsDir() {
 		return fmt.Errorf("%s is a directory", src)
 	}
-
 	source, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer func() { checkErr(source.Close()) }()
-
 	destination, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
 	defer func() { checkErr(destination.Close()) }()
-
 	_, err = io.Copy(destination, source)
 	return err
 }
@@ -115,15 +101,14 @@ func (s *worker) convert(icons []string) {
 	checkErr(os.RemoveAll(outputFiles))
 }
 
-var verbose = flag.Bool("v", false, "verbose output")
-
 func (s *worker) fillPacks() {
-	packs := make([]sitelib.Pack, 0, len(s.cfg.Packs))
-	for _, pack := range s.cfg.Packs {
-		packs = append(packs, pack)
+	s.packs = make([]sitelib.Pack, len(s.cfg.Packs))
+	for i, pack := range s.cfg.Packs {
+		s.packs[i] = pack
 	}
-	s.packs = packs
 }
+
+var verbose = flag.Bool("v", false, "verbose output")
 
 func main() {
 	flag.Parse()
@@ -132,6 +117,5 @@ func main() {
 	}
 	w := &worker{cfg: sitelib.ReadConfig(flag.Arg(0))}
 	w.fillPacks()
-	linf("%d packs loaded, %d icons", len(w.cfg.Packs), w.iconsCount())
 	w.convert(flag.Args()[1:])
 }
