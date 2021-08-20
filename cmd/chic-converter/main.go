@@ -95,6 +95,23 @@ func (s *worker) convert(icons []string) {
 		} else {
 			checkErr(fmt.Errorf("ERROR: Cannot process %s → %s", pack.InputType, pack.FinalType))
 		}
+
+		inputFile := path.Join(s.cfg.Input, pack.Name, "banner.svg")
+		outputFile := path.Join(outputDir, "banner.png")
+		linf("CONV %s/banner...", pack.Name)
+		cmd := exec.Command("inkscape", "-h", "900", inputFile, "--export-filename", outputFile)
+		var out bytes.Buffer
+		cmd.Stderr = &out
+		err := cmd.Run()
+		_, errStat := os.Stat(outputFile)
+		if err != nil || errStat != nil {
+			lerr("ERROR")
+			linf("RESULT\n%s", out.String())
+		}
+		checkErr(err)
+		checkErr(errStat)
+		linf("OK")
+
 		checkErr(os.RemoveAll(path.Join(s.cfg.Files, pack.Name)))
 		checkErr(os.Rename(path.Join(outputFiles, pack.Name), path.Join(s.cfg.Files, pack.Name)))
 	}

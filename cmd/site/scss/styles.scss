@@ -19,7 +19,7 @@ body {
     font-family: 'Montserrat', sans-serif !important;
 }
 
-#h1 {
+.service-name {
     font-weight: 500;
     font-size: 30pt;
     letter-spacing: 7pt;
@@ -28,8 +28,17 @@ body {
     margin-block-end: 0 !important;
 }
 
+h1 {
+    color: #4d4d4d;
+    text-align: center !important;
+}
+
 h2 {
     font-weight: 500 !important;
+    color: #4d4d4d;
+}
+
+h3 {
     color: #4d4d4d;
 }
 

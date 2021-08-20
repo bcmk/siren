@@ -44,7 +44,7 @@
 <div class="container" style="margin-bottom: 75px;">
     {{ template "header" }}
     <main>
-        <h2 class="text-center mt-4">Chaturbate icons constructor</h2>
+        <h1 class="mt-4">Chaturbate icons constructor — code</h1>
         {{ if .code }}
             <div class="mt-4">
                 <div class="row">
@@ -83,7 +83,7 @@
             <div class="col-12 mt-1">
                 <a class="twitter-share-button"
                    data-size="large"
-                   href="https://twitter.com/intent/tweet?text=I use this icon pack by SIREN&url=https://siren.chat/chic/p/{{ $pack.Name }}&via=siren_tlg">
+                   href="https://twitter.com/intent/tweet?text=I use this icon pack by @siren_tlg&url={{ .lang_base_url }}/chic/p/{{ $pack.Name }}">
                     Tweet
                 </a>
             </div>

@@ -8,7 +8,13 @@
 <html lang="ru" xmlns:og="http://ogp.me/ns#">
 <head>
     {{ template "head" . }}
-    <meta property="og:image" content="/chic/i/{{ $pack.Name }}/siren.{{ $pack.FinalType }}" />
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@siren_tlg">
+    <meta name="twitter:creator" content="@siren_tlg">
+    <meta name="twitter:title" content="Конструктор иконок для Chaturbate">
+    <meta name="twitter:description" content="Пакет иконок">
+    <meta name="twitter:image" content="{{ .base_url }}/chic/i/{{ $pack.Name }}/banner.png">
+    <meta name="image" property="og:image" content="{{ .base_url }}/chic/i/{{ $pack.Name }}/banner.png" />
     <title>SIREN — Конструктор иконок для Chaturbate</title>
     <script>
         function like_changed(what, val) {
@@ -39,7 +45,7 @@
 <div class="container" style="margin-bottom: 75px;">
     {{ template "header" }}
     <main>
-        <h2 class="text-center mt-4">Конструктор иконок для Chaturbate</h2>
+        <h1 class="mt-4">Иконки для Chaturbate — настройка</h1>
         <p class="pt-2">
             Эти плавающие иконки бесплатны.
             Вы можете использовать их в своём профиле на Chaturbate.

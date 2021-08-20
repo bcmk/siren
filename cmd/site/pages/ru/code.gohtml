@@ -44,7 +44,7 @@
 <div class="container" style="margin-bottom: 75px;">
     {{ template "header" }}
     <main>
-        <h2 class="text-center mt-4">Конструктор иконок для Chaturbate</h2>
+        <h1 class="mt-4">Иконки для Chaturbate — код</h1>
         {{ if .code }}
             <div class="mt-4">
                 <div class="row">
@@ -83,8 +83,8 @@
             <div class="col-12 mt-1">
                 <a class="twitter-share-button"
                    data-size="large"
-                   href="https://twitter.com/intent/tweet?text=Я использую этот пакет иконок, сделанный SIREN&url=https://ru.siren.chat/chic/p/{{ $pack.Name }}&via=siren_tlg">
-                    Tweet
+                   href="https://twitter.com/intent/tweet?text=Я использую этот пакет иконок от @siren_tlg&url={{ .lang_base_url }}/chic/p/{{ $pack.Name }}">
+                    Твитнуть
                 </a>
             </div>
         </div>

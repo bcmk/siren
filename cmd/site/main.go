@@ -172,30 +172,38 @@ func parseHTMLTemplate(filenames ...string) *ht.Template {
 	return t
 }
 
-func langs(url url.URL, ls ...string) map[string]ht.URL {
-	for _, l := range ls {
-		url.Host = strings.TrimPrefix(url.Host, l+".")
-	}
+func langs(url url.URL, baseDomain string, ls map[string]string) map[string]ht.URL {
 	res := map[string]ht.URL{}
-	res["en"] = ht.URL(url.String())
-	host := url.Host
-	for _, l := range ls {
-		url.Host = l + "." + host
+	port := url.Port()
+	if port != "" {
+		port = ":" + port
+	}
+	for l, pref := range ls {
+		url.Host = pref + baseDomain + port
 		res[l] = ht.URL(url.String())
 	}
 	return res
 }
 
+func getLangBaseURL(url url.URL, baseDomain string, baseURL string) string {
+	if !strings.HasSuffix(url.Hostname(), baseDomain) {
+		return baseURL
+	}
+	return "https://" + url.Host
+}
+
 func (s *server) tparams(r *http.Request, more map[string]interface{}) map[string]interface{} {
 	res := map[string]interface{}{}
 	res["css"] = ht.CSS(s.css)
-	url := *r.URL
-	res["full_path"] = url.String()
-	url.Host = r.Host
-	res["hostname"] = url.Hostname()
+	urlCopy := *r.URL
+	res["full_path"] = urlCopy.String()
+	urlCopy.Host = r.Host
+	res["base_url"] = ht.URL(s.cfg.BaseURL)
+	res["lang_base_url"] = ht.URL(getLangBaseURL(urlCopy, s.cfg.BaseDomain, s.cfg.BaseURL))
+	res["hostname"] = urlCopy.Hostname()
 	res["base_domain"] = s.cfg.BaseDomain
 	res["ru_domain"] = "ru." + s.cfg.BaseDomain
-	res["lang"] = langs(url, "ru")
+	res["lang"] = langs(urlCopy, s.cfg.BaseDomain, map[string]string{"en": "", "ru": "ru."})
 	for k, v := range more {
 		res[k] = v
 	}
