@@ -6,8 +6,14 @@
 
 <html lang="ru">
 <head>
-    <meta property="og:image" content="/chic/i/{{ $pack.Name }}/siren.{{ $pack.FinalType }}" />
     {{ template "head" . }}
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@siren_tlg">
+    <meta name="twitter:creator" content="@siren_tlg">
+    <meta name="twitter:title" content="Конструктор иконок для Chaturbate">
+    <meta name="twitter:description" content="Пакет иконок — {{ $pack.HumanName }}">
+    <meta name="twitter:image" content="{{ .base_url }}/chic/i/{{ $pack.Name }}/banner.png">
+    <meta name="image" property="og:image" content="{{ .base_url }}/chic/i/{{ $pack.Name }}/banner.png" />
     <title>SIREN — Конструктор иконок для Chaturbate</title>
     <script>
         function copyTextToClipboard(text) {
