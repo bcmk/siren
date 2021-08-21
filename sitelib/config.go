@@ -20,6 +20,7 @@ type Pack struct {
 	Icons            []Icon `yaml:"icons"`
 	Disable          bool   `yaml:"disable"`
 	Banner           string `yaml:"banner"`
+	HumanName        string `yaml:"human_name"`
 }
 
 // Config represents site or converter config
