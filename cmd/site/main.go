@@ -42,7 +42,6 @@ type server struct {
 	ruChicTemplate     *ht.Template
 	enPackTemplate     *ht.Template
 	ruPackTemplate     *ht.Template
-	bannerTemplate     *ht.Template
 	enCodeTemplate     *ht.Template
 	ruCodeTemplate     *ht.Template
 
@@ -257,15 +256,6 @@ func (s *server) ruPackHandler(w http.ResponseWriter, r *http.Request) {
 	s.packHandler(w, r, s.ruPackTemplate)
 }
 
-func (s *server) enBannerHandler(w http.ResponseWriter, r *http.Request) {
-	pack := s.findPack(mux.Vars(r)["pack"])
-	if pack == nil {
-		notFoundError(w)
-		return
-	}
-	checkErr(s.bannerTemplate.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack})))
-}
-
 func checkSirenParam(siren string) string {
 	m := chaturbateModelRegex.FindStringSubmatch(siren)
 	if len(m) == 3 {
@@ -431,7 +421,6 @@ func (s *server) fillTemplates() {
 	s.ruChicTemplate = parseHTMLTemplate("ru/chic.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
 	s.enPackTemplate = parseHTMLTemplate("en/pack.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "en/trans.gohtml", "common/footer.gohtml")
 	s.ruPackTemplate = parseHTMLTemplate("ru/pack.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
-	s.bannerTemplate = parseHTMLTemplate("common/banner.gohtml", "common/head.gohtml")
 	s.enCodeTemplate = parseHTMLTemplate("en/code.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "en/trans.gohtml", "common/footer.gohtml")
 	s.ruCodeTemplate = parseHTMLTemplate("ru/code.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
 }
@@ -479,7 +468,6 @@ func main() {
 	r.Handle("/chic", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.enChicHandler))))
 	r.Handle("/chic/p/{pack}", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.ruPackHandler)))).Host(ruDomain)
 	r.Handle("/chic/p/{pack}", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.enPackHandler))))
-	r.Handle("/chic/banner/{pack}", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.enBannerHandler))))
 	r.Handle("/chic/code/{pack}", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.ruCodeHandler)))).Host(ruDomain)
 	r.Handle("/chic/code/{pack}", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.enCodeHandler))))
 	r.Handle("/chic/like/{pack}", srv.measure(http.HandlerFunc(srv.likeHandler)))
