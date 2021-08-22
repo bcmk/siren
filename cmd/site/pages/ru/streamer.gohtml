@@ -36,8 +36,8 @@
         </p>
 
         <div class="row">
-            <div class="col-lg-8 col-xl-7">
-                <table class="table table-sm table-responsive">
+            <div class="col-lg-8 col-xl-7 table-responsive">
+                <table class="table table-sm">
                     <thead>
                         <tr>
                             <th scope="col">Ваш сайт</th>
@@ -122,16 +122,18 @@
 
         <p>
             Вы можете автоматически оповещать ваших пользователей в вашем Telegram-канале или группе, когда вы онлайн.
-            Добавьте бота в группу или канал.
         </p>
-        <p class="p-3 mb-3 bg-warning">
+
+        <h4>Шаг 1</h4>
+        <p>
+            Добавьте бота в группу или канал.
             По возможности приведены боты, работающие на русском языке.
-            Команды для англоязычных ботов тут <a class="text-muted" href="{{ .lang.en }}">English</a>.
+            Команды для англоязычных ботов тут <a class="text-muted" href="{{ .lang.en }}#channel">English</a>.
         </p>
 
         <div class="row">
-            <div class="col-lg-8 col-xl-7">
-                <table class="table table-sm table-responsive">
+            <div class="col-lg-8 col-xl-7 table-responsive">
+                <table class="table table-sm">
                     <thead>
                         <tr>
                             <th scope="col">Ваш сайт</th>
@@ -176,12 +178,15 @@
 
         <p>
             Если вы добавили бота в канал, а не группу, удостоверьтесь, что он является администратором и имеет разрешения на чтение и публикацию сообщений.
-            Затем введите следующую команду.
         </p>
 
+        <h4>Шаг 2</h4>
+        <p>
+            Введите следующую команду.
+        </p>
         <div class="row">
-            <div class="col-lg-8 col-xl-7">
-                <table class="table table-sm table-responsive">
+            <div class="col-lg-8 col-xl-7 table-responsive">
+                <table class="table table-sm">
                     <thead>
                         <tr>
                             <th scope="col">Ваш сайт</th>
@@ -224,6 +229,112 @@
             </div>
         </div>
         <p>Вы можете удалить команду после установки бота.</p>
+
+        <h4>Шаг 3 (необязательный)</h4>
+        <p>
+            Также мы шлём оповещения о том, что вы офлайн. Вы можете отключить их следующей командой.
+        </p>
+        <div class="row">
+            <div class="col-lg-9 col-xl-8 table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th scope="col">Ваш сайт</th>
+                            <th scope="col">Команда</th>
+                        </tr>
+                    </thead>
+                    <tr>
+                        <td>Twitch</td>
+                        <td class="text-nowrap overflow-auto mono">disable_offline_notifications@TwitchSirenBot</td>
+                    </tr>
+                    <tr>
+                        <td>Chaturbate</td>
+                        <td class="text-nowrap overflow-auto mono">disable_offline_notifications@ChaturbateSirenBot</td>
+                    </tr>
+                    <tr>
+                        <td>Stripchat</td>
+                        <td class="text-nowrap overflow-auto mono">disable_offline_notifications@StripchatSirenBot</td>
+                    </tr>
+                    <tr>
+                        <td>BongaCams</td>
+                        <td class="text-nowrap overflow-auto mono">disable_offline_notifications@BongaCamsSirenBot</td>
+                    </tr>
+                    <tr>
+                        <td>LiveJasmin</td>
+                        <td class="text-nowrap overflow-auto mono">disable_offline_notifications@RuLiveJasminSirenBot</td>
+                    </tr>
+                    <tr>
+                        <td>CamSoda</td>
+                        <td class="text-nowrap overflow-auto mono">disable_offline_notifications@RuCamSodaSirenBot</td>
+                    </tr>
+                    <tr>
+                        <td>Flirt4Free</td>
+                        <td class="text-nowrap overflow-auto mono">disable_offline_notifications@RuFlirt4FreeSirenBot</td>
+                    </tr>
+                    <tr>
+                        <td>Streamate</td>
+                        <td class="text-nowrap overflow-auto mono">disable_offline_notifications@RuStreamateSirenBot</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        <p>
+            Вы можете удалить команду после установки бота.
+            Чтобы вновь включить офлайн-оповещения, просто замените <span class="mono">disable</span> на <span class="mono">enable</span>.
+        </p>
+
+        <h4>Шаг 4 (необязательный)</h4>
+        <p>
+            Возможно, вы хотите отключить скриншоты? Вы можете отключить их следующей командой.
+        </p>
+        <div class="row">
+            <div class="col-lg-9 col-xl-8 table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th scope="col">Ваш сайт</th>
+                            <th scope="col">Команда</th>
+                        </tr>
+                    </thead>
+                    <tr>
+                        <td>Twitch</td>
+                        <td class="text-nowrap overflow-auto mono">disable_images@TwitchSirenBot</td>
+                    </tr>
+                    <tr>
+                        <td>Chaturbate</td>
+                        <td class="text-nowrap overflow-auto mono">disable_images@ChaturbateSirenBot</td>
+                    </tr>
+                    <tr>
+                        <td>Stripchat</td>
+                        <td class="text-nowrap overflow-auto mono">disable_images@StripchatSirenBot</td>
+                    </tr>
+                    <tr>
+                        <td>BongaCams</td>
+                        <td class="text-nowrap overflow-auto mono">disable_images@BongaCamsSirenBot</td>
+                    </tr>
+                    <tr>
+                        <td>LiveJasmin</td>
+                        <td class="text-nowrap overflow-auto mono">disable_images@RuLiveJasminSirenBot</td>
+                    </tr>
+                    <tr>
+                        <td>CamSoda</td>
+                        <td class="text-nowrap overflow-auto mono">disable_images@RuCamSodaSirenBot</td>
+                    </tr>
+                    <tr>
+                        <td>Flirt4Free</td>
+                        <td class="text-nowrap overflow-auto mono">disable_images@RuFlirt4FreeSirenBot</td>
+                    </tr>
+                    <tr>
+                        <td>Streamate</td>
+                        <td class="text-nowrap overflow-auto mono">disable_images@RuStreamateSirenBot</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        <p>
+            Вы можете удалить команду после установки бота.
+            Чтобы включить скриншоты, просто замените <span class="mono">disable</span> на <span class="mono">enable</span>.
+        </p>
     </main>
     {{ template "footer" . }}
 </div>

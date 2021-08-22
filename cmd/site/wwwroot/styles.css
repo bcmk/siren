@@ -97,7 +97,7 @@ hr:not([size]) {
   height: 1px;
 }
 
- h5, .h5, h3, .h3, h1, .h1 {
+ h5, .h5, h4, .h4, h3, .h3, h1, .h1 {
   margin-top: 0;
   margin-bottom: 0.5rem;
   font-weight: 500;
@@ -119,6 +119,15 @@ h3, .h3 {
 @media (min-width: 1200px) {
   h3, .h3 {
     font-size: 1.75rem;
+  }
+}
+
+h4, .h4 {
+  font-size: calc(1.275rem + 0.3vw);
+}
+@media (min-width: 1200px) {
+  h4, .h4 {
+    font-size: 1.5rem;
   }
 }
 
@@ -294,6 +303,11 @@ button:not(:disabled),
 }
 */
 
+summary {
+  display: list-item;
+  cursor: pointer;
+}
+
 .list-unstyled {
   padding-left: 0;
   list-style: none;
@@ -390,6 +404,11 @@ button:not(:disabled),
   .col-xl-7 {
     flex: 0 0 auto;
     width: 58.33333333%;
+  }
+
+  .col-xl-8 {
+    flex: 0 0 auto;
+    width: 66.66666667%;
   }
 
   .col-xl-10 {
@@ -1260,7 +1279,7 @@ h1, .h1 {
   text-align: center !important;
 }
 
-h3, .h3 {
+h3, .h3, h4, .h4 {
   color: #4d4d4d;
 }
 
