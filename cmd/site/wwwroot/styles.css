@@ -1303,3 +1303,29 @@ strong {
   font-family: "JetBrains Mono", monospace !important;
   font-size: 95%;
 }
+
+.share-button {
+  height: 28px;
+  color: #fff;
+  border-radius: 4px;
+  text-align: center;
+  line-height: 26px;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.share-button-en {
+  width: 76px;
+}
+
+.share-button-ru {
+  width: 95px;
+}
+
+.twitter-share-button {
+  background-color: #1b95c0;
+}
+
+.reddit-share-button {
+  background-color: #ff4500;
+}

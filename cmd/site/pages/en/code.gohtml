@@ -26,24 +26,7 @@
                 });
         }
     </script>
-    <script>
-        window.twttr = (function(d, s, id) {
-            var js, fjs = d.getElementsByTagName(s)[0],
-                t = window.twttr || {};
-            if (d.getElementById(id)) return t;
-            js = d.createElement(s);
-            js.id = id;
-            js.src = "https://platform.twitter.com/widgets.js";
-            fjs.parentNode.insertBefore(js, fjs);
-
-            t._e = [];
-            t.ready = function(f) {
-                t._e.push(f);
-            };
-
-            return t;
-        }(document, "script", "twitter-wjs"));
-    </script>
+    {{ template "twitter" }}
 </head>
 
 <body>
@@ -86,11 +69,15 @@
             <div class="col-12">
                 Please consider sharing this icon pack with your friends. It will help us to make more free icons.
             </div>
-            <div class="col-12 mt-1">
-                <a class="twitter-share-button"
+            <div class="col-12 mt-1 d-flex" style="column-gap: .5rem;">
+                <a class="twitter-share-button share-button share-button-en"
                    data-size="large"
                    href="https://twitter.com/intent/tweet?text=I use this icon pack by @siren_tlg&url={{ .lang_base_url }}/chic/p/{{ $pack.Name }}">
                     Tweet
+                </a>
+                <a class="reddit-share-button share-button share-button-en"
+                   href="https://reddit.com/submit?url={{ .lang_base_url }}/chic/p/{{ $pack.Name }}&title=I use this icon pack by u/siren_tlg">
+                    Reddit
                 </a>
             </div>
         </div>

@@ -26,24 +26,7 @@
                 });
         }
     </script>
-    <script>
-        window.twttr = (function(d, s, id) {
-            var js, fjs = d.getElementsByTagName(s)[0],
-                t = window.twttr || {};
-            if (d.getElementById(id)) return t;
-            js = d.createElement(s);
-            js.id = id;
-            js.src = "https://platform.twitter.com/widgets.js";
-            fjs.parentNode.insertBefore(js, fjs);
-
-            t._e = [];
-            t.ready = function(f) {
-                t._e.push(f);
-            };
-
-            return t;
-        }(document, "script", "twitter-wjs"));
-    </script>
+    {{ template "twitter" }}
 </head>
 
 <body>
@@ -86,11 +69,15 @@
             <div class="col-12">
                 Поделитесь этим пакетом иконок с друзьями. Это поможет нам нарисовать ещё больше бесплатных иконок.
             </div>
-            <div class="col-12 mt-1">
-                <a class="twitter-share-button"
+            <div class="col-12 mt-1 d-flex" style="column-gap: .5rem;">
+                <a class="twitter-share-button share-button share-button-ru"
                    data-size="large"
                    href="https://twitter.com/intent/tweet?text=Я использую этот пакет иконок от @siren_tlg&url={{ .lang_base_url }}/chic/p/{{ $pack.Name }}">
                     Твитнуть
+                </a>
+                <a class="reddit-share-button share-button share-button-ru"
+                   href="https://reddit.com/submit?url={{ .lang_base_url }}/chic/p/{{ $pack.Name }}&title=Я использую этот пакет иконок от u/siren_tlg">
+                    Reddit
                 </a>
             </div>
         </div>

@@ -1,3 +1,3 @@
 package main
 
-var version = "2021-08-22-15-55-57"
+var version = "2021-08-22-19-44-29"

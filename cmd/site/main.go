@@ -419,10 +419,10 @@ func (s *server) fillTemplates() {
 	s.ruStreamerTemplate = parseHTMLTemplate("ru/streamer.gohtml", "common/head.gohtml", "common/header.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
 	s.enChicTemplate = parseHTMLTemplate("en/chic.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "en/trans.gohtml", "common/footer.gohtml")
 	s.ruChicTemplate = parseHTMLTemplate("ru/chic.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
-	s.enPackTemplate = parseHTMLTemplate("en/pack.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "en/trans.gohtml", "common/footer.gohtml")
-	s.ruPackTemplate = parseHTMLTemplate("ru/pack.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
-	s.enCodeTemplate = parseHTMLTemplate("en/code.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "en/trans.gohtml", "common/footer.gohtml")
-	s.ruCodeTemplate = parseHTMLTemplate("ru/code.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
+	s.enPackTemplate = parseHTMLTemplate("en/pack.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "en/trans.gohtml", "common/footer.gohtml", "common/twitter.gohtml")
+	s.ruPackTemplate = parseHTMLTemplate("ru/pack.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "ru/trans.gohtml", "common/footer.gohtml", "common/twitter.gohtml")
+	s.enCodeTemplate = parseHTMLTemplate("en/code.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "en/trans.gohtml", "common/footer.gohtml", "common/twitter.gohtml")
+	s.ruCodeTemplate = parseHTMLTemplate("ru/code.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "ru/trans.gohtml", "common/footer.gohtml", "common/twitter.gohtml")
 }
 
 func (s *server) fillEnabledPacks() {
