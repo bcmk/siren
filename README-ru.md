@@ -71,7 +71,7 @@ Telegram-бот для оповещений о вебкастах
 Ссылки
 ------
 
-[Сайт](https://siren.chat/ru)
+[Сайт](https://ru.siren.chat)
 
 [Twitter](https://twitter.com/siren_tlg)
 
