@@ -1,37 +1,11 @@
 {{- raw_html "<!-- FLOATING ICONS BEGIN -->" -}}
-<b style="display: block; height: auto; position: fixed; top: 240px; left: 4px; z-index: 51732;">
-    {{- if .params.siren -}}
-        <a href="https://siren.chat/cb/{{ .params.siren }}"
-           target="_blank"
-           rel="nofollow"
-           style="height: {{ .size }}px; display: block;">
-            {{- print "" -}}
-            <img src="{{ .base_url }}/chic/i/{{ .pack.Name }}/siren.{{ .pack.FinalType }}"
-                 style="height: 100%; width: auto;"
-                 rel="nofollow"
-                 alt=""/>
-            {{- print "" -}}
-        </a>
-    {{- end -}}
-    {{- if eq .params.fanclub "on" -}}
-        <a href="https://chaturbate.com/fanclub/join/{{ .params.siren }}/"
-           target="_blank"
-           rel="nofollow"
-           style="height: {{ .size }}px; display: block; margin-top: {{ .margin }}px;">
-            {{- print "" -}}
-            <img src="{{ .base_url }}/chic/i/{{ .pack.Name }}/fanclub.{{ .pack.FinalType }}"
-                 style="height: 100%; width: auto;"
-                 rel="nofollow"
-                 alt=""/>
-            {{- print "" -}}
-        </a>
-    {{- end -}}
+<b style="display: flex; flex-direction: column; row-gap: {{ .margin }}px; height: auto; position: fixed; top: 240px; left: 4px; z-index: 51732;">
     {{- define "simple_icon" -}}
         {{- if .value -}}
             <a href="{{ .value }}"
                target="_blank"
                rel="nofollow"
-               style="height: {{ .size }}px; display: block; margin-top: {{ .margin }}px;">
+               style="height: {{ .size }}px; display: block;">
                 {{- print "" -}}
                 <img src="{{ .base_url }}/chic/i/{{ .pack.Name }}/{{ .name }}.{{ .pack.FinalType }}"
                      style="height: 100%; width: auto;"
@@ -41,7 +15,10 @@
             </a>
         {{- end -}}
     {{- end -}}
-    {{- $base_map := map "base_url" .base_url "pack" .pack "size" .size "margin" .margin -}}
+    {{- $base_map := map "base_url" .base_url "pack" .pack "size" .size -}}
+    {{- if eq .params.fanclub "on" -}}
+        {{- template "simple_icon" enhance $base_map (map "name" "fanclub" "value" (printf "https://chaturbate.com/fanclub/join/%s/" .params.siren)) -}}
+    {{- end -}}
     {{- template "simple_icon" enhance $base_map (map "name" "instagram" "value" .params.instagram) -}}
     {{- template "simple_icon" enhance $base_map (map "name" "twitter" "value" .params.twitter) -}}
     {{- template "simple_icon" enhance $base_map (map "name" "onlyfans" "value" .params.onlyfans) -}}
@@ -63,5 +40,6 @@
     {{- template "simple_icon" enhance $base_map (map "name" "reddit" "value" .params.reddit) -}}
     {{- template "simple_icon" enhance $base_map (map "name" "twitch" "value" .params.twitch) -}}
     {{- template "simple_icon" enhance $base_map (map "name" "discord" "value" .params.discord) -}}
+    {{- template "simple_icon" enhance $base_map (map "name" "siren" "value" (printf "https://siren.chat/cb/%s" .params.siren)) -}}
 </b>
 {{- raw_html "<!-- FLOATING ICONS END -->" -}}
