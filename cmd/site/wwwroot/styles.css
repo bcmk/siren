@@ -1304,7 +1304,7 @@ strong {
   font-size: 95%;
 }
 
-.share-button {
+a.share-button {
   height: 28px;
   color: #fff;
   border-radius: 4px;
