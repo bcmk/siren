@@ -1325,7 +1325,13 @@ a.share-button {
 .custom-twitter-share-button {
   background-color: #1b95c0;
 }
+.custom-twitter-share-button:active, .custom-twitter-share-button:focus, .custom-twitter-share-button:hover {
+  background-color: #0c7abf;
+}
 
 .reddit-share-button {
   background-color: #ff4500;
+}
+.reddit-share-button:active, .reddit-share-button:focus, .reddit-share-button:hover {
+  background-color: #d84000;
 }
