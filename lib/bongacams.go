@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"net/http"
 	"strings"
 )
 
@@ -24,22 +23,8 @@ type bongacamsModel struct {
 
 // CheckStatusSingle checks BongaCams model status
 func (c *BongaCamsChecker) CheckStatusSingle(modelID string) StatusKind {
-	client := c.clientsLoop.nextClient()
-	req, err := http.NewRequest("GET", fmt.Sprintf("https://en.bongacams.com/%s", modelID), nil)
-	CheckErr(err)
-	for _, h := range c.Headers {
-		req.Header.Set(h[0], h[1])
-	}
-	resp, err := client.Client.Do(req)
-	if err != nil {
-		Lerr("[%v] cannot send a query, %v", client.Addr, err)
-		return StatusUnknown
-	}
-	CheckErr(resp.Body.Close())
-	if c.Dbg {
-		Ldbg("query status for %s: %d", modelID, resp.StatusCode)
-	}
-	switch resp.StatusCode {
+	code := c.queryStatusCode(fmt.Sprintf("https://en.bongacams.com/%s", modelID))
+	switch code {
 	case 200:
 		return StatusOnline
 	case 302:

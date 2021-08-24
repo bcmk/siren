@@ -2,6 +2,8 @@ package lib
 
 import (
 	"errors"
+	"net"
+	"net/http"
 	"time"
 )
 
@@ -196,6 +198,33 @@ func (c *CheckerCommon) createFullUpdater(checker Checker) Updater {
 
 func (c *CheckerCommon) createSelectiveUpdater(checker Checker) Updater {
 	return &selectiveUpdater{checker: checker, siteOnlineModels: c.SiteOnlineModels, knowns: selectKnowns(c.Subscriptions)}
+}
+
+func (c *CheckerCommon) doGetRequest(url string) (net.Addr, *http.Response) {
+	client := c.clientsLoop.nextClient()
+	req, err := http.NewRequest("GET", url, nil)
+	CheckErr(err)
+	for _, h := range c.Headers {
+		req.Header.Set(h[0], h[1])
+	}
+	resp, err := client.Client.Do(req)
+	if err != nil {
+		Lerr("[%v] cannot send a query, %v", client.Addr, err)
+		return client.Addr, nil
+	}
+	if c.Dbg {
+		Ldbg("[%v] query status for %s: %d", client.Addr, url, resp.StatusCode)
+	}
+	return client.Addr, resp
+}
+
+func (c *CheckerCommon) queryStatusCode(url string) int {
+	_, resp := c.doGetRequest(url)
+	if resp == nil {
+		return -1
+	}
+	CheckErr(resp.Body.Close())
+	return resp.StatusCode
 }
 
 func setToSlice(xs map[string]bool) []string {

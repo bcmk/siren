@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"net/http"
 	"strings"
 )
 
@@ -32,36 +31,24 @@ type liveJasminResponse struct {
 
 // CheckStatusSingle checks LiveJasmin model status
 func (c *LiveJasminChecker) CheckStatusSingle(modelID string) StatusKind {
-	client := c.clientsLoop.nextClient()
 	psID := c.SpecificConfig["ps_id"]
 	accessKey := c.SpecificConfig["access_key"]
 	url := fmt.Sprintf("https://pt.potawe.com/api/model/status?performerId=%s&psId=%s&accessKey=%s&legacyRedirect=1", modelID, psID, accessKey)
-	req, err := http.NewRequest("GET", url, nil)
-	CheckErr(err)
-	for _, h := range c.Headers {
-		req.Header.Set(h[0], h[1])
-	}
-	resp, err := client.Client.Do(req)
-	if err != nil {
-		Lerr("[%v] cannot send a query, %v", client.Addr, err)
+	addr, resp := c.doGetRequest(url)
+	if resp == nil {
 		return StatusUnknown
 	}
-	defer func() {
-		CheckErr(resp.Body.Close())
-	}()
-	if c.Dbg {
-		Ldbg("[%v] query status for %s: %d", client.Addr, modelID, resp.StatusCode)
-	}
-	if resp.StatusCode == 401 {
+	defer func() { CheckErr(resp.Body.Close()) }()
+	switch resp.StatusCode {
+	case 401:
 		return StatusDenied
-	}
-	if resp.StatusCode == 404 {
+	case 404:
 		return StatusNotFound
 	}
 	buf := bytes.Buffer{}
-	_, err = buf.ReadFrom(resp.Body)
+	_, err := buf.ReadFrom(resp.Body)
 	if err != nil {
-		Lerr("[%v] cannot read response for model %s, %v", client.Addr, modelID, err)
+		Lerr("[%v] cannot read response for model %s, %v", addr, modelID, err)
 		return StatusUnknown
 	}
 	return liveJasminStatus(buf.String())

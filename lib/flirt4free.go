@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"net/http"
 	"strings"
 )
 
@@ -37,37 +36,25 @@ type flirt4FreeOnlineResponse struct {
 
 // CheckStatusSingle checks Flirt4Free model status
 func (c *Flirt4FreeChecker) CheckStatusSingle(modelID string) StatusKind {
-	client := c.clientsLoop.nextClient()
-	req, err := http.NewRequest("GET", fmt.Sprintf("https://ws.vs3.com/rooms/check-model-status.php?model_name=%s", modelID), nil)
-	CheckErr(err)
-	for _, h := range c.Headers {
-		req.Header.Set(h[0], h[1])
-	}
-	resp, err := client.Client.Do(req)
-	if err != nil {
-		Lerr("[%v] cannot send a query, %v", client.Addr, err)
+	addr, resp := c.doGetRequest(fmt.Sprintf("https://ws.vs3.com/rooms/check-model-status.php?model_name=%s", modelID))
+	if resp == nil {
 		return StatusUnknown
 	}
-	defer func() {
-		CheckErr(resp.Body.Close())
-	}()
-	if c.Dbg {
-		Ldbg("[%v] query status for %s: %d", client.Addr, modelID, resp.StatusCode)
-	}
+	defer func() { CheckErr(resp.Body.Close()) }()
 	if resp.StatusCode != 200 {
 		return StatusUnknown
 	}
 	buf := bytes.Buffer{}
-	_, err = buf.ReadFrom(resp.Body)
+	_, err := buf.ReadFrom(resp.Body)
 	if err != nil {
-		Lerr("[%v] cannot read response for model %s, %v", client.Addr, modelID, err)
+		Lerr("[%v] cannot read response for model %s, %v", addr, modelID, err)
 		return StatusUnknown
 	}
 	decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
 	parsed := &flirt4FreeCheckResponse{}
 	err = decoder.Decode(parsed)
 	if err != nil {
-		Lerr("[%v] cannot parse response for model %s, %v", client.Addr, modelID, err)
+		Lerr("[%v] cannot parse response for model %s, %v", addr, modelID, err)
 		if c.Dbg {
 			Ldbg("response: %s", buf.String())
 		}

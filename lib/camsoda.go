@@ -25,6 +25,13 @@ type camSodaOnlineResponse struct {
 
 // CheckStatusSingle checks CamSoda model status
 func (c *CamSodaChecker) CheckStatusSingle(modelID string) StatusKind {
+	code := c.queryStatusCode(fmt.Sprintf("https://www.camsoda.com/%s", modelID))
+	switch code {
+	case 200:
+		return StatusOnline | StatusOffline
+	case 404:
+		return StatusNotFound
+	}
 	return StatusUnknown
 }
 
