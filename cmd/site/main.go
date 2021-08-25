@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aohorodnyk/mimeheader"
 	"github.com/bcmk/siren/lib"
 	"github.com/bcmk/siren/sitelib"
 	"github.com/gorilla/handlers"
@@ -206,6 +207,15 @@ func (s *server) tparams(r *http.Request, more map[string]interface{}) map[strin
 	for k, v := range more {
 		res[k] = v
 	}
+	ah := mimeheader.ParseAcceptHeader(r.Header.Get("Accept"))
+	imgExts := map[string]string{}
+	imgExts["svg"] = "svgz"
+	if ah.Match("image/webp") {
+		imgExts["png"] = "webp"
+	} else {
+		imgExts["png"] = "svgz"
+	}
+	res["img_exts"] = imgExts
 	return res
 }
 
@@ -472,7 +482,16 @@ func main() {
 	r.Handle("/chic/code/{pack}", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.enCodeHandler))))
 	r.Handle("/chic/like/{pack}", srv.measure(http.HandlerFunc(srv.likeHandler)))
 
-	r.PathPrefix("/chic/i/").Handler(http.StripPrefix("/chic/i", cacheControlHandler(http.FileServer(http.Dir(srv.cfg.Files)), 120)))
+	svgzHeaders := func(h http.Handler) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasSuffix(r.URL.Path, ".svgz") {
+				w.Header().Set("Content-Encoding", "gzip")
+				w.Header().Set("Content-Type", "image/svg+xml")
+			}
+			h.ServeHTTP(w, r)
+		}
+	}
+	r.PathPrefix("/chic/i/").Handler(http.StripPrefix("/chic/i", svgzHeaders(cacheControlHandler(http.FileServer(http.Dir(srv.cfg.Files)), 120))))
 	r.PathPrefix("/icons/").Handler(http.StripPrefix("/icons", cacheControlHandler(http.FileServer(http.Dir("icons")), 120)))
 	r.PathPrefix("/node_modules/").Handler(http.StripPrefix("/node_modules", cacheControlHandler(handlers.CompressHandler(http.FileServer(http.Dir("node_modules"))), 120)))
 

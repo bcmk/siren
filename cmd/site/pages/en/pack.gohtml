@@ -4,6 +4,7 @@
 {{ $pack := .pack }}
 {{ $params := .params }}
 {{ $likes := .likes }}
+{{ $img_exts := .img_exts }}
 
 <html lang="en" xmlns:og="http://ogp.me/ns#">
 <head>
@@ -13,8 +14,8 @@
     <meta name="twitter:creator" content="@siren_tlg">
     <meta name="twitter:title" content="Chaturbate icons constructor">
     <meta name="twitter:description" content="Icon pack — {{ $pack.HumanName }}">
-    <meta name="twitter:image" content="{{ .base_url }}/chic/i/{{ $pack.Name }}/banner.png">
-    <meta name="image" property="og:image" content="{{ .base_url }}/chic/i/{{ $pack.Name }}/banner.png" />
+    <meta name="twitter:image" content="{{ .base_url }}/chic/i/{{ $pack.Name }}/banner.jpg">
+    <meta name="image" property="og:image" content="{{ .base_url }}/chic/i/{{ $pack.Name }}/banner.jpg" />
     <title>SIREN — Chaturbate icons constructor</title>
     <script>
         function like_changed(what, val) {
@@ -69,43 +70,43 @@
                                    value="{{ .n }}"
                                     {{ if or (eq .n .sel) (and (eq .n "5") (not .sel)) -}} checked {{- end }}>
                             <label for="size-{{ .n }}">
-                                <img src="/chic/i/{{ .pack.Name }}/siren.{{ .pack.FinalType }}"
+                                <img src="/chic/i/{{ .ctx.pack.Name }}/siren.{{ index .ctx.img_exts .ctx.pack.FinalType }}"
                                      alt=""
-                                     style="height: {{ mul_div .h .pack.Scale 100 }}px;">
+                                     style="height: {{ mul_div .h .ctx.pack.Scale 100 }}px;">
                             </label>
                         {{ end }}
                         <table class="size-selection">
                             <tr>
                                 <td>
-                                    {{ template "size_input" map "n" "1" "h" (index .sizes "1") "sel" $params.size "pack" $pack }}
+                                    {{ template "size_input" map "n" "1" "h" (index .sizes "1") "sel" $params.size "ctx" . }}
                                 </td>
                                 <td>
-                                    {{ template "size_input" map "n" "2" "h" (index .sizes "2") "sel" $params.size "pack" $pack }}
+                                    {{ template "size_input" map "n" "2" "h" (index .sizes "2") "sel" $params.size "ctx" . }}
                                 </td>
                                 <td>
-                                    {{ template "size_input" map "n" "3" "h" (index .sizes "3") "sel" $params.size "pack" $pack }}
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>
-                                    {{ template "size_input" map "n" "4" "h" (index .sizes "4") "sel" $params.size "pack" $pack }}
-                                </td>
-                                <td>
-                                    {{ template "size_input" map "n" "5" "h" (index .sizes "5") "sel" $params.size "pack" $pack }}
-                                </td>
-                                <td>
-                                    {{ template "size_input" map "n" "6" "h" (index .sizes "6") "sel" $params.size "pack" $pack }}
+                                    {{ template "size_input" map "n" "3" "h" (index .sizes "3") "sel" $params.size "ctx" . }}
                                 </td>
                             </tr>
                             <tr>
                                 <td>
-                                    {{ template "size_input" map "n" "7" "h" (index .sizes "7") "sel" $params.size "pack" $pack }}
+                                    {{ template "size_input" map "n" "4" "h" (index .sizes "4") "sel" $params.size "ctx" . }}
                                 </td>
                                 <td>
-                                    {{ template "size_input" map "n" "8" "h" (index .sizes "8") "sel" $params.size "pack" $pack }}
+                                    {{ template "size_input" map "n" "5" "h" (index .sizes "5") "sel" $params.size "ctx" . }}
                                 </td>
                                 <td>
-                                    {{ template "size_input" map "n" "9" "h" (index .sizes "9") "sel" $params.size "pack" $pack }}
+                                    {{ template "size_input" map "n" "6" "h" (index .sizes "6") "sel" $params.size "ctx" . }}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    {{ template "size_input" map "n" "7" "h" (index .sizes "7") "sel" $params.size "ctx" . }}
+                                </td>
+                                <td>
+                                    {{ template "size_input" map "n" "8" "h" (index .sizes "8") "sel" $params.size "ctx" . }}
+                                </td>
+                                <td>
+                                    {{ template "size_input" map "n" "9" "h" (index .sizes "9") "sel" $params.size "ctx" . }}
                                 </td>
                             </tr>
                         </table>
@@ -118,9 +119,9 @@
                     <div class="row mt-2"/>
                         <div class="d-flex col-12 col-lg-9">
                             <div class="d-flex align-self-center form-icon">
-                                <img src="/chic/i/{{ .pack.Name }}/{{ .name }}.{{ .pack.FinalType }}"
+                                <img src="/chic/i/{{ .ctx.pack.Name }}/{{ .name }}.{{ index .ctx.img_exts .ctx.pack.FinalType }}"
                                      alt=""
-                                     style="height: {{ .pack.Scale }}%; width: auto;"
+                                     style="height: {{ .ctx.pack.Scale }}%; width: auto;"
                                      class="align-self-center">
                             </div>
                             <div class="w-100 d-flex align-self-center justify-content-center h-100 ms-3 flex-column">
@@ -153,13 +154,13 @@
                     </div>
                 {{ end }}
                 {{ if contains_icon $pack.Icons "siren" }}
-                    {{ template "simple_input" map "pack" .pack "name" "siren" "comment" (raw_html "Chaturbate username <b>(required)</b>") "value" $params.siren "placeholder" "username" "text" true "error" .siren_error }}
+                    {{ template "simple_input" map "ctx" . "name" "siren" "comment" (raw_html "Chaturbate username <b>(required)</b>") "value" $params.siren "placeholder" "username" "text" true "error" .siren_error }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "fanclub" }}
                     <div class="row mt-2"/>
                         <div class="d-flex col-12 col-lg-9">
                             <div class="d-flex align-self-center form-icon">
-                                <img src="/chic/i/{{ $pack.Name }}/fanclub.{{ $pack.FinalType }}"
+                                <img src="/chic/i/{{ $pack.Name }}/fanclub.{{ index $img_exts $pack.FinalType }}"
                                      alt=""
                                      style="height: {{ $pack.Scale }}%;"
                                      class="align-self-center">
@@ -188,67 +189,67 @@
                     </div>
                 {{ end }}
                 {{ if contains_icon $pack.Icons "instagram" }}
-                    {{ template "simple_input" map "pack" .pack "name" "instagram" "comment" "Instagram link" "value" $params.instagram "placeholder" "https://www.instagram.com/username" }}
+                    {{ template "simple_input" map "ctx" . "name" "instagram" "comment" "Instagram link" "value" $params.instagram "placeholder" "https://www.instagram.com/username" }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "twitter" }}
-                    {{ template "simple_input" map "pack" .pack "name" "twitter" "comment" "Twitter link" "value" $params.twitter "placeholder" "https://twitter.com/username" }}
+                    {{ template "simple_input" map "ctx" . "name" "twitter" "comment" "Twitter link" "value" $params.twitter "placeholder" "https://twitter.com/username" }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "onlyfans" }}
-                    {{ template "simple_input" map "pack" .pack "name" "onlyfans" "comment" "Onlyfans link" "value" $params.onlyfans "placeholder" "https://onlyfans.com/username" }}
+                    {{ template "simple_input" map "ctx" . "name" "onlyfans" "comment" "Onlyfans link" "value" $params.onlyfans "placeholder" "https://onlyfans.com/username" }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "amazon" }}
-                    {{ template "simple_input" map "pack" .pack "name" "amazon" "comment" "Amazon wish list link" "value" $params.amazon }}
+                    {{ template "simple_input" map "ctx" . "name" "amazon" "comment" "Amazon wish list link" "value" $params.amazon }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "lovense" }}
-                    {{ template "simple_input" map "pack" .pack "name" "lovense" "comment" "Lovense wish list link" "value" $params.lovense }}
+                    {{ template "simple_input" map "ctx" . "name" "lovense" "comment" "Lovense wish list link" "value" $params.lovense }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "pornhub" }}
-                    {{ template "simple_input" map "pack" .pack "name" "pornhub" "comment" "Pornhub link" "value" $params.pornhub }}
+                    {{ template "simple_input" map "ctx" . "name" "pornhub" "comment" "Pornhub link" "value" $params.pornhub }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "dmca" }}
-                    {{ template "simple_input" map "pack" .pack "name" "dmca" "comment" "DMCA link" "value" $params.dmca }}
+                    {{ template "simple_input" map "ctx" . "name" "dmca" "comment" "DMCA link" "value" $params.dmca }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "allmylinks" }}
-                    {{ template "simple_input" map "pack" .pack "name" "allmylinks" "comment" "AllMyLinks link" "value" $params.allmylinks }}
+                    {{ template "simple_input" map "ctx" . "name" "allmylinks" "comment" "AllMyLinks link" "value" $params.allmylinks }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "onemylink" }}
-                    {{ template "simple_input" map "pack" .pack "name" "onemylink" "comment" "Onemylink link" "value" $params.onemylink }}
+                    {{ template "simple_input" map "ctx" . "name" "onemylink" "comment" "Onemylink link" "value" $params.onemylink }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "fancentro" }}
-                    {{ template "simple_input" map "pack" .pack "name" "fancentro" "comment" "FanCentro link" "value" $params.fancentro }}
+                    {{ template "simple_input" map "ctx" . "name" "fancentro" "comment" "FanCentro link" "value" $params.fancentro }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "manyvids" }}
-                    {{ template "simple_input" map "pack" .pack "name" "manyvids" "comment" "ManyVids link" "value" $params.manyvids }}
+                    {{ template "simple_input" map "ctx" . "name" "manyvids" "comment" "ManyVids link" "value" $params.manyvids }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "frisk" }}
-                    {{ template "simple_input" map "pack" .pack "name" "frisk" "comment" "Frisk link" "value" $params.frisk }}
+                    {{ template "simple_input" map "ctx" . "name" "frisk" "comment" "Frisk link" "value" $params.frisk }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "mail" }}
-                    {{ template "simple_input" map "pack" .pack "name" "mail" "comment" "Email ralated link" "value" $params.mail }}
+                    {{ template "simple_input" map "ctx" . "name" "mail" "comment" "Email ralated link" "value" $params.mail }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "snapchat" }}
-                    {{ template "simple_input" map "pack" .pack "name" "snapchat" "comment" "Snapchat link" "value" $params.snapchat }}
+                    {{ template "simple_input" map "ctx" . "name" "snapchat" "comment" "Snapchat link" "value" $params.snapchat }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "telegram" }}
-                    {{ template "simple_input" map "pack" .pack "name" "telegram" "comment" "Telegram link" "value" $params.telegram }}
+                    {{ template "simple_input" map "ctx" . "name" "telegram" "comment" "Telegram link" "value" $params.telegram }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "whatsapp" }}
-                    {{ template "simple_input" map "pack" .pack "name" "whatsapp" "comment" "WhatsApp link" "value" $params.whatsapp }}
+                    {{ template "simple_input" map "ctx" . "name" "whatsapp" "comment" "WhatsApp link" "value" $params.whatsapp }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "youtube" }}
-                    {{ template "simple_input" map "pack" .pack "name" "youtube" "comment" "YouTube link" "value" $params.youtube }}
+                    {{ template "simple_input" map "ctx" . "name" "youtube" "comment" "YouTube link" "value" $params.youtube }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "tiktok" }}
-                    {{ template "simple_input" map "pack" .pack "name" "tiktok" "comment" "TikTok link" "value" $params.tiktok }}
+                    {{ template "simple_input" map "ctx" . "name" "tiktok" "comment" "TikTok link" "value" $params.tiktok }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "reddit" }}
-                    {{ template "simple_input" map "pack" .pack "name" "reddit" "comment" "Reddit link" "value" $params.reddit }}
+                    {{ template "simple_input" map "ctx" . "name" "reddit" "comment" "Reddit link" "value" $params.reddit }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "twitch" }}
-                    {{ template "simple_input" map "pack" .pack "name" "twitch" "comment" "Twitch link" "value" $params.twitch }}
+                    {{ template "simple_input" map "ctx" . "name" "twitch" "comment" "Twitch link" "value" $params.twitch }}
                 {{ end }}
                 {{ if contains_icon $pack.Icons "discord" }}
-                    {{ template "simple_input" map "pack" .pack "name" "discord" "comment" "Discord link" "value" $params.discord }}
+                    {{ template "simple_input" map "ctx" . "name" "discord" "comment" "Discord link" "value" $params.discord }}
                 {{ end }}
                 <div class="row mt-4">
                     <div class="col-12 col-lg-9">

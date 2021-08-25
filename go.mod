@@ -1,6 +1,7 @@
 module github.com/bcmk/siren
 
 require (
+	github.com/aohorodnyk/mimeheader v0.0.5 // indirect
 	github.com/bcmk/go-smtpd v0.0.0-20200226140049-a5c2db7f2555
 	github.com/bcmk/telegram-bot-api v1.0.1-0.20200926205526-fa6e30cde1b9
 	github.com/chromedp/cdproto v0.0.0-20200209033844-7e00b02ea7d2

@@ -2,6 +2,7 @@
 <!--suppress HtmlUnknownTarget -->
 
 {{ $likes := .likes }}
+{{ $img_exts := .img_exts }}
 
 <html lang="en" xmlns:og="http://ogp.me/ns#">
 <head>
@@ -63,7 +64,7 @@
                                     {{- if $icon.Enabled }}
                                         <div class="swiper-slide" style="width: {{ $slide_width }}px;">
                                             <img style="width: auto; height: {{ $icon_size }}px; top: {{ $top }}px; position: absolute;"
-                                                 data-src="/chic/i/{{ $pack.Name }}/{{ $icon.Name }}.{{ $pack.FinalType }}"
+                                                 data-src="/chic/i/{{ $pack.Name }}/{{ $icon.Name }}.{{ index $img_exts $pack.FinalType }}"
                                                  alt=""
                                                  class="swiper-lazy">
                                             <div class="siren-lazy-preloader"></div>

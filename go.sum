@@ -1,3 +1,5 @@
+github.com/aohorodnyk/mimeheader v0.0.5 h1:ihyd+t1FH4xBY/b3pxDiRkjnV9gRqv/j58z+PTNWiHQ=
+github.com/aohorodnyk/mimeheader v0.0.5/go.mod h1:/Gd3t3vszyZYwjNJo2qDxoftZjjVzMdkQZxkiINp3vM=
 github.com/bcmk/go-smtpd v0.0.0-20200226140049-a5c2db7f2555 h1:WTUyRApu5ekGVHrTqVr9ugH6qLb6DJKQGNBjFBjCmdw=
 github.com/bcmk/go-smtpd v0.0.0-20200226140049-a5c2db7f2555/go.mod h1:Pik9gBCuq3lkdq/TlUqS5pk/tNY80VCCaVFRxUGXDg0=
 github.com/bcmk/telegram-bot-api v1.0.1-0.20200926205526-fa6e30cde1b9 h1:Gp3AgtYGbEr6hrqkNm2aWGDAvv6XQ5TDrppitOVZq/4=
