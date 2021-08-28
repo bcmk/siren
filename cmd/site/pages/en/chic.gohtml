@@ -15,15 +15,7 @@
     <meta name="twitter:description" content="Free floating icons for your Chaturbate bio">
     <meta name="twitter:image" content="https://siren.s3.nl-ams.scw.cloud/img/chic.png">
     <meta name="image" property="og:image" content="https://siren.s3.nl-ams.scw.cloud/img/chic.png">
-    <link rel="stylesheet" href="/node_modules/swiper/swiper-bundle.min.css">
-    <script>
-        function like_changed(what, val) {
-            fetch(`/chic/like/${what}`, {method: "POST", body: JSON.stringify({pack: what, like: val})});
-            const likes = document.getElementById(`likes-${what}`)
-            const count = parseInt(likes.dataset.initial) + (val ? 1 : -1)
-            likes.innerText = (count < 0 ? "" : "+") + count
-        }
-    </script>
+    {{ template "chic_functions" }}
 </head>
 
 <body>
@@ -53,25 +45,15 @@
         </p>
         <div class="pt-2 mx-auto">
             {{- range $index, $pack := .packs -}}
-                {{- $icon_size := mul_div 90 $pack.Scale 100 -}}
-                {{- $slide_width := add $icon_size 75 -}}
-                {{- $top := mul_div (add $pack.VerticalPosition 50) (sub 90 $icon_size) 100 }}
                 <div class="row my-3">
                     <div class="col-12 col-xl-10 col-lg-9">
                         <div class="swiper-container dark-stripes">
-                            <div class="swiper-wrapper no-select">
-                                {{- range $icon := $pack.Icons -}}
-                                    {{- if $icon.Enabled }}
-                                        <div class="swiper-slide" style="width: {{ $slide_width }}px;">
-                                            <img style="width: auto; height: {{ $icon_size }}px; top: {{ $top }}px; position: absolute;"
-                                                 data-src="/chic/i/{{ $pack.Name }}/{{ $icon.Name }}.{{ index $img_exts $pack.FinalType }}"
-                                                 alt=""
-                                                 class="swiper-lazy">
-                                            <div class="siren-lazy-preloader"></div>
-                                        </div>
-                                    {{- end -}}
-                                {{- end }}
-                            </div>
+                            <img style="height: 90px;"
+                                 src="/chic/i/{{ $pack.Name }}/line.{{ index $img_exts "png" }}"
+                                 alt=""
+                                 draggable="false"
+                                 ondragstart="return false;"
+                                 loading="lazy">
                         </div>
                     </div>
                     <div class="col-12 col-lg-2 d-flex justify-content-center flex-column mt-lg-0 mt-2 order-lg-first">
@@ -99,23 +81,11 @@
     </main>
     {{ template "footer" . }}
 </div>
-<script src="/node_modules/swiper/swiper-bundle.min.js"></script>
-<!--suppress JSUnresolvedFunction -->
 <script>
-    const swiper = new Swiper('.swiper-container', {
-        direction: 'horizontal',
-        slidesPerView: 'auto',
-        freeMode: true,
-        spaceBetween: -45,
-        lazy: {
-            checkInView: true,
-            loadPrevNext: true,
-            preloaderClass: 'siren-lazy-preloader',
-            loadOnTransitionStart: true,
-        },
-        watchSlidesVisibility: true,
-        preloadImages: false,
-    });
+    const swipers = document.querySelectorAll('.swiper-container');
+    for (let i = 0; i < swipers.length; i++) {
+        swipers[i].onmousedown = mouse_down_handler;
+    }
 </script>
 </body>
 </html>

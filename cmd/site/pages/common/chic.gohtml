@@ -1,0 +1,34 @@
+{{ define "chic_functions" }}
+    <script>
+        function like_changed(what, val) {
+            fetch(`/chic/like/${what}`, {method: "POST", body: JSON.stringify({pack: what, like: val})});
+            const likes = document.getElementById(`likes-${what}`)
+            const count = parseInt(likes.dataset.initial) + (val ? 1 : -1)
+            likes.innerText = (count < 0 ? "" : "+") + count
+        }
+
+        function mouse_down_handler(e) {
+            scr = e.currentTarget
+            scr.style.userSelect = 'none';
+
+            pos = {
+                x: e.clientX + scr.scrollLeft,
+                y: e.clientY + scr.scrollTop,
+            };
+
+            const mouse_move_handler = function(e) {
+                scr.scrollTop = pos.y - e.clientY;
+                scr.scrollLeft = pos.x - e.clientX;
+            };
+
+            const mouse_up_handler = function() {
+                scr.style.removeProperty('user-select');
+                document.removeEventListener('mousemove', mouse_move_handler);
+                document.removeEventListener('mouseup', mouse_up_handler);
+            };
+
+            document.addEventListener('mousemove', mouse_move_handler);
+            document.addEventListener('mouseup', mouse_up_handler);
+        };
+    </script>
+{{ end }}
