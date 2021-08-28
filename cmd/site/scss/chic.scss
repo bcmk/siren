@@ -106,24 +106,3 @@ input[type="radio"].like-selection:checked + label {
 .btn-like {
     border-radius: 15px !important;
 }
-
-.siren-lazy-preloader {
-    width: 20px;
-    height: 20px;
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    margin-left: -10px;
-    margin-top: -10px;
-    z-index: 10;
-    box-sizing: border-box;
-    border: 10px solid #cc2222;
-    border-radius: 10px;
-}
-
-.swiper-slide {
-    display: flex;
-    justify-content: center;
-    height: 90px !important;
-}
-
