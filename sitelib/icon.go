@@ -16,16 +16,10 @@ func (i *Icon) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if err := unmarshal(&s); err != nil {
 		return err
 	}
-	if strings.HasPrefix(s, "^") {
-		*i = Icon{
-			Name:    s[1:],
-			Enabled: false,
-		}
-		return nil
-	}
+	name := strings.TrimPrefix(s, "^")
 	*i = Icon{
-		Name:    s,
-		Enabled: true,
+		Name:    name,
+		Enabled: len(name) == len(s),
 	}
 	return nil
 }
