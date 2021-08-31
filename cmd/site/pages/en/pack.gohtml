@@ -215,6 +215,9 @@
                 {{ if contains_icon $pack.Icons "onemylink" }}
                     {{ template "simple_input" map "ctx" . "name" "onemylink" "comment" "Onemylink link" "value" $params.onemylink }}
                 {{ end }}
+                {{ if contains_icon $pack.Icons "linktree" }}
+                    {{ template "simple_input" map "ctx" . "name" "linktree" "comment" "Linktree link" "value" $params.linktree }}
+                {{ end }}
                 {{ if contains_icon $pack.Icons "fancentro" }}
                     {{ template "simple_input" map "ctx" . "name" "fancentro" "comment" "FanCentro link" "value" $params.fancentro }}
                 {{ end }}
