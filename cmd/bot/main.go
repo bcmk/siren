@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"html"
 	"image"
@@ -217,11 +218,11 @@ type waitingUser struct {
 	endpoint string
 }
 
-func newWorker() *worker {
-	if len(os.Args) != 2 {
+func newWorker(args []string) *worker {
+	if len(args) != 1 {
 		panic("usage: siren <config>")
 	}
-	cfg := readConfig(os.Args[1])
+	cfg := readConfig(args[0])
 
 	var err error
 	var mailTLS *tls.Config
@@ -1603,7 +1604,7 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	case "social":
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Social, nil, replyPacket)
 	case "version":
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Version, tplData{"version": version}, replyPacket)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Version, tplData{"version": lib.Version}, replyPacket)
 	case "remove_all", "stop":
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].RemoveAll, nil, replyPacket)
 	case "sure_remove_all":
@@ -2195,9 +2196,16 @@ func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacke
 }
 
 func main() {
+	version := flag.Bool("v", false, "prints current version")
+	flag.Parse()
+	if *version {
+		fmt.Println(lib.Version)
+		os.Exit(0)
+	}
+
 	rand.Seed(time.Now().UnixNano())
 
-	w := newWorker()
+	w := newWorker(flag.Args())
 	w.logConfig()
 	w.setWebhook()
 	w.setCommands()

@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# constructs a version string from a Git repository according to the rules of Go modules
+# https://golang.org/ref/mod#versions
+# https://golang.org/ref/mod#pseudo-versions
+
+shopt -s extglob
+
+version="$(git tag --sort=-v:refname --points-at HEAD -l 'v*')" || exit 1
+IFS=$'\n' read -r version <<< "$version"
+
+case "$version" in
+'');;
+v+([0-9]).+([0-9]).+([0-9])?(-pre)?([+]*)) echo "${version:1}" && exit 0;;
+*) exit 1;;
+esac
+
+version="$(git tag --sort=-v:refname --merged HEAD -l 'v*')" || exit 1
+IFS=$'\n' read -r version <<< "$version"
+
+case "$version" in
+'') version="v0.0.0-";;
+v+([0-9]).+([0-9]).+([0-9])-pre?([+]*)) version="${version%[+]*}" && version="$version.0.";;
+v+([0-9]).+([0-9]).+([0-9])?([+]*)) version="${version%[+]*}" && version="${version%.*}.$((${version##*.} + 1))-";;
+*) exit 1;;
+esac
+
+echo "${version:1}$(git show -s --date=format:"%Y%m%d%H%M%S" --format=%cd HEAD)-$(git rev-parse --short=12 HEAD)"
