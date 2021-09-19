@@ -1835,6 +1835,8 @@ func getRss() (int64, error) {
 }
 
 func (w *worker) getStat(endpoint string) statistics {
+	measureDone := w.measure("db: retrieving stats")
+	defer measureDone()
 	rss, err := getRss()
 	checkErr(err)
 	var rusage syscall.Rusage
@@ -1898,9 +1900,7 @@ func (w *worker) processStatCommand(endpoint string, writer http.ResponseWriter,
 	writer.WriteHeader(http.StatusOK)
 	writer.Header().Set("Content-Type", "application/json")
 
-	measureDone := w.measure("db: retrieving stats")
 	statJSON, err := json.MarshalIndent(w.getStat(endpoint), "", "    ")
-	measureDone()
 	checkErr(err)
 	_, err = writer.Write(statJSON)
 	if err != nil {
