@@ -38,7 +38,7 @@ type chaturbateResponse struct {
 
 // CheckStatusSingle checks Chaturbate model status
 func (c *ChaturbateChecker) CheckStatusSingle(modelID string) StatusKind {
-	addr, resp := c.doGetRequest(fmt.Sprintf("https://en.chaturbate.com/api/chatvideocontext/%s/", modelID))
+	addr, resp := c.doGetRequest(fmt.Sprintf("https://chaturbate.com/api/chatvideocontext/%s/", modelID))
 	if resp == nil {
 		return StatusUnknown
 	}
