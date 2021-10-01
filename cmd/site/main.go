@@ -493,7 +493,7 @@ func main() {
 			h.ServeHTTP(w, r)
 		}
 	}
-	r.PathPrefix("/chic/i/").Handler(http.StripPrefix("/chic/i", svgzHeaders(cacheControlHandler(http.FileServer(http.Dir(srv.cfg.Files)), 120))))
+	r.PathPrefix("/chic/i/{pack}/{file:.*\\.(?:png|svg|svgz|webp|jpg)}").Handler(http.StripPrefix("/chic/i", svgzHeaders(cacheControlHandler(http.FileServer(http.Dir(srv.cfg.Files)), 120))))
 	r.PathPrefix("/icons/").Handler(http.StripPrefix("/icons", cacheControlHandler(http.FileServer(http.Dir("icons")), 120)))
 	r.PathPrefix("/node_modules/").Handler(http.StripPrefix("/node_modules", cacheControlHandler(handlers.CompressHandler(http.FileServer(http.Dir("node_modules"))), 120)))
 
