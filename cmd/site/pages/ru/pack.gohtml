@@ -70,7 +70,7 @@
                                    value="{{ .n }}"
                                     {{ if or (eq .n .sel) (and (eq .n "5") (not .sel)) -}} checked {{- end }}>
                             <label for="size-{{ .n }}">
-                                <img src="/chic/i/{{ .ctx.pack.Name }}/siren.{{ index .ctx.img_exts .ctx.pack.FinalType }}"
+                                <img src="/chic/i/{{ .ctx.pack.Name }}/{{ versioned .ctx.pack "siren" }}.{{ index .ctx.img_exts .ctx.pack.FinalType }}"
                                      alt=""
                                      style="height: {{ mul_div .h .ctx.pack.Scale 100 }}px;">
                             </label>
@@ -119,7 +119,7 @@
                     <div class="row mt-2"/>
                         <div class="d-flex col-12 col-lg-9">
                             <div class="d-flex align-self-center form-icon">
-                                <img src="/chic/i/{{ .ctx.pack.Name }}/{{ .name }}.{{ index .ctx.img_exts .ctx.pack.FinalType }}"
+                                <img src="/chic/i/{{ .ctx.pack.Name }}/{{ versioned .ctx.pack .name }}.{{ index .ctx.img_exts .ctx.pack.FinalType }}"
                                      alt=""
                                      style="height: {{ .ctx.pack.Scale }}%; width: auto;"
                                      class="align-self-center">
@@ -153,14 +153,14 @@
                         </div>
                     </div>
                 {{ end }}
-                {{ if contains_icon $pack.Icons "siren" }}
+                {{ if $pack.VisibleIcons.siren }}
                     {{ template "simple_input" map "ctx" . "name" "siren" "comment" (raw_html "Ник на Chaturbate <b>(обязательно)</b>") "placeholder" "ник" "text" true "error" .siren_error }}
                 {{ end }}
-                {{ if contains_icon $pack.Icons "fanclub" }}
+                {{ if $pack.VisibleIcons.fanclub }}
                     <div class="row mt-2"/>
                         <div class="d-flex col-12 col-lg-9">
                             <div class="d-flex align-self-center form-icon">
-                                <img src="/chic/i/{{ $pack.Name }}/fanclub.{{ index $img_exts $pack.FinalType }}"
+                                <img src="/chic/i/{{ $pack.Name }}/{{ versioned $pack "fanclub" }}.{{ index $img_exts $pack.FinalType }}"
                                      alt=""
                                      style="height: {{ $pack.Scale }}%;"
                                      class="align-self-center">
@@ -188,70 +188,73 @@
                         </div>
                     </div>
                 {{ end }}
-                {{ if contains_icon $pack.Icons "instagram" }}
+                {{ if $pack.VisibleIcons.instagram }}
                     {{ template "simple_input" map "ctx" . "name" "instagram" "comment" "Ссылка на Instagram" "placeholder" "https://www.instagram.com/username" }}
                 {{ end }}
-                {{ if contains_icon $pack.Icons "twitter" }}
+                {{ if $pack.VisibleIcons.twitter }}
                     {{ template "simple_input" map "ctx" . "name" "twitter" "comment" "Ссылка на Twitter" "placeholder" "https://twitter.com/username" }}
                 {{ end }}
-                {{ if contains_icon $pack.Icons "onlyfans" }}
+                {{ if $pack.VisibleIcons.onlyfans }}
                     {{ template "simple_input" map "ctx" . "name" "onlyfans" "comment" "Ссылка на Onlyfans" "placeholder" "https://onlyfans.com/username" }}
                 {{ end }}
-                {{ if contains_icon $pack.Icons "amazon" }}
+                {{ if $pack.VisibleIcons.amazon }}
                     {{ template "simple_input" map "ctx" . "name" "amazon" "comment" "Ссылка на Amazon wish list" }}
                 {{ end }}
-                {{ if contains_icon $pack.Icons "lovense" }}
+                {{ if $pack.VisibleIcons.lovense }}
                     {{ template "simple_input" map "ctx" . "name" "lovense" "comment" "Ссылка на Lovense wish list" }}
                 {{ end }}
-                {{ if contains_icon $pack.Icons "pornhub" }}
+                {{ if $pack.VisibleIcons.pornhub }}
                     {{ template "simple_input" map "ctx" . "name" "pornhub" "comment" "Ссылка на Pornhub" }}
                 {{ end }}
-                {{ if contains_icon $pack.Icons "dmca" }}
+                {{ if $pack.VisibleIcons.dmca }}
                     {{ template "simple_input" map "ctx" . "name" "dmca" "comment" "Ссылка на DMCA" }}
                 {{ end }}
-                {{ if contains_icon $pack.Icons "allmylinks" }}
+                {{ if $pack.VisibleIcons.allmylinks }}
                     {{ template "simple_input" map "ctx" . "name" "allmylinks" "comment" "Ссылка на AllMyLinks" }}
                 {{ end }}
-                {{ if contains_icon $pack.Icons "onemylink" }}
+                {{ if $pack.VisibleIcons.onemylink }}
                     {{ template "simple_input" map "ctx" . "name" "onemylink" "comment" "Ссылка на Onemylink" }}
                 {{ end }}
-                {{ if contains_icon $pack.Icons "linktree" }}
+                {{ if $pack.VisibleIcons.linktree }}
                     {{ template "simple_input" map "ctx" . "name" "linktree" "comment" "Ссылка на Linktree" }}
                 {{ end }}
-                {{ if contains_icon $pack.Icons "fancentro" }}
+                {{ if $pack.VisibleIcons.fancentro }}
                     {{ template "simple_input" map "ctx" . "name" "fancentro" "comment" "Ссылка на FanCentro" }}
                 {{ end }}
-                {{ if contains_icon $pack.Icons "manyvids" }}
+                {{ if $pack.VisibleIcons.manyvids }}
                     {{ template "simple_input" map "ctx" . "name" "manyvids" "comment" "Ссылка на ManyVids" }}
                 {{ end }}
-                {{ if contains_icon $pack.Icons "frisk" }}
+                {{ if $pack.VisibleIcons.frisk }}
                     {{ template "simple_input" map "ctx" . "name" "frisk" "comment" "Ссылка на Frisk" }}
                 {{ end }}
-                {{ if contains_icon $pack.Icons "mail" }}
+                {{ if $pack.VisibleIcons.fansly }}
+                    {{ template "simple_input" map "ctx" . "name" "fansly" "comment" "Ссылка на Fansly" }}
+                {{ end }}
+                {{ if $pack.VisibleIcons.mail }}
                     {{ template "simple_input" map "ctx" . "name" "mail" "comment" "Ссылка на email" }}
                 {{ end }}
-                {{ if contains_icon $pack.Icons "snapchat" }}
+                {{ if $pack.VisibleIcons.snapchat }}
                     {{ template "simple_input" map "ctx" . "name" "snapchat" "comment" "Ссылка на Snapchat" }}
                 {{ end }}
-                {{ if contains_icon $pack.Icons "telegram" }}
+                {{ if $pack.VisibleIcons.telegram }}
                     {{ template "simple_input" map "ctx" . "name" "telegram" "comment" "Ссылка на Telegram" }}
                 {{ end }}
-                {{ if contains_icon $pack.Icons "whatsapp" }}
+                {{ if $pack.VisibleIcons.whatsapp }}
                     {{ template "simple_input" map "ctx" . "name" "whatsapp" "comment" "Ссылка на WhatsApp" }}
                 {{ end }}
-                {{ if contains_icon $pack.Icons "youtube" }}
+                {{ if $pack.VisibleIcons.youtube }}
                     {{ template "simple_input" map "ctx" . "name" "youtube" "comment" "Ссылка на YouTube" }}
                 {{ end }}
-                {{ if contains_icon $pack.Icons "tiktok" }}
+                {{ if $pack.VisibleIcons.tiktok }}
                     {{ template "simple_input" map "ctx" . "name" "tiktok" "comment" "Ссылка на TikTok" }}
                 {{ end }}
-                {{ if contains_icon $pack.Icons "reddit" }}
+                {{ if $pack.VisibleIcons.reddit }}
                     {{ template "simple_input" map "ctx" . "name" "reddit" "comment" "Ссылка на Reddit" }}
                 {{ end }}
-                {{ if contains_icon $pack.Icons "twitch" }}
+                {{ if $pack.VisibleIcons.twitch }}
                     {{ template "simple_input" map "ctx" . "name" "twitch" "comment" "Ссылка на Twitch" }}
                 {{ end }}
-                {{ if contains_icon $pack.Icons "discord" }}
+                {{ if $pack.VisibleIcons.discord }}
                     {{ template "simple_input" map "ctx" . "name" "discord" "comment" "Ссылка на Discord" }}
                 {{ end }}
                 <div class="row mt-4">

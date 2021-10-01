@@ -10,17 +10,19 @@ import (
 
 // Pack represents an icon pack
 type Pack struct {
-	Name             string `yaml:"name"`
-	Scale            int    `yaml:"scale"`
-	VerticalPosition int    `yaml:"vertical_position"`
-	Margin           *int   `yaml:"margin"`
-	InputType        string `yaml:"input_type"`
-	FinalType        string `yaml:"final_type"`
-	FinalHeight      int    `yaml:"final_height"`
-	Icons            []Icon `yaml:"icons"`
-	Disable          bool   `yaml:"disable"`
-	Banner           string `yaml:"banner"`
-	HumanName        string `yaml:"human_name"`
+	HumanName   string   `json:"human_name"`
+	Scale       int      `json:"scale"`
+	VGap        *int     `json:"vgap"`
+	Disable     bool     `json:"disable"`
+	Version     int      `json:"version"`
+	FinalType   string   `json:"final_type"`
+	HiddenIcons []string `json:"hidden_icons"`
+	Timestamp   int64    `json:"timestamp"`
+
+	InputType    string          `json:"-"`
+	Name         string          `json:"-"`
+	Icons        map[string]bool `json:"-"`
+	VisibleIcons map[string]bool `json:"-"`
 }
 
 // Config represents site or converter config
@@ -28,9 +30,7 @@ type Config struct {
 	DBPath        string `yaml:"db_path"`
 	ListenAddress string `yaml:"listen_address"`
 	BaseURL       string `yaml:"base_url"`
-	Input         string `yaml:"input"`
 	Files         string `yaml:"files"`
-	Packs         []Pack `yaml:"packs"`
 	BaseDomain    string `yaml:"base_domain"`
 	Debug         bool   `yaml:"debug"`
 }

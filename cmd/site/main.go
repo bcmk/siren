@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +35,7 @@ type server struct {
 	cfg          sitelib.Config
 	enabledPacks []sitelib.Pack
 	db           *sql.DB
+	packs        []sitelib.Pack
 
 	enIndexTemplate    *ht.Template
 	ruIndexTemplate    *ht.Template
@@ -97,16 +99,14 @@ var funcMap = ht.FuncMap{
 	"div": func(x, y int) int {
 		return x / y
 	},
-	"contains_icon": func(ss []sitelib.Icon, s string) bool {
-		for _, i := range ss {
-			if i.Name == s && i.Enabled {
-				return true
-			}
-		}
-		return false
-	},
 	"trimPrefix": func(s, prefix string) string {
 		return strings.TrimPrefix(prefix, s)
+	},
+	"versioned": func(pack *sitelib.Pack, name string) string {
+		if pack.Version < 2 {
+			return name
+		}
+		return name + ".v" + strconv.Itoa(pack.Version)
 	},
 }
 
@@ -137,6 +137,7 @@ var packParams = []string{
 	"linktree",
 	"fancentro",
 	"frisk",
+	"fansly",
 	"mail",
 	"snapchat",
 	"telegram",
@@ -355,7 +356,7 @@ func (s *server) likes() map[string]int {
 }
 
 func (s *server) findPack(name string) *sitelib.Pack {
-	for _, pack := range s.cfg.Packs {
+	for _, pack := range s.packs {
 		if pack.Name == name {
 			return &pack
 		}
@@ -368,17 +369,17 @@ func (s *server) chaturbateCode(pack *sitelib.Pack, params map[string]string) st
 	var b bytes.Buffer
 	w := bufio.NewWriter(&b)
 	size := sizes[params["size"]] * pack.Scale / 100
-	margin := pack.Margin
-	if margin == nil {
-		var defaultMargin = 25
-		margin = &defaultMargin
+	vgap := pack.VGap
+	if vgap == nil {
+		defaultGap := 25
+		vgap = &defaultGap
 	}
 	if params["siren"] != "" {
 		checkErr(t.Execute(w, map[string]interface{}{
 			"pack":     pack,
 			"params":   params,
 			"size":     size,
-			"margin":   size * (*margin + 100 - pack.Scale) / 100,
+			"vgap":     size * (*vgap + 100 - pack.Scale) / 100,
 			"base_url": s.cfg.BaseURL,
 		}))
 	}
@@ -416,7 +417,7 @@ func (s *server) likesForPack(pack string) int {
 
 func (s *server) iconsCount() int {
 	count := 0
-	for _, i := range s.cfg.Packs {
+	for _, i := range s.packs {
 		count += len(i.Icons)
 	}
 	return count
@@ -436,8 +437,8 @@ func (s *server) fillTemplates() {
 }
 
 func (s *server) fillEnabledPacks() {
-	packs := make([]sitelib.Pack, 0, len(s.cfg.Packs))
-	for _, pack := range s.cfg.Packs {
+	packs := make([]sitelib.Pack, 0, len(s.packs))
+	for _, pack := range s.packs {
 		if !pack.Disable {
 			packs = append(packs, pack)
 		}
@@ -458,6 +459,7 @@ func main() {
 		panic("usage: site <config>")
 	}
 	srv := &server{cfg: sitelib.ReadConfig(flag.Arg(0))}
+	srv.packs = sitelib.ParsePacks(srv.cfg.Files)
 	srv.fillTemplates()
 	srv.fillEnabledPacks()
 	srv.fillCSS()
@@ -465,7 +467,7 @@ func main() {
 	checkErr(err)
 	srv.db = db
 	srv.createDatabase()
-	fmt.Printf("%d packs loaded, %d icons\n", len(srv.cfg.Packs), srv.iconsCount())
+	fmt.Printf("%d packs loaded, %d icons\n", len(srv.packs), srv.iconsCount())
 	ruDomain := "ru." + srv.cfg.BaseDomain
 	r := mux.NewRouter().StrictSlash(true)
 	r.Handle("/", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.ruIndexHandler)))).Host(ruDomain)
