@@ -310,6 +310,17 @@ func (s *server) ruCodeHandler(w http.ResponseWriter, r *http.Request) {
 	s.codeHandler(w, r, s.ruCodeTemplate)
 }
 
+func (s *server) testHandler(w http.ResponseWriter, r *http.Request) {
+	pack := s.findPack(mux.Vars(r)["pack"])
+	if pack == nil {
+		notFoundError(w)
+		return
+	}
+	paramDict := getParamDict(packParams, r)
+	code := s.chaturbateCode(pack, paramDict)
+	_, _ = w.Write([]byte(code))
+}
+
 func (s *server) likeHandler(w http.ResponseWriter, r *http.Request) {
 	pack := s.findPack(mux.Vars(r)["pack"])
 	if pack == nil {
@@ -374,15 +385,13 @@ func (s *server) chaturbateCode(pack *sitelib.Pack, params map[string]string) st
 		defaultGap := 25
 		vgap = &defaultGap
 	}
-	if params["siren"] != "" {
-		checkErr(t.Execute(w, map[string]interface{}{
-			"pack":     pack,
-			"params":   params,
-			"size":     size,
-			"vgap":     size * (*vgap + 100 - pack.Scale) / 100,
-			"base_url": s.cfg.BaseURL,
-		}))
-	}
+	checkErr(t.Execute(w, map[string]interface{}{
+		"pack":     pack,
+		"params":   params,
+		"size":     size,
+		"vgap":     size * (*vgap + 100 - pack.Scale) / 100,
+		"base_url": s.cfg.BaseURL,
+	}))
 	checkErr(w.Flush())
 	m := minify.New()
 	m.Add("text/html", &hmin.Minifier{KeepQuotes: true, KeepComments: true})
@@ -482,6 +491,7 @@ func main() {
 	r.Handle("/chic/p/{pack}", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.enPackHandler))))
 	r.Handle("/chic/code/{pack}", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.ruCodeHandler)))).Host(ruDomain)
 	r.Handle("/chic/code/{pack}", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.enCodeHandler))))
+	r.Handle("/chic/test/{pack}", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.testHandler))))
 	r.Handle("/chic/like/{pack}", srv.measure(http.HandlerFunc(srv.likeHandler)))
 
 	svgzHeaders := func(h http.Handler) http.HandlerFunc {
