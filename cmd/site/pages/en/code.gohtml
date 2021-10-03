@@ -11,10 +11,10 @@
     <meta name="twitter:site" content="@siren_tlg">
     <meta name="twitter:creator" content="@siren_tlg">
     <meta name="twitter:title" content="Chaturbate icons constructor">
-    <meta name="twitter:description" content="Icon pack — {{ $pack.HumanName }}">
+    <meta name="twitter:description" content="{{ $pack.HumanName }} — Chaturbate icon pack">
     <meta name="twitter:image" content="{{ .base_url }}/chic/i/{{ $pack.Name }}/banner.jpg">
     <meta name="image" property="og:image" content="{{ .base_url }}/chic/i/{{ $pack.Name }}/banner.jpg">
-    <title>SIREN — Chaturbate icons constructor</title>
+    <title>{{ $pack.HumanName }} — Chaturbate icon pack</title>
     <script>
         function copyTextToClipboard(text) {
             navigator.clipboard.writeText(text).then(
@@ -33,7 +33,10 @@
 <div class="container" style="margin-bottom: 75px;">
     {{ template "header" }}
     <main>
-        <h1 class="mt-4">Chaturbate icons constructor — code</h1>
+        <header class="mt-4">
+            <h1>{{ $pack.HumanName }}</title>
+            <p><small>Chaturbate icon pack</small></p>
+        </header>
         {{ if .code }}
             <div class="mt-4">
                 <div class="row">
