@@ -469,6 +469,9 @@ func main() {
 	}
 	srv := &server{cfg: sitelib.ReadConfig(flag.Arg(0))}
 	srv.packs = sitelib.ParsePacks(srv.cfg.Files)
+	if len(srv.packs) > 2 {
+		srv.packs[0], srv.packs[len(srv.packs)-1] = srv.packs[len(srv.packs)-1], srv.packs[0]
+	}
 	srv.fillTemplates()
 	srv.fillEnabledPacks()
 	srv.fillCSS()
