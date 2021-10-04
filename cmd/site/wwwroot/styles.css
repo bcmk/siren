@@ -1346,6 +1346,10 @@ a.share-button {
   font-size: 0.8em;
 }
 
+.smallest {
+  font-size: 0.68em;
+}
+
 .gold {
   color: #ddaa00;
 }

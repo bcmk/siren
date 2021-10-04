@@ -205,6 +205,7 @@ func (s *server) tparams(r *http.Request, more map[string]interface{}) map[strin
 	res["base_domain"] = s.cfg.BaseDomain
 	res["ru_domain"] = "ru." + s.cfg.BaseDomain
 	res["lang"] = langs(urlCopy, s.cfg.BaseDomain, map[string]string{"en": "", "ru": "ru."})
+	res["version"] = lib.Version
 	for k, v := range more {
 		res[k] = v
 	}
