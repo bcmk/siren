@@ -1,4 +1,4 @@
 #!/bin/bash
 cur="$(dirname "$(readlink -f "$0")")"
 cd "$cur/.."
-go build -o /root/go/bin -ldflags="-s -X 'github.com/bcmk/siren/lib.Version=$(scripts/describe-version)'" ./cmd/site
+go build -o /root/go/bin/test-site -ldflags="-s -X 'github.com/bcmk/siren/lib.Version=$(scripts/describe-version)'" ./cmd/site
