@@ -19,13 +19,37 @@ body {
     font-family: 'Montserrat', sans-serif !important;
 }
 
-.service-name {
+.header {
+    background-color: #5f5f5f;
+    color: #dddddd;
+    padding: 10px;
+    padding-left: 30px;
+    padding-right: 30px;
+}
+
+.header-name {
     font-weight: 500;
-    font-size: 30pt;
-    letter-spacing: 7pt;
-    color: #4d4d4d;
+    font-size: 24pt;
+    color: #dddddd;
+    letter-spacing: 5.6pt;
     line-height: 1 !important;
     margin-block-end: 0 !important;
+    margin-left: 18px;
+}
+
+.header-icon {
+    width: 36px;
+    height: 36px;
+    * {
+        fill: #ddd !important;
+    }
+}
+
+.title-secondary {
+    margin-top: 5px;
+    margin-bottom: 5px;
+    font-size: 12pt;
+    line-height: 1.2;
 }
 
 h1 {
@@ -44,18 +68,6 @@ h3, h4 {
 
 strong {
     color: #c7152b;
-}
-
-.title-bottom {
-    margin-top: 9px;
-    font-size: 12pt;
-    line-height: 1.2;
-}
-
-.header-icon {
-    max-width: 100%;
-    width: 48px;
-    height: 48px;
 }
 
 .mono {
@@ -93,4 +105,8 @@ a.share-button {
     &:active, &:focus, &:hover {
         background-color: #d84000;
     }
+}
+
+.h-secondary {
+    font-size: .8em;
 }

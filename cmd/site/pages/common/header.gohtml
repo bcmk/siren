@@ -1,17 +1,27 @@
 {{ define "header" }}
-    <div class="pt-4 pt-md-5 mx-auto">
-        <a class="text-decoration-none" href="/">
-            <table class="mx-auto">
-                <tr>
-                    <td style="vertical-align:middle;">
-                        <img src="/icons/siren.svg" alt="" class="header-icon">
-                    </td>
-                    <td style="vertical-align:middle; padding-left: 27px;">
-                        <div class="service-name">SIREN</div>
-                    </td>
-                </tr>
-            </table>
-        </a>
-        <div class="mx-auto text-muted title-bottom text-center">{{ template "header-text" }}</div>
+    <div class="header">
+        <div class="row">
+            <div class="col">
+                <div style="width: max-content;" class="mx-auto mx-lg-0">
+                    <a class="text-decoration-none" href="/">
+                        <table>
+                            <tr>
+                                <td class="align-middle">
+                                    <div class="header-icon">
+                                        {{ template "header-icon" }}
+                                    </div>
+                                </td>
+                                <td class="align-middle">
+                                    <div class="header-name">SIREN</div>
+                                </td>
+                            </tr>
+                        </table>
+                    </a>
+                </div>
+            </div>
+            <div class="col d-flex align-items-center">
+                <div style="width: max-content;" class="mx-auto me-lg-0 title-secondary align-middle text-center">{{ template "header-text" }}</div>
+            </div>
+        </div>
     </div>
 {{ end }}

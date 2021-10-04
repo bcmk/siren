@@ -433,16 +433,19 @@ func (s *server) iconsCount() int {
 }
 
 func (s *server) fillTemplates() {
-	s.enIndexTemplate = parseHTMLTemplate("en/index.gohtml", "common/head.gohtml", "common/header.gohtml", "en/trans.gohtml", "common/footer.gohtml")
-	s.ruIndexTemplate = parseHTMLTemplate("ru/index.gohtml", "common/head.gohtml", "common/header.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
-	s.enStreamerTemplate = parseHTMLTemplate("en/streamer.gohtml", "common/head.gohtml", "common/header.gohtml", "en/trans.gohtml", "common/footer.gohtml")
-	s.ruStreamerTemplate = parseHTMLTemplate("ru/streamer.gohtml", "common/head.gohtml", "common/header.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
-	s.enChicTemplate = parseHTMLTemplate("common/chic.gohtml", "en/chic.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "en/trans.gohtml", "common/footer.gohtml")
-	s.ruChicTemplate = parseHTMLTemplate("common/chic.gohtml", "ru/chic.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "ru/trans.gohtml", "common/footer.gohtml")
-	s.enPackTemplate = parseHTMLTemplate("en/pack.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "en/trans.gohtml", "common/footer.gohtml", "common/twitter.gohtml")
-	s.ruPackTemplate = parseHTMLTemplate("ru/pack.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "ru/trans.gohtml", "common/footer.gohtml", "common/twitter.gohtml")
-	s.enCodeTemplate = parseHTMLTemplate("en/code.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "en/trans.gohtml", "common/footer.gohtml", "common/twitter.gohtml")
-	s.ruCodeTemplate = parseHTMLTemplate("ru/code.gohtml", "common/head.gohtml", "common/header-chic.gohtml", "ru/trans.gohtml", "common/footer.gohtml", "common/twitter.gohtml")
+	common := []string{"common/head.gohtml", "common/header.gohtml", "common/footer.gohtml", "common/header-icon.gohtml"}
+	s.enIndexTemplate = parseHTMLTemplate(append([]string{"en/index.gohtml", "en/trans.gohtml"}, common...)...)
+	s.ruIndexTemplate = parseHTMLTemplate(append([]string{"ru/index.gohtml", "ru/trans.gohtml"}, common...)...)
+	s.enStreamerTemplate = parseHTMLTemplate(append([]string{"en/streamer.gohtml", "en/trans.gohtml"}, common...)...)
+	s.ruStreamerTemplate = parseHTMLTemplate(append([]string{"ru/streamer.gohtml", "ru/trans.gohtml"}, common...)...)
+
+	chic := []string{"common/head.gohtml", "common/header.gohtml", "common/footer.gohtml", "common/cpix.gohtml"}
+	s.enChicTemplate = parseHTMLTemplate(append([]string{"common/chic.gohtml", "en/chic.gohtml", "en/trans.gohtml"}, chic...)...)
+	s.ruChicTemplate = parseHTMLTemplate(append([]string{"common/chic.gohtml", "ru/chic.gohtml", "ru/trans.gohtml"}, chic...)...)
+	s.enPackTemplate = parseHTMLTemplate(append([]string{"en/pack.gohtml", "en/trans.gohtml", "common/twitter.gohtml"}, chic...)...)
+	s.ruPackTemplate = parseHTMLTemplate(append([]string{"ru/pack.gohtml", "ru/trans.gohtml", "common/twitter.gohtml"}, chic...)...)
+	s.enCodeTemplate = parseHTMLTemplate(append([]string{"en/code.gohtml", "en/trans.gohtml", "common/twitter.gohtml"}, chic...)...)
+	s.ruCodeTemplate = parseHTMLTemplate(append([]string{"ru/code.gohtml", "ru/trans.gohtml", "common/twitter.gohtml"}, chic...)...)
 }
 
 func (s *server) fillEnabledPacks() {
@@ -470,7 +473,7 @@ func main() {
 	srv := &server{cfg: sitelib.ReadConfig(flag.Arg(0))}
 	srv.packs = sitelib.ParsePacks(srv.cfg.Files)
 	if len(srv.packs) > 2 {
-		srv.packs[0], srv.packs[len(srv.packs)-1] = srv.packs[len(srv.packs)-1], srv.packs[0]
+		srv.packs = append([]sitelib.Pack{srv.packs[len(srv.packs)-1]}, srv.packs[:len(srv.packs)-1]...)
 	}
 	srv.fillTemplates()
 	srv.fillEnabledPacks()

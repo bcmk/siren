@@ -19,8 +19,8 @@
 </head>
 
 <body>
+{{ template "header" }}
 <div class="container">
-    {{ template "header" }}
     <main>
         <h1 class="mt-4">Конструктор иконок для Chaturbate</h1>
         <p class="pt-2">
@@ -46,7 +46,7 @@
         <div class="pt-2 mx-auto">
             {{- range $index, $pack := .packs -}}
                 <div class="row my-3">
-                    <div class="col-12 col-xl-10 col-lg-9">
+                    <div class="col-12 col-lg-10">
                         <div class="swiper-container dark-stripes">
                             <img style="height: 90px;"
                                  src="/chic/i/{{ $pack.Name }}/line.{{ index $img_exts "png" }}"
