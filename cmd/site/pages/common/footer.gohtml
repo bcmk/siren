@@ -1,24 +1,12 @@
 {{ define "footer" }}
     <footer class="pt-4 my-md-5 pt-md-5 border-top">
         <div class="row">
-            <div class="col-12 col-md">
+            <div class="col-6 col-md">
                 <img class="mb-2" src="/icons/siren.svg" alt="" style="max-width:100%;" width="40" height="40">
                 <small class="d-block mb-0 text-muted">&copy; 2019-2021</small>
-                <small class="d-block mb-3 text-muted"><a
-                        href="mailto:siren.chat@gmail.com">siren.chat@gmail.com</a></small>
+                <small class="d-block mb-3 text-muted"><a href="mailto:siren.chat@gmail.com">siren.chat@gmail.com</a></small>
             </div>
-            <div class="col-6 col-md">
-                <h5>{{ template "footer-links" }}</h5>
-                <ul class="list-unstyled text-small">
-                    <li><a class="text-muted" href="https://github.com/bcmk/siren"><i class="fab fa-github"></i> GitHub</a></li>
-                    <li><a class="text-muted" href="https://twitter.com/siren_tlg"><i class="fab fa-twitter"></i> Twitter</a></li>
-                    <li><a class="text-muted" href="https://t.me/siren_telegram_bot"><i class="fab fa-telegram"></i> News</a></li>
-                    <li><a class="text-muted" href="https://www.reddit.com/user/siren_tlg"><i class="fab fa-reddit"></i> Reddit</a></li>
-                    <li><a class="text-muted" href="https://www.wecamgirls.com/users/sirenbot">WeCamgirls</a></li>
-                    <li><a class="text-muted" href="https://www.ambercutie.com/forums/members/siren.53143/">AmberCutie</a></li>
-                </ul>
-            </div>
-            <div class="col-6 col-md">
+            <div class="col-6 col-md order-md-last">
                 <h5>{{ template "footer-langs" }}</h5>
                 <ul class="list-unstyled text-small">
                     {{ if eq .hostname .ru_domain }}
@@ -31,6 +19,30 @@
                     {{ else }}
                         <li><span class="text-muted">Русский</span></li>
                     {{ end }}
+                </ul>
+            </div>
+            <div class="col-6 col-md">
+                <h5>{{ template "supported-sites" }}</h5>
+                <ul class="list-unstyled text-small">
+                    <li><a class="text-muted" href="https://twitch.com"><i class="fab fa-twitch"></i> Twitch</a></li>
+                    <li><a class="text-muted" href="https://chaturbate.press"> Chaturbate</a></li>
+                    <li><a class="text-muted" href="https://stripchat.press"></i> Stripchat</a></li>
+                    <li><a class="text-muted" href="https://bongacams.press"> BongaCams</a></li>
+                    <li><a class="text-muted" href="https://livejasmin.click">LiveJasmin</a></li>
+                    <li><a class="text-muted" href="https://camsoda.click">CamSoda</a></li>
+                    <li><a class="text-muted" href="https://streamate.click">Streamate</a></li>
+                    <li><a class="text-muted" href="https://flirt4free.click">Flirt4Free</a></li>
+                </ul>
+            </div>
+            <div class="col-6 col-md">
+                <h5>{{ template "footer-links" }}</h5>
+                <ul class="list-unstyled text-small">
+                    <li><a class="text-muted" href="https://github.com/bcmk/siren"><i class="fab fa-github"></i> GitHub</a></li>
+                    <li><a class="text-muted" href="https://twitter.com/siren_tlg"><i class="fab fa-twitter"></i> Twitter</a></li>
+                    <li><a class="text-muted" href="https://t.me/siren_telegram_bot"><i class="fab fa-telegram"></i> News</a></li>
+                    <li><a class="text-muted" href="https://www.reddit.com/user/siren_tlg"><i class="fab fa-reddit"></i> Reddit</a></li>
+                    <li><a class="text-muted" href="https://www.wecamgirls.com/users/sirenbot">WeCamgirls</a></li>
+                    <li><a class="text-muted" href="https://www.ambercutie.com/forums/members/siren.53143/">AmberCutie</a></li>
                 </ul>
             </div>
         </div>
