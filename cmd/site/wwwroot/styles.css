@@ -1045,6 +1045,10 @@ readers do not read off random characters that represent icons */
   content: "";
 }
 
+.fa-medal:before {
+  content: "";
+}
+
 .fa-reddit:before {
   content: "";
 }
@@ -1340,4 +1344,8 @@ a.share-button {
 
 .h-secondary {
   font-size: 0.8em;
+}
+
+.gold {
+  color: #ddaa00;
 }
