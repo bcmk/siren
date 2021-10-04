@@ -1341,3 +1341,7 @@ a.share-button {
 .h-secondary {
   font-size: 0.8em;
 }
+
+.smallest {
+  font-size: 0.68em;
+}
