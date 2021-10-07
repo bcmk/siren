@@ -12,7 +12,7 @@ import (
 	"github.com/bcmk/siren/lib"
 )
 
-var iconNamesDict = map[string]bool{}
+var IconNamesSet = map[string]bool{}
 
 func init() {
 	var iconNames = []string{
@@ -43,7 +43,7 @@ func init() {
 		"manyvids",
 	}
 	for _, i := range iconNames {
-		iconNamesDict[i] = true
+		IconNamesSet[i] = true
 	}
 }
 
@@ -73,7 +73,7 @@ func ParsePacks(dir string) []Pack {
 			iconName := iconFileName
 			iconName = strings.TrimSuffix(iconName, ".svg")
 			iconName = strings.TrimSuffix(iconName, ".png")
-			if !iconNamesDict[iconName] {
+			if !IconNamesSet[iconName] {
 				continue
 			}
 			if strings.HasSuffix(iconFileName, ".svg") {
