@@ -1,6 +1,4 @@
 @charset "UTF-8";
-/*noinspection CssUnknownTarget*/
-@import url("https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&display=swap");
 /*!
  * Bootstrap v5.1.0 (https://getbootstrap.com/)
  * Copyright 2011-2021 The Bootstrap Authors
@@ -37,7 +35,7 @@
   --bs-warning: #ffc107;
   --bs-danger: #dc3545;
   --bs-light: #f8f9fa;
-  --bs-dark: #212529;
+  --bs-dark: #3a3a3a;
   --bs-primary-rgb: 13, 110, 253;
   --bs-secondary-rgb: 108, 117, 125;
   --bs-success-rgb: 25, 135, 84;
@@ -45,7 +43,7 @@
   --bs-warning-rgb: 255, 193, 7;
   --bs-danger-rgb: 220, 53, 69;
   --bs-light-rgb: 248, 249, 250;
-  --bs-dark-rgb: 33, 37, 41;
+  --bs-dark-rgb: 58, 58, 58;
   --bs-white-rgb: 255, 255, 255;
   --bs-black-rgb: 0, 0, 0;
   --bs-body-rgb: 33, 37, 41;
@@ -366,6 +364,19 @@ summary {
   flex: 0 0 auto;
   width: 100%;
 }
+
+@media (min-width: 576px) {
+
+  .col-sm-4 {
+    flex: 0 0 auto;
+    width: 33.33333333%;
+  }
+
+  .col-sm-8 {
+    flex: 0 0 auto;
+    width: 66.66666667%;
+  }
+}
 @media (min-width: 768px) {
   .col-md {
     flex: 1 0 0%;
@@ -668,32 +679,32 @@ summary {
 
 .btn-dark {
   color: #fff;
-  background-color: #212529;
-  border-color: #212529;
+  background-color: #3a3a3a;
+  border-color: #3a3a3a;
 }
 .btn-dark:hover {
   color: #fff;
-  background-color: #1c1f23;
-  border-color: #1a1e21;
+  background-color: #313131;
+  border-color: #2e2e2e;
 }
  .btn-dark:focus {
   color: #fff;
-  background-color: #1c1f23;
-  border-color: #1a1e21;
-  box-shadow: 0 0 0 0.25rem rgba(66, 70, 73, 0.5);
+  background-color: #313131;
+  border-color: #2e2e2e;
+  box-shadow: 0 0 0 0.25rem rgba(88, 88, 88, 0.5);
 }
  .btn-dark:active {
   color: #fff;
-  background-color: #1a1e21;
-  border-color: #191c1f;
+  background-color: #2e2e2e;
+  border-color: #2c2c2c;
 }
  .btn-dark:active:focus {
-  box-shadow: 0 0 0 0.25rem rgba(66, 70, 73, 0.5);
+  box-shadow: 0 0 0 0.25rem rgba(88, 88, 88, 0.5);
 }
 .btn-dark:disabled, .btn-dark.disabled {
   color: #fff;
-  background-color: #212529;
-  border-color: #212529;
+  background-color: #3a3a3a;
+  border-color: #3a3a3a;
 }
 
 .collapse:not(.show) {
@@ -864,6 +875,11 @@ summary {
   margin-bottom: 1rem !important;
 }
 
+.my-5 {
+  margin-top: 3rem !important;
+  margin-bottom: 3rem !important;
+}
+
 .mt-1 {
   margin-top: 0.25rem !important;
 }
@@ -975,15 +991,22 @@ summary {
 .rounded {
   border-radius: 0.25rem !important;
 }
+
+@media (min-width: 576px) {
+
+  .mx-sm-0 {
+    margin-right: 0 !important;
+    margin-left: 0 !important;
+  }
+
+  .me-sm-0 {
+    margin-right: 0 !important;
+  }
+}
 @media (min-width: 768px) {
 
   .order-md-last {
     order: 6 !important;
-  }
-
-  .my-md-5 {
-    margin-top: 3rem !important;
-    margin-bottom: 3rem !important;
   }
 
   .pt-md-4 {
@@ -1000,17 +1023,8 @@ summary {
     order: -1 !important;
   }
 
-  .mx-lg-0 {
-    margin-right: 0 !important;
-    margin-left: 0 !important;
-  }
-
   .mt-lg-0 {
     margin-top: 0 !important;
-  }
-
-  .me-lg-0 {
-    margin-right: 0 !important;
   }
 }
 /*!
@@ -1249,6 +1263,342 @@ input[type=radio].like-selection:checked + label {
   border-radius: 15px !important;
 }
 
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-cyrillic-ext-400-normal.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-400-normal.woff") format("woff");
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-cyrillic-400-normal.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-400-normal.woff") format("woff");
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-vietnamese-400-normal.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-400-normal.woff") format("woff");
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-latin-ext-400-normal.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-400-normal.woff") format("woff");
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-latin-400-normal.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-400-normal.woff") format("woff");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-cyrillic-ext-500-normal.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-500-normal.woff") format("woff");
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-cyrillic-500-normal.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-500-normal.woff") format("woff");
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-vietnamese-500-normal.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-500-normal.woff") format("woff");
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-latin-ext-500-normal.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-500-normal.woff") format("woff");
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-latin-500-normal.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-500-normal.woff") format("woff");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-cyrillic-ext-700-normal.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-700-normal.woff") format("woff");
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-cyrillic-700-normal.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-700-normal.woff") format("woff");
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-vietnamese-700-normal.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-700-normal.woff") format("woff");
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-latin-ext-700-normal.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-700-normal.woff") format("woff");
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-latin-700-normal.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-700-normal.woff") format("woff");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-cyrillic-ext-400-italic.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-400-italic.woff") format("woff");
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-cyrillic-400-italic.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-400-italic.woff") format("woff");
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-vietnamese-400-italic.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-400-italic.woff") format("woff");
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-latin-ext-400-italic.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-400-italic.woff") format("woff");
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-latin-400-italic.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-400-italic.woff") format("woff");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 500;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-cyrillic-ext-500-italic.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-500-italic.woff") format("woff");
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 500;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-cyrillic-500-italic.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-500-italic.woff") format("woff");
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 500;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-vietnamese-500-italic.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-500-italic.woff") format("woff");
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 500;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-latin-ext-500-italic.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-500-italic.woff") format("woff");
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 500;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-latin-500-italic.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-500-italic.woff") format("woff");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 700;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-cyrillic-ext-700-italic.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-700-italic.woff") format("woff");
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 700;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-cyrillic-700-italic.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-700-italic.woff") format("woff");
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 700;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-vietnamese-700-italic.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-700-italic.woff") format("woff");
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 700;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-latin-ext-700-italic.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-700-italic.woff") format("woff");
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Montserrat";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 700;
+  src: url("/node_modules/@fontsource/montserrat/files/montserrat-latin-700-italic.woff2") format("woff2"), url("/node_modules/@fontsource/montserrat/files/montserrat-all-700-italic.woff") format("woff");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "JetBrains MonoVariable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-cyrillic-ext-400-normal.woff2") format("woff2"), url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-all-400-normal.woff") format("woff");
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: "JetBrains MonoVariable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-cyrillic-400-normal.woff2") format("woff2"), url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-all-400-normal.woff") format("woff");
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "JetBrains MonoVariable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-greek-400-normal.woff2") format("woff2"), url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-all-400-normal.woff") format("woff");
+  unicode-range: U+0370-03FF;
+}
+@font-face {
+  font-family: "JetBrains MonoVariable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-vietnamese-400-normal.woff2") format("woff2"), url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-all-400-normal.woff") format("woff");
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: "JetBrains MonoVariable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-ext-400-normal.woff2") format("woff2"), url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-all-400-normal.woff") format("woff");
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "JetBrains MonoVariable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2") format("woff2"), url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-all-400-normal.woff") format("woff");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "JetBrains MonoVariable";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 700;
+  src: url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-cyrillic-ext-700-italic.woff2") format("woff2"), url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-all-700-italic.woff") format("woff");
+  unicode-range: U+0460-052F, U+1C80-1C88, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+@font-face {
+  font-family: "JetBrains MonoVariable";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 700;
+  src: url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-cyrillic-700-italic.woff2") format("woff2"), url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-all-700-italic.woff") format("woff");
+  unicode-range: U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "JetBrains MonoVariable";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 700;
+  src: url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-greek-700-italic.woff2") format("woff2"), url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-all-700-italic.woff") format("woff");
+  unicode-range: U+0370-03FF;
+}
+@font-face {
+  font-family: "JetBrains MonoVariable";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 700;
+  src: url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-vietnamese-700-italic.woff2") format("woff2"), url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-all-700-italic.woff") format("woff");
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+1EA0-1EF9, U+20AB;
+}
+@font-face {
+  font-family: "JetBrains MonoVariable";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 700;
+  src: url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-ext-700-italic.woff2") format("woff2"), url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-all-700-italic.woff") format("woff");
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB, U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "JetBrains MonoVariable";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 700;
+  src: url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-700-italic.woff2") format("woff2"), url("/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-all-700-italic.woff") format("woff");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 body {
   background-color: #eeeeee !important;
   color: #333333;
@@ -1265,12 +1615,12 @@ body {
 
 .header-name {
   font-weight: 500;
-  font-size: 20pt;
+  font-size: 18pt;
   color: #dddddd;
   letter-spacing: 5.6pt;
   line-height: 1 !important;
   margin-block-end: 0 !important;
-  margin-left: 18px;
+  margin-left: 16px;
 }
 
 .header-icon {
@@ -1302,7 +1652,7 @@ strong {
 }
 
 .mono {
-  font-family: "JetBrains Mono", monospace !important;
+  font-family: "JetBrains MonoVariable", monospace !important;
   font-size: 95%;
 }
 
