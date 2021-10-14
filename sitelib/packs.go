@@ -23,6 +23,7 @@ func init() {
 		"onlyfans",
 		"amazon",
 		"lovense",
+		"gift",
 		"pornhub",
 		"dmca",
 		"allmylinks",

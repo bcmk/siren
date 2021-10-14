@@ -201,10 +201,13 @@
                     {{ template "simple_input" map "ctx" . "name" "onlyfans" "comment" "Ссылка на Onlyfans" "placeholder" "https://onlyfans.com/username" }}
                 {{ end }}
                 {{ if $pack.VisibleIcons.amazon }}
-                    {{ template "simple_input" map "ctx" . "name" "amazon" "comment" "Ссылка на Amazon wish list" }}
+                    {{ template "simple_input" map "ctx" . "name" "amazon" "comment" "Ссылка на список желаний на Amazon" }}
                 {{ end }}
                 {{ if $pack.VisibleIcons.lovense }}
-                    {{ template "simple_input" map "ctx" . "name" "lovense" "comment" "Ссылка на Lovense wish list" }}
+                    {{ template "simple_input" map "ctx" . "name" "lovense" "comment" "Ссылка на список желаний на Lovense" }}
+                {{ end }}
+                {{ if $pack.VisibleIcons.gift }}
+                    {{ template "simple_input" map "ctx" . "name" "gift" "comment" "Ссылка на другой список желаний" }}
                 {{ end }}
                 {{ if $pack.VisibleIcons.pornhub }}
                     {{ template "simple_input" map "ctx" . "name" "pornhub" "comment" "Ссылка на Pornhub" }}

@@ -130,6 +130,7 @@ var packParams = []string{
 	"onlyfans",
 	"amazon",
 	"lovense",
+	"gift",
 	"pornhub",
 	"dmca",
 	"allmylinks",

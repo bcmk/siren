@@ -206,6 +206,9 @@
                 {{ if $pack.VisibleIcons.lovense }}
                     {{ template "simple_input" map "ctx" . "name" "lovense" "comment" "Lovense wish list link" }}
                 {{ end }}
+                {{ if $pack.VisibleIcons.gift }}
+                    {{ template "simple_input" map "ctx" . "name" "gift" "comment" "Other wish list link" }}
+                {{ end }}
                 {{ if $pack.VisibleIcons.pornhub }}
                     {{ template "simple_input" map "ctx" . "name" "pornhub" "comment" "Pornhub link" }}
                 {{ end }}
