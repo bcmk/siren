@@ -2042,9 +2042,12 @@ func (w *worker) cleanStatusChanges(now int64) time.Duration {
 	return time.Since(start)
 }
 
-func (w *worker) vacuum() time.Duration {
+func (w *worker) adminSql(query string) time.Duration {
 	start := time.Now()
-	w.mustExec("vacuum")
+	var result string
+	if w.maybeRecord(query, nil, scanTo{&result}) {
+		w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, result, replyPacket)
+	}
 	return time.Since(start)
 }
 
@@ -2165,14 +2168,14 @@ func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacke
 							processingDone <- w.cleanStatusChanges(time.Now().Unix())
 						}()
 					}
-				case "vacuum":
+				case "sql":
 					if processing {
 						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "still processing", replyPacket)
 					} else {
 						processing = true
 						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK", replyPacket)
 						go func() {
-							processingDone <- w.vacuum()
+							processingDone <- w.adminSql(args)
 						}()
 					}
 				case "":
