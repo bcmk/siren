@@ -370,20 +370,8 @@ func (w *worker) queryConfirmedModels() (map[string]bool, map[string]bool) {
 	statuses := map[string]bool{}
 	specialModels := map[string]bool{}
 	var modelID string
-	var status lib.StatusKind
-	var special bool
-	w.mustQuery(
-		"select model_id, status, special from models",
-		nil,
-		scanTo{&modelID, &status, &special},
-		func() {
-			if status == lib.StatusOnline {
-				statuses[modelID] = true
-			}
-			if special {
-				specialModels[modelID] = true
-			}
-		})
+	w.mustQuery("select model_id from models where status=?", queryParams{lib.StatusOnline}, scanTo{&modelID}, func() { statuses[modelID] = true })
+	w.mustQuery("select model_id from models where special=1", nil, scanTo{&modelID}, func() { specialModels[modelID] = true })
 	return statuses, specialModels
 }
 
