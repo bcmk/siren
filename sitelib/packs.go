@@ -42,6 +42,7 @@ func init() {
 		"twitch",
 		"discord",
 		"manyvids",
+		"avn",
 	}
 	for _, i := range iconNames {
 		IconNamesSet[i] = true

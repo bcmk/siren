@@ -139,6 +139,7 @@ var packParams = []string{
 	"fancentro",
 	"frisk",
 	"fansly",
+	"avn",
 	"mail",
 	"snapchat",
 	"telegram",

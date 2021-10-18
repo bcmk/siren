@@ -236,6 +236,9 @@
                 {{ if $pack.VisibleIcons.fansly }}
                     {{ template "simple_input" map "ctx" . "name" "fansly" "comment" "Fansly link" }}
                 {{ end }}
+                {{ if $pack.VisibleIcons.avn }}
+                    {{ template "simple_input" map "ctx" . "name" "avn" "comment" "AVN Stars link" }}
+                {{ end }}
                 {{ if $pack.VisibleIcons.mail }}
                     {{ template "simple_input" map "ctx" . "name" "mail" "comment" "Email ralated link" }}
                 {{ end }}
