@@ -335,7 +335,7 @@ func (s *server) likeHandler(w http.ResponseWriter, r *http.Request) {
 		notFoundError(w)
 		return
 	}
-	checkErr(r.Body.Close())
+	lib.CloseBody(r.Body)
 	var like likeForPack
 	if err := json.Unmarshal(body, &like); err != nil {
 		notFoundError(w)

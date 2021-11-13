@@ -1091,7 +1091,7 @@ func (w *worker) downloadImageInternal(url string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot query the image %s, %v", url, err)
 	}
-	defer func() { checkErr(resp.Body.Close()) }()
+	defer lib.CloseBody(resp.Body)
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("cannot download the image %s, status code %v", url, resp.StatusCode)
 	}
@@ -2042,7 +2042,7 @@ func (w *worker) cleanStatusChanges(now int64) time.Duration {
 	return time.Since(start)
 }
 
-func (w *worker) adminSql(query string) time.Duration {
+func (w *worker) adminSQL(query string) time.Duration {
 	start := time.Now()
 	var result string
 	if w.maybeRecord(query, nil, scanTo{&result}) {
@@ -2175,7 +2175,7 @@ func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacke
 						processing = true
 						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK", replyPacket)
 						go func() {
-							processingDone <- w.adminSql(args)
+							processingDone <- w.adminSQL(args)
 						}()
 					}
 				case "":

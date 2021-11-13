@@ -138,9 +138,7 @@ func (c *StreamateChecker) CheckStatusSingle(modelID string) StatusKind {
 		Lerr("[%v] cannot send a query, %v", client.Addr, err)
 		return StatusUnknown
 	}
-	defer func() {
-		CheckErr(resp.Body.Close())
-	}()
+	defer CloseBody(resp.Body)
 	if c.Dbg {
 		Ldbg("[%v] query status for %s: %d", client.Addr, modelID, resp.StatusCode)
 	}

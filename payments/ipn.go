@@ -18,7 +18,7 @@ func ParseIPN(r *http.Request, ipnSecret string, debug bool) (StatusKind, string
 	if err != nil {
 		return StatusUnknown, "", errors.New("cannot read body")
 	}
-	lib.CheckErr(r.Body.Close())
+	lib.CloseBody(r.Body)
 	r.Body = ioutil.NopCloser(bytes.NewBuffer(body))
 
 	if debug {

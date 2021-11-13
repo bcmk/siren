@@ -42,7 +42,7 @@ func (c *ChaturbateChecker) CheckStatusSingle(modelID string) StatusKind {
 	if resp == nil {
 		return StatusUnknown
 	}
-	defer func() { CheckErr(resp.Body.Close()) }()
+	defer CloseBody(resp.Body)
 	if resp.StatusCode == 404 {
 		return StatusNotFound
 	}

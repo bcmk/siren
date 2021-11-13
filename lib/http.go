@@ -78,7 +78,7 @@ func onlineRequest(
 	if err != nil {
 		return nil, nil, fmt.Errorf("sending error, %w", err)
 	}
-	defer func() { CheckErr(resp.Body.Close()) }()
+	defer CloseBody(resp.Body)
 	buf := bytes.Buffer{}
 	_, err = buf.ReadFrom(resp.Body)
 	if err != nil {

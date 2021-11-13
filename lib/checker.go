@@ -223,7 +223,7 @@ func (c *CheckerCommon) queryStatusCode(url string) int {
 	if resp == nil {
 		return -1
 	}
-	CheckErr(resp.Body.Close())
+	CloseBody(resp.Body)
 	return resp.StatusCode
 }
 

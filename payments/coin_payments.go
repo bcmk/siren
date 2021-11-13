@@ -95,7 +95,7 @@ func (api *CoinPaymentsAPI) coinpaymentsMethod(method string, additionalParams [
 	if err != nil {
 		return nil, fmt.Errorf("cannot perform request: %w", err)
 	}
-	defer func() { lib.CheckErr(res.Body.Close()) }()
+	defer lib.CloseBody(res.Body)
 
 	body, err = ioutil.ReadAll(res.Body)
 	if err != nil {

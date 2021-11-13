@@ -12,6 +12,7 @@ import (
 	"github.com/bcmk/siren/lib"
 )
 
+// IconNamesSet represents all the icons in chic
 var IconNamesSet = map[string]bool{}
 
 func init() {
@@ -49,6 +50,7 @@ func init() {
 	}
 }
 
+// ParsePacks parses icons packs
 func ParsePacks(dir string) []Pack {
 	packs := []Pack{}
 	files, err := ioutil.ReadDir(dir)

@@ -38,7 +38,7 @@ func (c *LiveJasminChecker) CheckStatusSingle(modelID string) StatusKind {
 	if resp == nil {
 		return StatusUnknown
 	}
-	defer func() { CheckErr(resp.Body.Close()) }()
+	defer CloseBody(resp.Body)
 	switch resp.StatusCode {
 	case 401:
 		return StatusDenied
