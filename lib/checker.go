@@ -185,7 +185,7 @@ func (c *CheckerCommon) startSelectiveCheckerDaemon(checker Checker) {
 			time.Sleep(time.Duration(c.IntervalMs) * time.Millisecond)
 			elapsed := time.Since(start)
 			if c.Dbg {
-				Ldbg("online models: %d", len(statuses))
+				Ldbg("online streamers: %d", len(statuses))
 			}
 			request.Callback(StatusResults{Data: &StatusResultsData{Statuses: statuses, Images: images, Elapsed: elapsed}, Errors: 0})
 		}

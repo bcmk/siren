@@ -1648,7 +1648,7 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 }
 
 func (w *worker) subscriptions() map[string]lib.StatusKind {
-	subs := w.mustStrings("select distinct(model_id) from signals")
+	subs := w.mustStrings("select distinct(model_id) from signals where confirmed = 1")
 	result := map[string]lib.StatusKind{}
 	for _, s := range subs {
 		result[s] = w.siteStatuses[s].status
