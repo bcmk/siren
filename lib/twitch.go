@@ -16,7 +16,7 @@ type TwitchChecker struct {
 var _ Checker = &TwitchChecker{}
 
 // TwitchModelIDRegexp is a regular expression to check model IDs
-var TwitchModelIDRegexp = regexp.MustCompile(`^@?[a-z0-9\-_]+$`)
+var TwitchModelIDRegexp = regexp.MustCompile(`^@?[a-z0-9][a-z0-9\-_]*$`)
 
 // TwitchCanonicalModelID preprocesses channel string to canonical form
 func TwitchCanonicalModelID(name string) string {
