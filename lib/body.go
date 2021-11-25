@@ -11,5 +11,8 @@ func CloseBody(body io.Closer) {
 	if err == context.Canceled {
 		return
 	}
+	if err == context.DeadlineExceeded {
+		return
+	}
 	CheckErr(err)
 }
