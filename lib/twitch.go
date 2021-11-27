@@ -2,6 +2,7 @@ package lib
 
 import (
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -32,13 +33,12 @@ func (c *TwitchChecker) CheckStatusSingle(modelID string) StatusKind {
 		HTTPClient:   client.Client,
 	})
 	if err != nil {
+		Lerr("cannot create new twitch client, %v", err)
 		return StatusUnknown
 	}
-	accessResponse, err := helixClient.RequestAppAccessToken(nil)
+	accessResponse, err := requestAppAccessToken(helixClient)
 	if err != nil {
-		return StatusUnknown
-	}
-	if accessResponse.ErrorMessage != "" {
+		Lerr("%v", err)
 		return StatusUnknown
 	}
 
@@ -46,9 +46,11 @@ func (c *TwitchChecker) CheckStatusSingle(modelID string) StatusKind {
 
 	streamsResponse, err := helixClient.GetStreams(&helix.StreamsParams{UserLogins: []string{modelID}})
 	if err != nil {
+		Lerr("negotiation error on getting streams, %v", err)
 		return StatusUnknown
 	}
 	if streamsResponse.ErrorMessage != "" {
+		Lerr("Twitch returns the error on getting streams, %s", streamsResponse.ErrorMessage)
 		return StatusUnknown
 	}
 	if len(streamsResponse.Data.Streams) == 1 {
@@ -59,9 +61,11 @@ func (c *TwitchChecker) CheckStatusSingle(modelID string) StatusKind {
 		Logins: []string{modelID},
 	})
 	if err != nil {
+		Lerr("negotiation error on getting users, %v", err)
 		return StatusUnknown
 	}
 	if chanResponse.ErrorMessage != "" {
+		Lerr("Twitch returns the error on getting users, %s", streamsResponse.ErrorMessage)
 		return StatusUnknown
 	}
 	if len(chanResponse.Data.Users) == 1 {
@@ -81,12 +85,9 @@ func (c *TwitchChecker) CheckStatusesMany(channels QueryModelList, checkMode Che
 	if err != nil {
 		return nil, nil, err
 	}
-	accessResponse, err := helixClient.RequestAppAccessToken(nil)
+	accessResponse, err := requestAppAccessToken(helixClient)
 	if err != nil {
 		return nil, nil, err
-	}
-	if accessResponse.ErrorMessage != "" {
-		return nil, nil, errors.New(accessResponse.ErrorMessage)
 	}
 
 	helixClient.SetAppAccessToken(accessResponse.Data.AccessToken)
@@ -155,7 +156,7 @@ func (c *TwitchChecker) checkEndpoint(string) (onlineModels map[string]StatusKin
 	httpClient := c.clientsLoop.nextClient()
 	onlineModels = map[string]StatusKind{}
 	images = map[string]string{}
-	client, err := helix.NewClient(&helix.Options{
+	helixClient, err := helix.NewClient(&helix.Options{
 		ClientID:     c.SpecificConfig["client_id"],
 		ClientSecret: c.SpecificConfig["client_secret"],
 		HTTPClient:   httpClient.Client,
@@ -163,19 +164,16 @@ func (c *TwitchChecker) checkEndpoint(string) (onlineModels map[string]StatusKin
 	if err != nil {
 		return nil, nil, err
 	}
-	accessResponse, err := client.RequestAppAccessToken(nil)
+	accessResponse, err := requestAppAccessToken(helixClient)
 	if err != nil {
 		return nil, nil, err
 	}
-	if accessResponse.ErrorMessage != "" {
-		return nil, nil, errors.New(accessResponse.ErrorMessage)
-	}
 
-	client.SetAppAccessToken(accessResponse.Data.AccessToken)
+	helixClient.SetAppAccessToken(accessResponse.Data.AccessToken)
 
 	after := ""
 	for {
-		streamsResponse, err := client.GetStreams(&helix.StreamsParams{
+		streamsResponse, err := helixClient.GetStreams(&helix.StreamsParams{
 			First: 100,
 			After: after,
 		})
@@ -196,6 +194,17 @@ func (c *TwitchChecker) checkEndpoint(string) (onlineModels map[string]StatusKin
 		after = streamsResponse.Data.Pagination.Cursor
 	}
 	return onlineModels, images, nil
+}
+
+func requestAppAccessToken(helixClient *helix.Client) (*helix.AppAccessTokenResponse, error) {
+	accessResponse, err := helixClient.RequestAppAccessToken(nil)
+	if err != nil {
+		return nil, fmt.Errorf("negotiation error on requesting an access token, %w", err)
+	}
+	if accessResponse.ErrorMessage != "" {
+		return nil, fmt.Errorf("Twitch returns an error on requesting an access token, %s", accessResponse.ErrorMessage)
+	}
+	return accessResponse, nil
 }
 
 // Start starts a daemon
