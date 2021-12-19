@@ -9,6 +9,7 @@ type selectiveUpdater struct {
 func (f *selectiveUpdater) QueryUpdates(updateRequest StatusUpdateRequest) error {
 	subsSet := subscriptionsSet(updateRequest.Subscriptions)
 	return f.checker.QueryStatuses(selectiveUpdateReqToStatus(updateRequest, func(res StatusResults) {
+		var updateResults StatusUpdateResults
 		if res.Data != nil {
 			online := onlyOnline(res.Data.Statuses)
 			updates := getUpdates(f.siteOnlineModels, online)
@@ -18,17 +19,15 @@ func (f *selectiveUpdater) QueryUpdates(updateRequest StatusUpdateRequest) error
 			for _, u := range unknowns {
 				updates = append(updates, StatusUpdate{ModelID: u, Status: StatusUnknown})
 			}
-			updateRequest.Callback(StatusUpdateResults{
-				Data: &StatusUpdateResultsData{
-					Updates: updates,
-					Images:  res.Data.Images,
-					Elapsed: res.Data.Elapsed,
-				},
-				Errors: res.Errors})
+			updateResults = StatusUpdateResults{Data: &StatusUpdateResultsData{
+				Updates: updates,
+				Images:  res.Data.Images,
+				Elapsed: res.Data.Elapsed,
+			}}
 			f.siteOnlineModels = online
-		} else {
-			updateRequest.Callback(StatusUpdateResults{Errors: res.Errors})
 		}
+		updateResults.Errors = res.Errors
+		updateRequest.Callback(updateResults)
 	}))
 }
 

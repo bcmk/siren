@@ -2017,11 +2017,18 @@ func (q queryDurationsData) total() float64 {
 	return q.avg * float64(q.count)
 }
 
-func (w *worker) logQuerySuccess(success bool, errors int) {
+func (w *worker) logQueryErrors(errors int) {
 	for i := 0; i < errors; i++ {
-		w.unsuccessfulRequests[w.unsuccessfulRequestsPos] = !success
-		w.unsuccessfulRequestsPos = (w.unsuccessfulRequestsPos + 1) % w.cfg.errorDenominator
+		w.logSingleQueryResult(false)
 	}
+	if errors == 0 {
+		w.logSingleQueryResult(true)
+	}
+}
+
+func (w *worker) logSingleQueryResult(success bool) {
+	w.unsuccessfulRequests[w.unsuccessfulRequestsPos] = !success
+	w.unsuccessfulRequestsPos = (w.unsuccessfulRequestsPos + 1) % w.cfg.errorDenominator
 }
 
 func (w *worker) cleanStatusChanges(now int64) time.Duration {
@@ -2293,10 +2300,8 @@ func main() {
 				if w.cfg.Debug {
 					ldbg("status updates processed in %v", elapsed)
 				}
-				w.logQuerySuccess(true, onlineModels.Errors)
-			} else {
-				w.logQuerySuccess(false, onlineModels.Errors)
 			}
+			w.logQueryErrors(onlineModels.Errors)
 		case u := <-incoming:
 			if w.processTGUpdate(u) {
 				if !w.maintenance(signals, incoming) {
