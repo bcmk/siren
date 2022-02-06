@@ -1028,29 +1028,64 @@ func calcTimeDiff(dur int) timeDiff {
 	return diff
 }
 
+func chunkModels(xs []model, chunkSize int) [][]model {
+	if len(xs) == 0 {
+		return nil
+	}
+	divided := make([][]model, (len(xs)+chunkSize-1)/chunkSize)
+	prev := 0
+	i := 0
+	till := len(xs) - chunkSize
+	for prev < till {
+		next := prev + chunkSize
+		divided[i] = xs[prev:next]
+		prev = next
+		i++
+	}
+	divided[i] = xs[prev:]
+	return divided
+}
+
+func listModelsSortWeight(s lib.StatusKind) int {
+	switch s {
+	case lib.StatusOnline:
+		return 0
+	case lib.StatusDenied:
+		return 2
+	default:
+		return 1
+	}
+}
+
 func (w *worker) listModels(endpoint string, chatID int64, now int) {
 	type data struct {
 		Model    string
 		TimeDiff *timeDiff
 	}
 	statuses := w.statusesForChat(endpoint, chatID)
-	var online, offline, denied []data
-	for _, s := range statuses {
-		data := data{
-			Model:    s.modelID,
-			TimeDiff: w.modelTimeDiff(s.modelID, now),
+	sort.Slice(statuses, func(i, j int) bool {
+		return listModelsSortWeight(statuses[i].status) < listModelsSortWeight(statuses[j].status)
+	})
+	chunks := chunkModels(statuses, 50)
+	for _, chunk := range chunks {
+		var online, offline, denied []data
+		for _, s := range chunk {
+			data := data{
+				Model:    s.modelID,
+				TimeDiff: w.modelTimeDiff(s.modelID, now),
+			}
+			switch s.status {
+			case lib.StatusOnline:
+				online = append(online, data)
+			case lib.StatusDenied:
+				denied = append(denied, data)
+			default:
+				offline = append(offline, data)
+			}
 		}
-		switch s.status {
-		case lib.StatusOnline:
-			online = append(online, data)
-		case lib.StatusDenied:
-			denied = append(denied, data)
-		default:
-			offline = append(offline, data)
-		}
+		tplData := tplData{"online": online, "offline": offline, "denied": denied}
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].List, tplData, replyPacket)
 	}
-	tplData := tplData{"online": online, "offline": offline, "denied": denied}
-	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].List, tplData, replyPacket)
 }
 
 func (w *worker) modelDuration(modelID string, now int) *int {
