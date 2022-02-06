@@ -1063,7 +1063,7 @@ func (w *worker) listModels(endpoint string, chatID int64, now int) {
 		TimeDiff *timeDiff
 	}
 	statuses := w.statusesForChat(endpoint, chatID)
-	sort.Slice(statuses, func(i, j int) bool {
+	sort.SliceStable(statuses, func(i, j int) bool {
 		return listModelsSortWeight(statuses[i].status) < listModelsSortWeight(statuses[j].status)
 	})
 	chunks := chunkModels(statuses, 50)
