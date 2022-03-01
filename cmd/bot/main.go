@@ -279,6 +279,16 @@ func newWorker(args []string) *worker {
 		mainGID:                gid(),
 		ourIDs:                 cfg.getOurIDs(),
 	}
+	for endpoint, a := range tr {
+		for _, b := range a.ToMap() {
+			w.loadImageForTranslation(endpoint, b)
+		}
+	}
+	for endpoint, a := range trAds {
+		for _, b := range a {
+			w.loadImageForTranslation(endpoint, b)
+		}
+	}
 
 	if cp := cfg.CoinPayments; cp != nil {
 		w.coinPaymentsAPI = payments.NewCoinPaymentsAPI(cp.PublicKey, cp.PrivateKey, "https://"+cp.IPNListenURL, cfg.TimeoutSeconds, cfg.Debug)
@@ -326,6 +336,15 @@ func newWorker(args []string) *worker {
 	}
 
 	return w
+}
+
+func (w *worker) loadImageForTranslation(endpoint string, tr *lib.Translation) {
+	if tr.Image != "" {
+		p := path.Join(w.cfg.Endpoints[endpoint].Images, tr.Image)
+		imageBytes, err := os.ReadFile(p)
+		tr.ImageBytes = imageBytes
+		checkErr(err)
+	}
 }
 
 func trsByEndpoint(cfg *config) map[string][]string {
@@ -577,7 +596,11 @@ func (w *worker) sendAdsTr(
 ) {
 	tpl := w.tplAds[endpoint]
 	text := templateToString(tpl, translation.Key, data)
-	w.sendText(queue, endpoint, chatID, notify, translation.DisablePreview, translation.Parse, text, adPacket)
+	if translation.Image == "" {
+		w.sendText(queue, endpoint, chatID, notify, translation.DisablePreview, translation.Parse, text, adPacket)
+	} else {
+		w.sendImage(queue, endpoint, chatID, notify, translation.Parse, text, translation.ImageBytes, adPacket)
+	}
 }
 
 func (w *worker) sendTrImage(
@@ -748,7 +771,7 @@ func (w *worker) notifyOfStatus(queue chan outgoingPacket, n notification, image
 	case lib.StatusDenied:
 		w.sendTr(queue, n.endpoint, n.chatID, false, w.tr[n.endpoint].Denied, data, n.kind)
 	}
-	if social && rand.Intn(10) == 0 {
+	if social && rand.Intn(1) == 0 {
 		w.ad(queue, n.endpoint, n.chatID)
 	}
 }

@@ -20,6 +20,7 @@ type endpoint struct {
 	BotToken        string   `json:"bot_token"`        // your Telegram bot token
 	Translation     []string `json:"translation"`      // translation files
 	Ads             []string `json:"ads"`              // ads files
+	Images          string   `json:"images"`           // images directory
 }
 
 type coinPaymentsConfig struct {
@@ -130,6 +131,9 @@ func checkConfig(cfg *config) error {
 		}
 		if len(x.Translation) == 0 {
 			return errors.New("configure translation")
+		}
+		if x.Images == "" {
+			return errors.New("configure images")
 		}
 	}
 	if cfg.ListenAddress == "" {

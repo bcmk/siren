@@ -41,6 +41,8 @@ type Translation struct {
 	Str            string    `yaml:"str"`
 	Parse          ParseKind `yaml:"parse"`
 	DisablePreview bool      `yaml:"disable_preview"`
+	Image          string    `yaml:"image"`
+	ImageBytes     []byte    `yaml:"-"`
 }
 
 // AllTranslations represents a collection of translated texts in all supported languages
@@ -151,6 +153,18 @@ func LoadAllAds(files map[string][]string) (trMap map[string]map[string]*Transla
 		tpl[endpoint] = setupTemplates(allTr)
 	}
 	return
+}
+
+// ToMap returns translations as a map
+func (x *Translations) ToMap() map[string]*Translation {
+	rv := reflect.ValueOf(x).Elem()
+	result := map[string]*Translation{}
+	for i := 0; i < rv.NumField(); i++ {
+		field := rv.Field(i)
+		tag := rv.Type().Field(i).Tag.Get("yaml")
+		result[tag] = field.Interface().(*Translation)
+	}
+	return result
 }
 
 func setupTemplates(trs AllTranslations) *template.Template {
