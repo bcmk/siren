@@ -771,7 +771,7 @@ func (w *worker) notifyOfStatus(queue chan outgoingPacket, n notification, image
 	case lib.StatusDenied:
 		w.sendTr(queue, n.endpoint, n.chatID, false, w.tr[n.endpoint].Denied, data, n.kind)
 	}
-	if social && rand.Intn(1) == 0 {
+	if social && rand.Intn(5) == 0 {
 		w.ad(queue, n.endpoint, n.chatID)
 	}
 }
