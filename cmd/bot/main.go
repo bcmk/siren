@@ -2125,7 +2125,7 @@ func (w *worker) maintenanceStartupReply(incoming chan incomingPacket, done chan
 			chatID, command, args := getCommandAndArgs(u.message, mention, w.ourIDs)
 			if command != "" {
 				waitingUsers[waitingUser{chatID: chatID, endpoint: u.endpoint}] = true
-				w.sendTr(w.highPriorityMsg, u.endpoint, chatID, false, w.tr[u.endpoint].Maintenance, nil, replyPacket)
+				w.sendText(w.highPriorityMsg, u.endpoint, chatID, false, true, lib.ParseRaw, w.cfg.Endpoints[u.endpoint].MaintenanceResponse, replyPacket)
 				linf("ignoring command %s %s", command, args)
 			}
 		case <-done:
@@ -2245,12 +2245,12 @@ func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacke
 					}
 				case "":
 				default:
-					w.sendTr(w.highPriorityMsg, u.endpoint, chatID, false, w.tr[u.endpoint].Maintenance, nil, replyPacket)
+					w.sendText(w.highPriorityMsg, u.endpoint, chatID, false, true, lib.ParseRaw, w.cfg.Endpoints[u.endpoint].MaintenanceResponse, replyPacket)
 				}
 			} else {
 				if command != "" {
 					users[waitingUser{chatID: chatID, endpoint: u.endpoint}] = true
-					w.sendTr(w.highPriorityMsg, u.endpoint, chatID, false, w.tr[u.endpoint].Maintenance, nil, replyPacket)
+					w.sendText(w.highPriorityMsg, u.endpoint, chatID, false, true, lib.ParseRaw, w.cfg.Endpoints[u.endpoint].MaintenanceResponse, replyPacket)
 					linf("ignoring command %s %s", command, args)
 				}
 			}

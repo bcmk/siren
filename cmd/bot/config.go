@@ -13,14 +13,15 @@ import (
 )
 
 type endpoint struct {
-	ListenPath      string   `json:"listen_path"`      // the path excluding domain to listen to, the good choice is "/your-telegram-bot-token"
-	StatPath        string   `json:"stat_path"`        // the path for statistics
-	WebhookDomain   string   `json:"webhook_domain"`   // the domain listening to the webhook
-	CertificatePath string   `json:"certificate_path"` // a path to your certificate, it is used to set up a webhook and to set up this HTTP server
-	BotToken        string   `json:"bot_token"`        // your Telegram bot token
-	Translation     []string `json:"translation"`      // translation files
-	Ads             []string `json:"ads"`              // ads files
-	Images          string   `json:"images"`           // images directory
+	ListenPath          string   `json:"listen_path"`          // the path excluding domain to listen to, the good choice is "/your-telegram-bot-token"
+	StatPath            string   `json:"stat_path"`            // the path for statistics
+	WebhookDomain       string   `json:"webhook_domain"`       // the domain listening to the webhook
+	CertificatePath     string   `json:"certificate_path"`     // a path to your certificate, it is used to set up a webhook and to set up this HTTP server
+	BotToken            string   `json:"bot_token"`            // your Telegram bot token
+	Translation         []string `json:"translation"`          // translation files
+	Ads                 []string `json:"ads"`                  // ads files
+	Images              string   `json:"images"`               // images directory
+	MaintenanceResponse string   `json:"maintenance_response"` // the maintenance response
 }
 
 type coinPaymentsConfig struct {
@@ -134,6 +135,9 @@ func checkConfig(cfg *config) error {
 		}
 		if x.Images == "" {
 			return errors.New("configure images")
+		}
+		if x.MaintenanceResponse == "" {
+			return errors.New("configure maintenance_response")
 		}
 	}
 	if cfg.ListenAddress == "" {

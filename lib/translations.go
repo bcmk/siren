@@ -98,7 +98,6 @@ type Translations struct {
 	Settings                    *Translation `yaml:"settings"`
 	OK                          *Translation `yaml:"ok"`
 	TooManySubscriptionsForPics *Translation `yaml:"too_many_subscriptions_for_pics"`
-	Maintenance                 *Translation `yaml:"maintenance"`
 	WeAreUp                     *Translation `yaml:"we_are_up"`
 }
 
