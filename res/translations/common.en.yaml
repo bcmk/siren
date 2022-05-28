@@ -32,12 +32,6 @@ all_models_removed:
 already_added:
   parse: raw
   str: 'Model {{ .model }} is already in your list'
-buy_ad:
-  parse: raw
-  str: 'Pay {{ .price }}$ once and get {{ .number_of_subscriptions }} additional subscriptions forever'
-buy_button:
-  parse: raw
-  str: 'Buy {{ .number_of_subscriptions }} subscriptions'
 denied:
   parse: raw
   str: '{{ .model }} has blocked an access from the USA, the location of this bot'
@@ -57,7 +51,6 @@ raw_commands:
     list - Your model subscriptions
     pics - Pictures of your models online
     week - Camming hours in the previous 7 days
-    buy - Buy additional subscriptions
     help - Help
     settings - Show settings
     feedback - Send feedback
@@ -179,17 +172,6 @@ list:
 own_referral_link_hit:
   parse: raw
   str: You've just hit your own referral link
-pay_this:
-  parse: raw
-  str: |-
-    Please pay this bill for {{ .price }} {{ .currency }}
-    Note that CoinPayments processing may take some time after your payment is shown as paid
-    {{ .link }}
-payment_complete:
-  parse: raw
-  str: |-
-    Your payment is complete
-    You can subscribe up to {{ .max_models }} models now
 profile_removed:
   parse: raw
   str: 'Model {{ .model }} probably has removed her profile'
@@ -213,13 +195,6 @@ remove_all:
     If you really want to remove all the subscriptions then enter
 
     /sure_remove_all
-select_currency:
-  parse: raw
-  str: |-
-    Pay once and get {{ .number_of_subscriptions }} additional subscriptions forever
-    There will be {{ .total_subscriptions }} total subscriptions
-    You will be charged {{ .dollars }}$ in crypto
-    Please select a cryptocurrency to pay with
 social:
   disable_preview: true
   parse: html
@@ -289,11 +264,6 @@ syntax_remove:
     Enter
 
     /remove <code>CAMNAME</code>
-try_to_buy_later:
-  parse: raw
-  str: |-
-    Your payment request cannot be processed
-    Please try later
 unknown_command:
   parse: html
   str: |-
@@ -304,9 +274,6 @@ unknown_command:
     Example
 
     {{ template "add_example" }}
-unknown_currency:
-  parse: raw
-  str: Specified currency is not supported
 version:
   parse: raw
   str: 'Version: {{ .version }}'
@@ -361,7 +328,7 @@ faq_pricing:
     <b>Pricing</b>
 
     The basic service is free.
-    If you need to subscribe to more than {{ .max_models }} models you either pay {{ .dollars }}$ for additional {{ .number_of_subscriptions }} models or you may earn subscriptions by sharing.
+    If you need to subscribe to more than {{ .max_models }} models you may earn additional subscriptions by sharing this service.
 too_many_subscriptions_for_pics:
   str: This command supports up to {{ .max_subs }} subscriptions in a group chat
 we_are_up:

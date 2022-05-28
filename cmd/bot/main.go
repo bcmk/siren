@@ -32,9 +32,7 @@ import (
 
 	"github.com/bcmk/go-smtpd/smtpd"
 	"github.com/bcmk/siren/lib"
-	"github.com/bcmk/siren/payments"
 	tg "github.com/bcmk/telegram-bot-api"
-	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -87,12 +85,6 @@ type statRequest struct {
 	done     chan bool
 }
 
-type ipnRequest struct {
-	writer  http.ResponseWriter
-	request *http.Request
-	done    chan bool
-}
-
 type queryDurationsData struct {
 	avg   float64
 	count int
@@ -139,7 +131,6 @@ type worker struct {
 	downloadErrors           []bool
 	downloadResultsPos       int
 	nextErrorReport          time.Time
-	coinPaymentsAPI          *payments.CoinPaymentsAPI
 	mailTLS                  *tls.Config
 	durations                map[string]queryDurationsData
 	images                   map[string]string
@@ -288,10 +279,6 @@ func newWorker(args []string) *worker {
 		for _, b := range a {
 			w.loadImageForTranslation(endpoint, b)
 		}
-	}
-
-	if cp := cfg.CoinPayments; cp != nil {
-		w.coinPaymentsAPI = payments.NewCoinPaymentsAPI(cp.PublicKey, cp.PrivateKey, "https://"+cp.IPNListenURL, cfg.TimeoutSeconds, cfg.Debug)
 	}
 
 	switch cfg.Website {
@@ -884,25 +871,6 @@ func (w *worker) subscriptionUsage(endpoint string, chatID int64, ad bool) {
 
 func (w *worker) wantMore(endpoint string, chatID int64) {
 	w.showReferral(endpoint, chatID)
-
-	if w.cfg.CoinPayments == nil || w.cfg.Mail == nil {
-		return
-	}
-
-	tpl := w.tpl[endpoint]
-	text := templateToString(tpl, w.tr[endpoint].BuyAd.Key, tplData{
-		"price":                   w.cfg.CoinPayments.subscriptionPacketPrice,
-		"number_of_subscriptions": w.cfg.CoinPayments.subscriptionPacketModelNumber,
-	})
-	buttonText := templateToString(tpl, w.tr[endpoint].BuyButton.Key, tplData{
-		"number_of_subscriptions": w.cfg.CoinPayments.subscriptionPacketModelNumber,
-	})
-
-	buttons := [][]tg.InlineKeyboardButton{{tg.NewInlineKeyboardButtonData(buttonText, "buy")}}
-	keyboard := tg.NewInlineKeyboardMarkup(buttons...)
-	msg := tg.NewMessage(chatID, text)
-	msg.ReplyMarkup = keyboard
-	w.enqueueMessage(w.highPriorityMsg, endpoint, &messageConfig{msg}, replyPacket)
 }
 
 func (w *worker) settings(endpoint string, chatID int64) {
@@ -948,90 +916,6 @@ func (w *worker) removeModel(endpoint string, chatID int64, modelID string) {
 func (w *worker) sureRemoveAll(endpoint string, chatID int64) {
 	w.mustExec("delete from signals where chat_id=? and endpoint=?", chatID, endpoint)
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].AllModelsRemoved, nil, replyPacket)
-}
-
-func (w *worker) buy(endpoint string, chatID int64) {
-	var buttons [][]tg.InlineKeyboardButton
-	for _, c := range w.cfg.CoinPayments.Currencies {
-		buttons = append(buttons, []tg.InlineKeyboardButton{tg.NewInlineKeyboardButtonData(c, "buy_with "+c)})
-	}
-
-	user := w.mustUser(chatID)
-	keyboard := tg.NewInlineKeyboardMarkup(buttons...)
-	tpl := w.tpl[endpoint]
-	text := templateToString(tpl, w.tr[endpoint].SelectCurrency.Key, tplData{
-		"dollars":                 w.cfg.CoinPayments.subscriptionPacketPrice,
-		"number_of_subscriptions": w.cfg.CoinPayments.subscriptionPacketModelNumber,
-		"total_subscriptions":     user.maxModels + w.cfg.CoinPayments.subscriptionPacketModelNumber,
-	})
-
-	msg := tg.NewMessage(chatID, text)
-	msg.ReplyMarkup = keyboard
-	w.enqueueMessage(w.highPriorityMsg, endpoint, &messageConfig{msg}, replyPacket)
-}
-
-func (w *worker) buyWith(endpoint string, chatID int64, currency string) {
-	found := false
-	for _, c := range w.cfg.CoinPayments.Currencies {
-		if currency == c {
-			found = true
-			break
-		}
-	}
-	if !found {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].UnknownCurrency, nil, replyPacket)
-		return
-	}
-
-	email := w.email(endpoint, chatID)
-	localID := uuid.New()
-	transaction, err := w.coinPaymentsAPI.CreateTransaction(w.cfg.CoinPayments.subscriptionPacketPrice, currency, email, localID.String())
-	if err != nil {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].TryToBuyLater, nil, replyPacket)
-		lerr("create transaction failed, %v", err)
-		return
-	}
-	kind := "coinpayments"
-	timestamp := int(time.Now().Unix())
-	w.mustExec(`
-		insert into transactions (
-			status,
-			kind,
-			local_id,
-			chat_id,
-			remote_id,
-			timeout,
-			amount,
-			address,
-			dest_tag,
-			status_url,
-			checkout_url,
-			timestamp,
-			model_number,
-			currency,
-			endpoint)
-		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		payments.StatusCreated,
-		kind,
-		localID,
-		chatID,
-		transaction.TXNID,
-		transaction.Timeout,
-		transaction.Amount,
-		transaction.Address,
-		transaction.DestTag,
-		transaction.StatusURL,
-		transaction.CheckoutURL,
-		timestamp,
-		w.cfg.CoinPayments.subscriptionPacketModelNumber,
-		currency,
-		endpoint)
-
-	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].PayThis, tplData{
-		"price":    transaction.Amount,
-		"currency": currency,
-		"link":     transaction.CheckoutURL,
-	}, replyPacket)
 }
 
 // calcTimeDiff calculates time difference ignoring summer time and leap seconds
@@ -1653,9 +1537,7 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		w.ad(w.highPriorityMsg, endpoint, chatID)
 	case "faq":
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].FAQ, tplData{
-			"dollars":                 w.cfg.CoinPayments.subscriptionPacketPrice,
-			"number_of_subscriptions": w.cfg.CoinPayments.subscriptionPacketModelNumber,
-			"max_models":              w.cfg.MaxModels,
+			"max_models": w.cfg.MaxModels,
 		}, replyPacket)
 	case "feedback":
 		w.feedback(endpoint, chatID, arguments)
@@ -1679,18 +1561,6 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		w.enableOfflineNotifications(endpoint, chatID, true)
 	case "disable_offline_notifications":
 		w.enableOfflineNotifications(endpoint, chatID, false)
-	case "buy":
-		if w.cfg.CoinPayments == nil || w.cfg.Mail == nil {
-			unknown()
-			return false
-		}
-		w.buy(endpoint, chatID)
-	case "buy_with":
-		if w.cfg.CoinPayments == nil || w.cfg.Mail == nil {
-			unknown()
-			return false
-		}
-		w.buyWith(endpoint, chatID, arguments)
 	case "referral":
 		w.showReferral(endpoint, chatID)
 	case "week":
@@ -1901,34 +1771,32 @@ func (w *worker) getStat(endpoint string) statistics {
 	checkErr(syscall.Getrusage(syscall.RUSAGE_SELF, &rusage))
 
 	return statistics{
-		UsersCount:                     w.usersCount(endpoint),
-		GroupsCount:                    w.groupsCount(endpoint),
-		ActiveUsersOnEndpointCount:     w.activeUsersOnEndpointCount(endpoint),
-		ActiveUsersTotalCount:          w.activeUsersTotalCount(),
-		HeavyUsersCount:                w.heavyUsersCount(endpoint),
-		ModelsCount:                    w.modelsCount(endpoint),
-		ModelsToPollOnEndpointCount:    w.modelsToPollOnEndpointCount(endpoint),
-		ModelsToPollTotalCount:         w.modelsToPollTotalCount(),
-		OnlineModelsCount:              len(w.ourOnline),
-		KnownModelsCount:               len(w.siteStatuses),
-		SpecialModelsCount:             len(w.specialModels),
-		StatusChangesCount:             w.statusChangesCount(),
-		TransactionsOnEndpointCount:    w.transactionsOnEndpoint(endpoint),
-		TransactionsOnEndpointFinished: w.transactionsOnEndpointFinished(endpoint),
-		QueriesDurationMilliseconds:    int(w.httpQueriesDuration.Milliseconds()),
-		UpdatesDurationMilliseconds:    int(w.updatesDuration.Milliseconds()),
-		CleaningDurationMilliseconds:   int(w.cleaningDuration.Milliseconds()),
-		ErrorRate:                      [2]int{w.unsuccessfulRequestsCount(), w.cfg.errorDenominator},
-		DownloadErrorRate:              [2]int{w.downloadErrorsCount(), w.cfg.errorDenominator},
-		Rss:                            rss / 1024,
-		MaxRss:                         rusage.Maxrss,
-		UserReferralsCount:             w.userReferralsCount(),
-		ModelReferralsCount:            w.modelReferralsCount(),
-		ReportsCount:                   w.reports(),
-		ChangesInPeriod:                w.changesInPeriod,
-		ConfirmedChangesInPeriod:       w.confirmedChangesInPeriod,
-		Interactions:                   w.interactionsByResultToday(endpoint),
-		InteractionsByKind:             w.interactionsByKindToday(endpoint),
+		UsersCount:                   w.usersCount(endpoint),
+		GroupsCount:                  w.groupsCount(endpoint),
+		ActiveUsersOnEndpointCount:   w.activeUsersOnEndpointCount(endpoint),
+		ActiveUsersTotalCount:        w.activeUsersTotalCount(),
+		HeavyUsersCount:              w.heavyUsersCount(endpoint),
+		ModelsCount:                  w.modelsCount(endpoint),
+		ModelsToPollOnEndpointCount:  w.modelsToPollOnEndpointCount(endpoint),
+		ModelsToPollTotalCount:       w.modelsToPollTotalCount(),
+		OnlineModelsCount:            len(w.ourOnline),
+		KnownModelsCount:             len(w.siteStatuses),
+		SpecialModelsCount:           len(w.specialModels),
+		StatusChangesCount:           w.statusChangesCount(),
+		QueriesDurationMilliseconds:  int(w.httpQueriesDuration.Milliseconds()),
+		UpdatesDurationMilliseconds:  int(w.updatesDuration.Milliseconds()),
+		CleaningDurationMilliseconds: int(w.cleaningDuration.Milliseconds()),
+		ErrorRate:                    [2]int{w.unsuccessfulRequestsCount(), w.cfg.errorDenominator},
+		DownloadErrorRate:            [2]int{w.downloadErrorsCount(), w.cfg.errorDenominator},
+		Rss:                          rss / 1024,
+		MaxRss:                       rusage.Maxrss,
+		UserReferralsCount:           w.userReferralsCount(),
+		ModelReferralsCount:          w.modelReferralsCount(),
+		ReportsCount:                 w.reports(),
+		ChangesInPeriod:              w.changesInPeriod,
+		ConfirmedChangesInPeriod:     w.confirmedChangesInPeriod,
+		Interactions:                 w.interactionsByResultToday(endpoint),
+		InteractionsByKind:           w.interactionsByKindToday(endpoint),
 	}
 }
 
@@ -1966,73 +1834,12 @@ func (w *worker) processStatCommand(endpoint string, writer http.ResponseWriter,
 	}
 }
 
-func (w *worker) handleIPN(ipnRequests chan ipnRequest) func(writer http.ResponseWriter, r *http.Request) {
-	return func(writer http.ResponseWriter, r *http.Request) {
-		command := ipnRequest{
-			writer:  writer,
-			request: r,
-			done:    make(chan bool),
-		}
-		ipnRequests <- command
-		<-command.done
-	}
-}
-
-func (w *worker) processIPN(writer http.ResponseWriter, r *http.Request, done chan bool) {
-	defer func() { done <- true }()
-
-	linf("got IPN data")
-
-	newStatus, custom, err := payments.ParseIPN(r, w.cfg.CoinPayments.IPNSecret, w.cfg.Debug)
-	if err != nil {
-		lerr("error on processing IPN, %v", err)
-		return
-	}
-
-	switch newStatus {
-	case payments.StatusFinished:
-		oldStatus, chatID, endpoint, found := w.transaction(custom)
-		if !found {
-			lerr("transaction not found: %s", custom)
-			return
-		}
-		if oldStatus == payments.StatusFinished {
-			lerr("transaction is already finished")
-			return
-		}
-		if oldStatus == payments.StatusUnknown {
-			lerr("unknown transaction ID")
-			return
-		}
-		w.mustExec("update transactions set status=? where local_id=?", payments.StatusFinished, custom)
-		w.mustExec("update users set max_models = max_models + (select coalesce(sum(model_number), 0) from transactions where local_id=?)", custom)
-		user := w.mustUser(chatID)
-		w.sendTr(w.lowPriorityMsg, endpoint, chatID, false, w.tr[endpoint].PaymentComplete, tplData{"max_models": user.maxModels}, messagePacket)
-		linf("payment %s is finished", custom)
-		text := fmt.Sprintf("payment %s is finished", custom)
-		w.sendText(w.lowPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, text, messagePacket)
-	case payments.StatusCanceled:
-		w.mustExec("update transactions set status=? where local_id=?", payments.StatusCanceled, custom)
-		linf("payment %s is canceled", custom)
-		text := fmt.Sprintf("payment %s is cancelled", custom)
-		w.sendText(w.lowPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, text, messagePacket)
-	default:
-		linf("payment %s is still pending", custom)
-		text := fmt.Sprintf("payment %s is still pending", custom)
-		w.sendText(w.lowPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, text, messagePacket)
-	}
-}
-
 func (w *worker) handleStatEndpoints(statRequests chan statRequest) {
 	for n, p := range w.cfg.Endpoints {
 		if p.StatPath != "" {
 			http.HandleFunc(p.WebhookDomain+p.StatPath, w.handleStat(n, statRequests))
 		}
 	}
-}
-
-func (w *worker) handleIPNEndpoint(ipnRequests chan ipnRequest) {
-	http.HandleFunc(w.cfg.CoinPayments.IPNListenURL, w.handleIPN(ipnRequests))
 }
 
 func (w *worker) incoming() chan incomingPacket {
@@ -2294,11 +2101,6 @@ func main() {
 	statRequests := make(chan statRequest)
 	w.handleStatEndpoints(statRequests)
 
-	ipnRequests := make(chan ipnRequest)
-	if w.cfg.CoinPayments != nil {
-		w.handleIPNEndpoint(ipnRequests)
-	}
-
 	mail := make(chan *env)
 
 	if w.cfg.Mail != nil {
@@ -2370,8 +2172,6 @@ func main() {
 			w.mailReceived(m)
 		case s := <-statRequests:
 			w.processStatCommand(s.endpoint, s.writer, s.request, s.done)
-		case s := <-ipnRequests:
-			w.processIPN(s.writer, s.request, s.done)
 		case s := <-signals:
 			linf("got signal %v", s)
 			if s == syscall.SIGINT || s == syscall.SIGTERM || s == syscall.SIGABRT {

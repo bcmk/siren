@@ -24,18 +24,6 @@ type endpoint struct {
 	MaintenanceResponse string   `json:"maintenance_response"` // the maintenance response
 }
 
-type coinPaymentsConfig struct {
-	SubscriptionPacket string   `json:"subscription_packet"` // subscription packet, format "15/10" meaning 15 USD for 10 models
-	Currencies         []string `json:"currencies"`          // CoinPayments currencies to buy a subscription with
-	PublicKey          string   `json:"public_key"`          // CoinPayments public key
-	PrivateKey         string   `json:"private_key"`         // CoinPayments private key
-	IPNListenURL       string   `json:"ipn_listen_url"`      // CoinPayments IPN payment status notification listen URL
-	IPNSecret          string   `json:"ipn_secret"`          // CoinPayments IPN secret
-
-	subscriptionPacketPrice       int
-	subscriptionPacketModelNumber int
-}
-
 type mailConfig struct {
 	Host           string `json:"host"`            // the hostname for email
 	ListenAddress  string `json:"listen_address"`  // the address to listen to incoming mail
@@ -73,7 +61,6 @@ type config struct {
 	ErrorReportingPeriodMinutes     int                       `json:"error_reporting_period_minutes"`     // the period of the error reports
 	Endpoints                       map[string]endpoint       `json:"endpoints"`                          // the endpoints by simple name, used for the support of the bots in different languages accessing the same database
 	HeavyUserRemainder              int                       `json:"heavy_user_remainder"`               // the maximum remainder of models to treat a user as heavy
-	CoinPayments                    *coinPaymentsConfig       `json:"coin_payments"`                      // CoinPayments integration
 	Mail                            *mailConfig               `json:"mail"`                               // mail config
 	ReferralBonus                   int                       `json:"referral_bonus"`                     // number of emails for a referrer
 	FollowerBonus                   int                       `json:"follower_bonus"`                     // number of emails for a new user registered by a referral link
@@ -239,57 +226,10 @@ func checkConfig(cfg *config) error {
 		return errors.New("configure dangerous_error_rate")
 	}
 
-	if cfg.CoinPayments != nil {
-		if err := checkCoinPaymentsConfig(cfg.CoinPayments); err != nil {
-			return err
-		}
-	}
-
 	if cfg.Mail != nil {
 		if err := checkMailConfig(cfg.Mail); err != nil {
 			return err
 		}
-	}
-
-	return nil
-}
-
-func checkCoinPaymentsConfig(cfg *coinPaymentsConfig) error {
-	if len(cfg.Currencies) == 0 {
-		return errors.New("configure currencies")
-	}
-	if cfg.PublicKey == "" {
-		return errors.New("configure public_key")
-	}
-	if cfg.PrivateKey == "" {
-		return errors.New("configure private_key")
-	}
-	if cfg.IPNListenURL == "" {
-		return errors.New("configure ipn_path")
-	}
-	if cfg.IPNSecret == "" {
-		return errors.New("configure ipn_secret")
-	}
-
-	if m := fractionRegexp.FindStringSubmatch(cfg.SubscriptionPacket); len(m) == 3 {
-		subscriptionPacketModelNumber, err := strconv.ParseInt(m[1], 10, 0)
-		if err != nil {
-			return err
-		}
-
-		subscriptionPacketPrice, err := strconv.ParseInt(m[2], 10, 0)
-		if err != nil {
-			return err
-		}
-
-		if subscriptionPacketModelNumber == 0 || subscriptionPacketPrice == 0 {
-			return errors.New("invalid subscription packet")
-		}
-
-		cfg.subscriptionPacketPrice = int(subscriptionPacketPrice)
-		cfg.subscriptionPacketModelNumber = int(subscriptionPacketModelNumber)
-	} else {
-		return errors.New("configure subscription_packet")
 	}
 
 	return nil

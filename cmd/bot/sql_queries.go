@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/bcmk/siren/lib"
-	"github.com/bcmk/siren/payments"
 	"github.com/google/uuid"
 )
 
@@ -179,13 +178,6 @@ func (w *worker) email(endpoint string, chatID int64) string {
 	return username + "@" + w.cfg.Mail.Host
 }
 
-func (w *worker) transaction(uuid string) (status payments.StatusKind, chatID int64, endpoint string, found bool) {
-	found = w.maybeRecord("select status, chat_id, endpoint from transactions where local_id=?",
-		queryParams{uuid},
-		scanTo{&status, &chatID, &endpoint})
-	return
-}
-
 func (w *worker) changesFromTo(modelID string, from int, to int) []statusChange {
 	var changes []statusChange
 	first := true
@@ -328,10 +320,6 @@ func (w *worker) heavyUsersCount(endpoint string) int {
 
 func (w *worker) transactionsOnEndpoint(endpoint string) int {
 	return w.mustInt("select count(*) from transactions where endpoint=?", endpoint)
-}
-
-func (w *worker) transactionsOnEndpointFinished(endpoint string) int {
-	return w.mustInt("select count(*) from transactions where endpoint=? and status=?", endpoint, payments.StatusFinished)
 }
 
 func (w *worker) recordForEmail(username string) *email {

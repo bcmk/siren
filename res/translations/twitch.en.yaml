@@ -88,7 +88,6 @@ raw_commands:
     list - Your subscriptions
     pics - Thumbnails of your channels online
     week - Online hours in the previous 7 days
-    buy - Buy additional subscriptions
     help - Help
     settings - Show settings
     feedback - Send feedback
@@ -129,7 +128,7 @@ faq_pricing:
     <b>Pricing</b>
 
     The basic service is free.
-    If you need to subscribe to more than {{ .max_models }} channels you either pay {{ .dollars }}$ for additional {{ .number_of_subscriptions }} subscriptions or you may earn them by sharing.
+    If you need to subscribe to more than {{ .max_models }} channels you may earn additional subscriptions by sharing this service.
 invalid_symbols:
   parse: raw
   disable_preview: true
@@ -137,8 +136,3 @@ invalid_symbols:
 profile_removed:
   parse: raw
   str: 'The channel {{ .model }} is probably removed'
-payment_complete:
-  parse: raw
-  str: |-
-    Your payment is complete
-    You can subscribe up to {{ .max_models }} channels now

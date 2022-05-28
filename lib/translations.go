@@ -75,14 +75,7 @@ type Translations struct {
 	NoOnlineModels              *Translation `yaml:"no_online_models"`
 	RemoveAll                   *Translation `yaml:"remove_all"`
 	AllModelsRemoved            *Translation `yaml:"all_models_removed"`
-	TryToBuyLater               *Translation `yaml:"try_to_buy_later"`
-	PayThis                     *Translation `yaml:"pay_this"`
-	SelectCurrency              *Translation `yaml:"select_currency"`
-	UnknownCurrency             *Translation `yaml:"unknown_currency"`
-	BuyAd                       *Translation `yaml:"buy_ad"`
-	PaymentComplete             *Translation `yaml:"payment_complete"`
 	MailReceived                *Translation `yaml:"mail_received"`
-	BuyButton                   *Translation `yaml:"buy_button"`
 	ReferralLink                *Translation `yaml:"referral_link"`
 	InvalidReferralLink         *Translation `yaml:"invalid_referral_link"`
 	FollowerExists              *Translation `yaml:"follower_exists"`

@@ -32,12 +32,6 @@ all_models_removed:
 already_added:
   parse: raw
   str: 'Модель {{ .model }} уже в вашем списке'
-buy_ad:
-  parse: raw
-  str: 'Заплати {{ .price }}$ один раз и получи {{ .number_of_subscriptions }} дополнительных моделей навсегда'
-buy_button:
-  parse: raw
-  str: 'Купить {{ .number_of_subscriptions }} моделей'
 denied:
   parse: raw
   str: '{{ .model }} заблокировала доступ из США, где находится этот бот'
@@ -57,7 +51,6 @@ raw_commands:
     list - Ваши модели
     pics - Кадры трансляций в этот момент
     week - График модели в предыдущие 7 дней
-    buy - Купить дополнительные подписки
     help - Список команд
     settings - Настройки
     feedback - Обратная связь
@@ -179,17 +172,6 @@ list:
 own_referral_link_hit:
   parse: raw
   str: Вы только что кликнули по собственной реферальной ссылке
-pay_this:
-  parse: raw
-  str: |-
-    Пожалуйста, оплатите этот счёт на {{ .price }} {{ .currency }}
-    Имейте в виду, обработка платежа CoinPayments может занять некоторое время после того, как он отображается, как оплаченный
-    {{ .link }}
-payment_complete:
-  parse: raw
-  str: |-
-    Платёж проведён
-    Теперь вы можете подписаться на {{ .max_models }} моделей
 profile_removed:
   parse: raw
   str: 'Модель {{ .model }} вероятно удалила свой профиль'
@@ -213,13 +195,6 @@ remove_all:
     Если вы действительно хотите удалить всех моделей, наберите
 
     /sure_remove_all
-select_currency:
-  parse: raw
-  str: |-
-    Заплати один раз и получи {{ .number_of_subscriptions }} дополнительных моделей навсегда
-    Всего у вас будет {{ .total_subscriptions }} подписок
-    Вам нужно будет оплатить {{ .dollars }}$
-    Пожалуйста, выберете криптовалюту для оплаты
 social:
   disable_preview: true
   parse: raw
@@ -289,11 +264,6 @@ syntax_remove:
     Наберите
 
     /remove <code>МОДЕЛЬ</code>
-try_to_buy_later:
-  parse: raw
-  str: |-
-    Ваш платёжный запрос не может быть обработан
-    Попробуйте позже
 unknown_command:
   parse: html
   str: |-
@@ -304,9 +274,6 @@ unknown_command:
     Пример
 
     {{ template "add_example" }}
-unknown_currency:
-  parse: raw
-  str: Указанная валюта не поддерживается
 version:
   parse: raw
   str: 'Версия: {{ .version }}'
@@ -361,7 +328,7 @@ faq_pricing:
     <b>Цены</b>
 
     Базовый пакет — бесплатный.
-    Если вы хотите подписаться на более чем {{ .max_models }} моделей, вам нужно либо заплатить {{ .dollars }}$ за дополнительные {{ .number_of_subscriptions }} моделей, либо вы можете зарабатывать подписки, делясь реферальными ссылками.
+    Если вы хотите подписаться на более чем {{ .max_models }} моделей, вы можете зарабатывать дополнительные подписки, делясь реферальными ссылками на этот сервис.
 too_many_subscriptions_for_pics:
   str: Эта команда поддерживает до {{ .max_subs }} подписок в групповом чате
 we_are_up:
