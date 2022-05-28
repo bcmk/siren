@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/bcmk/siren/lib"
-	"github.com/google/uuid"
 )
 
 func (w *worker) newNotifications() []notification {
@@ -162,7 +161,6 @@ func (w *worker) user(chatID int64) (user user, found bool) {
 
 func (w *worker) addUser(endpoint string, chatID int64) {
 	w.mustExec(`insert or ignore into users (chat_id, max_models) values (?, ?)`, chatID, w.cfg.MaxModels)
-	w.mustExec(`insert or ignore into emails (endpoint, chat_id, email) values (?, ?, ?)`, endpoint, chatID, uuid.New())
 }
 
 func (w *worker) maybeModel(modelID string) *model {
@@ -171,11 +169,6 @@ func (w *worker) maybeModel(modelID string) *model {
 		return &result
 	}
 	return nil
-}
-
-func (w *worker) email(endpoint string, chatID int64) string {
-	username := w.mustString("select email from emails where endpoint=? and chat_id=?", endpoint, chatID)
-	return username + "@" + w.cfg.Mail.Host
 }
 
 func (w *worker) changesFromTo(modelID string, from int, to int) []statusChange {
@@ -320,18 +313,6 @@ func (w *worker) heavyUsersCount(endpoint string) int {
 
 func (w *worker) transactionsOnEndpoint(endpoint string) int {
 	return w.mustInt("select count(*) from transactions where endpoint=?", endpoint)
-}
-
-func (w *worker) recordForEmail(username string) *email {
-	email := email{email: username}
-	if w.maybeRecord(
-		`select chat_id, endpoint from emails where email=?`,
-		queryParams{username},
-		scanTo{&email.chatID, &email.endpoint}) {
-
-		return &email
-	}
-	return nil
 }
 
 func (w *worker) confirmSub(sub subscription) {

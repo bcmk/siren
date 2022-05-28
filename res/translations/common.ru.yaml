@@ -78,13 +78,6 @@ invalid_symbols:
   parse: raw
   disable_preview: true
   str: 'Идентификатор модели {{ .model }} содержит неподдерживаемые символы'
-mail_received:
-  parse: raw
-  str: |-
-    Получено письмо
-    Тема: {{ .subject }}
-    От: {{ .from }}
-    {{ .text }}
 model_added:
   parse: raw
   str: |-

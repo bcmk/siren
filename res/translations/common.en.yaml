@@ -78,13 +78,6 @@ invalid_symbols:
   parse: raw
   disable_preview: true
   str: 'Camname {{ .model }} has invalid symbols'
-mail_received:
-  parse: raw
-  str: |-
-    Mail received
-    Subject: {{ .subject }}
-    From: {{ .from }}
-    {{ .text }}
 model_added:
   parse: raw
   str: |-

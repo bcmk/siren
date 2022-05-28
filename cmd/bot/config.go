@@ -24,13 +24,6 @@ type endpoint struct {
 	MaintenanceResponse string   `json:"maintenance_response"` // the maintenance response
 }
 
-type mailConfig struct {
-	Host           string `json:"host"`            // the hostname for email
-	ListenAddress  string `json:"listen_address"`  // the address to listen to incoming mail
-	Certificate    string `json:"certificate"`     // certificate path for STARTTLS
-	CertificateKey string `json:"certificate_key"` // certificate key path for STARTTLS
-}
-
 type statusConfirmationSeconds struct {
 	Offline  int `json:"offline"`
 	Online   int `json:"online"`
@@ -61,9 +54,8 @@ type config struct {
 	ErrorReportingPeriodMinutes     int                       `json:"error_reporting_period_minutes"`     // the period of the error reports
 	Endpoints                       map[string]endpoint       `json:"endpoints"`                          // the endpoints by simple name, used for the support of the bots in different languages accessing the same database
 	HeavyUserRemainder              int                       `json:"heavy_user_remainder"`               // the maximum remainder of models to treat a user as heavy
-	Mail                            *mailConfig               `json:"mail"`                               // mail config
-	ReferralBonus                   int                       `json:"referral_bonus"`                     // number of emails for a referrer
-	FollowerBonus                   int                       `json:"follower_bonus"`                     // number of emails for a new user registered by a referral link
+	ReferralBonus                   int                       `json:"referral_bonus"`                     // number of additional subscriptions for a referrer
+	FollowerBonus                   int                       `json:"follower_bonus"`                     // number of additional subscriptions for a new user registered by a referral link
 	UsersOnlineEndpoint             []string                  `json:"users_online_endpoint"`              // the endpoint to fetch online users
 	StatusConfirmationSeconds       statusConfirmationSeconds `json:"status_confirmation_seconds"`        // a status is confirmed only if it lasts for at least this number of seconds
 	OfflineNotifications            bool                      `json:"offline_notifications"`              // enable offline notifications
@@ -226,21 +218,5 @@ func checkConfig(cfg *config) error {
 		return errors.New("configure dangerous_error_rate")
 	}
 
-	if cfg.Mail != nil {
-		if err := checkMailConfig(cfg.Mail); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func checkMailConfig(cfg *mailConfig) error {
-	if cfg.Host == "" {
-		return errors.New("configure host")
-	}
-	if cfg.ListenAddress == "" {
-		return errors.New("configure listen_address")
-	}
 	return nil
 }

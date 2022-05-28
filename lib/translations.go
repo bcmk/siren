@@ -75,7 +75,6 @@ type Translations struct {
 	NoOnlineModels              *Translation `yaml:"no_online_models"`
 	RemoveAll                   *Translation `yaml:"remove_all"`
 	AllModelsRemoved            *Translation `yaml:"all_models_removed"`
-	MailReceived                *Translation `yaml:"mail_received"`
 	ReferralLink                *Translation `yaml:"referral_link"`
 	InvalidReferralLink         *Translation `yaml:"invalid_referral_link"`
 	FollowerExists              *Translation `yaml:"follower_exists"`

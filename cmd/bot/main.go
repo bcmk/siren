@@ -30,7 +30,6 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 
-	"github.com/bcmk/go-smtpd/smtpd"
 	"github.com/bcmk/siren/lib"
 	tg "github.com/bcmk/telegram-bot-api"
 	_ "github.com/mattn/go-sqlite3"
@@ -131,7 +130,6 @@ type worker struct {
 	downloadErrors           []bool
 	downloadResultsPos       int
 	nextErrorReport          time.Time
-	mailTLS                  *tls.Config
 	durations                map[string]queryDurationsData
 	images                   map[string]string
 	botNames                 map[string]string
@@ -167,12 +165,6 @@ const (
 	adPacket           packetKind = 2
 	messagePacket      packetKind = 3
 )
-
-type email struct {
-	chatID   int64
-	endpoint string
-	email    string
-}
 
 type appliedKind int
 
@@ -216,12 +208,6 @@ func newWorker(args []string) *worker {
 	cfg := readConfig(args[0])
 
 	var err error
-	var mailTLS *tls.Config
-
-	if cfg.Mail != nil && cfg.Mail.Certificate != "" {
-		mailTLS, err = loadTLS(cfg.Mail.Certificate, cfg.Mail.CertificateKey)
-		checkErr(err)
-	}
 
 	var clients []*lib.Client
 	for _, address := range cfg.SourceIPAddresses {
@@ -256,7 +242,6 @@ func newWorker(args []string) *worker {
 		unsuccessfulRequests:   make([]bool, cfg.errorDenominator),
 		downloadErrors:         make([]bool, cfg.errorDenominator),
 		downloadResults:        make(chan bool),
-		mailTLS:                mailTLS,
 		durations:              map[string]queryDurationsData{},
 		images:                 map[string]string{},
 		botNames:               map[string]string{},
@@ -1300,11 +1285,6 @@ func (w *worker) logConfig() {
 	}
 }
 
-func (w *worker) myEmail(endpoint string) {
-	email := w.email(endpoint, w.cfg.AdminID)
-	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, true, true, lib.ParseRaw, email, replyPacket)
-}
-
 func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arguments string) (processed bool, maintenance bool) {
 	switch command {
 	case "stat":
@@ -1312,9 +1292,6 @@ func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arg
 		return true, false
 	case "performance":
 		w.performanceStat(endpoint, arguments)
-		return true, false
-	case "email":
-		w.myEmail(endpoint)
 		return true, false
 	case "broadcast":
 		w.broadcast(endpoint, arguments)
@@ -1361,50 +1338,6 @@ func splitAddress(a string) (string, string) {
 		return "", ""
 	}
 	return parts[0], parts[1]
-}
-
-func (w *worker) mailReceived(e *env) {
-	emails := make(map[email]bool)
-	for _, r := range e.rcpts {
-		username, host := splitAddress(r.Email())
-		if host != w.cfg.Mail.Host {
-			continue
-		}
-		email := w.recordForEmail(username)
-		if email != nil {
-			emails[*email] = true
-		}
-	}
-
-	for email := range emails {
-		w.sendTr(w.lowPriorityMsg, email.endpoint, email.chatID, true, w.tr[email.endpoint].MailReceived, tplData{
-			"subject": e.mime.GetHeader("Subject"),
-			"from":    e.mime.GetHeader("From"),
-			"text":    e.mime.Text,
-		}, messagePacket)
-		for _, inline := range e.mime.Inlines {
-			b := tg.FileBytes{Name: inline.FileName, Bytes: inline.Content}
-			switch {
-			case strings.HasPrefix(inline.ContentType, "image/"):
-				msg := tg.NewPhotoUpload(email.chatID, b)
-				w.enqueueMessage(w.lowPriorityMsg, email.endpoint, &photoConfig{msg}, messagePacket)
-			default:
-				msg := tg.NewDocumentUpload(email.chatID, b)
-				w.enqueueMessage(w.lowPriorityMsg, email.endpoint, &documentConfig{msg}, messagePacket)
-			}
-		}
-		for _, inline := range e.mime.Attachments {
-			b := tg.FileBytes{Name: inline.FileName, Bytes: inline.Content}
-			msg := tg.NewDocumentUpload(email.chatID, b)
-			w.enqueueMessage(w.lowPriorityMsg, email.endpoint, &documentConfig{msg}, messagePacket)
-		}
-	}
-}
-
-func envelopeFactory(ch chan *env) func(smtpd.Connection, smtpd.MailAddress, *int) (smtpd.Envelope, error) {
-	return func(c smtpd.Connection, from smtpd.MailAddress, size *int) (smtpd.Envelope, error) {
-		return &env{BasicEnvelope: &smtpd.BasicEnvelope{}, from: from, ch: ch}, nil
-	}
 }
 
 //noinspection SpellCheckingInspection
@@ -2101,21 +2034,6 @@ func main() {
 	statRequests := make(chan statRequest)
 	w.handleStatEndpoints(statRequests)
 
-	mail := make(chan *env)
-
-	if w.cfg.Mail != nil {
-		smtp := &smtpd.Server{
-			Hostname:  w.cfg.Mail.Host,
-			Addr:      w.cfg.Mail.ListenAddress,
-			OnNewMail: envelopeFactory(mail),
-			TLSConfig: w.mailTLS,
-		}
-		go func() {
-			err := smtp.ListenAndServe()
-			checkErr(err)
-		}()
-	}
-
 	var requestTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
 	var cleaningTimer = time.NewTicker(time.Duration(w.cfg.CleaningPeriodSeconds) * time.Second)
 	var subsConfirmTimer = time.NewTicker(time.Duration(w.cfg.SubsConfirmationPeriodSeconds) * time.Second)
@@ -2168,8 +2086,6 @@ func main() {
 					return
 				}
 			}
-		case m := <-mail:
-			w.mailReceived(m)
 		case s := <-statRequests:
 			w.processStatCommand(s.endpoint, s.writer, s.request, s.done)
 		case s := <-signals:
