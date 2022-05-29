@@ -311,10 +311,6 @@ func (w *worker) heavyUsersCount(endpoint string) int {
 		w.cfg.MaxModels-w.cfg.HeavyUserRemainder)
 }
 
-func (w *worker) transactionsOnEndpoint(endpoint string) int {
-	return w.mustInt("select count(*) from transactions where endpoint=?", endpoint)
-}
-
 func (w *worker) confirmSub(sub subscription) {
 	w.mustExec("insert or ignore into models (model_id) values (?)", sub.modelID)
 	w.mustExec("update signals set confirmed=1 where endpoint=? and chat_id=? and model_id=?", sub.endpoint, sub.chatID, sub.modelID)

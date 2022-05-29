@@ -132,6 +132,10 @@ var migrations = []func(w *worker){
 		w.mustExec("alter table interactions add kind integer not null default 0;")
 		w.mustExec("alter table notification_queue add kind integer not null default 0;")
 	},
+	func(w *worker) {
+		w.mustExec("drop table transactions;")
+		w.mustExec("drop table emails;")
+	},
 }
 
 func (w *worker) applyMigrations() {

@@ -1142,7 +1142,6 @@ func (w *worker) statStrings(endpoint string) []string {
 		fmt.Sprintf("Updates duration: %d ms", stat.UpdatesDurationMilliseconds),
 		fmt.Sprintf("Error rate: %d/%d", stat.ErrorRate[0], stat.ErrorRate[1]),
 		fmt.Sprintf("Memory usage: %d KiB", stat.Rss),
-		fmt.Sprintf("Transactions: %d/%d", stat.TransactionsOnEndpointFinished, stat.TransactionsOnEndpointCount),
 		fmt.Sprintf("Reports: %d", stat.ReportsCount),
 		fmt.Sprintf("User referrals: %d", stat.UserReferralsCount),
 		fmt.Sprintf("Model referrals: %d", stat.ModelReferralsCount),
