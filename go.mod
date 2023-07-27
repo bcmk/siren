@@ -11,7 +11,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.8
 	github.com/nicklaw5/helix v1.25.0
 	github.com/tdewolff/minify/v2 v2.9.21
-	golang.org/x/sys v0.1.0 // indirect
+	golang.org/x/sys v0.5.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )
