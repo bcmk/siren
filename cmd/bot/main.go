@@ -30,6 +30,8 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 
+	_ "golang.org/x/image/webp"
+
 	"github.com/bcmk/siren/lib"
 	tg "github.com/bcmk/telegram-bot-api"
 	_ "github.com/mattn/go-sqlite3"
@@ -1339,7 +1341,7 @@ func splitAddress(a string) (string, string) {
 	return parts[0], parts[1]
 }
 
-//noinspection SpellCheckingInspection
+// noinspection SpellCheckingInspection
 const letterBytes = "abcdefghijklmnopqrstuvwxyz"
 
 func randString(n int) string {
