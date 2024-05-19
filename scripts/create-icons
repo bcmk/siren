@@ -1,15 +1,16 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
 cur="$(dirname "$(readlink -f "$0")")"
 cd "$cur/../docs/icons"
 
 single () {
-    inkscape -z --export-area-page --export-png="$3-$1x$2.png" --export-width=$1 --export-height=$2 "$3.svg"
+	inkscape -z --export-area-page --export-png="$3-$1x$2.png" --export-width="$1" --export-height="$2" "$3.svg"
 }
 
 exp () {
-    single $1 $1 siren
-    single $1 $1 siren-back
+	single "$1" "$1" siren
+	single "$1" "$1" siren-back
 }
 
 exp 1024
