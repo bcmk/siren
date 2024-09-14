@@ -3,7 +3,6 @@ package sitelib
 import (
 	"encoding/json"
 	"errors"
-	"io/ioutil"
 	"os"
 	"path"
 	"sort"
@@ -53,7 +52,7 @@ func init() {
 // ParsePacks parses icons packs
 func ParsePacks(dir string) []Pack {
 	packs := []Pack{}
-	files, err := ioutil.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	lib.CheckErr(err)
 	for _, file := range files {
 		packName := file.Name()
@@ -69,7 +68,7 @@ func ParsePacks(dir string) []Pack {
 		lib.CheckErr(err)
 		lib.CheckErr(configFile.Close())
 		parsed.Name = packName
-		iconFiles, err := ioutil.ReadDir(packDir)
+		iconFiles, err := os.ReadDir(packDir)
 		lib.CheckErr(err)
 		foundIcons := map[string]bool{}
 		for _, iconFile := range iconFiles {

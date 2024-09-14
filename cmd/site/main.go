@@ -10,10 +10,10 @@ import (
 	"fmt"
 	ht "html/template"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -330,7 +330,7 @@ func (s *server) likeHandler(w http.ResponseWriter, r *http.Request) {
 		notFoundError(w)
 		return
 	}
-	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1000))
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1000))
 	if err != nil {
 		notFoundError(w)
 		return
@@ -462,7 +462,7 @@ func (s *server) fillEnabledPacks() {
 }
 
 func (s *server) fillCSS() {
-	bs, err := ioutil.ReadFile("wwwroot/styles.css")
+	bs, err := os.ReadFile("wwwroot/styles.css")
 	checkErr(err)
 	s.css = string(bs)
 }
