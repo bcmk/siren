@@ -61,61 +61,6 @@
             <a class="btn btn-dark px-3" href="/chic">показать все пакеты</a>
         </div>
         <form novalidate action="/chic/code/{{ .pack.Name }}" class="needs-validation">
-            <div class="mt-4">
-                <h3>Выберите размер иконок</h3>
-                <div class="row mt-4">
-                    <div class="col-xl-10 col-12">
-                        {{ define "size_input" }}
-                            <input type="radio"
-                                   class="outlined-selection"
-                                   id="size-{{ .n }}"
-                                   name="size"
-                                   value="{{ .n }}"
-                                    {{ if or (eq .n .sel) (and (eq .n "5") (not .sel)) -}} checked {{- end }}>
-                            <label for="size-{{ .n }}">
-                                <img src="/chic/i/{{ .ctx.pack.Name }}/{{ versioned .ctx.pack "siren" }}.{{ index .ctx.img_exts .ctx.pack.FinalType }}"
-                                     alt=""
-                                     style="height: {{ mul_div .h .ctx.pack.Scale 100 }}px;">
-                            </label>
-                        {{ end }}
-                        <table class="size-selection">
-                            <tr>
-                                <td>
-                                    {{ template "size_input" map "n" "1" "h" (index .sizes "1") "sel" $params.size "ctx" . }}
-                                </td>
-                                <td>
-                                    {{ template "size_input" map "n" "2" "h" (index .sizes "2") "sel" $params.size "ctx" . }}
-                                </td>
-                                <td>
-                                    {{ template "size_input" map "n" "3" "h" (index .sizes "3") "sel" $params.size "ctx" . }}
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>
-                                    {{ template "size_input" map "n" "4" "h" (index .sizes "4") "sel" $params.size "ctx" . }}
-                                </td>
-                                <td>
-                                    {{ template "size_input" map "n" "5" "h" (index .sizes "5") "sel" $params.size "ctx" . }}
-                                </td>
-                                <td>
-                                    {{ template "size_input" map "n" "6" "h" (index .sizes "6") "sel" $params.size "ctx" . }}
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>
-                                    {{ template "size_input" map "n" "7" "h" (index .sizes "7") "sel" $params.size "ctx" . }}
-                                </td>
-                                <td>
-                                    {{ template "size_input" map "n" "8" "h" (index .sizes "8") "sel" $params.size "ctx" . }}
-                                </td>
-                                <td>
-                                    {{ template "size_input" map "n" "9" "h" (index .sizes "9") "sel" $params.size "ctx" . }}
-                                </td>
-                            </tr>
-                        </table>
-                    </div>
-                </div>
-            </div>
             <h3 class="mt-4">Заполните свои социальные сети</h3>
             <div class="mx-auto mt-3">
                 {{ define "simple_input" }}

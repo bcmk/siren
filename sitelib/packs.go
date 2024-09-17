@@ -60,7 +60,7 @@ func ParsePacks(dir string) []Pack {
 			continue
 		}
 		packDir := path.Join(dir, packName)
-		configFile, err := os.Open(path.Join(packDir, ".config"))
+		configFile, err := os.Open(path.Join(packDir, "config.json"))
 		lib.CheckErr(err)
 		decoder := json.NewDecoder(configFile)
 		parsed := Pack{}

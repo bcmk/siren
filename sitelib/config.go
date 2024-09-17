@@ -1,3 +1,4 @@
+// Package sitelib provides a library for siren sites
 package sitelib
 
 import (
@@ -13,6 +14,7 @@ type Pack struct {
 	HumanName   string   `json:"human_name"`
 	Scale       int      `json:"scale"`
 	VGap        *int     `json:"vgap"`
+	HGap        *int     `json:"hgap"`
 	Disable     bool     `json:"disable"`
 	Version     int      `json:"version"`
 	FinalType   string   `json:"final_type"`

@@ -1,14 +1,14 @@
 {{- raw_html "<!-- FLOATING ICONS BEGIN -->" -}}
-<b style="display: flex; flex-direction: column; row-gap: {{ .vgap }}px; height: auto; position: fixed; top: 240px; left: 4px; z-index: 51732;">
+<b style="display: flex; flex-direction: row; column-gap: {{ .hgap }}px; height: 62px; position: fixed; top: 0; left: 0; z-index: 51732; min-width: 400px; padding: 0 8px; backdrop-filter: blur(999px); align-items: center;">
     {{- define "simple_icon" -}}
         {{- if .value -}}
             <a href="{{ .value }}"
                target="_blank"
                rel="nofollow"
-               style="height: {{ .size }}px; display: block;">
+               style="width: auto; height: auto; display: block;">
                 {{- print "" -}}
                 <img src="{{ .base_url }}/chic/i/{{ .pack.Name }}/{{ versioned .pack .name }}.{{ .pack.FinalType }}"
-                     style="height: 100%; width: auto;"
+                     style="width: {{ div .size 10 }}rem; height: {{ div .size 10 }}rem; display: block;"
                      rel="nofollow"
                      alt=""/>
                 {{- print "" -}}
@@ -48,4 +48,5 @@
         {{- template "simple_icon" enhance $base_map (map "name" "siren" "value" (printf "https://siren.chat/cb/%s" .params.siren)) -}}
     {{- end -}}
 </b>
+<p style="height: 62px; margin: 0;"/>
 {{- raw_html "<!-- FLOATING ICONS END -->" -}}

@@ -110,18 +110,6 @@ var funcMap = ht.FuncMap{
 	},
 }
 
-var sizes = map[string]int{
-	"1": 40,
-	"2": 46,
-	"3": 52,
-	"4": 58,
-	"5": 64,
-	"6": 70,
-	"7": 76,
-	"8": 82,
-	"9": 88,
-}
-
 var packParams = []string{
 	"siren",
 	"fanclub",
@@ -259,7 +247,7 @@ func (s *server) packHandler(w http.ResponseWriter, r *http.Request, t *ht.Templ
 	if siren != "" && checkSirenParam(siren) == "" {
 		sirenError = true
 	}
-	checkErr(t.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack, "params": paramDict, "sizes": sizes, "likes": s.likesForPack(pack.Name), "siren_error": sirenError})))
+	checkErr(t.Execute(w, s.tparams(r, map[string]interface{}{"pack": pack, "params": paramDict, "likes": s.likesForPack(pack.Name), "siren_error": sirenError})))
 }
 
 func (s *server) enPackHandler(w http.ResponseWriter, r *http.Request) {
@@ -382,17 +370,17 @@ func (s *server) chaturbateCode(pack *sitelib.Pack, params map[string]string) st
 	t := parseHTMLTemplate("common/links.gohtml")
 	var b bytes.Buffer
 	w := bufio.NewWriter(&b)
-	size := sizes[params["size"]] * pack.Scale / 100
-	vgap := pack.VGap
-	if vgap == nil {
+	size := 62 * pack.Scale / 100
+	hgap := pack.HGap
+	if hgap == nil {
 		defaultGap := 25
-		vgap = &defaultGap
+		hgap = &defaultGap
 	}
 	checkErr(t.Execute(w, map[string]interface{}{
 		"pack":     pack,
 		"params":   params,
 		"size":     size,
-		"vgap":     size * (*vgap + 100 - pack.Scale) / 100,
+		"hgap":     size * (*hgap + 100 - pack.Scale) / 100,
 		"base_url": s.cfg.BaseURL,
 	}))
 	checkErr(w.Flush())
