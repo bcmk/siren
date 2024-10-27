@@ -9,6 +9,12 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+type Icon struct {
+	Name   string
+	Width  float64
+	Height float64
+}
+
 // Pack represents an icon pack
 type Pack struct {
 	HumanName   string   `json:"human_name"`
@@ -23,7 +29,7 @@ type Pack struct {
 
 	InputType    string          `json:"-"`
 	Name         string          `json:"-"`
-	Icons        map[string]bool `json:"-"`
+	Icons        map[string]Icon `json:"-"`
 	VisibleIcons map[string]bool `json:"-"`
 }
 

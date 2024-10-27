@@ -8,7 +8,7 @@
                style="width: auto; height: auto; display: block;">
                 {{- print "" -}}
                 <img src="{{ .base_url }}/chic/i/{{ .pack.Name }}/{{ versioned .pack .name }}.{{ .pack.FinalType }}"
-                     style="width: {{ div .size 10 }}rem; height: {{ div .size 10 }}rem; display: block;"
+                     style="width: {{ div .size 10 }}rem; height: {{ div (div .size (index .name .pack.Icons).aspect_ratio) 10 }}rem; display: block;"
                      rel="nofollow"
                      alt=""/>
                 {{- print "" -}}
