@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +26,7 @@ type stripchatModel struct {
 }
 
 type stripchatResponse struct {
+	Total  int              `json:"total"`
 	Models []stripchatModel `json:"models"`
 }
 
@@ -104,36 +107,68 @@ func (c *StripchatChecker) CheckStatusSingle(modelID string) StatusKind {
 }
 
 // checkEndpoint returns Stripchat online models
-func (c *StripchatChecker) checkEndpoint(endpoint string) (onlineModels map[string]StatusKind, images map[string]string, err error) {
-	client := c.clientsLoop.nextClient()
+func (c *StripchatChecker) checkEndpoint(endpoint string) (
+	onlineModels map[string]StatusKind,
+	images map[string]string,
+	err error,
+) {
 	onlineModels = map[string]StatusKind{}
 	images = map[string]string{}
-	resp, buf, err := onlineQuery(endpoint, client, c.Headers)
-	if err != nil {
-		return nil, nil, fmt.Errorf("cannot send a query, %v", err)
-	}
-	if resp.StatusCode != 200 {
-		return nil, nil, fmt.Errorf("query status, %d", resp.StatusCode)
-	}
-	decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
-	parsed := &stripchatResponse{}
-	err = decoder.Decode(parsed)
-	if err != nil {
-		if c.Dbg {
-			Ldbg("response: %s", buf.String())
+	maxQueries := 20
+	totalModels := 0
+	limit := 1000
+	offsetK := 900 // It overlaps limit
+	for currentQuery := 0; currentQuery < maxQueries; currentQuery++ {
+		client := c.clientsLoop.nextClient()
+
+		request, err := url.Parse(endpoint)
+		if err != nil {
+			return nil, nil, fmt.Errorf("cannot parse endpoint %q", endpoint)
 		}
-		return nil, nil, fmt.Errorf("cannot parse response, %v", err)
-	}
-	for _, m := range parsed.Models {
-		modelID := strings.ToLower(m.Username)
-		onlineModels[modelID] = StatusOnline
-		images[modelID] = m.SnapshotURL
+
+		q := request.Query()
+		q.Set("offset", strconv.Itoa(currentQuery*offsetK))
+		q.Set("limit", strconv.Itoa(limit))
+
+		request.RawQuery = q.Encode()
+
+		resp, buf, err := onlineQuery(request.String(), client, c.Headers)
+		if err != nil {
+			return nil, nil, fmt.Errorf("cannot send a query, %v", err)
+		}
+		if resp.StatusCode != 200 {
+			return nil, nil, fmt.Errorf("query status %d", resp.StatusCode)
+		}
+		decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
+		parsed := &stripchatResponse{}
+		err = decoder.Decode(parsed)
+		if err != nil {
+			if c.Dbg {
+				Ldbg("response: %s", buf.String())
+			}
+			return nil, nil, fmt.Errorf("cannot parse response, %v", err)
+		}
+		if totalModels == 0 {
+			totalModels = parsed.Total
+		}
+		for _, m := range parsed.Models {
+			modelID := strings.ToLower(m.Username)
+			onlineModels[modelID] = StatusOnline
+			images[modelID] = m.SnapshotURL
+		}
+		if (currentQuery+1)*offsetK > totalModels {
+			break
+		}
 	}
 	return
 }
 
 // CheckStatusesMany returns Stripchat online models
-func (c *StripchatChecker) CheckStatusesMany(QueryModelList, CheckMode) (onlineModels map[string]StatusKind, images map[string]string, err error) {
+func (c *StripchatChecker) CheckStatusesMany(QueryModelList, CheckMode) (
+	onlineModels map[string]StatusKind,
+	images map[string]string,
+	err error,
+) {
 	return checkEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 

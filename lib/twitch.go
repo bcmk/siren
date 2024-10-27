@@ -96,9 +96,9 @@ func (c *TwitchChecker) CheckStatusesMany(channels QueryModelList, checkMode Che
 		return checkEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 	} else if checkMode == CheckOnline {
 		return c.checkOnlineMany(helixClient, channels.list)
-	} else {
-		return c.checkExistingMany(helixClient, channels.list)
 	}
+
+	return c.checkExistingMany(helixClient, channels.list)
 }
 
 func thumbnail(s string) string {
