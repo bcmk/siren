@@ -366,22 +366,33 @@ func (s *server) findPack(name string) *sitelib.Pack {
 	return nil
 }
 
+type iconSize struct {
+	Width  float64
+	Height float64
+}
+
 func (s *server) chaturbateCode(pack *sitelib.Pack, params map[string]string) string {
-	t := parseHTMLTemplate("common/links.gohtml")
+	t := parseHTMLTemplate("common/icons-code-generator.gohtml")
 	var b bytes.Buffer
 	w := bufio.NewWriter(&b)
-	size := 62 * pack.Scale / 100
-	hgap := pack.HGap
-	if hgap == nil {
-		defaultGap := 25
-		hgap = &defaultGap
+	width := 5.4 * float64(pack.Scale) / float64(100)
+	hgap := 25
+	if pack.HGap != nil {
+		hgap = *pack.HGap
+	}
+	iconSizes := map[string]iconSize{}
+	for k, v := range pack.Icons {
+		iconSizes[k] = iconSize{
+			Width:  width,
+			Height: width * v.Height / v.Width,
+		}
 	}
 	checkErr(t.Execute(w, map[string]interface{}{
-		"pack":     pack,
-		"params":   params,
-		"size":     size,
-		"hgap":     size * (*hgap + 100 - pack.Scale) / 100,
-		"base_url": s.cfg.BaseURL,
+		"pack":       pack,
+		"params":     params,
+		"hgap":       int(width*10) * (hgap + 100 - pack.Scale) / 100,
+		"base_url":   s.cfg.BaseURL,
+		"icon_sizes": iconSizes,
 	}))
 	checkErr(w.Flush())
 	m := minify.New()

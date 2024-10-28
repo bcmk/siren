@@ -9,6 +9,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// Icon represents all required icon's fields
 type Icon struct {
 	Name   string
 	Width  float64
