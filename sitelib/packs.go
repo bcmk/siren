@@ -69,15 +69,18 @@ func ParsePacks(dir string) []Pack {
 		lib.CheckErr(err)
 		lib.CheckErr(configFile.Close())
 		parsed.Name = packName
+		if parsed.ChaturbateIconsScale == nil {
+			parsed.ChaturbateIconsScale = &parsed.Scale
+		}
 		iconFiles, err := os.ReadDir(packDir)
 		lib.CheckErr(err)
 		foundIcons := map[string]Icon{}
-		iconNameSet := map[string]bool{}
+		outputIconNameSet := map[string]bool{}
 		for _, i := range IconNames {
 			if parsed.Version == 0 {
-				iconNameSet[i] = true
+				outputIconNameSet[i] = true
 			} else {
-				iconNameSet[i+".v"+strconv.Itoa(parsed.Version)] = true
+				outputIconNameSet[i+".v"+strconv.Itoa(parsed.Version)] = true
 			}
 		}
 		for _, iconFile := range iconFiles {
@@ -86,13 +89,10 @@ func ParsePacks(dir string) []Pack {
 			versionedIconName = strings.TrimSuffix(versionedIconName, ".svg")
 			versionedIconName = strings.TrimSuffix(versionedIconName, ".png")
 			notVersionedIconName := removeVersion(versionedIconName)
-			if !iconNameSet[versionedIconName] {
+			if !outputIconNameSet[versionedIconName] {
 				continue
 			}
 			if strings.HasSuffix(iconFileName, ".svg") {
-				if parsed.InputType == "" {
-					parsed.InputType = "svg"
-				}
 				if parsed.InputType != "svg" {
 					lib.CheckErr(errors.New("incompatible icon type"))
 				}
@@ -104,9 +104,6 @@ func ParsePacks(dir string) []Pack {
 				}
 			}
 			if strings.HasSuffix(iconFileName, ".png") {
-				if parsed.InputType == "" {
-					parsed.InputType = "png"
-				}
 				if parsed.InputType != "png" {
 					lib.CheckErr(errors.New("incompatible icon type"))
 				}

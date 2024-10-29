@@ -375,7 +375,7 @@ func (s *server) chaturbateCode(pack *sitelib.Pack, params map[string]string) st
 	t := parseHTMLTemplate("common/icons-code-generator.gohtml")
 	var b bytes.Buffer
 	w := bufio.NewWriter(&b)
-	width := 5.4 * float64(pack.Scale) / float64(100)
+	width := 5.4 * float64(*pack.ChaturbateIconsScale) / float64(100)
 	hgap := 25
 	if pack.HGap != nil {
 		hgap = *pack.HGap
@@ -390,7 +390,7 @@ func (s *server) chaturbateCode(pack *sitelib.Pack, params map[string]string) st
 	checkErr(t.Execute(w, map[string]interface{}{
 		"pack":       pack,
 		"params":     params,
-		"hgap":       int(width*10) * (hgap + 100 - pack.Scale) / 100,
+		"hgap":       int(width*10) * (hgap + 100 - *pack.ChaturbateIconsScale) / 100,
 		"base_url":   s.cfg.BaseURL,
 		"icon_sizes": iconSizes,
 	}))

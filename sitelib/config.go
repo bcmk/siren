@@ -18,17 +18,18 @@ type Icon struct {
 
 // Pack represents an icon pack
 type Pack struct {
-	HumanName   string   `json:"human_name"`
-	Scale       int      `json:"scale"`
-	VGap        *int     `json:"vgap"`
-	HGap        *int     `json:"hgap"`
-	Disable     bool     `json:"disable"`
-	Version     int      `json:"version"`
-	FinalType   string   `json:"final_type"`
-	HiddenIcons []string `json:"hidden_icons"`
-	Timestamp   int64    `json:"timestamp"`
+	HumanName            string   `json:"human_name"`
+	Scale                int      `json:"scale"`
+	ChaturbateIconsScale *int     `json:"chaturbate_icons_scale"`
+	VGap                 *int     `json:"vgap"`
+	HGap                 *int     `json:"hgap"`
+	Disable              bool     `json:"disable"`
+	Version              int      `json:"version"`
+	FinalType            string   `json:"final_type"`
+	HiddenIcons          []string `json:"hidden_icons"`
+	Timestamp            int64    `json:"timestamp"`
+	InputType            string   `json:"input_type"`
 
-	InputType    string          `json:"-"`
 	Name         string          `json:"-"`
 	Icons        map[string]Icon `json:"-"`
 	VisibleIcons map[string]bool `json:"-"`
