@@ -93,7 +93,7 @@ func ParsePacks(dir string) []Pack {
 				continue
 			}
 			if strings.HasSuffix(iconFileName, ".svg") {
-				if parsed.InputType != "svg" {
+				if parsed.FinalType != "svg" {
 					lib.CheckErr(errors.New("incompatible icon type"))
 				}
 				width, height := parseSVGSize(path.Join(packDir, iconFileName))
@@ -104,7 +104,7 @@ func ParsePacks(dir string) []Pack {
 				}
 			}
 			if strings.HasSuffix(iconFileName, ".png") {
-				if parsed.InputType != "png" {
+				if parsed.FinalType != "png" {
 					lib.CheckErr(errors.New("incompatible icon type"))
 				}
 				width, height := parsePNGSize(path.Join(packDir, iconFileName))
