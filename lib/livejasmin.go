@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"strings"
 )
 
@@ -83,7 +83,7 @@ func (c *LiveJasminChecker) checkEndpoint(endpoint string) (onlineModels map[str
 	if resp.StatusCode != 200 {
 		return nil, nil, fmt.Errorf("query status, %d", resp.StatusCode)
 	}
-	decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
+	decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	var parsed liveJasminResponse
 	err = decoder.Decode(&parsed)
 	if err != nil {
@@ -101,7 +101,7 @@ func (c *LiveJasminChecker) checkEndpoint(endpoint string) (onlineModels map[str
 	for _, m := range parsed.Data.Models {
 		modelID := strings.ToLower(m.PerformerID)
 		onlineModels[modelID] = StatusOnline
-		images[modelID] = "https:" + m.ProfilePictureURL.Size896x504
+		images[modelID] = m.ProfilePictureURL.Size896x504
 	}
 	return
 }
