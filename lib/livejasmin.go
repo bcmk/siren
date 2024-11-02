@@ -17,7 +17,7 @@ type liveJasminModel struct {
 	PerformerID       string `json:"performerId"`
 	Status            string `json:"status"`
 	ProfilePictureURL struct {
-		Size896x503 string `json:"size896x504"`
+		Size896x504 string `json:"size896x504"`
 	} `json:"profilePictureUrl"`
 }
 
@@ -101,7 +101,7 @@ func (c *LiveJasminChecker) checkEndpoint(endpoint string) (onlineModels map[str
 	for _, m := range parsed.Data.Models {
 		modelID := strings.ToLower(m.PerformerID)
 		onlineModels[modelID] = StatusOnline
-		images[modelID] = "https:" + m.ProfilePictureURL.Size896x503
+		images[modelID] = "https:" + m.ProfilePictureURL.Size896x504
 	}
 	return
 }
