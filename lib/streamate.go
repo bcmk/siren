@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 )
@@ -151,7 +151,7 @@ func (c *StreamateChecker) CheckStatusSingle(modelID string) StatusKind {
 		Lerr("[%v] cannot read response for model %s, %v", client.Addr, modelID, err)
 		return StatusUnknown
 	}
-	decoder := xml.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
+	decoder := xml.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	parsed := &streamateResponse{}
 	err = decoder.Decode(parsed)
 	if err != nil {
@@ -210,7 +210,7 @@ func (c *StreamateChecker) checkEndpoint(endpoint string) (onlineModels map[stri
 		if err != nil {
 			return nil, nil, fmt.Errorf("cannot send a query, %v", err)
 		}
-		decoder := xml.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
+		decoder := xml.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 		parsed := &streamateResponse{}
 		err = decoder.Decode(parsed)
 		if err != nil {
