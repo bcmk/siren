@@ -29,16 +29,6 @@
             const inp = document.getElementsByName('siren')[0]
             document.getElementById('fanclub-string').value = inp.value
         }
-
-        function remove_empties(form) {
-            const inputs = form.querySelectorAll("input");
-            for (let i = 0; i < inputs.length; i++) {
-                if (inputs[i].value === "") {
-                    inputs[i].disabled = true
-                }
-            }
-            return true;
-        }
     </script>
     {{ template "twitter" }}
 </head>
@@ -63,6 +53,20 @@
             <a class="btn btn-dark px-3" href="/chic">показать все пакеты</a>
         </div>
         <form novalidate action="/chic/code/{{ .pack.Name }}" class="needs-validation">
+            <h3 class="mt-4">Выберите расположение</h3>
+            <div class="form-check">
+                <input class="form-check-input" type="radio" name="placement" id="title" value="title" checked>
+                <label class="form-check-label" for="title">
+                    Вместо <em>"Описание и бесплатная веб-камера <strong>МОДЕЛЬ</strong>"</em>
+                </label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="radio" name="placement" id="line" value="line">
+                <label class="form-check-label" for="line">
+                    Просто ещё одна строка в разделе
+                </label>
+            </div>
+
             <h3 class="mt-4">Заполните свои социальные сети</h3>
             <div class="mx-auto mt-3">
                 {{ define "simple_input" }}
@@ -275,7 +279,16 @@
         Array.prototype.slice.call(forms).forEach(function (form) {
             form.addEventListener('submit', function (event) {
                 if (form.checkValidity()) {
-                    remove_empties(form)
+                    event.preventDefault()
+                    const formData = new FormData(form);
+                    const filteredParams = new URLSearchParams();
+                    for (let [key, value] of formData.entries()) {
+                        if (value) {
+                            filteredParams.append(key, value);
+                        }
+                    }
+                    const targetUrl = `${form.action}?${filteredParams.toString()}`;
+                    window.location.href = targetUrl;
                 } else {
                     event.preventDefault()
                     event.stopPropagation()

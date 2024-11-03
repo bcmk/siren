@@ -336,15 +336,15 @@ summary {
   display: flex;
   flex-wrap: wrap;
   margin-top: calc(var(--bs-gutter-y) * -1);
-  margin-right: calc(var(--bs-gutter-x) * -.5);
-  margin-left: calc(var(--bs-gutter-x) * -.5);
+  margin-right: calc(var(--bs-gutter-x) * -0.5);
+  margin-left: calc(var(--bs-gutter-x) * -0.5);
 }
 .row > * {
   flex-shrink: 0;
   width: 100%;
   max-width: 100%;
-  padding-right: calc(var(--bs-gutter-x) * .5);
-  padding-left: calc(var(--bs-gutter-x) * .5);
+  padding-right: calc(var(--bs-gutter-x) * 0.5);
+  padding-left: calc(var(--bs-gutter-x) * 0.5);
   margin-top: var(--bs-gutter-y);
 }
 
@@ -368,12 +368,10 @@ summary {
 }
 
 @media (min-width: 576px) {
-
   .col-sm-4 {
     flex: 0 0 auto;
     width: 33.33333333%;
   }
-
   .col-sm-8 {
     flex: 0 0 auto;
     width: 66.66666667%;
@@ -385,42 +383,31 @@ summary {
   }
 }
 @media (min-width: 992px) {
-
   .col-lg-2 {
     flex: 0 0 auto;
     width: 16.66666667%;
   }
-
   .col-lg-8 {
     flex: 0 0 auto;
     width: 66.66666667%;
   }
-
   .col-lg-9 {
     flex: 0 0 auto;
     width: 75%;
   }
-
   .col-lg-10 {
     flex: 0 0 auto;
     width: 83.33333333%;
   }
 }
 @media (min-width: 1200px) {
-
   .col-xl-7 {
     flex: 0 0 auto;
     width: 58.33333333%;
   }
-
   .col-xl-8 {
     flex: 0 0 auto;
     width: 66.66666667%;
-  }
-
-  .col-xl-10 {
-    flex: 0 0 auto;
-    width: 83.33333333%;
   }
 }
 .table {
@@ -549,6 +536,68 @@ summary {
   background-color: #dde0e3;
 }
 
+.form-check {
+  display: block;
+  min-height: 1.5rem;
+  padding-left: 1.5em;
+  margin-bottom: 0.125rem;
+}
+.form-check .form-check-input {
+  float: left;
+  margin-left: -1.5em;
+}
+
+.form-check-input {
+  width: 1em;
+  height: 1em;
+  margin-top: 0.25em;
+  vertical-align: top;
+  background-color: #fff;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  appearance: none;
+  color-adjust: exact;
+}
+.form-check-input[type=checkbox] {
+  border-radius: 0.25em;
+}
+.form-check-input[type=radio] {
+  border-radius: 50%;
+}
+.form-check-input:active {
+  filter: brightness(90%);
+}
+.form-check-input:focus {
+  border-color: #86b7fe;
+  outline: 0;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+.form-check-input:checked {
+  background-color: #0d6efd;
+  border-color: #0d6efd;
+}
+.form-check-input:checked[type=checkbox] {
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 10l3 3l6-6'/%3e%3c/svg%3e");
+}
+.form-check-input:checked[type=radio] {
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='2' fill='%23fff'/%3e%3c/svg%3e");
+}
+.form-check-input[type=checkbox]:indeterminate {
+  background-color: #0d6efd;
+  border-color: #0d6efd;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 10h8'/%3e%3c/svg%3e");
+}
+.form-check-input:disabled {
+  pointer-events: none;
+  filter: none;
+  opacity: 0.5;
+}
+.form-check-input[disabled] ~ .form-check-label, .form-check-input:disabled ~ .form-check-label {
+  opacity: 0.5;
+}
+
 .was-validated .form-control:valid {
   border-color: #198754;
   padding-right: calc(1.5em + 0.75rem);
@@ -560,6 +609,19 @@ summary {
 .was-validated .form-control:valid:focus {
   border-color: #198754;
   box-shadow: 0 0 0 0.25rem rgba(25, 135, 84, 0.25);
+}
+
+.was-validated .form-check-input:valid {
+  border-color: #198754;
+}
+.was-validated .form-check-input:valid:checked {
+  background-color: #198754;
+}
+.was-validated .form-check-input:valid:focus {
+  box-shadow: 0 0 0 0.25rem rgba(25, 135, 84, 0.25);
+}
+.was-validated .form-check-input:valid ~ .form-check-label {
+  color: #198754;
 }
 
 .invalid-feedback {
@@ -586,6 +648,19 @@ summary {
 .was-validated .form-control:invalid:focus, .form-control.is-invalid:focus {
   border-color: #dc3545;
   box-shadow: 0 0 0 0.25rem rgba(220, 53, 69, 0.25);
+}
+
+.was-validated .form-check-input:invalid, .form-check-input.is-invalid {
+  border-color: #dc3545;
+}
+.was-validated .form-check-input:invalid:checked, .form-check-input.is-invalid:checked {
+  background-color: #dc3545;
+}
+.was-validated .form-check-input:invalid:focus, .form-check-input.is-invalid:focus {
+  box-shadow: 0 0 0 0.25rem rgba(220, 53, 69, 0.25);
+}
+.was-validated .form-check-input:invalid ~ .form-check-label, .form-check-input.is-invalid ~ .form-check-label {
+  color: #dc3545;
 }
 
 .btn {
@@ -998,36 +1073,29 @@ summary {
 }
 
 @media (min-width: 576px) {
-
   .mx-sm-0 {
     margin-right: 0 !important;
     margin-left: 0 !important;
   }
-
   .me-sm-0 {
     margin-right: 0 !important;
   }
 }
 @media (min-width: 768px) {
-
   .order-md-last {
     order: 6 !important;
   }
-
   .pt-md-4 {
     padding-top: 1.5rem !important;
   }
-
   .pt-md-5 {
     padding-top: 3rem !important;
   }
 }
 @media (min-width: 992px) {
-
   .order-lg-first {
     order: -1 !important;
   }
-
   .mt-lg-0 {
     margin-top: 0 !important;
   }
@@ -1061,31 +1129,31 @@ summary {
 readers do not read off random characters that represent icons */
 
 .fa-github:before {
-  content: "";
+  content: "\f09b";
 }
 
 .fa-reddit:before {
-  content: "";
+  content: "\f1a1";
 }
 
 .fa-telegram:before {
-  content: "";
+  content: "\f2c6";
 }
 
 .fa-thumbs-down:before {
-  content: "";
+  content: "\f165";
 }
 
 .fa-thumbs-up:before {
-  content: "";
+  content: "\f164";
 }
 
 .fa-twitch:before {
-  content: "";
+  content: "\f1e8";
 }
 
 .fa-twitter:before {
-  content: "";
+  content: "\f099";
 }
 
 /*!
@@ -1208,39 +1276,6 @@ input:checked + .slider:before {
 .input-tip {
   align-self: center;
   margin: 0;
-}
-
-.size-selection {
-  margin: -20px;
-  border-spacing: 20px;
-  border-collapse: separate;
-}
-
-.size-selection td {
-  width: 100px;
-  height: 100px;
-}
-
-input[type=radio].outlined-selection {
-  display: none;
-}
-
-input[type=radio].outlined-selection + label {
-  width: 100%;
-  height: 100%;
-  background-color: white;
-  border-radius: 10px;
-  border: 1px solid var(--light) !important;
-  display: flex;
-  -ms-flex-pack: center;
-  justify-content: center;
-  -ms-flex-align: center;
-  align-items: center;
-}
-
-input[type=radio].outlined-selection:checked + label {
-  box-shadow: 0 0 0 5px var(--bs-primary);
-  cursor: default;
 }
 
 input[type=radio].like-selection {

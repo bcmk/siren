@@ -137,7 +137,7 @@ var packParams = []string{
 	"reddit",
 	"twitch",
 	"discord",
-	"size",
+	"placement",
 }
 
 var chaturbateModelRegex = regexp.MustCompile(`^(?:https?://)?(?:www\.|ar\.|de\.|el\.|en\.|es\.|fr\.|hi\.|it\.|ja\.|ko\.|nl\.|pt\.|ru\.|tr\.|zh\.|m\.)?chaturbate\.com(?:/p|/b)?/([A-Za-z0-9\-_@]+)/?(?:\?.*)?$|^([A-Za-z0-9\-_@]+)$`)

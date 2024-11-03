@@ -1,5 +1,10 @@
 {{- raw_html "<!-- ICONS BEGIN -->" -}}
+
+{{- if eq .params.placement "line" -}}
+<b style="display: flex; flex-direction: row; column-gap: {{ .hgap }}px; height: 62px; align-items: center;">
+{{- else -}}
 <b style="display: flex; flex-direction: row; column-gap: {{ .hgap }}px; height: 62px; position: fixed; top: 0; left: 0; z-index: 51732; min-width: 400px; padding: 0 16px; backdrop-filter: blur(999px); align-items: center;">
+{{- end -}}
     {{- define "simple_icon" -}}
         {{- if .value -}}
             {{- $icon_sizes := index .icon_sizes .name -}}
@@ -49,5 +54,7 @@
         {{- template "simple_icon" enhance $base_map (map "name" "siren" "value" (printf "https://siren.chat/cb/%s" .params.siren)) -}}
     {{- end -}}
 </b>
+{{- if eq .params.placement "title" -}}
 <p style="height: 62px; margin: 0;"/>
+{{- end -}}
 {{- raw_html "<!-- ICONS END -->" -}}
