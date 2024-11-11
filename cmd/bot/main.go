@@ -1,8 +1,8 @@
+// This is the main executable package
 package main
 
 import (
 	"bytes"
-	"crypto/tls"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"html"
 	"image"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"net/http"
@@ -639,8 +638,8 @@ func (w *worker) confirmationSeconds(status lib.StatusKind) int {
 func (w *worker) updateStatus(insertStatusChangeStmt, updateLastStatusChangeStmt *sql.Stmt, next statusChange) {
 	prev := w.siteStatuses[next.modelID]
 	if next.status != prev.status {
-		w.mustExecPrepared(insertStatusChange, insertStatusChangeStmt, next.modelID, next.status, next.timestamp)
-		w.mustExecPrepared(updateLastStatusChange, updateLastStatusChangeStmt, next.modelID, next.status, next.timestamp)
+		w.mustExecPrepared(insertStatusChangeStmt, next.modelID, next.status, next.timestamp)
+		w.mustExecPrepared(updateLastStatusChangeStmt, next.modelID, next.status, next.timestamp)
 		w.siteStatuses[next.modelID] = next
 		if next.status == lib.StatusOnline {
 			w.siteOnline[next.modelID] = true
@@ -663,14 +662,14 @@ func (w *worker) confirmStatus(updateModelStatusStmt *sql.Stmt, now int) []strin
 			} else {
 				delete(w.ourOnline, modelID)
 			}
-			w.mustExecPrepared(updateModelStatus, updateModelStatusStmt, modelID, statusChange.status)
+			w.mustExecPrepared(updateModelStatusStmt, modelID, statusChange.status)
 			confirmations = append(confirmations, modelID)
 		}
 	}
 	return confirmations
 }
 
-func (w *worker) notifyOfAddResults(queue chan outgoingPacket, notifications []notification, social bool) {
+func (w *worker) notifyOfAddResults(queue chan outgoingPacket, notifications []notification) {
 	for _, n := range notifications {
 		data := tplData{"model": n.modelID}
 		if n.status&(lib.StatusOnline|lib.StatusOffline|lib.StatusDenied) != 0 {
@@ -983,7 +982,7 @@ func (w *worker) listModels(endpoint string, chatID int64, now int) {
 }
 
 func (w *worker) modelDuration(modelID string, now int) *int {
-	begin, end, prevStatus := w.lastSeenInfo(modelID, now)
+	begin, end, prevStatus := w.lastSeenInfo(modelID)
 	if end != 0 {
 		timeDiff := now - end
 		return &timeDiff
@@ -1332,15 +1331,6 @@ func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arg
 	return false, false
 }
 
-func splitAddress(a string) (string, string) {
-	a = strings.ToLower(a)
-	parts := strings.Split(a, "@")
-	if len(parts) != 2 {
-		return "", ""
-	}
-	return parts[0], parts[1]
-}
-
 // noinspection SpellCheckingInspection
 const letterBytes = "abcdefghijklmnopqrstuvwxyz"
 
@@ -1428,7 +1418,7 @@ func (w *worker) start(endpoint string, chatID int64, referrer string, now int) 
 			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].FollowerExists, nil, replyPacket)
 		}
 	}
-	w.addUser(endpoint, chatID)
+	w.addUser(chatID)
 	if modelID != "" {
 		if w.addModel(endpoint, chatID, modelID, now) {
 			w.mustExec("update models set referred_users=referred_users+1 where model_id=?", modelID)
@@ -1440,7 +1430,7 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	w.resetBlock(endpoint, chatID)
 	command = strings.ToLower(command)
 	if command != "start" {
-		w.addUser(endpoint, chatID)
+		w.addUser(chatID)
 	}
 	linf("chat: %d, command: %s %s", chatID, command, arguments)
 
@@ -1678,7 +1668,7 @@ func (w *worker) processTGUpdate(p incomingPacket) bool {
 }
 
 func getRss() (int64, error) {
-	buf, err := ioutil.ReadFile("/proc/self/statm")
+	buf, err := os.ReadFile("/proc/self/statm")
 	if err != nil {
 		return 0, err
 	}
@@ -1804,14 +1794,6 @@ func (c *config) getOurIDs() []int64 {
 	return ids
 }
 
-func loadTLS(certFile string, keyFile string) (*tls.Config, error) {
-	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
-	if err != nil {
-		return nil, err
-	}
-	return &tls.Config{Certificates: []tls.Certificate{cert}}, nil
-}
-
 func (q queryDurationsData) total() float64 {
 	return q.avg * float64(q.count)
 }
@@ -1930,7 +1912,7 @@ func (w *worker) processSubsConfirmations(res lib.StatusResults) {
 	} else {
 		lerr("confirmations query failed")
 	}
-	w.notifyOfAddResults(w.highPriorityMsg, nots, false)
+	w.notifyOfAddResults(w.highPriorityMsg, nots)
 	w.storeNotifications(nots)
 }
 
@@ -2011,8 +1993,6 @@ func main() {
 		fmt.Println(lib.Version)
 		os.Exit(0)
 	}
-
-	rand.Seed(time.Now().UnixNano())
 
 	w := newWorker(flag.Args())
 	w.logConfig()

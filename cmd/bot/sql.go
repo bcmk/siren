@@ -67,20 +67,13 @@ func (w *worker) mustExec(query string, args ...interface{}) {
 	checkErr(stmt.Close())
 }
 
-func (w *worker) mustExecPrepared(query string, stmt *sql.Stmt, args ...interface{}) {
+func (w *worker) mustExecPrepared(stmt *sql.Stmt, args ...interface{}) {
 	w.checkTID()
 	_, err := stmt.Exec(args...)
 	checkErr(err)
 }
 
 func (w *worker) mustInt(query string, args ...interface{}) (result int) {
-	defer w.measure("db: " + query)()
-	row := w.db.QueryRow(query, args...)
-	checkErr(row.Scan(&result))
-	return result
-}
-
-func (w *worker) mustString(query string, args ...interface{}) (result string) {
 	defer w.measure("db: " + query)()
 	row := w.db.QueryRow(query, args...)
 	checkErr(row.Scan(&result))

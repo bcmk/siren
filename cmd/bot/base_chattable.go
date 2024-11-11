@@ -18,9 +18,3 @@ type photoConfig struct{ tg.PhotoConfig }
 func (m *photoConfig) baseChat() *tg.BaseChat {
 	return &m.BaseChat
 }
-
-type documentConfig struct{ tg.DocumentConfig }
-
-func (m *documentConfig) baseChat() *tg.BaseChat {
-	return &m.BaseChat
-}

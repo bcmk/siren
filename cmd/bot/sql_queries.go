@@ -40,13 +40,13 @@ func (w *worker) storeNotifications(nots []notification) {
 	stmt, err := tx.Prepare(storeNotification)
 	checkErr(err)
 	for _, n := range nots {
-		w.mustExecPrepared(storeNotification, stmt, n.endpoint, n.chatID, n.modelID, n.status, n.timeDiff, n.imageURL, n.social, n.priority, n.sound, n.kind)
+		w.mustExecPrepared(stmt, n.endpoint, n.chatID, n.modelID, n.status, n.timeDiff, n.imageURL, n.social, n.priority, n.sound, n.kind)
 	}
 	checkErr(stmt.Close())
 	checkErr(tx.Commit())
 }
 
-func (w *worker) lastSeenInfo(modelID string, now int) (begin int, end int, prevStatus lib.StatusKind) {
+func (w *worker) lastSeenInfo(modelID string) (begin int, end int, prevStatus lib.StatusKind) {
 	var maybeEnd *int
 	var maybePrevStatus *lib.StatusKind
 	if !w.maybeRecord(`
@@ -159,7 +159,7 @@ func (w *worker) user(chatID int64) (user user, found bool) {
 	return
 }
 
-func (w *worker) addUser(endpoint string, chatID int64) {
+func (w *worker) addUser(chatID int64) {
 	w.mustExec(`insert or ignore into users (chat_id, max_models) values (?, ?)`, chatID, w.cfg.MaxModels)
 }
 
