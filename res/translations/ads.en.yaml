@@ -1,3 +1,11 @@
+twitter:
+  str: Do not forget to subscribe to our X page https://x.com/siren_tlg
+telegram_channel:
+  str: Do not forget to subscribe to our Telegram channel https://t.me/siren_telegram_bot
+other:
+  str: Try this bot for other sites. Type /help to see the links
 ukraine:
-  str: Our team is against unprovoked Russian aggression in Ukraine. We are against Putin's fascist rhetoric. Don't be silent! Stop the war!
+  str: >-
+    Our team is against unprovoked Russian aggression in Ukraine.
+    We are against Putin's fascist rhetoric. Don't be silent! Stop the war!
   image: flag-of-ukraine.png
