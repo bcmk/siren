@@ -10,7 +10,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/nicklaw5/helix v1.25.0
 	github.com/tdewolff/minify/v2 v2.9.21
-	golang.org/x/image v0.12.0
+	golang.org/x/image v0.18.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
