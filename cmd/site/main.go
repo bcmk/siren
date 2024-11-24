@@ -1,3 +1,4 @@
+// Main site executable
 package main
 
 import (
@@ -27,6 +28,8 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/tdewolff/minify/v2"
 	hmin "github.com/tdewolff/minify/v2/html"
+
+	_ "image/png"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -127,6 +130,7 @@ var packParams = []string{
 	"fancentro",
 	"frisk",
 	"fansly",
+	"throne",
 	"avn",
 	"mail",
 	"snapchat",

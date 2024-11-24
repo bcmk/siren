@@ -3,9 +3,7 @@ package sitelib
 import (
 	"encoding/json"
 	"encoding/xml"
-	"errors"
 	"image"
-	_ "image/png"
 	"os"
 	"path"
 	"regexp"
@@ -34,6 +32,7 @@ var IconNames = []string{
 	"fancentro",
 	"frisk",
 	"fansly",
+	"throne",
 	"mail",
 	"snapchat",
 	"telegram",
@@ -93,9 +92,6 @@ func ParsePacks(dir string) []Pack {
 				continue
 			}
 			if strings.HasSuffix(iconFileName, ".svg") {
-				if parsed.FinalType != "svg" {
-					lib.CheckErr(errors.New("incompatible icon type"))
-				}
 				width, height := parseSVGSize(path.Join(packDir, iconFileName))
 				foundIcons[notVersionedIconName] = Icon{
 					Name:   versionedIconName,
@@ -104,9 +100,6 @@ func ParsePacks(dir string) []Pack {
 				}
 			}
 			if strings.HasSuffix(iconFileName, ".png") {
-				if parsed.FinalType != "png" {
-					lib.CheckErr(errors.New("incompatible icon type"))
-				}
 				width, height := parsePNGSize(path.Join(packDir, iconFileName))
 				foundIcons[notVersionedIconName] = Icon{
 					Name:   versionedIconName,

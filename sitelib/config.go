@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/bcmk/siren/lib"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 // Icon represents all required icon's fields
