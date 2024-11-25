@@ -46,6 +46,112 @@ var IconNames = []string{
 	"avn",
 }
 
+func buildInputIconFileSetNeedle(parsedPack *Pack) map[string]bool {
+	fileSet := map[string]bool{}
+	for _, i := range IconNames {
+		fileSet[i+"."+parsedPack.InputType] = true
+	}
+	return fileSet
+}
+
+func parseInputIcon(parsedPack *Pack, iconFileSetNeedle map[string]bool, iconFileName string) *Icon {
+	if !iconFileSetNeedle[iconFileName] {
+		return nil
+	}
+
+	return &Icon{
+		NotVersionedName: strings.TrimSuffix(iconFileName, "."+parsedPack.InputType),
+	}
+}
+
+func buildFinalIconFileSetNeedle(parsedPack *Pack) map[string]bool {
+	fileSet := map[string]bool{}
+	for _, i := range IconNames {
+		if parsedPack.Version == 0 {
+			fileSet[i+"."+parsedPack.FinalType] = true
+		} else {
+			fileSet[i+".v"+strconv.Itoa(parsedPack.Version)+"."+parsedPack.FinalType] = true
+		}
+	}
+	return fileSet
+}
+
+func parseFinalIcon(parsedPack *Pack, iconFileSetNeedle map[string]bool, packDir string, iconFileName string) *Icon {
+	if !iconFileSetNeedle[iconFileName] {
+		return nil
+	}
+
+	width, height := .0, .0
+	if parsedPack.FinalType == "svg" {
+		width, height = parseSVGSize(path.Join(packDir, iconFileName))
+	} else if parsedPack.FinalType == "png" {
+		width, height = parsePNGSize(path.Join(packDir, iconFileName))
+	}
+
+	versionedIconName := strings.TrimSuffix(iconFileName, "."+parsedPack.FinalType)
+	return &Icon{
+		VersionedName:    versionedIconName,
+		NotVersionedName: removeVersion(versionedIconName),
+		Width:            width,
+		Height:           height,
+	}
+}
+
+// removeVersion removes the version from the end of icon name, like .v2
+func removeVersion(name string) string {
+	re := regexp.MustCompile(`\.v\d+$`)
+	return re.ReplaceAllString(name, "")
+}
+
+func fillVisibleIcons(parsedPack *Pack, foundFinalIcons map[string]Icon) {
+	hiddenIcons := map[string]bool{}
+	for _, i := range parsedPack.HiddenIcons {
+		hiddenIcons[i] = true
+	}
+	for i := range foundFinalIcons {
+		if !hiddenIcons[i] {
+			parsedPack.VisibleIcons[i] = true
+		}
+	}
+}
+
+func parsePack(libraryDir, packName string) Pack {
+	packDir := path.Join(libraryDir, packName)
+	configFile, err := os.Open(path.Join(packDir, "config.json"))
+	lib.CheckErr(err)
+	decoder := json.NewDecoder(configFile)
+	parsedPack := Pack{}
+	err = decoder.Decode(&parsedPack)
+	lib.CheckErr(err)
+	lib.CheckErr(configFile.Close())
+	parsedPack.Name = packName
+	if parsedPack.ChaturbateIconsScale == nil {
+		parsedPack.ChaturbateIconsScale = &parsedPack.Scale
+	}
+	iconFiles, err := os.ReadDir(packDir)
+	lib.CheckErr(err)
+	foundInputIcons := map[string]Icon{}
+	foundFinalIcons := map[string]Icon{}
+	inputIconFileSetNeedle := buildInputIconFileSetNeedle(&parsedPack)
+	finalIconFileSetNeedle := buildFinalIconFileSetNeedle(&parsedPack)
+	for _, iconFile := range iconFiles {
+		inputIcon := parseInputIcon(&parsedPack, inputIconFileSetNeedle, iconFile.Name())
+		if inputIcon != nil {
+			foundInputIcons[inputIcon.NotVersionedName] = *inputIcon
+		}
+		finalIcon := parseFinalIcon(&parsedPack, finalIconFileSetNeedle, packDir, iconFile.Name())
+		if finalIcon != nil {
+			foundFinalIcons[finalIcon.NotVersionedName] = *finalIcon
+		}
+	}
+	parsedPack.InputIcons = foundInputIcons
+	parsedPack.FinalIcons = foundFinalIcons
+	parsedPack.VisibleIcons = map[string]bool{}
+	fillVisibleIcons(&parsedPack, foundFinalIcons)
+	lib.Linf("configured %s v%d, input: %s\n", packName, parsedPack.Version, parsedPack.InputType)
+	return parsedPack
+}
+
 // ParsePacks parses icons packs
 func ParsePacks(dir string) []Pack {
 	var packs []Pack
@@ -59,77 +165,11 @@ func ParsePacks(dir string) []Pack {
 		if strings.HasPrefix(packName, "data-") || strings.HasPrefix(packName, "skip-") {
 			continue
 		}
-		packDir := path.Join(dir, packName)
-		configFile, err := os.Open(path.Join(packDir, "config.json"))
-		lib.CheckErr(err)
-		decoder := json.NewDecoder(configFile)
-		parsed := Pack{}
-		err = decoder.Decode(&parsed)
-		lib.CheckErr(err)
-		lib.CheckErr(configFile.Close())
-		parsed.Name = packName
-		if parsed.ChaturbateIconsScale == nil {
-			parsed.ChaturbateIconsScale = &parsed.Scale
-		}
-		iconFiles, err := os.ReadDir(packDir)
-		lib.CheckErr(err)
-		foundIcons := map[string]Icon{}
-		outputIconNameSet := map[string]bool{}
-		for _, i := range IconNames {
-			if parsed.Version == 0 {
-				outputIconNameSet[i] = true
-			} else {
-				outputIconNameSet[i+".v"+strconv.Itoa(parsed.Version)] = true
-			}
-		}
-		for _, iconFile := range iconFiles {
-			iconFileName := iconFile.Name()
-			versionedIconName := iconFileName
-			versionedIconName = strings.TrimSuffix(versionedIconName, ".svg")
-			versionedIconName = strings.TrimSuffix(versionedIconName, ".png")
-			notVersionedIconName := removeVersion(versionedIconName)
-			if !outputIconNameSet[versionedIconName] {
-				continue
-			}
-			if strings.HasSuffix(iconFileName, ".svg") {
-				width, height := parseSVGSize(path.Join(packDir, iconFileName))
-				foundIcons[notVersionedIconName] = Icon{
-					Name:   versionedIconName,
-					Width:  width,
-					Height: height,
-				}
-			}
-			if strings.HasSuffix(iconFileName, ".png") {
-				width, height := parsePNGSize(path.Join(packDir, iconFileName))
-				foundIcons[notVersionedIconName] = Icon{
-					Name:   versionedIconName,
-					Width:  width,
-					Height: height,
-				}
-			}
-		}
-		parsed.Icons = foundIcons
-		parsed.VisibleIcons = map[string]bool{}
-		hiddenIcons := map[string]bool{}
-		for _, i := range parsed.HiddenIcons {
-			hiddenIcons[i] = true
-		}
-		for i := range foundIcons {
-			if !hiddenIcons[i] {
-				parsed.VisibleIcons[i] = true
-			}
-		}
-		lib.Linf("configured %s v%d, input: %s\n", packName, parsed.Version, parsed.InputType)
+		parsed := parsePack(dir, packName)
 		packs = append(packs, parsed)
 	}
 	sort.Slice(packs, func(i, j int) bool { return packs[i].Timestamp < packs[j].Timestamp })
 	return packs
-}
-
-// removeVersion removes the version from the end of icon name, like .v2
-func removeVersion(name string) string {
-	re := regexp.MustCompile(`\.v\d+$`)
-	return re.ReplaceAllString(name, "")
 }
 
 // parsePNGSize parses the PNG file and returns its width and height

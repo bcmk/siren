@@ -385,7 +385,7 @@ func (s *server) chaturbateCode(pack *sitelib.Pack, params map[string]string) st
 		hgap = *pack.HGap
 	}
 	iconSizes := map[string]iconSize{}
-	for k, v := range pack.Icons {
+	for k, v := range pack.FinalIcons {
 		iconSizes[k] = iconSize{
 			Width:  width,
 			Height: width * v.Height / v.Width,
@@ -433,7 +433,7 @@ func (s *server) likesForPack(pack string) int {
 func (s *server) iconsCount() int {
 	count := 0
 	for _, i := range s.packs {
-		count += len(i.Icons)
+		count += len(i.FinalIcons)
 	}
 	return count
 }

@@ -11,9 +11,10 @@ import (
 
 // Icon represents all required icon's fields
 type Icon struct {
-	Name   string
-	Width  float64
-	Height float64
+	VersionedName    string
+	NotVersionedName string
+	Width            float64
+	Height           float64
 }
 
 // Pack represents an icon pack
@@ -31,7 +32,9 @@ type Pack struct {
 	InputType            string   `json:"input_type"`
 
 	Name         string          `json:"-"`
-	Icons        map[string]Icon `json:"-"`
+	SourceIcons  map[string]Icon `json:"-"`
+	InputIcons   map[string]Icon `json:"-"`
+	FinalIcons   map[string]Icon `json:"-"`
 	VisibleIcons map[string]bool `json:"-"`
 }
 
