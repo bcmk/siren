@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"regexp"
 	"strings"
 )
@@ -52,7 +52,7 @@ func (c *ChaturbateChecker) CheckStatusSingle(modelID string) StatusKind {
 		Lerr("[%v] cannot read response for model %s, %v", addr, modelID, err)
 		return StatusUnknown
 	}
-	decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
+	decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	parsed := &chaturbateResponse{}
 	err = decoder.Decode(parsed)
 	if err != nil {
@@ -113,7 +113,7 @@ func (c *ChaturbateChecker) checkEndpoint(endpoint string) (onlineModels map[str
 	if resp.StatusCode != 200 {
 		return nil, nil, fmt.Errorf("query status, %d", resp.StatusCode)
 	}
-	decoder := json.NewDecoder(ioutil.NopCloser(bytes.NewReader(buf.Bytes())))
+	decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	var parsed []chaturbateModel
 	err = decoder.Decode(&parsed)
 	if err != nil {
