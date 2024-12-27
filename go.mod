@@ -9,7 +9,7 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/nicklaw5/helix v1.25.0
-	github.com/tdewolff/minify/v2 v2.9.21
+	github.com/tdewolff/minify/v2 v2.21.2
 	golang.org/x/image v0.18.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -23,9 +23,9 @@ require (
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
-	github.com/tdewolff/parse/v2 v2.5.19 // indirect
+	github.com/tdewolff/parse/v2 v2.7.19 // indirect
 	github.com/technoweenie/multipartstreamer v1.0.1 // indirect
-	golang.org/x/sys v0.5.0 // indirect
+	golang.org/x/sys v0.25.0 // indirect
 )
 
 go 1.23

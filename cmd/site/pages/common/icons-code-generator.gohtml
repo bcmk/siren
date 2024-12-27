@@ -1,9 +1,10 @@
-{{- raw_html "<!-- ICONS BEGIN -->" -}}
-
 {{- if eq .params.placement "line" -}}
+{{- raw_html "<!-- ICONS BEGIN -->" -}}
 <b style="display: flex; flex-direction: row; column-gap: {{ .hgap }}px; height: 62px; align-items: center;">
 {{- else -}}
-<b style="display: flex; flex-direction: row; column-gap: {{ .hgap }}px; height: 62px; position: fixed; top: 0; left: 0; z-index: 51732; min-width: 400px; padding: 0 16px; backdrop-filter: blur(999px); -webkit-backdrop-filter: blur(999px); align-items: center;"></b>
+{{- raw_html .bio_header_remover -}}
+{{- raw_html "<!-- ICONS BEGIN -->" -}}
+<b style="display: flex; flex-direction: row; column-gap: {{ .hgap }}px; height: 62px; position: fixed; top: 0; left: 0; z-index: 51732; padding: 0 16px; align-items: center;">
 {{- end -}}
     {{- define "simple_icon" -}}
         {{- if .value -}}

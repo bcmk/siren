@@ -50,6 +50,7 @@ type server struct {
 	ruPackTemplate     *ht.Template
 	enCodeTemplate     *ht.Template
 	ruCodeTemplate     *ht.Template
+	bioHeaderRemover   string
 
 	css string
 }
@@ -392,11 +393,12 @@ func (s *server) chaturbateCode(pack *sitelib.Pack, params map[string]string) st
 		}
 	}
 	checkErr(t.Execute(w, map[string]interface{}{
-		"pack":       pack,
-		"params":     params,
-		"hgap":       int(width*10) * (hgap + 100 - *pack.ChaturbateIconsScale) / 100,
-		"base_url":   s.cfg.BaseURL,
-		"icon_sizes": iconSizes,
+		"pack":               pack,
+		"params":             params,
+		"hgap":               int(width*10) * (hgap + 100 - *pack.ChaturbateIconsScale) / 100,
+		"base_url":           s.cfg.BaseURL,
+		"icon_sizes":         iconSizes,
+		"bio_header_remover": s.bioHeaderRemover,
 	}))
 	checkErr(w.Flush())
 	m := minify.New()
@@ -436,6 +438,18 @@ func (s *server) iconsCount() int {
 		count += len(i.FinalIcons)
 	}
 	return count
+}
+
+func (s *server) fillRawFiles() {
+	content, err := os.ReadFile("pages/common/bio-header-remover.html")
+	s.bioHeaderRemover = strings.TrimSuffix(string(content), "\n")
+	re := regexp.MustCompile(`\n\s*`)
+	s.bioHeaderRemover = re.ReplaceAllString(s.bioHeaderRemover, " ")
+	re = regexp.MustCompile(`\(\s+`)
+	s.bioHeaderRemover = re.ReplaceAllString(s.bioHeaderRemover, "(")
+	re = regexp.MustCompile(`\s+\)`)
+	s.bioHeaderRemover = re.ReplaceAllString(s.bioHeaderRemover, ")")
+	checkErr(err)
 }
 
 func (s *server) fillTemplates() {
@@ -481,6 +495,7 @@ func main() {
 	if len(srv.packs) > 2 {
 		srv.packs = append([]sitelib.Pack{srv.packs[len(srv.packs)-1]}, srv.packs[:len(srv.packs)-1]...)
 	}
+	srv.fillRawFiles()
 	srv.fillTemplates()
 	srv.fillEnabledPacks()
 	srv.fillCSS()
