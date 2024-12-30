@@ -40,3 +40,14 @@ faq:
     {{ template "faq_pricing" . }}
 
     {{ template "faq_direct_subscriptions"}}
+help:
+  parse: html
+  disable_preview: true
+  str: |-
+    {{ template "hello" .website_link }}
+
+    {{ template "commands" }}
+
+    {{ template "sites" }}
+
+    {{ template "social" }}
