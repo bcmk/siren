@@ -35,7 +35,7 @@ type config struct {
 	Debug                           bool                      `json:"debug"`                              // debug mode
 	CheckGID                        bool                      `json:"check_gid"`                          // check goroutines ids
 	ListenAddress                   string                    `json:"listen_address"`                     // the address to listen to
-	Website                         string                    `json:"website"`                            // one of the following strings: "bongacams", "stripchat", "chaturbate", "livejasmin", "flirt4free", "streamate"
+	Website                         string                    `json:"website"`                            // one of the following strings: "bongacams", "stripchat", "chaturbate", "livejasmin", "flirt4free", "streamate", "cam4"
 	WebsiteLink                     string                    `json:"website_link"`                       // affiliate link to website
 	PeriodSeconds                   int                       `json:"period_seconds"`                     // the period of querying models statuses
 	CleaningPeriodSeconds           int                       `json:"cleaning_period_seconds"`            // the cleaning period

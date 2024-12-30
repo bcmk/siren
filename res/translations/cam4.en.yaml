@@ -1,13 +1,6 @@
 site:
   parse: html
-  str: CamSoda
-add_error:
-  parse: html
-  str: |-
-    Could not add the model {{ .model }}
-    Check the camname or try later
-    Syntax: /add <code>CAMNAME</code>
-    {{ template "address_line" }}
+  str: CAM4
 help:
   parse: html
   disable_preview: true
@@ -16,21 +9,9 @@ help:
 
     {{ template "commands" }}
 
-    {{ template "address_line" }}
-
-    {{ template "languages" }}
-
     {{ template "sites" }}
 
     {{ template "social" }}
-address_line:
-  parse: html
-  str: Use the camname from an address line of your browser
-languages:
-  parse: html
-  str: |-
-    <b>This bot in other languages</b>
-    Русский: <a href="https://t.me/RuCamSodaSirenBot">RuCamSodaSirenBot</a>
 sites:
   parse: html
   str: |-
@@ -39,53 +20,13 @@ sites:
     BongaCams: <a href="https://t.me/BongaCamsOnlineBot">BongaCamsOnlineBot</a>
     Stripchat: <a href="https://t.me/StripchatOnlineBot">StripchatOnlineBot</a>
     LiveJasmin: <a href="https://t.me/LiveJasminSirenBot">LiveJasminSirenBot</a>
+    CamSoda: <a href="https://t.me/CamSodaSirenBot">CamSodaSirenBot</a>
     Flirt4Free: <a href="https://t.me/Flirt4FreeSirenBot">Flirt4FreeSirenBot</a>
     Streamate: <a href="https://t.me/StreamateSirenBot">StreamateSirenBot</a>
     Twitch: <a href="https://t.me/TwitchSirenBot">TwitchSirenBot</a>
 add_example:
   parse: html
-  str: /add gorgonmedusa
-syntax_add:
-  parse: html
-  str: |-
-    Enter
-
-    /add <code>CAMNAME</code>
-
-    {{ template "address_line" }}
-
-    Example
-
-    {{ template "add_example" }}
-syntax_remove:
-  parse: html
-  str: |-
-    Enter
-
-    /remove <code>CAMNAME</code>
-
-    {{ template "address_line" }}
-unknown_command:
-  parse: html
-  str: |-
-    Unknown command. To subscribe to a model enter
-
-    /add <code>CAMNAME</code>
-
-    {{ template "address_line" }}
-
-    Example
-
-    {{ template "add_example" }}
-zero_subscriptions:
-  parse: html
-  str: |-
-    You are not subscribed to any model
-    To subscribe enter
-
-    /add <code>CAMNAME</code>
-
-    {{ template "address_line" }}
+  str: /add eva_alson
 faq_direct_subscriptions:
   parse: html
   str: >

@@ -304,6 +304,10 @@ func newWorker(args []string) *worker {
 		w.checker = &lib.TwitchChecker{}
 		w.modelIDPreprocessing = lib.TwitchCanonicalModelID
 		w.modelIDRegexp = lib.TwitchModelIDRegexp
+	case "cam4":
+		w.checker = &lib.Cam4Checker{}
+		w.modelIDPreprocessing = lib.Cam4CanonicalModelID
+		w.modelIDRegexp = lib.Cam4ModelIDRegexp
 	default:
 		panic("wrong website")
 	}
