@@ -12,19 +12,6 @@ import (
 type queryParams []interface{}
 type scanTo []interface{}
 
-var insertStatusChange = "insert into status_changes (model_id, status, timestamp) values (?,?,?)"
-var updateLastStatusChange = `
-	insert into last_status_changes (model_id, status, timestamp)
-	values (?,?,?)
-	on conflict(model_id) do update set status=excluded.status, timestamp=excluded.timestamp`
-var updateModelStatus = `
-	insert into models (model_id, status)
-	values (?,?)
-	on conflict(model_id) do update set status=excluded.status`
-var storeNotification = `
-	insert into notification_queue (endpoint, chat_id, model_id, status, time_diff, image_url, social, priority, sound, kind)
-	values (?,?,?,?,?,?,?,?,?,?)`
-
 func gid() int {
 	var buf [64]byte
 	n := runtime.Stack(buf[:], false)

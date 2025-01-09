@@ -18,3 +18,5 @@
 .idea/
 backup/
 .DS_Store
+?*.ignore
+?*.ignore.?*

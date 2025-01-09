@@ -12,31 +12,32 @@ import (
 func TestSql(t *testing.T) {
 	linf = func(string, ...interface{}) {}
 	w := newTestWorker()
+	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
 	w.initCache()
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values (?,?,?)", "ep1", 1, "a")
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values (?,?,?)", "ep1", 2, "b")
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values (?,?,?)", "ep1", 3, "c")
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values (?,?,?)", "ep1", 3, "c2")
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values (?,?,?)", "ep1", 3, "c3")
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values (?,?,?)", "ep1", 4, "d")
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values (?,?,?)", "ep1", 5, "d")
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values (?,?,?)", "ep1", 6, "e")
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values (?,?,?)", "ep1", 7, "f")
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values (?,?,?)", "ep2", 6, "e")
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values (?,?,?)", "ep2", 7, "f")
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values (?,?,?)", "ep2", 8, "g")
-	w.mustExec("insert into block (endpoint, chat_id, block) values (?,?,?)", "ep1", 2, 0)
-	w.mustExec("insert into block (endpoint, chat_id, block) values (?,?,?)", "ep1", 3, w.cfg.BlockThreshold)
-	w.mustExec("insert into block (endpoint, chat_id, block) values (?,?,?)", "ep1", 4, w.cfg.BlockThreshold-1)
-	w.mustExec("insert into block (endpoint, chat_id, block) values (?,?,?)", "ep1", 5, w.cfg.BlockThreshold+1)
-	w.mustExec("insert into block (endpoint, chat_id, block) values (?,?,?)", "ep1", 6, w.cfg.BlockThreshold)
-	w.mustExec("insert into block (endpoint, chat_id, block) values (?,?,?)", "ep1", 7, w.cfg.BlockThreshold)
-	w.mustExec("insert into block (endpoint, chat_id, block) values (?,?,?)", "ep2", 7, w.cfg.BlockThreshold)
-	w.mustExec("insert into models (model_id, status) values (?,?)", "a", lib.StatusOnline)
-	w.mustExec("insert into models (model_id, status) values (?,?)", "b", lib.StatusOnline)
-	w.mustExec("insert into models (model_id, status) values (?,?)", "c", lib.StatusOnline)
-	w.mustExec("insert into models (model_id, status) values (?,?)", "c2", lib.StatusOnline)
+	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 1, "a")
+	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 2, "b")
+	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 3, "c")
+	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 3, "c2")
+	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 3, "c3")
+	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 4, "d")
+	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 5, "d")
+	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 6, "e")
+	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 7, "f")
+	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep2", 6, "e")
+	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep2", 7, "f")
+	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep2", 8, "g")
+	w.mustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 2, 0)
+	w.mustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 3, w.cfg.BlockThreshold)
+	w.mustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 4, w.cfg.BlockThreshold-1)
+	w.mustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 5, w.cfg.BlockThreshold+1)
+	w.mustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 6, w.cfg.BlockThreshold)
+	w.mustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 7, w.cfg.BlockThreshold)
+	w.mustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep2", 7, w.cfg.BlockThreshold)
+	w.mustExec("insert into models (model_id, status) values ($1, $2)", "a", lib.StatusOnline)
+	w.mustExec("insert into models (model_id, status) values ($1, $2)", "b", lib.StatusOnline)
+	w.mustExec("insert into models (model_id, status) values ($1, $2)", "c", lib.StatusOnline)
+	w.mustExec("insert into models (model_id, status) values ($1, $2)", "c2", lib.StatusOnline)
 	models := w.modelsToPoll()
 	if !reflect.DeepEqual(models, []string{"a", "d", "e", "g"}) {
 		t.Error("unexpected models result", models)
@@ -78,23 +79,23 @@ func TestSql(t *testing.T) {
 	}
 	w.incrementBlock("ep1", 2)
 	w.incrementBlock("ep1", 2)
-	if w.mustInt("select block from block where chat_id=? and endpoint=?", 2, "ep1") != 2 {
+	if w.mustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep1") != 2 {
 		t.Error("unexpected block for model result", chatsForModel)
 	}
 	w.incrementBlock("ep2", 2)
-	if w.mustInt("select block from block where chat_id=? and endpoint=?", 2, "ep2") != 1 {
+	if w.mustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep2") != 1 {
 		t.Error("unexpected block for model result", chatsForModel)
 	}
 	w.resetBlock("ep1", 2)
-	if w.mustInt("select block from block where chat_id=? and endpoint=?", 2, "ep1") != 0 {
+	if w.mustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep1") != 0 {
 		t.Error("unexpected block for model result", chatsForModel)
 	}
-	if w.mustInt("select block from block where chat_id=? and endpoint=?", 2, "ep2") != 1 {
+	if w.mustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep2") != 1 {
 		t.Error("unexpected block for model result", chatsForModel)
 	}
 	w.incrementBlock("ep1", 1)
 	w.incrementBlock("ep1", 1)
-	if w.mustInt("select block from block where chat_id=?", 1) != 2 {
+	if w.mustInt("select block from block where chat_id = $1", 1) != 2 {
 		t.Error("unexpected block for model result", chatsForModel)
 	}
 	statuses := w.statusesForChat("ep1", 3)
@@ -108,6 +109,7 @@ func TestSql(t *testing.T) {
 
 func TestUpdateStatus(t *testing.T) {
 	w := newTestWorker()
+	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
 	w.initCache()
 	checkInv(&w.worker, t)
@@ -297,6 +299,7 @@ func TestUpdateStatus(t *testing.T) {
 func TestCleanStatuses(t *testing.T) {
 	const day = 60 * 60 * 24
 	w := newTestWorker()
+	defer w.terminate()
 	w.cfg.StatusConfirmationSeconds.Offline = day + 2
 	w.createDatabase(make(chan bool, 1))
 	w.initCache()
@@ -390,6 +393,7 @@ func TestNotificationsStorage(t *testing.T) {
 		},
 	}
 	w := newTestWorker()
+	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
 	w.storeNotifications(nots)
 	newNots := w.newNotifications()
@@ -424,8 +428,9 @@ func TestNotificationsStorage(t *testing.T) {
 
 func TestModels(t *testing.T) {
 	w := newTestWorker()
+	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
-	w.mustExec("insert into models (model_id, status) values (?,?)", "a", lib.StatusUnknown)
+	w.mustExec("insert into models (model_id, status) values ($1, $2)", "a", lib.StatusUnknown)
 	if w.maybeModel("a") == nil {
 		t.Error("unexpected result")
 	}

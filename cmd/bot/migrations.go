@@ -57,10 +57,10 @@ var migrations = []func(w *worker){
 				remote_id text,
 				timeout integer,
 				amount text,
-				address string,
-				status_url string,
-				checkout_url string,
-				dest_tag string,
+				address text,
+				status_url text,
+				checkout_url text,
+				dest_tag text,
 				status integer,
 				timestamp integer,
 				model_number integer,
@@ -76,13 +76,13 @@ var migrations = []func(w *worker){
 		w.mustExec("create index ix_status_changes_model_id on status_changes(model_id);")
 	},
 	func(w *worker) {
-		w.mustExec("alter table users add blacklist integer not null default 0;")
+		w.mustExec("alter table users add column blacklist integer not null default 0;")
 	},
 	func(w *worker) {
-		w.mustExec("alter table users add show_images integer not null default 1;")
+		w.mustExec("alter table users add column show_images integer not null default 1;")
 	},
 	func(w *worker) {
-		w.mustExec("alter table users add offline_notifications integer not null default 1;")
+		w.mustExec("alter table users add column offline_notifications integer not null default 1;")
 	},
 	func(w *worker) {
 		w.mustExec(`
@@ -95,13 +95,13 @@ var migrations = []func(w *worker){
 				delay integer not null);`)
 	},
 	func(w *worker) {
-		w.mustExec("alter table models add special integer not null default 0;")
+		w.mustExec("alter table models add column special integer not null default 0;")
 	},
 	func(w *worker) {
 		w.mustExec("create index ix_status_changes_timestamp on status_changes(timestamp);")
 	},
 	func(w *worker) {
-		w.mustExec("alter table signals add confirmed integer not null default 1;")
+		w.mustExec("alter table signals add column confirmed integer not null default 1;")
 		w.mustExec("create index ix_signals_confirmed on signals(confirmed);")
 	},
 	func(w *worker) {
@@ -112,16 +112,16 @@ var migrations = []func(w *worker){
 	func(w *worker) {
 		w.mustExec(`
 			create table notification_queue (
-				id integer primary key autoincrement,
+				id serial primary key,
 				endpoint text not null,
 				chat_id integer not null,
 				model_id text not null,
 				status integer not null,
 				time_diff integer,
 				image_url text,
-				social integer not null default 0,
+				social boolean not null default false,
 				priority integer not null default 0,
-				sound integer not null default 0,
+				sound boolean not null default false,
 				sending integer not null default 0);`)
 	},
 	func(w *worker) {
@@ -129,8 +129,8 @@ var migrations = []func(w *worker){
 		w.mustExec("create index ix_interactions_timestamp on interactions(timestamp);")
 	},
 	func(w *worker) {
-		w.mustExec("alter table interactions add kind integer not null default 0;")
-		w.mustExec("alter table notification_queue add kind integer not null default 0;")
+		w.mustExec("alter table interactions add column kind integer not null default 0;")
+		w.mustExec("alter table notification_queue add column kind integer not null default 0;")
 	},
 	func(w *worker) {
 		w.mustExec("drop table transactions;")
@@ -152,7 +152,7 @@ func (w *worker) applyMigrations() {
 		n := i + version + 1
 		linf("applying migration %d", n)
 		m(w)
-		w.mustExec("update schema_version set version=?", n)
+		w.mustExec("update schema_version set version = $1", n)
 	}
 	linf("no more migrations")
 }

@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 
 	"github.com/bcmk/siren/lib"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+
+	_ "github.com/lib/pq"
 )
 
 var testConfig = config{
@@ -41,11 +45,30 @@ var testTranslations = lib.Translations{
 
 type testWorker struct {
 	worker
+	terminate func()
 }
 
 func newTestWorker() *testWorker {
-	db, err := sql.Open("sqlite3", "file:memdb1?mode=memory&cache=shared")
+	ctx := context.Background()
+	pgContainer, err := postgres.Run(
+		ctx,
+		"postgres:17",
+		postgres.WithDatabase("test"),
+		postgres.WithUsername("test"),
+		postgres.WithPassword("test"),
+		postgres.BasicWaitStrategies(),
+	)
 	checkErr(err)
+
+	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
+	checkErr(err)
+
+	db, err := sql.Open("postgres", connStr)
+	checkErr(err)
+
+	err = db.Ping()
+	checkErr(err)
+
 	w := &testWorker{
 		worker: worker{
 			bots:            nil,
@@ -58,6 +81,10 @@ func newTestWorker() *testWorker {
 			highPriorityMsg: make(chan outgoingPacket, 10000),
 			mainGID:         gid(),
 		},
+		terminate: func() {
+			checkErr(db.Close())
+			checkErr(pgContainer.Terminate(ctx))
+		},
 	}
 	return w
 }
@@ -66,7 +93,7 @@ func (w *testWorker) chatsForModel(modelID string) (chats []int64, endpoints []s
 	var chatID int64
 	var endpoint string
 	w.mustQuery(
-		`select chat_id, endpoint from signals where model_id=? order by chat_id`,
+		`select chat_id, endpoint from signals where model_id = $1 order by chat_id`,
 		queryParams{modelID},
 		scanTo{&chatID, &endpoint},
 		func() {

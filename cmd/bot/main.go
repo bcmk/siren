@@ -33,7 +33,7 @@ import (
 
 	"github.com/bcmk/siren/lib"
 	tg "github.com/bcmk/telegram-bot-api"
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/lib/pq"
 )
 
 var (
@@ -224,7 +224,7 @@ func newWorker(args []string) *worker {
 		checkErr(err)
 		bots[n] = bot
 	}
-	db, err := sql.Open("sqlite3", cfg.DBPath)
+	db, err := sql.Open("postgres", cfg.DBPath)
 	checkErr(err)
 	tr, tpl := lib.LoadAllTranslations(trsByEndpoint(cfg))
 	trAds, tplAds := lib.LoadAllAds(trsAdsByEndpoint(cfg))
@@ -820,12 +820,12 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 	} else if w.maybeModel(modelID) != nil {
 		confirmedStatus = lib.StatusOffline
 	} else {
-		w.mustExec("insert into signals (chat_id, model_id, endpoint, confirmed) values (?,?,?,?)", chatID, modelID, endpoint, false)
+		w.mustExec("insert into signals (chat_id, model_id, endpoint, confirmed) values ($1, $2, $3, $4)", chatID, modelID, endpoint, 0)
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].CheckingModel, nil, replyPacket)
 		return false
 	}
-	w.mustExec("insert into signals (chat_id, model_id, endpoint, confirmed) values (?,?,?,?)", chatID, modelID, endpoint, true)
-	w.mustExec("insert or ignore into models (model_id, status) values (?,?)", modelID, confirmedStatus)
+	w.mustExec("insert into signals (chat_id, model_id, endpoint, confirmed) values ($1, $2, $3, $4)", chatID, modelID, endpoint, 1)
+	w.mustExec("insert into models (model_id, status) values ($1, $2) on conflict(model_id) do nothing", modelID, confirmedStatus)
 	subscriptionsNumber++
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ModelAdded, tplData{"model": modelID}, replyPacket)
 	nots := []notification{{
@@ -876,12 +876,12 @@ func (w *worker) settings(endpoint string, chatID int64) {
 }
 
 func (w *worker) enableImages(endpoint string, chatID int64, showImages bool) {
-	w.mustExec("update users set show_images=? where chat_id=?", showImages, chatID)
+	w.mustExec("update users set show_images = $1 where chat_id = $2", showImages, chatID)
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].OK, nil, replyPacket)
 }
 
 func (w *worker) enableOfflineNotifications(endpoint string, chatID int64, offlineNotifications bool) {
-	w.mustExec("update users set offline_notifications=? where chat_id=?", offlineNotifications, chatID)
+	w.mustExec("update users set offline_notifications = $1 where chat_id = $2", offlineNotifications, chatID)
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].OK, nil, replyPacket)
 }
 
@@ -899,12 +899,12 @@ func (w *worker) removeModel(endpoint string, chatID int64, modelID string) {
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ModelNotInList, tplData{"model": modelID}, replyPacket)
 		return
 	}
-	w.mustExec("delete from signals where chat_id=? and model_id=? and endpoint=?", chatID, modelID, endpoint)
+	w.mustExec("delete from signals where chat_id = $1 and model_id = $2 and endpoint = $3", chatID, modelID, endpoint)
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ModelRemoved, tplData{"model": modelID}, replyPacket)
 }
 
 func (w *worker) sureRemoveAll(endpoint string, chatID int64) {
-	w.mustExec("delete from signals where chat_id=? and endpoint=?", chatID, endpoint)
+	w.mustExec("delete from signals where chat_id = $1 and endpoint = $2", chatID, endpoint)
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].AllModelsRemoved, nil, replyPacket)
 }
 
@@ -1102,7 +1102,7 @@ func (w *worker) feedback(endpoint string, chatID int64, text string) {
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].SyntaxFeedback, nil, replyPacket)
 		return
 	}
-	w.mustExec("insert into feedback (endpoint, chat_id, text) values (?, ?, ?)", endpoint, chatID, text)
+	w.mustExec("insert into feedback (endpoint, chat_id, text) values ($1, $2, $3)", endpoint, chatID, text)
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Feedback, nil, replyPacket)
 	user := w.mustUser(chatID)
 	if !user.blacklist {
@@ -1244,7 +1244,7 @@ func (w *worker) blacklist(endpoint string, arguments string) {
 		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "first argument is invalid", replyPacket)
 		return
 	}
-	w.mustExec("update users set blacklist=1 where chat_id=?", whom)
+	w.mustExec("update users set blacklist=1 where chat_id = $1", whom)
 	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK", replyPacket)
 }
 
@@ -1261,7 +1261,7 @@ func (w *worker) addSpecialModel(endpoint string, arguments string) {
 	}
 	set := parts[0] == "set"
 	w.mustExec(`
-		insert into models (model_id, special) values (?,?)
+		insert into models (model_id, special) values ($1, $2)
 		on conflict(model_id) do update set special=excluded.special`,
 		modelID,
 		set)
@@ -1349,7 +1349,7 @@ func randString(n int) string {
 func (w *worker) newRandReferralID() (id string) {
 	for {
 		id = randString(5)
-		if w.mustInt("select count(*) from referrals where referral_id=?", id) == 0 {
+		if w.mustInt("select count(*) from referrals where referral_id = $1", id) == 0 {
 			break
 		}
 	}
@@ -1364,14 +1364,14 @@ func (w *worker) refer(followerChatID int64, referrer string) (applied appliedKi
 	if _, exists := w.user(followerChatID); exists {
 		return followerExists
 	}
-	w.mustExec("insert into users (chat_id, max_models) values (?, ?)", followerChatID, w.cfg.MaxModels+w.cfg.FollowerBonus)
+	w.mustExec("insert into users (chat_id, max_models) values ($1, $2)", followerChatID, w.cfg.MaxModels+w.cfg.FollowerBonus)
 	w.mustExec(`
-		insert into users (chat_id, max_models) values (?, ?)
-		on conflict(chat_id) do update set max_models=max_models+?`,
+		insert into users (chat_id, max_models) values ($1, $2)
+		on conflict(chat_id) do update set max_models=max_models + $3`,
 		*referrerChatID,
 		w.cfg.MaxModels+w.cfg.ReferralBonus,
 		w.cfg.ReferralBonus)
-	w.mustExec("update referrals set referred_users=referred_users+1 where chat_id=?", referrerChatID)
+	w.mustExec("update referrals set referred_users=referred_users+1 where chat_id = $1", referrerChatID)
 	return referralApplied
 }
 
@@ -1380,7 +1380,7 @@ func (w *worker) showReferral(endpoint string, chatID int64) {
 	if referralID == nil {
 		temp := w.newRandReferralID()
 		referralID = &temp
-		w.mustExec("insert into referrals (chat_id, referral_id) values (?, ?)", chatID, *referralID)
+		w.mustExec("insert into referrals (chat_id, referral_id) values ($1, $2)", chatID, *referralID)
 	}
 	referralLink := fmt.Sprintf("https://t.me/%s?start=%s", w.botNames[endpoint], *referralID)
 	subscriptionsNumber := w.subscriptionsNumber(endpoint, chatID)
@@ -1425,7 +1425,7 @@ func (w *worker) start(endpoint string, chatID int64, referrer string, now int) 
 	w.addUser(chatID)
 	if modelID != "" {
 		if w.addModel(endpoint, chatID, modelID, now) {
-			w.mustExec("update models set referred_users=referred_users+1 where model_id=?", modelID)
+			w.mustExec("update models set referred_users=referred_users+1 where model_id = $1", modelID)
 		}
 	}
 }
@@ -1823,8 +1823,8 @@ func (w *worker) cleanStatusChanges(now int64) time.Duration {
 	if limit < threshold {
 		threshold = limit
 	}
-	w.mustExec("delete from status_changes where timestamp < ?", threshold)
-	w.mustExec("delete from last_status_changes where timestamp < ?", threshold)
+	w.mustExec("delete from status_changes where timestamp < $1", threshold)
+	w.mustExec("delete from last_status_changes where timestamp < $1", threshold)
 	for k, v := range w.siteStatuses {
 		if v.timestamp < threshold {
 			delete(w.siteStatuses, k)
@@ -1877,12 +1877,12 @@ func (w *worker) sendNotificationsDaemon() {
 func (w *worker) queryUnconfirmedSubs() {
 	unconfirmed := map[string]bool{}
 	var modelID string
-	w.mustQuery("select model_id from signals where confirmed=0", nil, scanTo{&modelID}, func() { unconfirmed[modelID] = true })
+	w.mustQuery("select model_id from signals where confirmed = 0", nil, scanTo{&modelID}, func() { unconfirmed[modelID] = true })
 	if len(unconfirmed) > 0 {
-		w.mustExec("update signals set confirmed=2 where confirmed=0")
+		w.mustExec("update signals set confirmed = 2 where confirmed = 0")
 		ldbg("queueing unconfirmed subscriptions check for %d channels", len(unconfirmed))
 		if w.initiateSpecificQuery(w.unconfirmedSubsResults, unconfirmed) != nil {
-			w.mustExec("update signals set confirmed=0 where confirmed=2")
+			w.mustExec("update signals set confirmed = 0 where confirmed = 2")
 		}
 	}
 }
@@ -1896,7 +1896,7 @@ func (w *worker) processSubsConfirmations(res lib.StatusResults) {
 	confirmationsInWork := map[string][]subscription{}
 	var iter subscription
 	w.mustQuery(
-		"select endpoint, model_id, chat_id from signals where confirmed=2",
+		"select endpoint, model_id, chat_id from signals where confirmed = 2",
 		nil,
 		scanTo{&iter.endpoint, &iter.modelID, &iter.chatID},
 		func() { confirmationsInWork[iter.modelID] = append(confirmationsInWork[iter.modelID], iter) })
@@ -2014,7 +2014,7 @@ func main() {
 	w.createDatabase(databaseDone)
 	w.initCache()
 	w.mustExec("update notification_queue set sending=0")
-	w.mustExec("update signals set confirmed=0 where confirmed=2")
+	w.mustExec("update signals set confirmed = 0 where confirmed = 2")
 
 	statRequests := make(chan statRequest)
 	w.handleStatEndpoints(statRequests)
@@ -2091,14 +2091,14 @@ func main() {
 			case messageSent:
 				w.resetBlock(r.endpoint, r.chatID)
 			}
-			query := "insert into interactions (timestamp, chat_id, result, endpoint, priority, delay, kind) values (?,?,?,?,?,?,?)"
+			query := "insert into interactions (timestamp, chat_id, result, endpoint, priority, delay, kind) values ($1, $2, $3, $4, $5, $6, $7)"
 			w.mustExec(query, r.timestamp, r.chatID, r.result, r.endpoint, r.priority, r.delay, r.kind)
 		case r := <-w.unconfirmedSubsResults:
 			w.processSubsConfirmations(r)
 		case nots := <-w.sentNotifications:
 			for _, n := range nots {
-				w.mustExec("delete from notification_queue where id=?", n.id)
-				w.mustExec("update users set reports=reports+1 where chat_id=?", n.chatID)
+				w.mustExec("delete from notification_queue where id = $1", n.id)
+				w.mustExec("update users set reports=reports+1 where chat_id = $1", n.chatID)
 			}
 		case r := <-w.downloadResults:
 			w.downloadErrors[w.downloadResultsPos] = !r
