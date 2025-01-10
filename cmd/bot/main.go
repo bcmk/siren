@@ -31,16 +31,17 @@ import (
 
 	_ "golang.org/x/image/webp"
 
-	"github.com/bcmk/siren/lib"
+	"github.com/bcmk/siren/internal/checkers"
+	"github.com/bcmk/siren/lib/cmdlib"
 	tg "github.com/bcmk/telegram-bot-api"
 	_ "github.com/lib/pq"
 )
 
 var (
-	checkErr = lib.CheckErr
-	lerr     = lib.Lerr
-	linf     = lib.Linf
-	ldbg     = lib.Ldbg
+	checkErr = cmdlib.CheckErr
+	lerr     = cmdlib.Lerr
+	linf     = cmdlib.Linf
+	ldbg     = cmdlib.Ldbg
 )
 
 type tplData = map[string]interface{}
@@ -58,7 +59,7 @@ type notification struct {
 	endpoint string
 	chatID   int64
 	modelID  string
-	status   lib.StatusKind
+	status   cmdlib.StatusKind
 	timeDiff *int
 	imageURL string
 	social   bool
@@ -69,12 +70,12 @@ type notification struct {
 
 type model struct {
 	modelID string
-	status  lib.StatusKind
+	status  cmdlib.StatusKind
 }
 
 type statusChange struct {
 	modelID   string
-	status    lib.StatusKind
+	status    cmdlib.StatusKind
 	timestamp int
 }
 
@@ -106,7 +107,7 @@ type subscription struct {
 }
 
 type worker struct {
-	clients                  []*lib.Client
+	clients                  []*cmdlib.Client
 	bots                     map[string]*tg.BotAPI
 	db                       *sql.DB
 	cfg                      *config
@@ -119,12 +120,12 @@ type worker struct {
 	specialModels            map[string]bool
 	siteStatuses             map[string]statusChange
 	siteOnline               map[string]bool
-	tr                       map[string]*lib.Translations
+	tr                       map[string]*cmdlib.Translations
 	tpl                      map[string]*template.Template
-	trAds                    map[string]map[string]*lib.Translation
+	trAds                    map[string]map[string]*cmdlib.Translation
 	tplAds                   map[string]*template.Template
 	modelIDPreprocessing     func(string) string
-	checker                  lib.Checker
+	checker                  cmdlib.Checker
 	unsuccessfulRequests     []bool
 	unsuccessfulRequestsPos  int
 	downloadResults          chan bool
@@ -137,8 +138,8 @@ type worker struct {
 	lowPriorityMsg           chan outgoingPacket
 	highPriorityMsg          chan outgoingPacket
 	outgoingMsgResults       chan msgSendResult
-	unconfirmedSubsResults   chan lib.StatusResults
-	onlineModelsChan         chan lib.StatusUpdateResults
+	unconfirmedSubsResults   chan cmdlib.StatusResults
+	onlineModelsChan         chan cmdlib.StatusUpdateResults
 	sendingNotifications     chan []notification
 	sentNotifications        chan []notification
 	mainGID                  int
@@ -210,12 +211,12 @@ func newWorker(args []string) *worker {
 
 	var err error
 
-	var clients []*lib.Client
+	var clients []*cmdlib.Client
 	for _, address := range cfg.SourceIPAddresses {
-		clients = append(clients, lib.HTTPClientWithTimeoutAndAddress(cfg.TimeoutSeconds, address, cfg.EnableCookies))
+		clients = append(clients, cmdlib.HTTPClientWithTimeoutAndAddress(cfg.TimeoutSeconds, address, cfg.EnableCookies))
 	}
 
-	telegramClient := lib.HTTPClientWithTimeoutAndAddress(cfg.TelegramTimeoutSeconds, "", false)
+	telegramClient := cmdlib.HTTPClientWithTimeoutAndAddress(cfg.TelegramTimeoutSeconds, "", false)
 	bots := make(map[string]*tg.BotAPI)
 	for n, p := range cfg.Endpoints {
 		//noinspection GoNilness
@@ -226,8 +227,8 @@ func newWorker(args []string) *worker {
 	}
 	db, err := sql.Open("postgres", cfg.DBPath)
 	checkErr(err)
-	tr, tpl := lib.LoadAllTranslations(trsByEndpoint(cfg))
-	trAds, tplAds := lib.LoadAllAds(trsAdsByEndpoint(cfg))
+	tr, tpl := cmdlib.LoadAllTranslations(trsByEndpoint(cfg))
+	trAds, tplAds := cmdlib.LoadAllAds(trsAdsByEndpoint(cfg))
 	for _, t := range tpl {
 		template.Must(t.New("affiliate_link").Parse(cfg.AffiliateLink))
 	}
@@ -249,8 +250,8 @@ func newWorker(args []string) *worker {
 		lowPriorityMsg:         make(chan outgoingPacket, 10000),
 		highPriorityMsg:        make(chan outgoingPacket, 10000),
 		outgoingMsgResults:     make(chan msgSendResult),
-		unconfirmedSubsResults: make(chan lib.StatusResults),
-		onlineModelsChan:       make(chan lib.StatusUpdateResults),
+		unconfirmedSubsResults: make(chan cmdlib.StatusResults),
+		onlineModelsChan:       make(chan cmdlib.StatusUpdateResults),
 		sendingNotifications:   make(chan []notification, 1000),
 		sentNotifications:      make(chan []notification),
 		mainGID:                gid(),
@@ -269,45 +270,45 @@ func newWorker(args []string) *worker {
 
 	switch cfg.Website {
 	case "test":
-		w.checker = &lib.RandomChecker{}
-		w.modelIDPreprocessing = lib.CanonicalModelID
-		w.modelIDRegexp = lib.ModelIDRegexp
+		w.checker = &checkers.RandomChecker{}
+		w.modelIDPreprocessing = cmdlib.CanonicalModelID
+		w.modelIDRegexp = cmdlib.ModelIDRegexp
 	case "bongacams":
-		w.checker = &lib.BongaCamsChecker{}
-		w.modelIDPreprocessing = lib.CanonicalModelID
-		w.modelIDRegexp = lib.ModelIDRegexp
+		w.checker = &checkers.BongaCamsChecker{}
+		w.modelIDPreprocessing = cmdlib.CanonicalModelID
+		w.modelIDRegexp = cmdlib.ModelIDRegexp
 	case "chaturbate":
-		w.checker = &lib.ChaturbateChecker{}
-		w.modelIDPreprocessing = lib.ChaturbateCanonicalModelID
-		w.modelIDRegexp = lib.ModelIDRegexp
+		w.checker = &checkers.ChaturbateChecker{}
+		w.modelIDPreprocessing = checkers.ChaturbateCanonicalModelID
+		w.modelIDRegexp = cmdlib.ModelIDRegexp
 	case "stripchat":
-		w.checker = &lib.StripchatChecker{}
-		w.modelIDPreprocessing = lib.CanonicalModelID
-		w.modelIDRegexp = lib.ModelIDRegexp
+		w.checker = &checkers.StripchatChecker{}
+		w.modelIDPreprocessing = cmdlib.CanonicalModelID
+		w.modelIDRegexp = cmdlib.ModelIDRegexp
 	case "livejasmin":
-		w.checker = &lib.LiveJasminChecker{}
-		w.modelIDPreprocessing = lib.CanonicalModelID
-		w.modelIDRegexp = lib.ModelIDRegexp
+		w.checker = &checkers.LiveJasminChecker{}
+		w.modelIDPreprocessing = cmdlib.CanonicalModelID
+		w.modelIDRegexp = cmdlib.ModelIDRegexp
 	case "camsoda":
-		w.checker = &lib.CamSodaChecker{}
-		w.modelIDPreprocessing = lib.CanonicalModelID
-		w.modelIDRegexp = lib.ModelIDRegexp
+		w.checker = &checkers.CamSodaChecker{}
+		w.modelIDPreprocessing = cmdlib.CanonicalModelID
+		w.modelIDRegexp = cmdlib.ModelIDRegexp
 	case "flirt4free":
-		w.checker = &lib.Flirt4FreeChecker{}
-		w.modelIDPreprocessing = lib.Flirt4FreeCanonicalModelID
-		w.modelIDRegexp = lib.ModelIDRegexp
+		w.checker = &checkers.Flirt4FreeChecker{}
+		w.modelIDPreprocessing = checkers.Flirt4FreeCanonicalModelID
+		w.modelIDRegexp = cmdlib.ModelIDRegexp
 	case "streamate":
-		w.checker = &lib.StreamateChecker{}
-		w.modelIDPreprocessing = lib.CanonicalModelID
-		w.modelIDRegexp = lib.ModelIDRegexp
+		w.checker = &checkers.StreamateChecker{}
+		w.modelIDPreprocessing = cmdlib.CanonicalModelID
+		w.modelIDRegexp = cmdlib.ModelIDRegexp
 	case "twitch":
-		w.checker = &lib.TwitchChecker{}
-		w.modelIDPreprocessing = lib.TwitchCanonicalModelID
-		w.modelIDRegexp = lib.TwitchModelIDRegexp
+		w.checker = &checkers.TwitchChecker{}
+		w.modelIDPreprocessing = checkers.TwitchCanonicalModelID
+		w.modelIDRegexp = checkers.TwitchModelIDRegexp
 	case "cam4":
-		w.checker = &lib.Cam4Checker{}
-		w.modelIDPreprocessing = lib.Cam4CanonicalModelID
-		w.modelIDRegexp = lib.Cam4ModelIDRegexp
+		w.checker = &checkers.Cam4Checker{}
+		w.modelIDPreprocessing = checkers.Cam4CanonicalModelID
+		w.modelIDRegexp = checkers.Cam4ModelIDRegexp
 	default:
 		panic("wrong website")
 	}
@@ -315,7 +316,7 @@ func newWorker(args []string) *worker {
 	return w
 }
 
-func (w *worker) loadImageForTranslation(endpoint string, tr *lib.Translation) {
+func (w *worker) loadImageForTranslation(endpoint string, tr *cmdlib.Translation) {
 	if tr.Image != "" {
 		p := path.Join(w.cfg.Endpoints[endpoint].Images, tr.Image)
 		imageBytes, err := os.ReadFile(p)
@@ -412,7 +413,7 @@ func (w *worker) sendText(
 	chatID int64,
 	notify bool,
 	disablePreview bool,
-	parse lib.ParseKind,
+	parse cmdlib.ParseKind,
 	text string,
 	kind packetKind,
 ) {
@@ -420,7 +421,7 @@ func (w *worker) sendText(
 	msg.DisableNotification = !notify
 	msg.DisableWebPagePreview = disablePreview
 	switch parse {
-	case lib.ParseHTML, lib.ParseMarkdown:
+	case cmdlib.ParseHTML, cmdlib.ParseMarkdown:
 		msg.ParseMode = parse.String()
 	}
 	w.enqueueMessage(queue, endpoint, &messageConfig{msg}, kind)
@@ -431,7 +432,7 @@ func (w *worker) sendImage(
 	endpoint string,
 	chatID int64,
 	notify bool,
-	parse lib.ParseKind,
+	parse cmdlib.ParseKind,
 	text string,
 	image []byte,
 	kind packetKind,
@@ -441,7 +442,7 @@ func (w *worker) sendImage(
 	msg.Caption = text
 	msg.DisableNotification = !notify
 	switch parse {
-	case lib.ParseHTML, lib.ParseMarkdown:
+	case cmdlib.ParseHTML, cmdlib.ParseMarkdown:
 		msg.ParseMode = parse.String()
 	}
 	w.enqueueMessage(queue, endpoint, &photoConfig{msg}, kind)
@@ -554,7 +555,7 @@ func (w *worker) sendTr(
 	endpoint string,
 	chatID int64,
 	notify bool,
-	translation *lib.Translation,
+	translation *cmdlib.Translation,
 	data map[string]interface{},
 	kind packetKind,
 ) {
@@ -568,7 +569,7 @@ func (w *worker) sendAdsTr(
 	endpoint string,
 	chatID int64,
 	notify bool,
-	translation *lib.Translation,
+	translation *cmdlib.Translation,
 	data map[string]interface{},
 ) {
 	tpl := w.tplAds[endpoint]
@@ -585,7 +586,7 @@ func (w *worker) sendTrImage(
 	endpoint string,
 	chatID int64,
 	notify bool,
-	translation *lib.Translation,
+	translation *cmdlib.Translation,
 	data map[string]interface{},
 	image []byte,
 	kind packetKind,
@@ -617,22 +618,22 @@ func (w *worker) initCache() {
 func (w *worker) getLastOnlineModels() map[string]bool {
 	res := map[string]bool{}
 	for k, v := range w.siteStatuses {
-		if v.status == lib.StatusOnline {
+		if v.status == cmdlib.StatusOnline {
 			res[k] = true
 		}
 	}
 	return res
 }
 
-func (w *worker) confirmationSeconds(status lib.StatusKind) int {
+func (w *worker) confirmationSeconds(status cmdlib.StatusKind) int {
 	switch status {
-	case lib.StatusOnline:
+	case cmdlib.StatusOnline:
 		return w.cfg.StatusConfirmationSeconds.Online
-	case lib.StatusOffline:
+	case cmdlib.StatusOffline:
 		return w.cfg.StatusConfirmationSeconds.Offline
-	case lib.StatusDenied:
+	case cmdlib.StatusDenied:
 		return w.cfg.StatusConfirmationSeconds.Denied
-	case lib.StatusNotFound:
+	case cmdlib.StatusNotFound:
 		return w.cfg.StatusConfirmationSeconds.NotFound
 	default:
 		return 0
@@ -645,7 +646,7 @@ func (w *worker) updateStatus(insertStatusChangeStmt, updateLastStatusChangeStmt
 		w.mustExecPrepared(insertStatusChangeStmt, next.modelID, next.status, next.timestamp)
 		w.mustExecPrepared(updateLastStatusChangeStmt, next.modelID, next.status, next.timestamp)
 		w.siteStatuses[next.modelID] = next
-		if next.status == lib.StatusOnline {
+		if next.status == cmdlib.StatusOnline {
 			w.siteOnline[next.modelID] = true
 		} else {
 			delete(w.siteOnline, next.modelID)
@@ -654,14 +655,14 @@ func (w *worker) updateStatus(insertStatusChangeStmt, updateLastStatusChangeStmt
 }
 
 func (w *worker) confirmStatus(updateModelStatusStmt *sql.Stmt, now int) []string {
-	all := lib.HashDiffAll(w.ourOnline, w.siteOnline)
+	all := cmdlib.HashDiffAll(w.ourOnline, w.siteOnline)
 	var confirmations []string
 	for _, modelID := range all {
 		statusChange := w.siteStatuses[modelID]
 		confirmationSeconds := w.confirmationSeconds(statusChange.status)
 		durationConfirmed := confirmationSeconds == 0 || statusChange.timestamp == 0 || (now-statusChange.timestamp >= confirmationSeconds)
 		if durationConfirmed {
-			if statusChange.status == lib.StatusOnline {
+			if statusChange.status == cmdlib.StatusOnline {
 				w.ourOnline[modelID] = true
 			} else {
 				delete(w.ourOnline, modelID)
@@ -676,7 +677,7 @@ func (w *worker) confirmStatus(updateModelStatusStmt *sql.Stmt, now int) []strin
 func (w *worker) notifyOfAddResults(queue chan outgoingPacket, notifications []notification) {
 	for _, n := range notifications {
 		data := tplData{"model": n.modelID}
-		if n.status&(lib.StatusOnline|lib.StatusOffline|lib.StatusDenied) != 0 {
+		if n.status&(cmdlib.StatusOnline|cmdlib.StatusOffline|cmdlib.StatusDenied) != 0 {
 			w.sendTr(queue, n.endpoint, n.chatID, false, w.tr[n.endpoint].ModelAdded, data, replyPacket)
 		} else {
 			w.sendTr(queue, n.endpoint, n.chatID, false, w.tr[n.endpoint].AddError, data, replyPacket)
@@ -708,8 +709,8 @@ func (w *worker) notifyOfStatuses(highPriorityQueue chan outgoingPacket, lowPrio
 	}
 }
 
-func (w *worker) trAdsSlice(endpoint string) []*lib.Translation {
-	var res []*lib.Translation
+func (w *worker) trAdsSlice(endpoint string) []*cmdlib.Translation {
+	var res []*cmdlib.Translation
 	for _, v := range w.trAds[endpoint] {
 		res = append(res, v)
 	}
@@ -737,15 +738,15 @@ func (w *worker) notifyOfStatus(queue chan outgoingPacket, n notification, image
 	}
 	data := tplData{"model": n.modelID, "time_diff": timeDiff}
 	switch n.status {
-	case lib.StatusOnline:
+	case cmdlib.StatusOnline:
 		if image == nil {
 			w.sendTr(queue, n.endpoint, n.chatID, true, w.tr[n.endpoint].Online, data, n.kind)
 		} else {
 			w.sendTrImage(queue, n.endpoint, n.chatID, true, w.tr[n.endpoint].Online, data, image, n.kind)
 		}
-	case lib.StatusOffline:
+	case cmdlib.StatusOffline:
 		w.sendTr(queue, n.endpoint, n.chatID, false, w.tr[n.endpoint].Offline, data, n.kind)
-	case lib.StatusDenied:
+	case cmdlib.StatusDenied:
 		w.sendTr(queue, n.endpoint, n.chatID, false, w.tr[n.endpoint].Denied, data, n.kind)
 	}
 	if social && rand.Intn(5) == 0 {
@@ -812,13 +813,13 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 		w.subscriptionUsage(endpoint, chatID, true)
 		return false
 	}
-	var confirmedStatus lib.StatusKind
+	var confirmedStatus cmdlib.StatusKind
 	if w.ourOnline[modelID] {
-		confirmedStatus = lib.StatusOnline
+		confirmedStatus = cmdlib.StatusOnline
 	} else if _, ok := w.siteStatuses[modelID]; ok {
-		confirmedStatus = lib.StatusOffline
+		confirmedStatus = cmdlib.StatusOffline
 	} else if w.maybeModel(modelID) != nil {
-		confirmedStatus = lib.StatusOffline
+		confirmedStatus = cmdlib.StatusOffline
 	} else {
 		w.mustExec("insert into signals (chat_id, model_id, endpoint, confirmed) values ($1, $2, $3, $4)", chatID, modelID, endpoint, 0)
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].CheckingModel, nil, replyPacket)
@@ -943,11 +944,11 @@ func chunkModels(xs []model, chunkSize int) [][]model {
 	return divided
 }
 
-func listModelsSortWeight(s lib.StatusKind) int {
+func listModelsSortWeight(s cmdlib.StatusKind) int {
 	switch s {
-	case lib.StatusOnline:
+	case cmdlib.StatusOnline:
 		return 0
-	case lib.StatusDenied:
+	case cmdlib.StatusDenied:
 		return 2
 	default:
 		return 1
@@ -972,9 +973,9 @@ func (w *worker) listModels(endpoint string, chatID int64, now int) {
 				TimeDiff: w.modelTimeDiff(s.modelID, now),
 			}
 			switch s.status {
-			case lib.StatusOnline:
+			case cmdlib.StatusOnline:
 				online = append(online, data)
-			case lib.StatusDenied:
+			case cmdlib.StatusDenied:
 				denied = append(denied, data)
 			default:
 				offline = append(offline, data)
@@ -991,7 +992,7 @@ func (w *worker) modelDuration(modelID string, now int) *int {
 		timeDiff := now - end
 		return &timeDiff
 	}
-	if begin != 0 && prevStatus != lib.StatusUnknown {
+	if begin != 0 && prevStatus != cmdlib.StatusUnknown {
 		timeDiff := now - begin
 		return &timeDiff
 	}
@@ -1023,7 +1024,7 @@ func (w *worker) downloadImageInternal(url string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot query the image %s, %v", url, err)
 	}
-	defer lib.CloseBody(resp.Body)
+	defer cmdlib.CloseBody(resp.Body)
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("cannot download the image %s, status code %v", url, resp.StatusCode)
 	}
@@ -1044,7 +1045,7 @@ func (w *worker) listOnlineModels(endpoint string, chatID int64, now int) {
 	statuses := w.statusesForChat(endpoint, chatID)
 	var online []model
 	for _, s := range statuses {
-		if s.status == lib.StatusOnline {
+		if s.status == cmdlib.StatusOnline {
 			online = append(online, s)
 		}
 	}
@@ -1064,7 +1065,7 @@ func (w *worker) listOnlineModels(endpoint string, chatID int64, now int) {
 			endpoint: endpoint,
 			chatID:   chatID,
 			modelID:  s.modelID,
-			status:   lib.StatusOnline,
+			status:   cmdlib.StatusOnline,
 			imageURL: w.images[s.modelID],
 			timeDiff: w.modelDuration(s.modelID, now),
 			kind:     replyPacket,
@@ -1083,7 +1084,7 @@ func (w *worker) week(modelID string) ([]bool, time.Time) {
 	changes := w.changesFromTo(modelID, weekTimestamp, nowTimestamp)
 	hours := make([]bool, (nowTimestamp-weekTimestamp+3599)/3600)
 	for i, c := range changes[:len(changes)-1] {
-		if c.status == lib.StatusOnline {
+		if c.status == cmdlib.StatusOnline {
 			begin := (c.timestamp - weekTimestamp) / 3600
 			if begin < 0 {
 				begin = 0
@@ -1107,7 +1108,7 @@ func (w *worker) feedback(endpoint string, chatID int64, text string) {
 	user := w.mustUser(chatID)
 	if !user.blacklist {
 		finalText := fmt.Sprintf("Feedback from %d: %s", chatID, text)
-		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, true, true, lib.ParseRaw, finalText, replyPacket)
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, finalText, replyPacket)
 	}
 }
 
@@ -1157,13 +1158,13 @@ func (w *worker) statStrings(endpoint string) []string {
 
 func (w *worker) stat(endpoint string) {
 	text := strings.Join(w.statStrings(endpoint), "\n")
-	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, true, true, lib.ParseRaw, text, replyPacket)
+	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, text, replyPacket)
 }
 
 func (w *worker) performanceStat(endpoint string, arguments string) {
 	parts := strings.Split(arguments, " ")
 	if len(parts) > 2 {
-		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "wrong number of arguments", replyPacket)
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "wrong number of arguments", replyPacket)
 		return
 	}
 	n := int64(10)
@@ -1171,7 +1172,7 @@ func (w *worker) performanceStat(endpoint string, arguments string) {
 		var err error
 		n, err = strconv.ParseInt(parts[1], 10, 32)
 		if err != nil {
-			w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "cannot parse arguments", replyPacket)
+			w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "cannot parse arguments", replyPacket)
 			return
 		}
 	}
@@ -1200,7 +1201,7 @@ func (w *worker) performanceStat(endpoint string, arguments string) {
 			fmt.Sprintf("<b>Count</b>: %d", durations[x].count),
 		}
 		entry := strings.Join(lines, "\n")
-		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseHTML, entry, replyPacket)
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseHTML, entry, replyPacket)
 		n--
 	}
 }
@@ -1214,49 +1215,49 @@ func (w *worker) broadcast(endpoint string, text string) {
 	}
 	chats := w.broadcastChats(endpoint)
 	for _, chatID := range chats {
-		w.sendText(w.lowPriorityMsg, endpoint, chatID, true, false, lib.ParseRaw, text, messagePacket)
+		w.sendText(w.lowPriorityMsg, endpoint, chatID, true, false, cmdlib.ParseRaw, text, messagePacket)
 	}
-	w.sendText(w.lowPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK", replyPacket)
+	w.sendText(w.lowPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", replyPacket)
 }
 
 func (w *worker) direct(endpoint string, arguments string) {
 	parts := strings.SplitN(arguments, " ", 2)
 	if len(parts) < 2 {
-		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "usage: /direct chatID text", replyPacket)
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "usage: /direct chatID text", replyPacket)
 		return
 	}
 	whom, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
-		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "first argument is invalid", replyPacket)
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "first argument is invalid", replyPacket)
 		return
 	}
 	text := parts[1]
 	if text == "" {
 		return
 	}
-	w.sendText(w.highPriorityMsg, endpoint, whom, true, false, lib.ParseRaw, text, messagePacket)
-	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK", replyPacket)
+	w.sendText(w.highPriorityMsg, endpoint, whom, true, false, cmdlib.ParseRaw, text, messagePacket)
+	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", replyPacket)
 }
 
 func (w *worker) blacklist(endpoint string, arguments string) {
 	whom, err := strconv.ParseInt(arguments, 10, 64)
 	if err != nil {
-		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "first argument is invalid", replyPacket)
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "first argument is invalid", replyPacket)
 		return
 	}
 	w.mustExec("update users set blacklist=1 where chat_id = $1", whom)
-	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK", replyPacket)
+	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", replyPacket)
 }
 
 func (w *worker) addSpecialModel(endpoint string, arguments string) {
 	parts := strings.Split(arguments, " ")
 	if len(parts) != 2 || (parts[0] != "set" && parts[0] != "unset") {
-		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "usage: /special set/unset MODEL_ID", replyPacket)
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "usage: /special set/unset MODEL_ID", replyPacket)
 		return
 	}
 	modelID := w.modelIDPreprocessing(parts[1])
 	if !w.modelIDRegexp.MatchString(modelID) {
-		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "MODEL_ID is invalid", replyPacket)
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "MODEL_ID is invalid", replyPacket)
 		return
 	}
 	set := parts[0] == "set"
@@ -1270,7 +1271,7 @@ func (w *worker) addSpecialModel(endpoint string, arguments string) {
 	} else {
 		delete(w.specialModels, modelID)
 	}
-	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK", replyPacket)
+	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", replyPacket)
 }
 
 func (w *worker) serveEndpoints() {
@@ -1312,24 +1313,24 @@ func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arg
 	case "set_max_models":
 		parts := strings.Fields(arguments)
 		if len(parts) != 2 {
-			w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, lib.ParseRaw, "expecting two arguments", replyPacket)
+			w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, cmdlib.ParseRaw, "expecting two arguments", replyPacket)
 			return true, false
 		}
 		who, err := strconv.ParseInt(parts[0], 10, 64)
 		if err != nil {
-			w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, lib.ParseRaw, "first argument is invalid", replyPacket)
+			w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, cmdlib.ParseRaw, "first argument is invalid", replyPacket)
 			return true, false
 		}
 		maxModels, err := strconv.Atoi(parts[1])
 		if err != nil {
-			w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, lib.ParseRaw, "second argument is invalid", replyPacket)
+			w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, cmdlib.ParseRaw, "second argument is invalid", replyPacket)
 			return true, false
 		}
 		w.setLimit(who, maxModels)
-		w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, lib.ParseRaw, "OK", replyPacket)
+		w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, cmdlib.ParseRaw, "OK", replyPacket)
 		return true, false
 	case "maintenance":
-		w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, lib.ParseRaw, "OK", replyPacket)
+		w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, cmdlib.ParseRaw, "OK", replyPacket)
 		return true, true
 	}
 	return false, false
@@ -1472,7 +1473,7 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	case "social":
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Social, nil, replyPacket)
 	case "version":
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Version, tplData{"version": lib.Version}, replyPacket)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Version, tplData{"version": cmdlib.Version}, replyPacket)
 	case "remove_all", "stop":
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].RemoveAll, nil, replyPacket)
 	case "sure_remove_all":
@@ -1503,9 +1504,9 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	return false
 }
 
-func (w *worker) subscriptions() map[string]lib.StatusKind {
+func (w *worker) subscriptions() map[string]cmdlib.StatusKind {
 	subs := w.mustStrings("select distinct(model_id) from signals where confirmed = 1")
-	result := map[string]lib.StatusKind{}
+	result := map[string]cmdlib.StatusKind{}
 	for _, s := range subs {
 		result[s] = w.siteStatuses[s].status
 	}
@@ -1517,15 +1518,15 @@ func (w *worker) periodic() {
 	now := time.Now()
 	if w.nextErrorReport.Before(now) && unsuccessfulRequestsCount > w.cfg.errorThreshold {
 		text := fmt.Sprintf("Dangerous error rate reached: %d/%d", unsuccessfulRequestsCount, w.cfg.errorDenominator)
-		w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, lib.ParseRaw, text, messagePacket)
+		w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, text, messagePacket)
 		w.nextErrorReport = now.Add(time.Minute * time.Duration(w.cfg.ErrorReportingPeriodMinutes))
 	}
-	w.initiateOnlineQuery()
+	w.pushOnlineRequest()
 }
 
-func (w *worker) initiateOnlineQuery() {
-	err := w.checker.Updater().QueryUpdates(lib.StatusUpdateRequest{
-		Callback:      func(res lib.StatusUpdateResults) { w.onlineModelsChan <- res },
+func (w *worker) pushOnlineRequest() {
+	err := w.checker.Updater().PushUpdateRequest(cmdlib.StatusUpdateRequest{
+		Callback:      func(res cmdlib.StatusUpdateResults) { w.onlineModelsChan <- res },
 		SpecialModels: w.specialModels,
 		Subscriptions: w.subscriptions(),
 	})
@@ -1534,18 +1535,18 @@ func (w *worker) initiateOnlineQuery() {
 	}
 }
 
-func (w *worker) initiateSpecificQuery(resultsCh chan lib.StatusResults, specific map[string]bool) error {
-	err := w.checker.QueryStatuses(lib.StatusRequest{
-		Callback:  func(res lib.StatusResults) { resultsCh <- res },
+func (w *worker) pushSpecificRequest(resultsCh chan cmdlib.StatusResults, specific map[string]bool) error {
+	err := w.checker.PushStatusRequest(cmdlib.StatusRequest{
+		Callback:  func(res cmdlib.StatusResults) { resultsCh <- res },
 		Specific:  specific,
-		CheckMode: lib.CheckStatuses})
+		CheckMode: cmdlib.CheckStatuses})
 	if err != nil {
 		lerr("%v", err)
 	}
 	return err
 }
 
-func (w *worker) processStatusUpdates(updates []lib.StatusUpdate, now int) (
+func (w *worker) processStatusUpdates(updates []cmdlib.StatusUpdate, now int) (
 	changesCount int,
 	confirmedChangesCount int,
 	notifications []notification,
@@ -1585,14 +1586,14 @@ func (w *worker) processStatusUpdates(updates []lib.StatusUpdate, now int) (
 		endpoints := endpointsForModels[c]
 		for i, user := range users {
 			status := w.siteStatuses[c].status
-			if (w.cfg.OfflineNotifications && user.offlineNotifications) || status != lib.StatusOffline {
+			if (w.cfg.OfflineNotifications && user.offlineNotifications) || status != cmdlib.StatusOffline {
 				n := notification{
 					endpoint: endpoints[i],
 					chatID:   user.chatID,
 					modelID:  c,
 					status:   status,
 					social:   user.chatID > 0,
-					sound:    status == lib.StatusOnline,
+					sound:    status == cmdlib.StatusOnline,
 					kind:     notificationPacket}
 				if user.showImages {
 					n.imageURL = w.images[c]
@@ -1838,7 +1839,7 @@ func (w *worker) adminSQL(query string) time.Duration {
 	start := time.Now()
 	var result string
 	if w.maybeRecord(query, nil, scanTo{&result}) {
-		w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, result, replyPacket)
+		w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, result, replyPacket)
 	}
 	return time.Since(start)
 }
@@ -1852,7 +1853,7 @@ func (w *worker) maintenanceStartupReply(incoming chan incomingPacket, done chan
 			chatID, command, args := getCommandAndArgs(u.message, mention, w.ourIDs)
 			if command != "" {
 				waitingUsers[waitingUser{chatID: chatID, endpoint: u.endpoint}] = true
-				w.sendText(w.highPriorityMsg, u.endpoint, chatID, false, true, lib.ParseRaw, w.cfg.Endpoints[u.endpoint].MaintenanceResponse, replyPacket)
+				w.sendText(w.highPriorityMsg, u.endpoint, chatID, false, true, cmdlib.ParseRaw, w.cfg.Endpoints[u.endpoint].MaintenanceResponse, replyPacket)
 				linf("ignoring command %s %s", command, args)
 			}
 		case <-done:
@@ -1881,13 +1882,13 @@ func (w *worker) queryUnconfirmedSubs() {
 	if len(unconfirmed) > 0 {
 		w.mustExec("update signals set confirmed = 2 where confirmed = 0")
 		ldbg("queueing unconfirmed subscriptions check for %d channels", len(unconfirmed))
-		if w.initiateSpecificQuery(w.unconfirmedSubsResults, unconfirmed) != nil {
+		if w.pushSpecificRequest(w.unconfirmedSubsResults, unconfirmed) != nil {
 			w.mustExec("update signals set confirmed = 0 where confirmed = 2")
 		}
 	}
 }
 
-func (w *worker) processSubsConfirmations(res lib.StatusResults) {
+func (w *worker) processSubsConfirmations(res cmdlib.StatusResults) {
 	statusesNumber := 0
 	if res.Data != nil {
 		statusesNumber = len(res.Data.Statuses)
@@ -1904,7 +1905,7 @@ func (w *worker) processSubsConfirmations(res lib.StatusResults) {
 	if res.Data != nil {
 		for modelID, status := range res.Data.Statuses {
 			for _, sub := range confirmationsInWork[modelID] {
-				if status&(lib.StatusOnline|lib.StatusOffline|lib.StatusDenied) != 0 {
+				if status&(cmdlib.StatusOnline|cmdlib.StatusOffline|cmdlib.StatusDenied) != 0 {
 					w.confirmSub(sub)
 				} else {
 					w.denySub(sub)
@@ -1942,9 +1943,9 @@ func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacke
 				switch command {
 				case "continue":
 					if processing {
-						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "still processing", replyPacket)
+						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "still processing", replyPacket)
 					} else {
-						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK", replyPacket)
+						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", replyPacket)
 						for user := range users {
 							w.sendTr(w.highPriorityMsg, user.endpoint, chatID, false, w.tr[user.endpoint].WeAreUp, nil, messagePacket)
 						}
@@ -1952,39 +1953,39 @@ func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacke
 					}
 				case "clean":
 					if processing {
-						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "still processing", replyPacket)
+						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "still processing", replyPacket)
 					} else {
 						processing = true
-						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK", replyPacket)
+						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", replyPacket)
 						go func() {
 							processingDone <- w.cleanStatusChanges(time.Now().Unix())
 						}()
 					}
 				case "sql":
 					if processing {
-						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "still processing", replyPacket)
+						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "still processing", replyPacket)
 					} else {
 						processing = true
-						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, "OK", replyPacket)
+						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", replyPacket)
 						go func() {
 							processingDone <- w.adminSQL(args)
 						}()
 					}
 				case "":
 				default:
-					w.sendText(w.highPriorityMsg, u.endpoint, chatID, false, true, lib.ParseRaw, w.cfg.Endpoints[u.endpoint].MaintenanceResponse, replyPacket)
+					w.sendText(w.highPriorityMsg, u.endpoint, chatID, false, true, cmdlib.ParseRaw, w.cfg.Endpoints[u.endpoint].MaintenanceResponse, replyPacket)
 				}
 			} else {
 				if command != "" {
 					users[waitingUser{chatID: chatID, endpoint: u.endpoint}] = true
-					w.sendText(w.highPriorityMsg, u.endpoint, chatID, false, true, lib.ParseRaw, w.cfg.Endpoints[u.endpoint].MaintenanceResponse, replyPacket)
+					w.sendText(w.highPriorityMsg, u.endpoint, chatID, false, true, cmdlib.ParseRaw, w.cfg.Endpoints[u.endpoint].MaintenanceResponse, replyPacket)
 					linf("ignoring command %s %s", command, args)
 				}
 			}
 		case elapsed := <-processingDone:
 			processing = false
 			text := fmt.Sprintf("processing done in %v", elapsed)
-			w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, lib.ParseRaw, text, messagePacket)
+			w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, text, messagePacket)
 		case <-w.outgoingMsgResults:
 		}
 	}
@@ -1994,7 +1995,7 @@ func main() {
 	version := flag.Bool("v", false, "prints current version")
 	flag.Parse()
 	if *version {
-		fmt.Println(lib.Version)
+		fmt.Println(cmdlib.Version)
 		os.Exit(0)
 	}
 
@@ -2010,7 +2011,7 @@ func main() {
 	go w.sender(w.lowPriorityMsg, 1)
 	go w.maintenanceStartupReply(incoming, databaseDone)
 	go w.sendNotificationsDaemon()
-	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, lib.ParseRaw, "bot started", messagePacket)
+	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, "bot started", messagePacket)
 	w.createDatabase(databaseDone)
 	w.initCache()
 	w.mustExec("update notification_queue set sending=0")
@@ -2023,7 +2024,7 @@ func main() {
 	var cleaningTimer = time.NewTicker(time.Duration(w.cfg.CleaningPeriodSeconds) * time.Second)
 	var subsConfirmTimer = time.NewTicker(time.Duration(w.cfg.SubsConfirmationPeriodSeconds) * time.Second)
 	var notificationSenderTimer = time.NewTicker(time.Duration(w.cfg.NotificationsReadyPeriodSeconds) * time.Second)
-	w.checker.Init(w.checker, lib.CheckerConfig{
+	w.checker.Init(w.checker, cmdlib.CheckerConfig{
 		UsersOnlineEndpoints: w.cfg.UsersOnlineEndpoint,
 		Clients:              w.clients,
 		Headers:              w.cfg.Headers,
@@ -2037,8 +2038,8 @@ func main() {
 	w.checker.Start()
 	signals := make(chan os.Signal, 16)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT, syscall.SIGTSTP, syscall.SIGCONT)
-	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, lib.ParseRaw, "bot is up", messagePacket)
-	w.initiateOnlineQuery()
+	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, "bot is up", messagePacket)
+	w.pushOnlineRequest()
 	for {
 		select {
 		case <-requestTimer.C:

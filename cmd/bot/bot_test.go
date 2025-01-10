@@ -5,7 +5,7 @@ import (
 	"runtime/debug"
 	"testing"
 
-	"github.com/bcmk/siren/lib"
+	"github.com/bcmk/siren/lib/cmdlib"
 	tg "github.com/bcmk/telegram-bot-api"
 )
 
@@ -34,10 +34,10 @@ func TestSql(t *testing.T) {
 	w.mustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 6, w.cfg.BlockThreshold)
 	w.mustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 7, w.cfg.BlockThreshold)
 	w.mustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep2", 7, w.cfg.BlockThreshold)
-	w.mustExec("insert into models (model_id, status) values ($1, $2)", "a", lib.StatusOnline)
-	w.mustExec("insert into models (model_id, status) values ($1, $2)", "b", lib.StatusOnline)
-	w.mustExec("insert into models (model_id, status) values ($1, $2)", "c", lib.StatusOnline)
-	w.mustExec("insert into models (model_id, status) values ($1, $2)", "c2", lib.StatusOnline)
+	w.mustExec("insert into models (model_id, status) values ($1, $2)", "a", cmdlib.StatusOnline)
+	w.mustExec("insert into models (model_id, status) values ($1, $2)", "b", cmdlib.StatusOnline)
+	w.mustExec("insert into models (model_id, status) values ($1, $2)", "c", cmdlib.StatusOnline)
+	w.mustExec("insert into models (model_id, status) values ($1, $2)", "c2", cmdlib.StatusOnline)
 	models := w.modelsToPoll()
 	if !reflect.DeepEqual(models, []string{"a", "d", "e", "g"}) {
 		t.Error("unexpected models result", models)
@@ -100,8 +100,8 @@ func TestSql(t *testing.T) {
 	}
 	statuses := w.statusesForChat("ep1", 3)
 	if !reflect.DeepEqual(statuses, []model{
-		{modelID: "c", status: lib.StatusOnline},
-		{modelID: "c2", status: lib.StatusOnline}}) {
+		{modelID: "c", status: cmdlib.StatusOnline},
+		{modelID: "c2", status: cmdlib.StatusOnline}}) {
 		t.Error("unexpected statuses", statuses)
 	}
 	_ = w.db.Close()
@@ -113,31 +113,19 @@ func TestUpdateStatus(t *testing.T) {
 	w.createDatabase(make(chan bool, 1))
 	w.initCache()
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 18); n == 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 18); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 19); n != 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 19); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{}, 20); n != 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{}, 20); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 21); n != 0 {
-		t.Error("unexpected status update")
-	}
-	checkInv(&w.worker, t)
-	if len(w.ourOnline) != 1 {
-		t.Error("wrong online models count")
-	}
-	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{}, 22); n != 0 {
-		t.Error("unexpected status update")
-	}
-	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 23); n != 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 21); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
@@ -145,7 +133,19 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("wrong online models count")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{}, 24); n != 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{}, 22); n != 0 {
+		t.Error("unexpected status update")
+	}
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 23); n != 0 {
+		t.Error("unexpected status update")
+	}
+	checkInv(&w.worker, t)
+	if len(w.ourOnline) != 1 {
+		t.Error("wrong online models count")
+	}
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{}, 24); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
@@ -153,7 +153,7 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("wrong active status")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{}, 29); n == 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{}, 29); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
@@ -161,61 +161,61 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("wrong active status")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 31); n == 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 31); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 32); n != 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 32); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{}, 33); n != 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{}, 33); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	w.processStatusUpdates([]lib.StatusUpdate{}, 34)
+	w.processStatusUpdates([]cmdlib.StatusUpdate{}, 34)
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{}, 35); n != 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{}, 35); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 36); n != 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 36); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{}, 37); n != 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{}, 37); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{}, 41); n != 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{}, 41); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 42); n != 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 42); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 48); n != 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 48); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	w.processStatusUpdates([]lib.StatusUpdate{}, 49)
+	w.processStatusUpdates([]cmdlib.StatusUpdate{}, 49)
 	checkInv(&w.worker, t)
-	w.processStatusUpdates([]lib.StatusUpdate{}, 50)
+	w.processStatusUpdates([]cmdlib.StatusUpdate{}, 50)
 	checkInv(&w.worker, t)
-	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 50)
+	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 50)
 	checkInv(&w.worker, t)
-	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 52)
+	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 52)
 	checkInv(&w.worker, t)
-	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "b", Status: lib.StatusOnline}}, 53)
+	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "b", Status: cmdlib.StatusOnline}}, 53)
 	checkInv(&w.worker, t)
-	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "b", Status: lib.StatusOffline}}, 54)
+	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "b", Status: cmdlib.StatusOffline}}, 54)
 	checkInv(&w.worker, t)
 	if !w.ourOnline["b"] {
 		t.Error("wrong active status")
 	}
 	checkInv(&w.worker, t)
-	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}, {ModelID: "b", Status: lib.StatusOnline}}, 55)
+	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}, {ModelID: "b", Status: cmdlib.StatusOnline}}, 55)
 	checkInv(&w.worker, t)
 	if !w.ourOnline["b"] {
 		t.Error("wrong active status")
@@ -225,68 +225,68 @@ func TestUpdateStatus(t *testing.T) {
 		t.Errorf("wrong online models: %v", w.ourOnline)
 	}
 	checkInv(&w.worker, t)
-	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "b", Status: lib.StatusOffline}}, 56)
+	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "b", Status: cmdlib.StatusOffline}}, 56)
 	if count := len(w.ourOnline); count != 2 {
 		t.Errorf("wrong online models count: %d", count)
 	}
 	w.cfg.OfflineNotifications = true
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 57); n != 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 57); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if !w.ourOnline["a"] {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{}, 68); n == 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{}, 68); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if w.ourOnline["a"] {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 69); n == 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 69); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if !w.ourOnline["a"] {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusUnknown}}, 70); n == 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusUnknown}}, 70); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if w.ourOnline["a"] {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 71); n == 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 71); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if !w.ourOnline["a"] {
 		t.Error("wrong active status")
 	}
-	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusUnknown}}, 72)
+	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusUnknown}}, 72)
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 73); n != 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 73); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if w.ourOnline["a"] {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{}, 79); n != 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{}, 79); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if w.ourOnline["a"] {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusUnknown}}, 80); n != 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusUnknown}}, 80); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 81); n == 0 {
+	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 81); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
@@ -303,9 +303,9 @@ func TestCleanStatuses(t *testing.T) {
 	w.cfg.StatusConfirmationSeconds.Offline = day + 2
 	w.createDatabase(make(chan bool, 1))
 	w.initCache()
-	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, 18)
-	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}, {ModelID: "b", Status: lib.StatusOnline}}, 53)
-	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "b", Status: lib.StatusOffline}}, 55)
+	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 18)
+	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}, {ModelID: "b", Status: cmdlib.StatusOnline}}, 53)
+	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "b", Status: cmdlib.StatusOffline}}, 55)
 	if len(w.siteStatuses) != 2 {
 		t.Error("wrong number of statuses")
 	}
@@ -315,21 +315,21 @@ func TestCleanStatuses(t *testing.T) {
 		t.Errorf("wrong number of statuses: %d", len(w.siteStatuses))
 	}
 	checkInv(&w.worker, t)
-	w.processStatusUpdates([]lib.StatusUpdate{}, day+56)
+	w.processStatusUpdates([]cmdlib.StatusUpdate{}, day+56)
 	if len(w.ourOnline) != 1 {
 		t.Logf("site statuses: %v", w.siteStatuses)
 		t.Logf("our online: %v", w.ourOnline)
 		t.Errorf("wrong number of online: %d", len(w.ourOnline))
 	}
 	checkInv(&w.worker, t)
-	w.processStatusUpdates([]lib.StatusUpdate{}, day+60)
+	w.processStatusUpdates([]cmdlib.StatusUpdate{}, day+60)
 	if len(w.ourOnline) != 0 {
 		t.Logf("site statuses: %v", w.siteStatuses)
 		t.Logf("our online: %v", w.ourOnline)
 		t.Errorf("wrong number of online: %d", len(w.ourOnline))
 	}
 	checkInv(&w.worker, t)
-	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOnline}}, day+100)
+	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, day+100)
 	if len(w.ourOnline) != 1 {
 		t.Logf("site statuses: %v", w.siteStatuses)
 		t.Logf("our online: %v", w.ourOnline)
@@ -347,14 +347,14 @@ func TestCleanStatuses(t *testing.T) {
 	if len(w.siteOnline) != 0 {
 		t.Errorf("wrong number of site online models: %d", len(w.siteOnline))
 	}
-	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, day+155)
+	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, day+155)
 	if len(w.ourOnline) != 1 {
 		t.Logf("site statuses: %v", w.siteStatuses)
 		t.Logf("site online: %v", w.siteOnline)
 		t.Logf("our online: %v", w.ourOnline)
 		t.Errorf("wrong number of online: %d", len(w.ourOnline))
 	}
-	w.processStatusUpdates([]lib.StatusUpdate{{ModelID: "a", Status: lib.StatusOffline}}, 3*day)
+	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 3*day)
 	if len(w.ourOnline) != 0 {
 		t.Logf("site statuses: %v", w.siteStatuses)
 		t.Logf("site online: %v", w.siteOnline)
@@ -371,7 +371,7 @@ func TestNotificationsStorage(t *testing.T) {
 			endpoint: "endpoint_a",
 			chatID:   1,
 			modelID:  "model_a",
-			status:   lib.StatusUnknown,
+			status:   cmdlib.StatusUnknown,
 			timeDiff: nil,
 			imageURL: "image_a",
 			social:   false,
@@ -383,7 +383,7 @@ func TestNotificationsStorage(t *testing.T) {
 			endpoint: "endpoint_b",
 			chatID:   2,
 			modelID:  "model_b",
-			status:   lib.StatusOffline,
+			status:   cmdlib.StatusOffline,
 			timeDiff: &timeDiff,
 			imageURL: "image_b",
 			social:   true,
@@ -407,7 +407,7 @@ func TestNotificationsStorage(t *testing.T) {
 			endpoint: "endpoint_c",
 			chatID:   3,
 			modelID:  "model_c",
-			status:   lib.StatusOnline,
+			status:   cmdlib.StatusOnline,
 			timeDiff: nil,
 			imageURL: "image_c",
 			social:   true,
@@ -430,7 +430,7 @@ func TestModels(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
-	w.mustExec("insert into models (model_id, status) values ($1, $2)", "a", lib.StatusUnknown)
+	w.mustExec("insert into models (model_id, status) values ($1, $2)", "a", cmdlib.StatusUnknown)
 	if w.maybeModel("a") == nil {
 		t.Error("unexpected result")
 	}
@@ -557,7 +557,7 @@ func checkInv(w *worker, t *testing.T) {
 		nil,
 		scanTo{&rec.modelID, &rec.status},
 		func() {
-			if rec.status == lib.StatusOnline {
+			if rec.status == cmdlib.StatusOnline {
 				confOnline[rec.modelID] = true
 			}
 		})

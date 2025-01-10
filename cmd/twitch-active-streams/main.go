@@ -1,3 +1,4 @@
+// This program prints out all Twitch streams that are currently online
 package main
 
 import (
@@ -5,7 +6,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bcmk/siren/lib"
+	"github.com/bcmk/siren/internal/checkers"
+	"github.com/bcmk/siren/lib/cmdlib"
 )
 
 var verbose = flag.Bool("v", false, "verbose output")
@@ -21,17 +23,17 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
-	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
-	checker := &lib.TwitchChecker{}
-	checker.Init(checker, lib.CheckerConfig{
+	client := cmdlib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
+	checker := &checkers.TwitchChecker{}
+	checker.Init(checker, cmdlib.CheckerConfig{
 		UsersOnlineEndpoints: []string{""},
-		Clients:              []*lib.Client{client},
+		Clients:              []*cmdlib.Client{client},
 		Dbg:                  *verbose,
 		SpecificConfig: map[string]string{
 			"client_id":     *clientID,
 			"client_secret": *secret,
 		}})
-	models, images, err := checker.CheckStatusesMany(lib.AllModels, lib.CheckOnline)
+	models, images, err := checker.CheckStatusesMany(cmdlib.AllModels, cmdlib.CheckOnline)
 	if err != nil {
 		fmt.Printf("error occurred: %v", err)
 		return

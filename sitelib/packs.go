@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bcmk/siren/lib"
+	"github.com/bcmk/siren/lib/cmdlib"
 )
 
 // IconNames represents all the icons in chic
@@ -118,18 +118,18 @@ func fillVisibleIcons(parsedPack *Pack, foundFinalIcons map[string]Icon) {
 func parsePack(libraryDir, packName string) Pack {
 	packDir := path.Join(libraryDir, packName)
 	configFile, err := os.Open(path.Join(packDir, "config.json"))
-	lib.CheckErr(err)
+	cmdlib.CheckErr(err)
 	decoder := json.NewDecoder(configFile)
 	parsedPack := Pack{}
 	err = decoder.Decode(&parsedPack)
-	lib.CheckErr(err)
-	lib.CheckErr(configFile.Close())
+	cmdlib.CheckErr(err)
+	cmdlib.CheckErr(configFile.Close())
 	parsedPack.Name = packName
 	if parsedPack.ChaturbateIconsScale == nil {
 		parsedPack.ChaturbateIconsScale = &parsedPack.Scale
 	}
 	iconFiles, err := os.ReadDir(packDir)
-	lib.CheckErr(err)
+	cmdlib.CheckErr(err)
 	foundInputIcons := map[string]Icon{}
 	foundFinalIcons := map[string]Icon{}
 	inputIconFileSetNeedle := buildInputIconFileSetNeedle(&parsedPack)
@@ -148,7 +148,7 @@ func parsePack(libraryDir, packName string) Pack {
 	parsedPack.FinalIcons = foundFinalIcons
 	parsedPack.VisibleIcons = map[string]bool{}
 	fillVisibleIcons(&parsedPack, foundFinalIcons)
-	lib.Linf("configured %s v%d, input: %s\n", packName, parsedPack.Version, parsedPack.InputType)
+	cmdlib.Linf("configured %s v%d, input: %s\n", packName, parsedPack.Version, parsedPack.InputType)
 	return parsedPack
 }
 
@@ -156,7 +156,7 @@ func parsePack(libraryDir, packName string) Pack {
 func ParsePacks(dir string) []Pack {
 	var packs []Pack
 	files, err := os.ReadDir(dir)
-	lib.CheckErr(err)
+	cmdlib.CheckErr(err)
 	for _, file := range files {
 		if !file.IsDir() {
 			continue
@@ -175,10 +175,10 @@ func ParsePacks(dir string) []Pack {
 // parsePNGSize parses the PNG file and returns its width and height
 func parsePNGSize(filename string) (width, height float64) {
 	file, err := os.Open(filename)
-	lib.CheckErr(err)
-	defer func() { lib.CheckErr(file.Close()) }()
+	cmdlib.CheckErr(err)
+	defer func() { cmdlib.CheckErr(file.Close()) }()
 	img, _, err := image.Decode(file)
-	lib.CheckErr(err)
+	cmdlib.CheckErr(err)
 	return float64(img.Bounds().Dx()), float64(img.Bounds().Dy())
 }
 
@@ -191,15 +191,15 @@ type SVG struct {
 // parseSVGSize parses the SVG file and returns its width and height
 func parseSVGSize(filename string) (width, height float64) {
 	file, err := os.Open(filename)
-	lib.CheckErr(err)
-	defer func() { lib.CheckErr(file.Close()) }()
+	cmdlib.CheckErr(err)
+	defer func() { cmdlib.CheckErr(file.Close()) }()
 	var svg SVG
 	decoder := xml.NewDecoder(file)
 	err = decoder.Decode(&svg)
-	lib.CheckErr(err)
+	cmdlib.CheckErr(err)
 	width, err = strconv.ParseFloat(svg.Width, 64)
-	lib.CheckErr(err)
+	cmdlib.CheckErr(err)
 	height, err = strconv.ParseFloat(svg.Height, 64)
-	lib.CheckErr(err)
+	cmdlib.CheckErr(err)
 	return width, height
 }

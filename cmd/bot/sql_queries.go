@@ -3,7 +3,7 @@ package main
 import (
 	"time"
 
-	"github.com/bcmk/siren/lib"
+	"github.com/bcmk/siren/lib/cmdlib"
 )
 
 var insertStatusChange = "insert into status_changes (model_id, status, timestamp) values ($1, $2, $3)"
@@ -59,9 +59,9 @@ func (w *worker) storeNotifications(nots []notification) {
 	checkErr(tx.Commit())
 }
 
-func (w *worker) lastSeenInfo(modelID string) (begin int, end int, prevStatus lib.StatusKind) {
+func (w *worker) lastSeenInfo(modelID string) (begin int, end int, prevStatus cmdlib.StatusKind) {
 	var maybeEnd *int
-	var maybePrevStatus *lib.StatusKind
+	var maybePrevStatus *cmdlib.StatusKind
 	if !w.maybeRecord(`
 		select timestamp, "end", prev_status from (
 			select
@@ -72,17 +72,17 @@ func (w *worker) lastSeenInfo(modelID string) (begin int, end int, prevStatus li
 			where model_id = $1)
 		where status = $2
 		order by timestamp desc limit 1`,
-		queryParams{modelID, lib.StatusOnline},
+		queryParams{modelID, cmdlib.StatusOnline},
 		scanTo{&begin, &maybeEnd, &maybePrevStatus}) {
 
-		return 0, 0, lib.StatusUnknown
+		return 0, 0, cmdlib.StatusUnknown
 	}
 	if maybeEnd == nil {
 		zero := 0
 		maybeEnd = &zero
 	}
 	if maybePrevStatus == nil {
-		unknown := lib.StatusUnknown
+		unknown := cmdlib.StatusUnknown
 		maybePrevStatus = &unknown
 	}
 	return begin, *maybeEnd, *maybePrevStatus
@@ -192,7 +192,7 @@ func (w *worker) changesFromTo(modelID string, from int, to int) []statusChange 
 	var changes []statusChange
 	first := true
 	var change statusChange
-	var firstStatus *lib.StatusKind
+	var firstStatus *cmdlib.StatusKind
 	var firstTimestamp *int
 	w.mustQuery(`
 		select status, timestamp, prev_status, prev_timestamp
@@ -356,7 +356,7 @@ func (w *worker) queryConfirmedModels() (map[string]bool, map[string]bool) {
 	statuses := map[string]bool{}
 	specialModels := map[string]bool{}
 	var modelID string
-	w.mustQuery("select model_id from models where status = $1", queryParams{lib.StatusOnline}, scanTo{&modelID}, func() { statuses[modelID] = true })
+	w.mustQuery("select model_id from models where status = $1", queryParams{cmdlib.StatusOnline}, scanTo{&modelID}, func() { statuses[modelID] = true })
 	w.mustQuery("select model_id from models where special=1", nil, scanTo{&modelID}, func() { specialModels[modelID] = true })
 	return statuses, specialModels
 }

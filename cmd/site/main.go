@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/aohorodnyk/mimeheader"
-	"github.com/bcmk/siren/lib"
+	"github.com/bcmk/siren/lib/cmdlib"
 	"github.com/bcmk/siren/sitelib"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
@@ -150,7 +150,7 @@ var chaturbateModelRegex = regexp.MustCompile(`^(?:https?://)?(?:www\.|ar\.|de\.
 func linf(format string, v ...interface{}) { log.Printf("[INFO] "+format, v...) }
 func ldbg(format string, v ...interface{}) { log.Printf("[DBG] "+format, v...) }
 
-var checkErr = lib.CheckErr
+var checkErr = cmdlib.CheckErr
 
 func notFoundError(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/html")
@@ -200,7 +200,7 @@ func (s *server) tparams(r *http.Request, more map[string]interface{}) map[strin
 	res["base_domain"] = s.cfg.BaseDomain
 	res["ru_domain"] = "ru." + s.cfg.BaseDomain
 	res["lang"] = langs(urlCopy, s.cfg.BaseDomain, map[string]string{"en": "", "ru": "ru."})
-	res["version"] = lib.Version
+	res["version"] = cmdlib.Version
 	for k, v := range more {
 		res[k] = v
 	}
@@ -328,7 +328,7 @@ func (s *server) likeHandler(w http.ResponseWriter, r *http.Request) {
 		notFoundError(w)
 		return
 	}
-	lib.CloseBody(r.Body)
+	cmdlib.CloseBody(r.Body)
 	var like likeForPack
 	if err := json.Unmarshal(body, &like); err != nil {
 		notFoundError(w)

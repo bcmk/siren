@@ -1,3 +1,4 @@
+// This program checks if a specific Twitch stream is online
 package main
 
 import (
@@ -5,7 +6,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bcmk/siren/lib"
+	"github.com/bcmk/siren/internal/checkers"
+	"github.com/bcmk/siren/lib/cmdlib"
 )
 
 var verbose = flag.Bool("v", false, "verbose output")
@@ -26,14 +28,14 @@ func main() {
 		return
 	}
 	channel := flag.Arg(0)
-	if !lib.ModelIDRegexp.MatchString(channel) {
+	if !cmdlib.ModelIDRegexp.MatchString(channel) {
 		fmt.Println("invalid channel name")
 		return
 	}
-	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
-	checker := &lib.TwitchChecker{}
-	checker.Init(checker, lib.CheckerConfig{
-		Clients: []*lib.Client{client},
+	client := cmdlib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
+	checker := &checkers.TwitchChecker{}
+	checker.Init(checker, cmdlib.CheckerConfig{
+		Clients: []*cmdlib.Client{client},
 		Dbg:     *verbose,
 		SpecificConfig: map[string]string{
 			"client_id":     *clientID,

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cur="$(dirname "$(readlink -f "$0")")"
+cd "$cur/.."
+go build -ldflags="-s -X 'github.com/bcmk/siren/cmdlib.Version=$(scripts/describe-version)'" ./...

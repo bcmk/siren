@@ -1,3 +1,4 @@
+// This program prints out all Chaturbate models that are currently online
 package main
 
 import (
@@ -5,7 +6,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bcmk/siren/lib"
+	"github.com/bcmk/siren/internal/checkers"
+	"github.com/bcmk/siren/lib/cmdlib"
 )
 
 var verbose = flag.Bool("v", false, "verbose output")
@@ -20,10 +22,10 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
-	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
-	checker := &lib.ChaturbateChecker{}
-	checker.Init(checker, lib.CheckerConfig{UsersOnlineEndpoints: []string{*endpoint}, Clients: []*lib.Client{client}, Dbg: *verbose})
-	models, images, err := checker.CheckStatusesMany(lib.AllModels, lib.CheckOnline)
+	client := cmdlib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
+	checker := &checkers.ChaturbateChecker{}
+	checker.Init(checker, cmdlib.CheckerConfig{UsersOnlineEndpoints: []string{*endpoint}, Clients: []*cmdlib.Client{client}, Dbg: *verbose})
+	models, images, err := checker.CheckStatusesMany(cmdlib.AllModels, cmdlib.CheckOnline)
 	if err != nil {
 		fmt.Printf("error occurred: %v", err)
 		return

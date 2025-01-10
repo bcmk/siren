@@ -1,3 +1,4 @@
+// This program checks if a specific CamSoda model is online
 package main
 
 import (
@@ -5,7 +6,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bcmk/siren/lib"
+	"github.com/bcmk/siren/internal/checkers"
+	"github.com/bcmk/siren/lib/cmdlib"
 )
 
 var verbose = flag.Bool("v", false, "verbose output")
@@ -24,13 +26,13 @@ func main() {
 		return
 	}
 	modelID := flag.Arg(0)
-	modelID = lib.CanonicalModelID(modelID)
-	if !lib.ModelIDRegexp.MatchString(modelID) {
+	modelID = cmdlib.CanonicalModelID(modelID)
+	if !cmdlib.ModelIDRegexp.MatchString(modelID) {
 		fmt.Println("invalid model ID")
 		return
 	}
-	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
-	checker := &lib.CamSodaChecker{}
-	checker.Init(checker, lib.CheckerConfig{Clients: []*lib.Client{client}, Dbg: *verbose})
+	client := cmdlib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
+	checker := &checkers.CamSodaChecker{}
+	checker.Init(checker, cmdlib.CheckerConfig{Clients: []*cmdlib.Client{client}, Dbg: *verbose})
 	fmt.Println(checker.CheckStatusSingle(modelID))
 }

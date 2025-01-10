@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/bcmk/siren/lib"
+	"github.com/bcmk/siren/lib/cmdlib"
 	"gopkg.in/yaml.v3"
 )
 
@@ -51,11 +51,11 @@ type Config struct {
 // ReadConfig reads config file and parses it
 func ReadConfig(path string) Config {
 	file, err := os.Open(filepath.Clean(path))
-	lib.CheckErr(err)
-	defer func() { lib.CheckErr(file.Close()) }()
+	cmdlib.CheckErr(err)
+	defer func() { cmdlib.CheckErr(file.Close()) }()
 	decoder := yaml.NewDecoder(file)
 	parsed := Config{}
 	err = decoder.Decode(&parsed)
-	lib.CheckErr(err)
+	cmdlib.CheckErr(err)
 	return parsed
 }

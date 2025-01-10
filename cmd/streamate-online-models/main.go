@@ -1,3 +1,4 @@
+// This program prints out all Streamate models that are currently online
 package main
 
 import (
@@ -5,7 +6,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bcmk/siren/lib"
+	"github.com/bcmk/siren/internal/checkers"
+	"github.com/bcmk/siren/lib/cmdlib"
 )
 
 var verbose = flag.Bool("v", false, "verbose output")
@@ -19,13 +21,13 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
-	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
-	checker := &lib.StreamateChecker{}
-	checker.Init(checker, lib.CheckerConfig{
+	client := cmdlib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
+	checker := &checkers.StreamateChecker{}
+	checker.Init(checker, cmdlib.CheckerConfig{
 		UsersOnlineEndpoints: []string{"http://affiliate.streamate.com/SMLive/SMLResult.xml"},
-		Clients:              []*lib.Client{client},
+		Clients:              []*cmdlib.Client{client},
 		Dbg:                  *verbose})
-	models, images, err := checker.CheckStatusesMany(lib.AllModels, lib.CheckOnline)
+	models, images, err := checker.CheckStatusesMany(cmdlib.AllModels, cmdlib.CheckOnline)
 
 	if err != nil {
 		fmt.Printf("error occurred: %v", err)

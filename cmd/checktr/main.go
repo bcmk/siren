@@ -1,3 +1,4 @@
+// This program checks translations
 package main
 
 import (
@@ -5,11 +6,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bcmk/siren/lib"
+	"github.com/bcmk/siren/lib/cmdlib"
 	"gopkg.in/yaml.v3"
 )
 
-var print = flag.Bool("p", false, "print translations")
+var printTranslations = flag.Bool("p", false, "print translations")
 var printKeys = flag.Bool("k", false, "print keys")
 
 func main() {
@@ -18,10 +19,10 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
-	_, raw := lib.LoadEndpointTranslations(flag.Args())
-	if *print {
+	_, raw := cmdlib.LoadEndpointTranslations(flag.Args())
+	if *printTranslations {
 		bytes, err := yaml.Marshal(raw)
-		lib.CheckErr(err)
+		cmdlib.CheckErr(err)
 		fmt.Println(string(bytes))
 	} else if *printKeys {
 		for _, t := range raw {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/bcmk/siren/lib"
+	"github.com/bcmk/siren/lib/cmdlib"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	_ "github.com/lib/pq"
@@ -22,25 +22,25 @@ var testConfig = config{
 	MaxCleanSeconds:     1000000,
 }
 
-var testTranslations = lib.Translations{
-	Help:           &lib.Translation{Str: "Help", Parse: lib.ParseRaw},
-	Online:         &lib.Translation{Str: "Online %s", Parse: lib.ParseRaw},
-	Offline:        &lib.Translation{Str: "Offline %s", Parse: lib.ParseRaw},
-	SyntaxAdd:      &lib.Translation{Str: "SyntaxAdd", Parse: lib.ParseRaw},
-	SyntaxRemove:   &lib.Translation{Str: "SyntaxRemove", Parse: lib.ParseRaw},
-	SyntaxFeedback: &lib.Translation{Str: "SyntaxFeedback", Parse: lib.ParseRaw},
-	InvalidSymbols: &lib.Translation{Str: "InvalidSymbols", Parse: lib.ParseRaw},
-	AlreadyAdded:   &lib.Translation{Str: "AlreadyAdded %s", Parse: lib.ParseRaw},
-	AddError:       &lib.Translation{Str: "AddError %s", Parse: lib.ParseRaw},
-	ModelAdded:     &lib.Translation{Str: "ModelAdded %s", Parse: lib.ParseRaw},
-	ModelNotInList: &lib.Translation{Str: "ModelNotInList %s", Parse: lib.ParseRaw},
-	ModelRemoved:   &lib.Translation{Str: "ModelRemoved %s", Parse: lib.ParseRaw},
-	Feedback:       &lib.Translation{Str: "Feedback", Parse: lib.ParseRaw},
-	Social:         &lib.Translation{Str: "Social", Parse: lib.ParseRaw},
-	UnknownCommand: &lib.Translation{Str: "UnknownCommand", Parse: lib.ParseRaw},
-	Languages:      &lib.Translation{Str: "Languages", Parse: lib.ParseRaw},
-	Version:        &lib.Translation{Str: "Version %s", Parse: lib.ParseRaw},
-	ProfileRemoved: &lib.Translation{Str: "ProfileRemoved %s", Parse: lib.ParseRaw},
+var testTranslations = cmdlib.Translations{
+	Help:           &cmdlib.Translation{Str: "Help", Parse: cmdlib.ParseRaw},
+	Online:         &cmdlib.Translation{Str: "Online %s", Parse: cmdlib.ParseRaw},
+	Offline:        &cmdlib.Translation{Str: "Offline %s", Parse: cmdlib.ParseRaw},
+	SyntaxAdd:      &cmdlib.Translation{Str: "SyntaxAdd", Parse: cmdlib.ParseRaw},
+	SyntaxRemove:   &cmdlib.Translation{Str: "SyntaxRemove", Parse: cmdlib.ParseRaw},
+	SyntaxFeedback: &cmdlib.Translation{Str: "SyntaxFeedback", Parse: cmdlib.ParseRaw},
+	InvalidSymbols: &cmdlib.Translation{Str: "InvalidSymbols", Parse: cmdlib.ParseRaw},
+	AlreadyAdded:   &cmdlib.Translation{Str: "AlreadyAdded %s", Parse: cmdlib.ParseRaw},
+	AddError:       &cmdlib.Translation{Str: "AddError %s", Parse: cmdlib.ParseRaw},
+	ModelAdded:     &cmdlib.Translation{Str: "ModelAdded %s", Parse: cmdlib.ParseRaw},
+	ModelNotInList: &cmdlib.Translation{Str: "ModelNotInList %s", Parse: cmdlib.ParseRaw},
+	ModelRemoved:   &cmdlib.Translation{Str: "ModelRemoved %s", Parse: cmdlib.ParseRaw},
+	Feedback:       &cmdlib.Translation{Str: "Feedback", Parse: cmdlib.ParseRaw},
+	Social:         &cmdlib.Translation{Str: "Social", Parse: cmdlib.ParseRaw},
+	UnknownCommand: &cmdlib.Translation{Str: "UnknownCommand", Parse: cmdlib.ParseRaw},
+	Languages:      &cmdlib.Translation{Str: "Languages", Parse: cmdlib.ParseRaw},
+	Version:        &cmdlib.Translation{Str: "Version %s", Parse: cmdlib.ParseRaw},
+	ProfileRemoved: &cmdlib.Translation{Str: "ProfileRemoved %s", Parse: cmdlib.ParseRaw},
 }
 
 type testWorker struct {
@@ -75,7 +75,7 @@ func newTestWorker() *testWorker {
 			db:              db,
 			cfg:             &testConfig,
 			clients:         nil,
-			tr:              map[string]*lib.Translations{"test": &testTranslations},
+			tr:              map[string]*cmdlib.Translations{"test": &testTranslations},
 			durations:       map[string]queryDurationsData{},
 			lowPriorityMsg:  make(chan outgoingPacket, 10000),
 			highPriorityMsg: make(chan outgoingPacket, 10000),

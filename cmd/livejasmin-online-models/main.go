@@ -1,3 +1,4 @@
+// This program prints out all LiveJasmin models that are currently online
 package main
 
 import (
@@ -5,14 +6,15 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bcmk/siren/lib"
+	"github.com/bcmk/siren/internal/checkers"
+	"github.com/bcmk/siren/lib/cmdlib"
 )
 
 var verbose = flag.Bool("v", false, "verbose output")
 var timeout = flag.Int("t", 10, "timeout in seconds")
 var address = flag.String("a", "", "source IP address")
 var cookies = flag.Bool("c", false, "use cookies")
-var endpoints = lib.StringSetFlag{}
+var endpoints = cmdlib.StringSetFlag{}
 
 func toSlice(xs map[string]bool) []string {
 	var result []string
@@ -29,10 +31,10 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
-	client := lib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
-	checker := &lib.LiveJasminChecker{}
-	checker.Init(checker, lib.CheckerConfig{UsersOnlineEndpoints: toSlice(endpoints), Clients: []*lib.Client{client}, Dbg: *verbose})
-	models, images, err := checker.CheckStatusesMany(lib.AllModels, lib.CheckOnline)
+	client := cmdlib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
+	checker := &checkers.LiveJasminChecker{}
+	checker.Init(checker, cmdlib.CheckerConfig{UsersOnlineEndpoints: toSlice(endpoints), Clients: []*cmdlib.Client{client}, Dbg: *verbose})
+	models, images, err := checker.CheckStatusesMany(cmdlib.AllModels, cmdlib.CheckOnline)
 	if err != nil {
 		fmt.Printf("error occurred: %v", err)
 		return
