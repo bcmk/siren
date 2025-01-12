@@ -1,12 +1,12 @@
-package main
+package db
 
 import (
 	"database/sql"
 )
 
-var migrations = []func(w *worker){
-	func(w *worker) {
-		w.mustExec(`
+var migrations = []func(d *Database){
+	func(d *Database) {
+		d.MustExec(`
 			create table block (
 				chat_id integer not null,
 				endpoint text not null,
@@ -14,14 +14,14 @@ var migrations = []func(w *worker){
 				primary key (chat_id, endpoint)
 			);
 		`)
-		w.mustExec(`
+		d.MustExec(`
 			create table feedback (
 				chat_id integer,
 				text text,
 				endpoint text not null default ''
 			);
 		`)
-		w.mustExec(`
+		d.MustExec(`
 			create table interactions (
 				priority integer not null,
 				timestamp integer not null,
@@ -32,24 +32,24 @@ var migrations = []func(w *worker){
 				kind integer not null default 0
 			);
 		`)
-		w.mustExec(`create index ix_interactions_endpoint on interactions (endpoint);`)
-		w.mustExec(`create index ix_interactions_timestamp on interactions ("timestamp");`)
-		w.mustExec(`
+		d.MustExec(`create index ix_interactions_endpoint on interactions (endpoint);`)
+		d.MustExec(`create index ix_interactions_timestamp on interactions ("timestamp");`)
+		d.MustExec(`
 			create table last_status_changes (
 				model_id text primary key,
 				status integer not null default 0,
 				timestamp integer not null default 0
 			);
 		`)
-		w.mustExec(`
+		d.MustExec(`
 			create table models (
 				model_id text primary key,
 				status integer not null default 0,
 				referred_users integer not null default 0,
-				special integer not null default 0
+				special boolean not null default false
 			);
 		`)
-		w.mustExec(`
+		d.MustExec(`
 			create table notification_queue (
 				id serial primary key,
 				endpoint text not null,
@@ -65,14 +65,14 @@ var migrations = []func(w *worker){
 				kind integer not null default 0
 			);
 		`)
-		w.mustExec(`
+		d.MustExec(`
 			create table referrals (
 				chat_id integer primary key,
 				referral_id text not null default '',
 				referred_users integer not null default 0
 			);
 		`)
-		w.mustExec(`
+		d.MustExec(`
 			create table signals (
 				chat_id integer not null,
 				model_id text not null,
@@ -81,43 +81,44 @@ var migrations = []func(w *worker){
 				primary key (chat_id, model_id, endpoint)
 			);
 		`)
-		w.mustExec(`create index ix_signals_confirmed on signals (confirmed);`)
-		w.mustExec(`
+		d.MustExec(`create index ix_signals_confirmed on signals (confirmed);`)
+		d.MustExec(`
 			create table status_changes (
 				model_id text,
 				status integer not null default 0,
 				timestamp integer not null default 0
 			);`)
-		w.mustExec(`create index ix_status_changes_model_id on status_changes (model_id);`)
-		w.mustExec(`create index ix_status_changes_timestamp on status_changes ("timestamp");`)
-		w.mustExec(`
+		d.MustExec(`create index ix_status_changes_model_id on status_changes (model_id);`)
+		d.MustExec(`create index ix_status_changes_timestamp on status_changes ("timestamp");`)
+		d.MustExec(`
 			create table users (
 				chat_id integer primary key,
 				max_models integer not null default 0,
 				reports integer not null default 0,
 				blacklist integer not null default 0,
-				show_images integer not null default 1,
-				offline_notifications integer not null default 1
+				show_images boolean not null default true,
+				offline_notifications boolean not null default true
 			);
 		`)
 	},
 }
 
-func (w *worker) applyMigrations() {
-	row := w.db.QueryRow("select version from schema_version")
+// ApplyMigrations applies all migrations to the database
+func (d *Database) ApplyMigrations() {
+	row := d.db.QueryRow("select version from schema_version")
 	var version int
 	err := row.Scan(&version)
 	if err == sql.ErrNoRows {
 		version = -1
-		w.mustExec("insert into schema_version(version) values (0)")
+		d.MustExec("insert into schema_version(version) values (0)")
 	} else {
 		checkErr(err)
 	}
 	for i, m := range migrations[version+1:] {
 		n := i + version + 1
 		linf("applying migration %d", n)
-		m(w)
-		w.mustExec("update schema_version set version = $1", n)
+		m(d)
+		d.MustExec("update schema_version set version = $1", n)
 	}
 	linf("no more migrations")
 }

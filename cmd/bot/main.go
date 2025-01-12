@@ -32,6 +32,7 @@ import (
 	_ "golang.org/x/image/webp"
 
 	"github.com/bcmk/siren/internal/checkers"
+	"github.com/bcmk/siren/internal/db"
 	"github.com/bcmk/siren/lib/cmdlib"
 	tg "github.com/bcmk/telegram-bot-api"
 	_ "github.com/lib/pq"
@@ -54,31 +55,6 @@ type timeDiff struct {
 	Nanoseconds int
 }
 
-type notification struct {
-	id       int
-	endpoint string
-	chatID   int64
-	modelID  string
-	status   cmdlib.StatusKind
-	timeDiff *int
-	imageURL string
-	social   bool
-	sound    bool
-	priority int
-	kind     packetKind
-}
-
-type model struct {
-	modelID string
-	status  cmdlib.StatusKind
-}
-
-type statusChange struct {
-	modelID   string
-	status    cmdlib.StatusKind
-	timestamp int
-}
-
 type statRequest struct {
 	endpoint string
 	writer   http.ResponseWriter
@@ -86,30 +62,10 @@ type statRequest struct {
 	done     chan bool
 }
 
-type queryDurationsData struct {
-	avg   float64
-	count int
-}
-
-type user struct {
-	chatID               int64
-	maxModels            int
-	reports              int
-	blacklist            bool
-	showImages           bool
-	offlineNotifications bool
-}
-
-type subscription struct {
-	chatID   int64
-	modelID  string
-	endpoint string
-}
-
 type worker struct {
+	db                       db.Database
 	clients                  []*cmdlib.Client
 	bots                     map[string]*tg.BotAPI
-	db                       *sql.DB
 	cfg                      *config
 	httpQueriesDuration      time.Duration
 	updatesDuration          time.Duration
@@ -118,7 +74,7 @@ type worker struct {
 	confirmedChangesInPeriod int
 	ourOnline                map[string]bool
 	specialModels            map[string]bool
-	siteStatuses             map[string]statusChange
+	siteStatuses             map[string]db.StatusChange
 	siteOnline               map[string]bool
 	tr                       map[string]*cmdlib.Translations
 	tpl                      map[string]*template.Template
@@ -132,7 +88,6 @@ type worker struct {
 	downloadErrors           []bool
 	downloadResultsPos       int
 	nextErrorReport          time.Time
-	durations                map[string]queryDurationsData
 	images                   map[string]string
 	botNames                 map[string]string
 	lowPriorityMsg           chan outgoingPacket
@@ -140,9 +95,8 @@ type worker struct {
 	outgoingMsgResults       chan msgSendResult
 	unconfirmedSubsResults   chan cmdlib.StatusResults
 	onlineModelsChan         chan cmdlib.StatusUpdateResults
-	sendingNotifications     chan []notification
-	sentNotifications        chan []notification
-	mainGID                  int
+	sendingNotifications     chan []db.Notification
+	sentNotifications        chan []db.Notification
 	ourIDs                   []int64
 	modelIDRegexp            *regexp.Regexp
 }
@@ -156,17 +110,8 @@ type outgoingPacket struct {
 	message   baseChattable
 	endpoint  string
 	requested time.Time
-	kind      packetKind
+	kind      db.PacketKind
 }
-
-type packetKind int
-
-const (
-	notificationPacket packetKind = 0
-	replyPacket        packetKind = 1
-	adPacket           packetKind = 2
-	messagePacket      packetKind = 3
-)
 
 type appliedKind int
 
@@ -195,7 +140,7 @@ type msgSendResult struct {
 	endpoint  string
 	chatID    int64
 	delay     int
-	kind      packetKind
+	kind      db.PacketKind
 }
 
 type waitingUser struct {
@@ -225,8 +170,6 @@ func newWorker(args []string) *worker {
 		checkErr(err)
 		bots[n] = bot
 	}
-	db, err := sql.Open("postgres", cfg.DBPath)
-	checkErr(err)
 	tr, tpl := cmdlib.LoadAllTranslations(trsByEndpoint(cfg))
 	trAds, tplAds := cmdlib.LoadAllAds(trsAdsByEndpoint(cfg))
 	for _, t := range tpl {
@@ -234,7 +177,7 @@ func newWorker(args []string) *worker {
 	}
 	w := &worker{
 		bots:                   bots,
-		db:                     db,
+		db:                     db.NewDatabase(cfg.DBPath, cfg.CheckGID),
 		cfg:                    cfg,
 		clients:                clients,
 		tr:                     tr,
@@ -244,7 +187,6 @@ func newWorker(args []string) *worker {
 		unsuccessfulRequests:   make([]bool, cfg.errorDenominator),
 		downloadErrors:         make([]bool, cfg.errorDenominator),
 		downloadResults:        make(chan bool),
-		durations:              map[string]queryDurationsData{},
 		images:                 map[string]string{},
 		botNames:               map[string]string{},
 		lowPriorityMsg:         make(chan outgoingPacket, 10000),
@@ -252,9 +194,8 @@ func newWorker(args []string) *worker {
 		outgoingMsgResults:     make(chan msgSendResult),
 		unconfirmedSubsResults: make(chan cmdlib.StatusResults),
 		onlineModelsChan:       make(chan cmdlib.StatusUpdateResults),
-		sendingNotifications:   make(chan []notification, 1000),
-		sentNotifications:      make(chan []notification),
-		mainGID:                gid(),
+		sendingNotifications:   make(chan []db.Notification, 1000),
+		sentNotifications:      make(chan []db.Notification),
 		ourIDs:                 cfg.getOurIDs(),
 	}
 	for endpoint, a := range tr {
@@ -415,7 +356,7 @@ func (w *worker) sendText(
 	disablePreview bool,
 	parse cmdlib.ParseKind,
 	text string,
-	kind packetKind,
+	kind db.PacketKind,
 ) {
 	msg := tg.NewMessage(chatID, text)
 	msg.DisableNotification = !notify
@@ -435,7 +376,7 @@ func (w *worker) sendImage(
 	parse cmdlib.ParseKind,
 	text string,
 	image []byte,
-	kind packetKind,
+	kind db.PacketKind,
 ) {
 	fileBytes := tg.FileBytes{Name: "preview", Bytes: image}
 	msg := tg.NewPhotoUpload(chatID, fileBytes)
@@ -448,7 +389,7 @@ func (w *worker) sendImage(
 	w.enqueueMessage(queue, endpoint, &photoConfig{msg}, kind)
 }
 
-func (w *worker) enqueueMessage(queue chan outgoingPacket, endpoint string, msg baseChattable, kind packetKind) {
+func (w *worker) enqueueMessage(queue chan outgoingPacket, endpoint string, msg baseChattable, kind db.PacketKind) {
 	select {
 	case queue <- outgoingPacket{endpoint: endpoint, message: msg, requested: time.Now(), kind: kind}:
 	default:
@@ -557,7 +498,7 @@ func (w *worker) sendTr(
 	notify bool,
 	translation *cmdlib.Translation,
 	data map[string]interface{},
-	kind packetKind,
+	kind db.PacketKind,
 ) {
 	tpl := w.tpl[endpoint]
 	text := templateToString(tpl, translation.Key, data)
@@ -575,9 +516,9 @@ func (w *worker) sendAdsTr(
 	tpl := w.tplAds[endpoint]
 	text := templateToString(tpl, translation.Key, data)
 	if translation.Image == "" {
-		w.sendText(queue, endpoint, chatID, notify, translation.DisablePreview, translation.Parse, text, adPacket)
+		w.sendText(queue, endpoint, chatID, notify, translation.DisablePreview, translation.Parse, text, db.AdPacket)
 	} else {
-		w.sendImage(queue, endpoint, chatID, notify, translation.Parse, text, translation.ImageBytes, adPacket)
+		w.sendImage(queue, endpoint, chatID, notify, translation.Parse, text, translation.ImageBytes, db.AdPacket)
 	}
 }
 
@@ -589,7 +530,7 @@ func (w *worker) sendTrImage(
 	translation *cmdlib.Translation,
 	data map[string]interface{},
 	image []byte,
-	kind packetKind,
+	kind db.PacketKind,
 ) {
 	tpl := w.tpl[endpoint]
 	text := templateToString(tpl, translation.Key, data)
@@ -599,18 +540,18 @@ func (w *worker) sendTrImage(
 func (w *worker) createDatabase(done chan bool) {
 	linf("creating database if needed...")
 	for _, prelude := range w.cfg.SQLPrelude {
-		w.mustExec(prelude)
+		w.db.MustExec(prelude)
 	}
-	w.mustExec(`create table if not exists schema_version (version integer);`)
-	w.applyMigrations()
+	w.db.MustExec(`create table if not exists schema_version (version integer);`)
+	w.db.ApplyMigrations()
 	done <- true
 }
 
 func (w *worker) initCache() {
 	start := time.Now()
-	w.siteStatuses = w.queryLastStatusChanges()
+	w.siteStatuses = w.db.QueryLastStatusChanges()
 	w.siteOnline = w.getLastOnlineModels()
-	w.ourOnline, w.specialModels = w.queryConfirmedModels()
+	w.ourOnline, w.specialModels = w.db.QueryConfirmedModels()
 	elapsed := time.Since(start)
 	linf("cache initialized in %d ms", elapsed.Milliseconds())
 }
@@ -618,7 +559,7 @@ func (w *worker) initCache() {
 func (w *worker) getLastOnlineModels() map[string]bool {
 	res := map[string]bool{}
 	for k, v := range w.siteStatuses {
-		if v.status == cmdlib.StatusOnline {
+		if v.Status == cmdlib.StatusOnline {
 			res[k] = true
 		}
 	}
@@ -640,16 +581,16 @@ func (w *worker) confirmationSeconds(status cmdlib.StatusKind) int {
 	}
 }
 
-func (w *worker) updateStatus(insertStatusChangeStmt, updateLastStatusChangeStmt *sql.Stmt, next statusChange) {
-	prev := w.siteStatuses[next.modelID]
-	if next.status != prev.status {
-		w.mustExecPrepared(insertStatusChangeStmt, next.modelID, next.status, next.timestamp)
-		w.mustExecPrepared(updateLastStatusChangeStmt, next.modelID, next.status, next.timestamp)
-		w.siteStatuses[next.modelID] = next
-		if next.status == cmdlib.StatusOnline {
-			w.siteOnline[next.modelID] = true
+func (w *worker) updateStatus(insertStatusChangeStmt, updateLastStatusChangeStmt *sql.Stmt, next db.StatusChange) {
+	prev := w.siteStatuses[next.ModelID]
+	if next.Status != prev.Status {
+		w.db.MustExecPrepared(insertStatusChangeStmt, next.ModelID, next.Status, next.Timestamp)
+		w.db.MustExecPrepared(updateLastStatusChangeStmt, next.ModelID, next.Status, next.Timestamp)
+		w.siteStatuses[next.ModelID] = next
+		if next.Status == cmdlib.StatusOnline {
+			w.siteOnline[next.ModelID] = true
 		} else {
-			delete(w.siteOnline, next.modelID)
+			delete(w.siteOnline, next.ModelID)
 		}
 	}
 }
@@ -659,37 +600,37 @@ func (w *worker) confirmStatus(updateModelStatusStmt *sql.Stmt, now int) []strin
 	var confirmations []string
 	for _, modelID := range all {
 		statusChange := w.siteStatuses[modelID]
-		confirmationSeconds := w.confirmationSeconds(statusChange.status)
-		durationConfirmed := confirmationSeconds == 0 || statusChange.timestamp == 0 || (now-statusChange.timestamp >= confirmationSeconds)
+		confirmationSeconds := w.confirmationSeconds(statusChange.Status)
+		durationConfirmed := confirmationSeconds == 0 || statusChange.Timestamp == 0 || (now-statusChange.Timestamp >= confirmationSeconds)
 		if durationConfirmed {
-			if statusChange.status == cmdlib.StatusOnline {
+			if statusChange.Status == cmdlib.StatusOnline {
 				w.ourOnline[modelID] = true
 			} else {
 				delete(w.ourOnline, modelID)
 			}
-			w.mustExecPrepared(updateModelStatusStmt, modelID, statusChange.status)
+			w.db.MustExecPrepared(updateModelStatusStmt, modelID, statusChange.Status)
 			confirmations = append(confirmations, modelID)
 		}
 	}
 	return confirmations
 }
 
-func (w *worker) notifyOfAddResults(queue chan outgoingPacket, notifications []notification) {
+func (w *worker) notifyOfAddResults(queue chan outgoingPacket, notifications []db.Notification) {
 	for _, n := range notifications {
-		data := tplData{"model": n.modelID}
-		if n.status&(cmdlib.StatusOnline|cmdlib.StatusOffline|cmdlib.StatusDenied) != 0 {
-			w.sendTr(queue, n.endpoint, n.chatID, false, w.tr[n.endpoint].ModelAdded, data, replyPacket)
+		data := tplData{"model": n.ModelID}
+		if n.Status&(cmdlib.StatusOnline|cmdlib.StatusOffline|cmdlib.StatusDenied) != 0 {
+			w.sendTr(queue, n.Endpoint, n.ChatID, false, w.tr[n.Endpoint].ModelAdded, data, db.ReplyPacket)
 		} else {
-			w.sendTr(queue, n.endpoint, n.chatID, false, w.tr[n.endpoint].AddError, data, replyPacket)
+			w.sendTr(queue, n.Endpoint, n.ChatID, false, w.tr[n.Endpoint].AddError, data, db.ReplyPacket)
 		}
 	}
 }
 
-func (w *worker) downloadImages(notifications []notification) map[string][]byte {
+func (w *worker) downloadImages(notifications []db.Notification) map[string][]byte {
 	images := map[string][]byte{}
 	for _, n := range notifications {
-		if n.imageURL != "" {
-			images[n.imageURL] = nil
+		if n.ImageURL != "" {
+			images[n.ImageURL] = nil
 		}
 	}
 	for url := range images {
@@ -698,14 +639,14 @@ func (w *worker) downloadImages(notifications []notification) map[string][]byte 
 	return images
 }
 
-func (w *worker) notifyOfStatuses(highPriorityQueue chan outgoingPacket, lowPriorityQueue chan outgoingPacket, notifications []notification) {
+func (w *worker) notifyOfStatuses(highPriorityQueue chan outgoingPacket, lowPriorityQueue chan outgoingPacket, notifications []db.Notification) {
 	images := w.downloadImages(notifications)
 	for _, n := range notifications {
 		queue := lowPriorityQueue
-		if n.priority > 0 {
+		if n.Priority > 0 {
 			queue = highPriorityQueue
 		}
-		w.notifyOfStatus(queue, n, images[n.imageURL], n.social)
+		w.notifyOfStatus(queue, n, images[n.ImageURL], n.Social)
 	}
 }
 
@@ -727,35 +668,35 @@ func (w *worker) ad(queue chan outgoingPacket, endpoint string, chatID int64) {
 	w.sendAdsTr(queue, endpoint, chatID, false, trAds[adNum], nil)
 }
 
-func (w *worker) notifyOfStatus(queue chan outgoingPacket, n notification, image []byte, social bool) {
+func (w *worker) notifyOfStatus(queue chan outgoingPacket, n db.Notification, image []byte, social bool) {
 	if w.cfg.Debug {
-		ldbg("notifying of status of the model %s", n.modelID)
+		ldbg("notifying of status of the model %s", n.ModelID)
 	}
 	var timeDiff *timeDiff
-	if n.timeDiff != nil {
-		temp := calcTimeDiff(*n.timeDiff)
+	if n.TimeDiff != nil {
+		temp := calcTimeDiff(*n.TimeDiff)
 		timeDiff = &temp
 	}
-	data := tplData{"model": n.modelID, "time_diff": timeDiff}
-	switch n.status {
+	data := tplData{"model": n.ModelID, "time_diff": timeDiff}
+	switch n.Status {
 	case cmdlib.StatusOnline:
 		if image == nil {
-			w.sendTr(queue, n.endpoint, n.chatID, true, w.tr[n.endpoint].Online, data, n.kind)
+			w.sendTr(queue, n.Endpoint, n.ChatID, true, w.tr[n.Endpoint].Online, data, n.Kind)
 		} else {
-			w.sendTrImage(queue, n.endpoint, n.chatID, true, w.tr[n.endpoint].Online, data, image, n.kind)
+			w.sendTrImage(queue, n.Endpoint, n.ChatID, true, w.tr[n.Endpoint].Online, data, image, n.Kind)
 		}
 	case cmdlib.StatusOffline:
-		w.sendTr(queue, n.endpoint, n.chatID, false, w.tr[n.endpoint].Offline, data, n.kind)
+		w.sendTr(queue, n.Endpoint, n.ChatID, false, w.tr[n.Endpoint].Offline, data, n.Kind)
 	case cmdlib.StatusDenied:
-		w.sendTr(queue, n.endpoint, n.chatID, false, w.tr[n.endpoint].Denied, data, n.kind)
+		w.sendTr(queue, n.Endpoint, n.ChatID, false, w.tr[n.Endpoint].Denied, data, n.Kind)
 	}
 	if social && rand.Intn(5) == 0 {
-		w.ad(queue, n.endpoint, n.chatID)
+		w.ad(queue, n.Endpoint, n.ChatID)
 	}
 }
 
-func (w *worker) mustUser(chatID int64) (user user) {
-	user, found := w.user(chatID)
+func (w *worker) mustUser(chatID int64) (user db.User) {
+	user, found := w.db.User(chatID)
 	if !found {
 		checkErr(fmt.Errorf("user not found: %d", chatID))
 	}
@@ -767,12 +708,12 @@ func (w *worker) showWeek(endpoint string, chatID int64, modelID string) {
 		w.showWeekForModel(endpoint, chatID, modelID)
 		return
 	}
-	models := w.modelsForChat(endpoint, chatID)
+	models := w.db.ModelsForChat(endpoint, chatID)
 	for _, m := range models {
 		w.showWeekForModel(endpoint, chatID, m)
 	}
 	if len(models) == 0 {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ZeroSubscriptions, nil, replyPacket)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ZeroSubscriptions, nil, db.ReplyPacket)
 	}
 
 }
@@ -780,7 +721,7 @@ func (w *worker) showWeek(endpoint string, chatID int64, modelID string) {
 func (w *worker) showWeekForModel(endpoint string, chatID int64, modelID string) {
 	modelID = w.modelIDPreprocessing(modelID)
 	if !w.modelIDRegexp.MatchString(modelID) {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"model": modelID}, replyPacket)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"model": modelID}, db.ReplyPacket)
 		return
 	}
 	hours, start := w.week(modelID)
@@ -788,28 +729,28 @@ func (w *worker) showWeekForModel(endpoint string, chatID int64, modelID string)
 		"hours":   hours,
 		"weekday": int(start.UTC().Weekday()),
 		"model":   modelID,
-	}, replyPacket)
+	}, db.ReplyPacket)
 }
 
 func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int) bool {
 	if modelID == "" {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].SyntaxAdd, nil, replyPacket)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].SyntaxAdd, nil, db.ReplyPacket)
 		return false
 	}
 	modelID = w.modelIDPreprocessing(modelID)
 	if !w.modelIDRegexp.MatchString(modelID) {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"model": modelID}, replyPacket)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"model": modelID}, db.ReplyPacket)
 		return false
 	}
 
-	if w.subscriptionExists(endpoint, chatID, modelID) {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].AlreadyAdded, tplData{"model": modelID}, replyPacket)
+	if w.db.SubscriptionExists(endpoint, chatID, modelID) {
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].AlreadyAdded, tplData{"model": modelID}, db.ReplyPacket)
 		return false
 	}
-	subscriptionsNumber := w.subscriptionsNumber(endpoint, chatID)
+	subscriptionsNumber := w.db.SubscriptionsNumber(endpoint, chatID)
 	user := w.mustUser(chatID)
-	if subscriptionsNumber >= user.maxModels {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].NotEnoughSubscriptions, nil, replyPacket)
+	if subscriptionsNumber >= user.MaxModels {
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].NotEnoughSubscriptions, nil, db.ReplyPacket)
 		w.subscriptionUsage(endpoint, chatID, true)
 		return false
 	}
@@ -818,35 +759,35 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 		confirmedStatus = cmdlib.StatusOnline
 	} else if _, ok := w.siteStatuses[modelID]; ok {
 		confirmedStatus = cmdlib.StatusOffline
-	} else if w.maybeModel(modelID) != nil {
+	} else if w.db.MaybeModel(modelID) != nil {
 		confirmedStatus = cmdlib.StatusOffline
 	} else {
-		w.mustExec("insert into signals (chat_id, model_id, endpoint, confirmed) values ($1, $2, $3, $4)", chatID, modelID, endpoint, 0)
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].CheckingModel, nil, replyPacket)
+		w.db.MustExec("insert into signals (chat_id, model_id, endpoint, confirmed) values ($1, $2, $3, $4)", chatID, modelID, endpoint, 0)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].CheckingModel, nil, db.ReplyPacket)
 		return false
 	}
-	w.mustExec("insert into signals (chat_id, model_id, endpoint, confirmed) values ($1, $2, $3, $4)", chatID, modelID, endpoint, 1)
-	w.mustExec("insert into models (model_id, status) values ($1, $2) on conflict(model_id) do nothing", modelID, confirmedStatus)
+	w.db.MustExec("insert into signals (chat_id, model_id, endpoint, confirmed) values ($1, $2, $3, $4)", chatID, modelID, endpoint, 1)
+	w.db.MustExec("insert into models (model_id, status) values ($1, $2) on conflict(model_id) do nothing", modelID, confirmedStatus)
 	subscriptionsNumber++
-	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ModelAdded, tplData{"model": modelID}, replyPacket)
-	nots := []notification{{
-		endpoint: endpoint,
-		chatID:   chatID,
-		modelID:  modelID,
-		status:   confirmedStatus,
-		timeDiff: w.modelDuration(modelID, now),
-		social:   false,
-		priority: 1,
-		kind:     replyPacket}}
-	if subscriptionsNumber >= user.maxModels-w.cfg.HeavyUserRemainder {
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ModelAdded, tplData{"model": modelID}, db.ReplyPacket)
+	nots := []db.Notification{{
+		Endpoint: endpoint,
+		ChatID:   chatID,
+		ModelID:  modelID,
+		Status:   confirmedStatus,
+		TimeDiff: w.modelDuration(modelID, now),
+		Social:   false,
+		Priority: 1,
+		Kind:     db.ReplyPacket}}
+	if subscriptionsNumber >= user.MaxModels-w.cfg.HeavyUserRemainder {
 		w.subscriptionUsage(endpoint, chatID, true)
 	}
-	w.storeNotifications(nots)
+	w.db.StoreNotifications(nots)
 	return true
 }
 
 func (w *worker) subscriptionUsage(endpoint string, chatID int64, ad bool) {
-	subscriptionsNumber := w.subscriptionsNumber(endpoint, chatID)
+	subscriptionsNumber := w.db.SubscriptionsNumber(endpoint, chatID)
 	user := w.mustUser(chatID)
 	tr := w.tr[endpoint].SubscriptionUsage
 	if ad {
@@ -855,9 +796,9 @@ func (w *worker) subscriptionUsage(endpoint string, chatID int64, ad bool) {
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, tr,
 		tplData{
 			"subscriptions_used":  subscriptionsNumber,
-			"total_subscriptions": user.maxModels,
+			"total_subscriptions": user.MaxModels,
 		},
-		replyPacket)
+		db.ReplyPacket)
 }
 
 func (w *worker) wantMore(endpoint string, chatID int64) {
@@ -865,48 +806,48 @@ func (w *worker) wantMore(endpoint string, chatID int64) {
 }
 
 func (w *worker) settings(endpoint string, chatID int64) {
-	subscriptionsNumber := w.subscriptionsNumber(endpoint, chatID)
+	subscriptionsNumber := w.db.SubscriptionsNumber(endpoint, chatID)
 	user := w.mustUser(chatID)
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Settings, tplData{
 		"subscriptions_used":              subscriptionsNumber,
-		"total_subscriptions":             user.maxModels,
-		"show_images":                     user.showImages,
+		"total_subscriptions":             user.MaxModels,
+		"show_images":                     user.ShowImages,
 		"offline_notifications_supported": w.cfg.OfflineNotifications,
-		"offline_notifications":           user.offlineNotifications,
-	}, replyPacket)
+		"offline_notifications":           user.OfflineNotifications,
+	}, db.ReplyPacket)
 }
 
 func (w *worker) enableImages(endpoint string, chatID int64, showImages bool) {
-	w.mustExec("update users set show_images = $1 where chat_id = $2", showImages, chatID)
-	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].OK, nil, replyPacket)
+	w.db.MustExec("update users set show_images = $1 where chat_id = $2", showImages, chatID)
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].OK, nil, db.ReplyPacket)
 }
 
 func (w *worker) enableOfflineNotifications(endpoint string, chatID int64, offlineNotifications bool) {
-	w.mustExec("update users set offline_notifications = $1 where chat_id = $2", offlineNotifications, chatID)
-	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].OK, nil, replyPacket)
+	w.db.MustExec("update users set offline_notifications = $1 where chat_id = $2", offlineNotifications, chatID)
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].OK, nil, db.ReplyPacket)
 }
 
 func (w *worker) removeModel(endpoint string, chatID int64, modelID string) {
 	if modelID == "" {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].SyntaxRemove, nil, replyPacket)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].SyntaxRemove, nil, db.ReplyPacket)
 		return
 	}
 	modelID = w.modelIDPreprocessing(modelID)
 	if !w.modelIDRegexp.MatchString(modelID) {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"model": modelID}, replyPacket)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"model": modelID}, db.ReplyPacket)
 		return
 	}
-	if !w.subscriptionExists(endpoint, chatID, modelID) {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ModelNotInList, tplData{"model": modelID}, replyPacket)
+	if !w.db.SubscriptionExists(endpoint, chatID, modelID) {
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ModelNotInList, tplData{"model": modelID}, db.ReplyPacket)
 		return
 	}
-	w.mustExec("delete from signals where chat_id = $1 and model_id = $2 and endpoint = $3", chatID, modelID, endpoint)
-	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ModelRemoved, tplData{"model": modelID}, replyPacket)
+	w.db.MustExec("delete from signals where chat_id = $1 and model_id = $2 and endpoint = $3", chatID, modelID, endpoint)
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ModelRemoved, tplData{"model": modelID}, db.ReplyPacket)
 }
 
 func (w *worker) sureRemoveAll(endpoint string, chatID int64) {
-	w.mustExec("delete from signals where chat_id = $1 and endpoint = $2", chatID, endpoint)
-	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].AllModelsRemoved, nil, replyPacket)
+	w.db.MustExec("delete from signals where chat_id = $1 and endpoint = $2", chatID, endpoint)
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].AllModelsRemoved, nil, db.ReplyPacket)
 }
 
 // calcTimeDiff calculates time difference ignoring summer time and leap seconds
@@ -926,11 +867,11 @@ func calcTimeDiff(dur int) timeDiff {
 	return diff
 }
 
-func chunkModels(xs []model, chunkSize int) [][]model {
+func chunkModels(xs []db.Model, chunkSize int) [][]db.Model {
 	if len(xs) == 0 {
 		return nil
 	}
-	divided := make([][]model, (len(xs)+chunkSize-1)/chunkSize)
+	divided := make([][]db.Model, (len(xs)+chunkSize-1)/chunkSize)
 	prev := 0
 	i := 0
 	till := len(xs) - chunkSize
@@ -960,19 +901,19 @@ func (w *worker) listModels(endpoint string, chatID int64, now int) {
 		Model    string
 		TimeDiff *timeDiff
 	}
-	statuses := w.statusesForChat(endpoint, chatID)
+	statuses := w.db.StatusesForChat(endpoint, chatID)
 	sort.SliceStable(statuses, func(i, j int) bool {
-		return listModelsSortWeight(statuses[i].status) < listModelsSortWeight(statuses[j].status)
+		return listModelsSortWeight(statuses[i].Status) < listModelsSortWeight(statuses[j].Status)
 	})
 	chunks := chunkModels(statuses, 50)
 	for _, chunk := range chunks {
 		var online, offline, denied []data
 		for _, s := range chunk {
 			data := data{
-				Model:    s.modelID,
-				TimeDiff: w.modelTimeDiff(s.modelID, now),
+				Model:    s.ModelID,
+				TimeDiff: w.modelTimeDiff(s.ModelID, now),
 			}
-			switch s.status {
+			switch s.Status {
 			case cmdlib.StatusOnline:
 				online = append(online, data)
 			case cmdlib.StatusDenied:
@@ -982,12 +923,12 @@ func (w *worker) listModels(endpoint string, chatID int64, now int) {
 			}
 		}
 		tplData := tplData{"online": online, "offline": offline, "denied": denied}
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].List, tplData, replyPacket)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].List, tplData, db.ReplyPacket)
 	}
 }
 
 func (w *worker) modelDuration(modelID string, now int) *int {
-	begin, end, prevStatus := w.lastSeenInfo(modelID)
+	begin, end, prevStatus := w.db.LastSeenInfo(modelID)
 	if end != 0 {
 		timeDiff := now - end
 		return &timeDiff
@@ -1042,37 +983,37 @@ func (w *worker) downloadImageInternal(url string) ([]byte, error) {
 }
 
 func (w *worker) listOnlineModels(endpoint string, chatID int64, now int) {
-	statuses := w.statusesForChat(endpoint, chatID)
-	var online []model
+	statuses := w.db.StatusesForChat(endpoint, chatID)
+	var online []db.Model
 	for _, s := range statuses {
-		if s.status == cmdlib.StatusOnline {
+		if s.Status == cmdlib.StatusOnline {
 			online = append(online, s)
 		}
 	}
 	if len(online) > w.cfg.MaxSubscriptionsForPics && chatID < -1 {
 		data := tplData{"max_subs": w.cfg.MaxSubscriptionsForPics}
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].TooManySubscriptionsForPics, data, replyPacket)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].TooManySubscriptionsForPics, data, db.ReplyPacket)
 		return
 	}
 	if len(online) == 0 {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].NoOnlineModels, nil, replyPacket)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].NoOnlineModels, nil, db.ReplyPacket)
 		return
 	}
-	var nots []notification
+	var nots []db.Notification
 	for _, s := range online {
-		not := notification{
-			priority: 1,
-			endpoint: endpoint,
-			chatID:   chatID,
-			modelID:  s.modelID,
-			status:   cmdlib.StatusOnline,
-			imageURL: w.images[s.modelID],
-			timeDiff: w.modelDuration(s.modelID, now),
-			kind:     replyPacket,
+		not := db.Notification{
+			Priority: 1,
+			Endpoint: endpoint,
+			ChatID:   chatID,
+			ModelID:  s.ModelID,
+			Status:   cmdlib.StatusOnline,
+			ImageURL: w.images[s.ModelID],
+			TimeDiff: w.modelDuration(s.ModelID, now),
+			Kind:     db.ReplyPacket,
 		}
 		nots = append(nots, not)
 	}
-	w.storeNotifications(nots)
+	w.db.StoreNotifications(nots)
 }
 
 func (w *worker) week(modelID string) ([]bool, time.Time) {
@@ -1081,15 +1022,15 @@ func (w *worker) week(modelID string) ([]bool, time.Time) {
 	today := now.Truncate(24 * time.Hour)
 	start := today.Add(-6 * 24 * time.Hour)
 	weekTimestamp := int(start.Unix())
-	changes := w.changesFromTo(modelID, weekTimestamp, nowTimestamp)
+	changes := w.db.ChangesFromTo(modelID, weekTimestamp, nowTimestamp)
 	hours := make([]bool, (nowTimestamp-weekTimestamp+3599)/3600)
 	for i, c := range changes[:len(changes)-1] {
-		if c.status == cmdlib.StatusOnline {
-			begin := (c.timestamp - weekTimestamp) / 3600
+		if c.Status == cmdlib.StatusOnline {
+			begin := (c.Timestamp - weekTimestamp) / 3600
 			if begin < 0 {
 				begin = 0
 			}
-			end := (changes[i+1].timestamp - weekTimestamp + 3599) / 3600
+			end := (changes[i+1].Timestamp - weekTimestamp + 3599) / 3600
 			for j := begin; j < end; j++ {
 				hours[j] = true
 			}
@@ -1100,15 +1041,15 @@ func (w *worker) week(modelID string) ([]bool, time.Time) {
 
 func (w *worker) feedback(endpoint string, chatID int64, text string) {
 	if text == "" {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].SyntaxFeedback, nil, replyPacket)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].SyntaxFeedback, nil, db.ReplyPacket)
 		return
 	}
-	w.mustExec("insert into feedback (endpoint, chat_id, text) values ($1, $2, $3)", endpoint, chatID, text)
-	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Feedback, nil, replyPacket)
+	w.db.MustExec("insert into feedback (endpoint, chat_id, text) values ($1, $2, $3)", endpoint, chatID, text)
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Feedback, nil, db.ReplyPacket)
 	user := w.mustUser(chatID)
-	if !user.blacklist {
+	if !user.Blacklist {
 		finalText := fmt.Sprintf("Feedback from %d: %s", chatID, text)
-		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, finalText, replyPacket)
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, finalText, db.ReplyPacket)
 	}
 }
 
@@ -1158,13 +1099,13 @@ func (w *worker) statStrings(endpoint string) []string {
 
 func (w *worker) stat(endpoint string) {
 	text := strings.Join(w.statStrings(endpoint), "\n")
-	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, text, replyPacket)
+	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, text, db.ReplyPacket)
 }
 
 func (w *worker) performanceStat(endpoint string, arguments string) {
 	parts := strings.Split(arguments, " ")
 	if len(parts) > 2 {
-		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "wrong number of arguments", replyPacket)
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "wrong number of arguments", db.ReplyPacket)
 		return
 	}
 	n := int64(10)
@@ -1172,22 +1113,22 @@ func (w *worker) performanceStat(endpoint string, arguments string) {
 		var err error
 		n, err = strconv.ParseInt(parts[1], 10, 32)
 		if err != nil {
-			w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "cannot parse arguments", replyPacket)
+			w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "cannot parse arguments", db.ReplyPacket)
 			return
 		}
 	}
-	durations := w.durations
+	durations := w.db.Durations
 	var queries []string
 	for x := range durations {
 		queries = append(queries, x)
 	}
 	if len(parts) >= 1 && parts[0] == "avg" {
 		sort.SliceStable(queries, func(i, j int) bool {
-			return durations[queries[i]].avg > durations[queries[j]].avg
+			return durations[queries[i]].Avg > durations[queries[j]].Avg
 		})
 	} else {
 		sort.SliceStable(queries, func(i, j int) bool {
-			return durations[queries[i]].total() > durations[queries[j]].total()
+			return durations[queries[i]].Total() > durations[queries[j]].Total()
 		})
 	}
 	for _, x := range queries {
@@ -1196,12 +1137,12 @@ func (w *worker) performanceStat(endpoint string, arguments string) {
 		}
 		lines := []string{
 			fmt.Sprintf("<b>Desc</b>: %s", html.EscapeString(x)),
-			fmt.Sprintf("<b>Total</b>: %d", int(durations[x].avg*float64(durations[x].count)*1000.)),
-			fmt.Sprintf("<b>Avg</b>: %d", int(durations[x].avg*1000.)),
-			fmt.Sprintf("<b>Count</b>: %d", durations[x].count),
+			fmt.Sprintf("<b>Total</b>: %d", int(durations[x].Avg*float64(durations[x].Count)*1000.)),
+			fmt.Sprintf("<b>Avg</b>: %d", int(durations[x].Avg*1000.)),
+			fmt.Sprintf("<b>Count</b>: %d", durations[x].Count),
 		}
 		entry := strings.Join(lines, "\n")
-		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseHTML, entry, replyPacket)
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseHTML, entry, db.ReplyPacket)
 		n--
 	}
 }
@@ -1213,55 +1154,55 @@ func (w *worker) broadcast(endpoint string, text string) {
 	if w.cfg.Debug {
 		ldbg("broadcasting")
 	}
-	chats := w.broadcastChats(endpoint)
+	chats := w.db.BroadcastChats(endpoint)
 	for _, chatID := range chats {
-		w.sendText(w.lowPriorityMsg, endpoint, chatID, true, false, cmdlib.ParseRaw, text, messagePacket)
+		w.sendText(w.lowPriorityMsg, endpoint, chatID, true, false, cmdlib.ParseRaw, text, db.MessagePacket)
 	}
-	w.sendText(w.lowPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", replyPacket)
+	w.sendText(w.lowPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
 }
 
 func (w *worker) direct(endpoint string, arguments string) {
 	parts := strings.SplitN(arguments, " ", 2)
 	if len(parts) < 2 {
-		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "usage: /direct chatID text", replyPacket)
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "usage: /direct chatID text", db.ReplyPacket)
 		return
 	}
 	whom, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
-		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "first argument is invalid", replyPacket)
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "first argument is invalid", db.ReplyPacket)
 		return
 	}
 	text := parts[1]
 	if text == "" {
 		return
 	}
-	w.sendText(w.highPriorityMsg, endpoint, whom, true, false, cmdlib.ParseRaw, text, messagePacket)
-	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", replyPacket)
+	w.sendText(w.highPriorityMsg, endpoint, whom, true, false, cmdlib.ParseRaw, text, db.MessagePacket)
+	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
 }
 
 func (w *worker) blacklist(endpoint string, arguments string) {
 	whom, err := strconv.ParseInt(arguments, 10, 64)
 	if err != nil {
-		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "first argument is invalid", replyPacket)
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "first argument is invalid", db.ReplyPacket)
 		return
 	}
-	w.mustExec("update users set blacklist=1 where chat_id = $1", whom)
-	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", replyPacket)
+	w.db.MustExec("update users set blacklist=1 where chat_id = $1", whom)
+	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
 }
 
 func (w *worker) addSpecialModel(endpoint string, arguments string) {
 	parts := strings.Split(arguments, " ")
 	if len(parts) != 2 || (parts[0] != "set" && parts[0] != "unset") {
-		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "usage: /special set/unset MODEL_ID", replyPacket)
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "usage: /special set/unset MODEL_ID", db.ReplyPacket)
 		return
 	}
 	modelID := w.modelIDPreprocessing(parts[1])
 	if !w.modelIDRegexp.MatchString(modelID) {
-		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "MODEL_ID is invalid", replyPacket)
+		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "MODEL_ID is invalid", db.ReplyPacket)
 		return
 	}
 	set := parts[0] == "set"
-	w.mustExec(`
+	w.db.MustExec(`
 		insert into models (model_id, special) values ($1, $2)
 		on conflict(model_id) do update set special=excluded.special`,
 		modelID,
@@ -1271,7 +1212,7 @@ func (w *worker) addSpecialModel(endpoint string, arguments string) {
 	} else {
 		delete(w.specialModels, modelID)
 	}
-	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", replyPacket)
+	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
 }
 
 func (w *worker) serveEndpoints() {
@@ -1313,24 +1254,24 @@ func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arg
 	case "set_max_models":
 		parts := strings.Fields(arguments)
 		if len(parts) != 2 {
-			w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, cmdlib.ParseRaw, "expecting two arguments", replyPacket)
+			w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, cmdlib.ParseRaw, "expecting two arguments", db.ReplyPacket)
 			return true, false
 		}
 		who, err := strconv.ParseInt(parts[0], 10, 64)
 		if err != nil {
-			w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, cmdlib.ParseRaw, "first argument is invalid", replyPacket)
+			w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, cmdlib.ParseRaw, "first argument is invalid", db.ReplyPacket)
 			return true, false
 		}
 		maxModels, err := strconv.Atoi(parts[1])
 		if err != nil {
-			w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, cmdlib.ParseRaw, "second argument is invalid", replyPacket)
+			w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, cmdlib.ParseRaw, "second argument is invalid", db.ReplyPacket)
 			return true, false
 		}
-		w.setLimit(who, maxModels)
-		w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, cmdlib.ParseRaw, "OK", replyPacket)
+		w.db.SetLimit(who, maxModels)
+		w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
 		return true, false
 	case "maintenance":
-		w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, cmdlib.ParseRaw, "OK", replyPacket)
+		w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
 		return true, true
 	}
 	return false, false
@@ -1350,7 +1291,7 @@ func randString(n int) string {
 func (w *worker) newRandReferralID() (id string) {
 	for {
 		id = randString(5)
-		if w.mustInt("select count(*) from referrals where referral_id = $1", id) == 0 {
+		if w.db.MustInt("select count(*) from referrals where referral_id = $1", id) == 0 {
 			break
 		}
 	}
@@ -1358,41 +1299,41 @@ func (w *worker) newRandReferralID() (id string) {
 }
 
 func (w *worker) refer(followerChatID int64, referrer string) (applied appliedKind) {
-	referrerChatID := w.chatForReferralID(referrer)
+	referrerChatID := w.db.ChatForReferralID(referrer)
 	if referrerChatID == nil {
 		return invalidReferral
 	}
-	if _, exists := w.user(followerChatID); exists {
+	if _, exists := w.db.User(followerChatID); exists {
 		return followerExists
 	}
-	w.mustExec("insert into users (chat_id, max_models) values ($1, $2)", followerChatID, w.cfg.MaxModels+w.cfg.FollowerBonus)
-	w.mustExec(`
+	w.db.MustExec("insert into users (chat_id, max_models) values ($1, $2)", followerChatID, w.cfg.MaxModels+w.cfg.FollowerBonus)
+	w.db.MustExec(`
 		insert into users (chat_id, max_models) values ($1, $2)
 		on conflict(chat_id) do update set max_models=max_models + $3`,
 		*referrerChatID,
 		w.cfg.MaxModels+w.cfg.ReferralBonus,
 		w.cfg.ReferralBonus)
-	w.mustExec("update referrals set referred_users=referred_users+1 where chat_id = $1", referrerChatID)
+	w.db.MustExec("update referrals set referred_users=referred_users+1 where chat_id = $1", referrerChatID)
 	return referralApplied
 }
 
 func (w *worker) showReferral(endpoint string, chatID int64) {
-	referralID := w.referralID(chatID)
+	referralID := w.db.ReferralID(chatID)
 	if referralID == nil {
 		temp := w.newRandReferralID()
 		referralID = &temp
-		w.mustExec("insert into referrals (chat_id, referral_id) values ($1, $2)", chatID, *referralID)
+		w.db.MustExec("insert into referrals (chat_id, referral_id) values ($1, $2)", chatID, *referralID)
 	}
 	referralLink := fmt.Sprintf("https://t.me/%s?start=%s", w.botNames[endpoint], *referralID)
-	subscriptionsNumber := w.subscriptionsNumber(endpoint, chatID)
+	subscriptionsNumber := w.db.SubscriptionsNumber(endpoint, chatID)
 	user := w.mustUser(chatID)
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ReferralLink, tplData{
 		"link":                referralLink,
 		"referral_bonus":      w.cfg.ReferralBonus,
 		"follower_bonus":      w.cfg.FollowerBonus,
 		"subscriptions_used":  subscriptionsNumber,
-		"total_subscriptions": user.maxModels,
-	}, replyPacket)
+		"total_subscriptions": user.MaxModels,
+	}, db.ReplyPacket)
 }
 
 func (w *worker) start(endpoint string, chatID int64, referrer string, now int) {
@@ -1403,39 +1344,39 @@ func (w *worker) start(endpoint string, chatID int64, referrer string, now int) 
 		modelID = w.modelIDPreprocessing(modelID)
 		referrer = ""
 	case referrer != "":
-		referralID := w.referralID(chatID)
+		referralID := w.db.ReferralID(chatID)
 		if referralID != nil && *referralID == referrer {
-			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].OwnReferralLinkHit, nil, replyPacket)
+			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].OwnReferralLinkHit, nil, db.ReplyPacket)
 			return
 		}
 	}
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Help, tplData{
 		"website_link": w.cfg.WebsiteLink,
-	}, replyPacket)
+	}, db.ReplyPacket)
 	if chatID > 0 && referrer != "" {
 		applied := w.refer(chatID, referrer)
 		switch applied {
 		case referralApplied:
-			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ReferralApplied, nil, replyPacket)
+			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ReferralApplied, nil, db.ReplyPacket)
 		case invalidReferral:
-			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidReferralLink, nil, replyPacket)
+			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidReferralLink, nil, db.ReplyPacket)
 		case followerExists:
-			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].FollowerExists, nil, replyPacket)
+			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].FollowerExists, nil, db.ReplyPacket)
 		}
 	}
-	w.addUser(chatID)
+	w.db.AddUser(chatID, w.cfg.MaxModels)
 	if modelID != "" {
 		if w.addModel(endpoint, chatID, modelID, now) {
-			w.mustExec("update models set referred_users=referred_users+1 where model_id = $1", modelID)
+			w.db.MustExec("update models set referred_users=referred_users+1 where model_id = $1", modelID)
 		}
 	}
 }
 
 func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, arguments string, now int) bool {
-	w.resetBlock(endpoint, chatID)
+	w.db.ResetBlock(endpoint, chatID)
 	command = strings.ToLower(command)
 	if command != "start" {
-		w.addUser(chatID)
+		w.db.AddUser(chatID, w.cfg.MaxModels)
 	}
 	linf("chat: %d, command: %s %s", chatID, command, arguments)
 
@@ -1446,7 +1387,7 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	}
 
 	unknown := func() {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].UnknownCommand, nil, replyPacket)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].UnknownCommand, nil, db.ReplyPacket)
 	}
 
 	switch command {
@@ -1467,15 +1408,22 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	case "faq":
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].FAQ, tplData{
 			"max_models": w.cfg.MaxModels,
-		}, replyPacket)
+		}, db.ReplyPacket)
 	case "feedback":
 		w.feedback(endpoint, chatID, arguments)
 	case "social":
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Social, nil, replyPacket)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Social, nil, db.ReplyPacket)
 	case "version":
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Version, tplData{"version": cmdlib.Version}, replyPacket)
+		w.sendTr(
+			w.highPriorityMsg,
+			endpoint,
+			chatID,
+			false,
+			w.tr[endpoint].Version,
+			tplData{"version": cmdlib.Version},
+			db.ReplyPacket)
 	case "remove_all", "stop":
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].RemoveAll, nil, replyPacket)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].RemoveAll, nil, db.ReplyPacket)
 	case "sure_remove_all":
 		w.sureRemoveAll(endpoint, chatID)
 	case "want_more":
@@ -1505,10 +1453,10 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 }
 
 func (w *worker) subscriptions() map[string]cmdlib.StatusKind {
-	subs := w.mustStrings("select distinct(model_id) from signals where confirmed = 1")
+	subs := w.db.MustStrings("select distinct(model_id) from signals where confirmed = 1")
 	result := map[string]cmdlib.StatusKind{}
 	for _, s := range subs {
-		result[s] = w.siteStatuses[s].status
+		result[s] = w.siteStatuses[s].Status
 	}
 	return result
 }
@@ -1518,7 +1466,15 @@ func (w *worker) periodic() {
 	now := time.Now()
 	if w.nextErrorReport.Before(now) && unsuccessfulRequestsCount > w.cfg.errorThreshold {
 		text := fmt.Sprintf("Dangerous error rate reached: %d/%d", unsuccessfulRequestsCount, w.cfg.errorDenominator)
-		w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, text, messagePacket)
+		w.sendText(
+			w.highPriorityMsg,
+			w.cfg.AdminEndpoint,
+			w.cfg.AdminID,
+			true,
+			true,
+			cmdlib.ParseRaw,
+			text,
+			db.MessagePacket)
 		w.nextErrorReport = now.Add(time.Minute * time.Duration(w.cfg.ErrorReportingPeriodMinutes))
 	}
 	w.pushOnlineRequest()
@@ -1549,31 +1505,31 @@ func (w *worker) pushSpecificRequest(resultsCh chan cmdlib.StatusResults, specif
 func (w *worker) processStatusUpdates(updates []cmdlib.StatusUpdate, now int) (
 	changesCount int,
 	confirmedChangesCount int,
-	notifications []notification,
+	notifications []db.Notification,
 	elapsed time.Duration,
 ) {
 	start := time.Now()
-	usersForModels, endpointsForModels := w.usersForModels()
+	usersForModels, endpointsForModels := w.db.UsersForModels()
 	tx, err := w.db.Begin()
 	checkErr(err)
 
-	insertStatusChangeStmt, err := tx.Prepare(insertStatusChange)
+	insertStatusChangeStmt, err := tx.Prepare(db.InsertStatusChange)
 	checkErr(err)
-	updateLastStatusChangeStmt, err := tx.Prepare(updateLastStatusChange)
+	updateLastStatusChangeStmt, err := tx.Prepare(db.UpdateLastStatusChange)
 	checkErr(err)
-	updateModelStatusStmt, err := tx.Prepare(updateModelStatus)
+	updateModelStatusStmt, err := tx.Prepare(db.UpdateModelStatus)
 	checkErr(err)
 
 	changesCount = len(updates)
 
-	statusDone := w.measure("db: status updates")
+	statusDone := w.db.Measure("db: status updates")
 	for _, u := range updates {
-		statusChange := statusChange{modelID: u.ModelID, status: u.Status, timestamp: now}
+		statusChange := db.StatusChange{ModelID: u.ModelID, Status: u.Status, Timestamp: now}
 		w.updateStatus(insertStatusChangeStmt, updateLastStatusChangeStmt, statusChange)
 	}
 	statusDone()
 
-	confirmationsDone := w.measure("db: confirmations")
+	confirmationsDone := w.db.Measure("db: confirmations")
 	confirmations := w.confirmStatus(updateModelStatusStmt, now)
 	confirmationsDone()
 
@@ -1585,18 +1541,18 @@ func (w *worker) processStatusUpdates(updates []cmdlib.StatusUpdate, now int) (
 		users := usersForModels[c]
 		endpoints := endpointsForModels[c]
 		for i, user := range users {
-			status := w.siteStatuses[c].status
-			if (w.cfg.OfflineNotifications && user.offlineNotifications) || status != cmdlib.StatusOffline {
-				n := notification{
-					endpoint: endpoints[i],
-					chatID:   user.chatID,
-					modelID:  c,
-					status:   status,
-					social:   user.chatID > 0,
-					sound:    status == cmdlib.StatusOnline,
-					kind:     notificationPacket}
-				if user.showImages {
-					n.imageURL = w.images[c]
+			status := w.siteStatuses[c].Status
+			if (w.cfg.OfflineNotifications && user.OfflineNotifications) || status != cmdlib.StatusOffline {
+				n := db.Notification{
+					Endpoint: endpoints[i],
+					ChatID:   user.ChatID,
+					ModelID:  c,
+					Status:   status,
+					Social:   user.ChatID > 0,
+					Sound:    status == cmdlib.StatusOnline,
+					Kind:     db.NotificationPacket}
+				if user.ShowImages {
+					n.ImageURL = w.images[c]
 				}
 				notifications = append(notifications, n)
 			}
@@ -1605,7 +1561,7 @@ func (w *worker) processStatusUpdates(updates []cmdlib.StatusUpdate, now int) (
 
 	confirmedChangesCount = len(confirmations)
 
-	defer w.measure("db: status updates commit")()
+	defer w.db.Measure("db: status updates commit")()
 	checkErr(insertStatusChangeStmt.Close())
 	checkErr(updateLastStatusChangeStmt.Close())
 	checkErr(updateModelStatusStmt.Close())
@@ -1692,26 +1648,25 @@ func getRss() (int64, error) {
 }
 
 func (w *worker) getStat(endpoint string) statistics {
-	measureDone := w.measure("db: retrieving stats")
+	measureDone := w.db.Measure("db: retrieving stats")
 	defer measureDone()
-	rss, err := getRss()
-	checkErr(err)
+	rss, _ := getRss()
 	var rusage syscall.Rusage
 	checkErr(syscall.Getrusage(syscall.RUSAGE_SELF, &rusage))
 
 	return statistics{
-		UsersCount:                   w.usersCount(endpoint),
-		GroupsCount:                  w.groupsCount(endpoint),
-		ActiveUsersOnEndpointCount:   w.activeUsersOnEndpointCount(endpoint),
-		ActiveUsersTotalCount:        w.activeUsersTotalCount(),
-		HeavyUsersCount:              w.heavyUsersCount(endpoint),
-		ModelsCount:                  w.modelsCount(endpoint),
-		ModelsToPollOnEndpointCount:  w.modelsToPollOnEndpointCount(endpoint),
-		ModelsToPollTotalCount:       w.modelsToPollTotalCount(),
+		UsersCount:                   w.db.UsersCount(endpoint),
+		GroupsCount:                  w.db.GroupsCount(endpoint),
+		ActiveUsersOnEndpointCount:   w.db.ActiveUsersOnEndpointCount(endpoint),
+		ActiveUsersTotalCount:        w.db.ActiveUsersTotalCount(),
+		HeavyUsersCount:              w.db.HeavyUsersCount(endpoint, w.cfg.MaxModels, w.cfg.HeavyUserRemainder),
+		ModelsCount:                  w.db.ModelsCount(endpoint),
+		ModelsToPollOnEndpointCount:  w.db.ModelsToPollOnEndpointCount(endpoint, w.cfg.BlockThreshold),
+		ModelsToPollTotalCount:       w.db.ModelsToPollTotalCount(w.cfg.BlockThreshold),
 		OnlineModelsCount:            len(w.ourOnline),
 		KnownModelsCount:             len(w.siteStatuses),
 		SpecialModelsCount:           len(w.specialModels),
-		StatusChangesCount:           w.statusChangesCount(),
+		StatusChangesCount:           w.db.StatusChangesCount(),
 		QueriesDurationMilliseconds:  int(w.httpQueriesDuration.Milliseconds()),
 		UpdatesDurationMilliseconds:  int(w.updatesDuration.Milliseconds()),
 		CleaningDurationMilliseconds: int(w.cleaningDuration.Milliseconds()),
@@ -1719,13 +1674,13 @@ func (w *worker) getStat(endpoint string) statistics {
 		DownloadErrorRate:            [2]int{w.downloadErrorsCount(), w.cfg.errorDenominator},
 		Rss:                          rss / 1024,
 		MaxRss:                       rusage.Maxrss,
-		UserReferralsCount:           w.userReferralsCount(),
-		ModelReferralsCount:          w.modelReferralsCount(),
-		ReportsCount:                 w.reports(),
+		UserReferralsCount:           w.db.UserReferralsCount(),
+		ModelReferralsCount:          w.db.ModelReferralsCount(),
+		ReportsCount:                 w.db.Reports(),
 		ChangesInPeriod:              w.changesInPeriod,
 		ConfirmedChangesInPeriod:     w.confirmedChangesInPeriod,
-		Interactions:                 w.interactionsByResultToday(endpoint),
-		InteractionsByKind:           w.interactionsByKindToday(endpoint),
+		Interactions:                 w.db.InteractionsByResultToday(endpoint),
+		InteractionsByKind:           w.db.InteractionsByKindToday(endpoint),
 	}
 }
 
@@ -1799,10 +1754,6 @@ func (c *config) getOurIDs() []int64 {
 	return ids
 }
 
-func (q queryDurationsData) total() float64 {
-	return q.avg * float64(q.count)
-}
-
 func (w *worker) logQueryErrors(errors int) {
 	for i := 0; i < errors; i++ {
 		w.logSingleQueryResult(false)
@@ -1820,14 +1771,14 @@ func (w *worker) logSingleQueryResult(success bool) {
 func (w *worker) cleanStatusChanges(now int64) time.Duration {
 	start := time.Now()
 	threshold := int(now) - w.cfg.KeepStatusesForDays*24*60*60
-	limit := w.mustInt("select coalesce(min(timestamp), 0) from status_changes") + w.cfg.MaxCleanSeconds
+	limit := w.db.MustInt("select coalesce(min(timestamp), 0) from status_changes") + w.cfg.MaxCleanSeconds
 	if limit < threshold {
 		threshold = limit
 	}
-	w.mustExec("delete from status_changes where timestamp < $1", threshold)
-	w.mustExec("delete from last_status_changes where timestamp < $1", threshold)
+	w.db.MustExec("delete from status_changes where timestamp < $1", threshold)
+	w.db.MustExec("delete from last_status_changes where timestamp < $1", threshold)
 	for k, v := range w.siteStatuses {
-		if v.timestamp < threshold {
+		if v.Timestamp < threshold {
 			delete(w.siteStatuses, k)
 			delete(w.siteOnline, k)
 		}
@@ -1838,8 +1789,8 @@ func (w *worker) cleanStatusChanges(now int64) time.Duration {
 func (w *worker) adminSQL(query string) time.Duration {
 	start := time.Now()
 	var result string
-	if w.maybeRecord(query, nil, scanTo{&result}) {
-		w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, result, replyPacket)
+	if w.db.MaybeRecord(query, nil, db.ScanTo{&result}) {
+		w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, result, db.ReplyPacket)
 	}
 	return time.Since(start)
 }
@@ -1853,12 +1804,12 @@ func (w *worker) maintenanceStartupReply(incoming chan incomingPacket, done chan
 			chatID, command, args := getCommandAndArgs(u.message, mention, w.ourIDs)
 			if command != "" {
 				waitingUsers[waitingUser{chatID: chatID, endpoint: u.endpoint}] = true
-				w.sendText(w.highPriorityMsg, u.endpoint, chatID, false, true, cmdlib.ParseRaw, w.cfg.Endpoints[u.endpoint].MaintenanceResponse, replyPacket)
+				w.sendText(w.highPriorityMsg, u.endpoint, chatID, false, true, cmdlib.ParseRaw, w.cfg.Endpoints[u.endpoint].MaintenanceResponse, db.ReplyPacket)
 				linf("ignoring command %s %s", command, args)
 			}
 		case <-done:
 			for user := range waitingUsers {
-				w.sendTr(w.highPriorityMsg, user.endpoint, user.chatID, false, w.tr[user.endpoint].WeAreUp, nil, messagePacket)
+				w.sendTr(w.highPriorityMsg, user.endpoint, user.chatID, false, w.tr[user.endpoint].WeAreUp, nil, db.MessagePacket)
 			}
 			return
 		case <-w.outgoingMsgResults:
@@ -1866,7 +1817,7 @@ func (w *worker) maintenanceStartupReply(incoming chan incomingPacket, done chan
 	}
 }
 
-func (w *worker) sendReadyNotifications() { w.sendingNotifications <- w.newNotifications() }
+func (w *worker) sendReadyNotifications() { w.sendingNotifications <- w.db.NewNotifications() }
 
 func (w *worker) sendNotificationsDaemon() {
 	for nots := range w.sendingNotifications {
@@ -1878,12 +1829,12 @@ func (w *worker) sendNotificationsDaemon() {
 func (w *worker) queryUnconfirmedSubs() {
 	unconfirmed := map[string]bool{}
 	var modelID string
-	w.mustQuery("select model_id from signals where confirmed = 0", nil, scanTo{&modelID}, func() { unconfirmed[modelID] = true })
+	w.db.MustQuery("select model_id from signals where confirmed = 0", nil, db.ScanTo{&modelID}, func() { unconfirmed[modelID] = true })
 	if len(unconfirmed) > 0 {
-		w.mustExec("update signals set confirmed = 2 where confirmed = 0")
+		w.db.MustExec("update signals set confirmed = 2 where confirmed = 0")
 		ldbg("queueing unconfirmed subscriptions check for %d channels", len(unconfirmed))
 		if w.pushSpecificRequest(w.unconfirmedSubsResults, unconfirmed) != nil {
-			w.mustExec("update signals set confirmed = 0 where confirmed = 2")
+			w.db.MustExec("update signals set confirmed = 0 where confirmed = 2")
 		}
 	}
 }
@@ -1894,23 +1845,31 @@ func (w *worker) processSubsConfirmations(res cmdlib.StatusResults) {
 		statusesNumber = len(res.Data.Statuses)
 	}
 	ldbg("processing subscription confirmations for %d channels", statusesNumber)
-	confirmationsInWork := map[string][]subscription{}
-	var iter subscription
-	w.mustQuery(
+	confirmationsInWork := map[string][]db.Subscription{}
+	var iter db.Subscription
+	w.db.MustQuery(
 		"select endpoint, model_id, chat_id from signals where confirmed = 2",
 		nil,
-		scanTo{&iter.endpoint, &iter.modelID, &iter.chatID},
-		func() { confirmationsInWork[iter.modelID] = append(confirmationsInWork[iter.modelID], iter) })
-	var nots []notification
+		db.ScanTo{&iter.Endpoint, &iter.ModelID, &iter.ChatID},
+		func() { confirmationsInWork[iter.ModelID] = append(confirmationsInWork[iter.ModelID], iter) })
+	var nots []db.Notification
 	if res.Data != nil {
 		for modelID, status := range res.Data.Statuses {
 			for _, sub := range confirmationsInWork[modelID] {
 				if status&(cmdlib.StatusOnline|cmdlib.StatusOffline|cmdlib.StatusDenied) != 0 {
-					w.confirmSub(sub)
+					w.db.ConfirmSub(sub)
 				} else {
-					w.denySub(sub)
+					w.db.DenySub(sub)
 				}
-				n := notification{endpoint: sub.endpoint, chatID: sub.chatID, modelID: modelID, status: status, social: false, priority: 1, kind: replyPacket}
+				n := db.Notification{
+					Endpoint: sub.Endpoint,
+					ChatID:   sub.ChatID,
+					ModelID:  modelID,
+					Status:   status,
+					Social:   false,
+					Priority: 1,
+					Kind:     db.ReplyPacket,
+				}
 				nots = append(nots, n)
 			}
 		}
@@ -1918,7 +1877,7 @@ func (w *worker) processSubsConfirmations(res cmdlib.StatusResults) {
 		lerr("confirmations query failed")
 	}
 	w.notifyOfAddResults(w.highPriorityMsg, nots)
-	w.storeNotifications(nots)
+	w.db.StoreNotifications(nots)
 }
 
 func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacket) bool {
@@ -1943,49 +1902,49 @@ func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacke
 				switch command {
 				case "continue":
 					if processing {
-						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "still processing", replyPacket)
+						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "still processing", db.ReplyPacket)
 					} else {
-						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", replyPacket)
+						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
 						for user := range users {
-							w.sendTr(w.highPriorityMsg, user.endpoint, chatID, false, w.tr[user.endpoint].WeAreUp, nil, messagePacket)
+							w.sendTr(w.highPriorityMsg, user.endpoint, chatID, false, w.tr[user.endpoint].WeAreUp, nil, db.MessagePacket)
 						}
 						return true
 					}
 				case "clean":
 					if processing {
-						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "still processing", replyPacket)
+						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "still processing", db.ReplyPacket)
 					} else {
 						processing = true
-						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", replyPacket)
+						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
 						go func() {
 							processingDone <- w.cleanStatusChanges(time.Now().Unix())
 						}()
 					}
 				case "sql":
 					if processing {
-						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "still processing", replyPacket)
+						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "still processing", db.ReplyPacket)
 					} else {
 						processing = true
-						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", replyPacket)
+						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
 						go func() {
 							processingDone <- w.adminSQL(args)
 						}()
 					}
 				case "":
 				default:
-					w.sendText(w.highPriorityMsg, u.endpoint, chatID, false, true, cmdlib.ParseRaw, w.cfg.Endpoints[u.endpoint].MaintenanceResponse, replyPacket)
+					w.sendText(w.highPriorityMsg, u.endpoint, chatID, false, true, cmdlib.ParseRaw, w.cfg.Endpoints[u.endpoint].MaintenanceResponse, db.ReplyPacket)
 				}
 			} else {
 				if command != "" {
 					users[waitingUser{chatID: chatID, endpoint: u.endpoint}] = true
-					w.sendText(w.highPriorityMsg, u.endpoint, chatID, false, true, cmdlib.ParseRaw, w.cfg.Endpoints[u.endpoint].MaintenanceResponse, replyPacket)
+					w.sendText(w.highPriorityMsg, u.endpoint, chatID, false, true, cmdlib.ParseRaw, w.cfg.Endpoints[u.endpoint].MaintenanceResponse, db.ReplyPacket)
 					linf("ignoring command %s %s", command, args)
 				}
 			}
 		case elapsed := <-processingDone:
 			processing = false
 			text := fmt.Sprintf("processing done in %v", elapsed)
-			w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, text, messagePacket)
+			w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, text, db.MessagePacket)
 		case <-w.outgoingMsgResults:
 		}
 	}
@@ -2011,11 +1970,11 @@ func main() {
 	go w.sender(w.lowPriorityMsg, 1)
 	go w.maintenanceStartupReply(incoming, databaseDone)
 	go w.sendNotificationsDaemon()
-	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, "bot started", messagePacket)
+	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, "bot started", db.MessagePacket)
 	w.createDatabase(databaseDone)
 	w.initCache()
-	w.mustExec("update notification_queue set sending=0")
-	w.mustExec("update signals set confirmed = 0 where confirmed = 2")
+	w.db.MustExec("update notification_queue set sending=0")
+	w.db.MustExec("update signals set confirmed = 0 where confirmed = 2")
 
 	statRequests := make(chan statRequest)
 	w.handleStatEndpoints(statRequests)
@@ -2038,7 +1997,7 @@ func main() {
 	w.checker.Start()
 	signals := make(chan os.Signal, 16)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT, syscall.SIGTSTP, syscall.SIGCONT)
-	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, "bot is up", messagePacket)
+	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, "bot is up", db.MessagePacket)
 	w.pushOnlineRequest()
 	for {
 		select {
@@ -2060,7 +2019,7 @@ func main() {
 				w.updatesDuration = elapsed
 				w.changesInPeriod = changesInPeriod
 				w.confirmedChangesInPeriod = confirmedChangesInPeriod
-				w.storeNotifications(notifications)
+				w.db.StoreNotifications(notifications)
 				if w.cfg.Debug {
 					ldbg("status updates processed in %v", elapsed)
 				}
@@ -2088,18 +2047,18 @@ func main() {
 		case r := <-w.outgoingMsgResults:
 			switch r.result {
 			case messageBlocked:
-				w.incrementBlock(r.endpoint, r.chatID)
+				w.db.IncrementBlock(r.endpoint, r.chatID)
 			case messageSent:
-				w.resetBlock(r.endpoint, r.chatID)
+				w.db.ResetBlock(r.endpoint, r.chatID)
 			}
 			query := "insert into interactions (timestamp, chat_id, result, endpoint, priority, delay, kind) values ($1, $2, $3, $4, $5, $6, $7)"
-			w.mustExec(query, r.timestamp, r.chatID, r.result, r.endpoint, r.priority, r.delay, r.kind)
+			w.db.MustExec(query, r.timestamp, r.chatID, r.result, r.endpoint, r.priority, r.delay, r.kind)
 		case r := <-w.unconfirmedSubsResults:
 			w.processSubsConfirmations(r)
 		case nots := <-w.sentNotifications:
 			for _, n := range nots {
-				w.mustExec("delete from notification_queue where id = $1", n.id)
-				w.mustExec("update users set reports=reports+1 where chat_id = $1", n.chatID)
+				w.db.MustExec("delete from notification_queue where id = $1", n.ID)
+				w.db.MustExec("update users set reports=reports+1 where chat_id = $1", n.ChatID)
 			}
 		case r := <-w.downloadResults:
 			w.downloadErrors[w.downloadResultsPos] = !r

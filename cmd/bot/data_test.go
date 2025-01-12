@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"database/sql"
 
+	"github.com/bcmk/siren/internal/db"
 	"github.com/bcmk/siren/lib/cmdlib"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
@@ -63,28 +63,20 @@ func newTestWorker() *testWorker {
 	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
 	checkErr(err)
 
-	db, err := sql.Open("postgres", connStr)
-	checkErr(err)
-
-	err = db.Ping()
-	checkErr(err)
-
 	w := &testWorker{
 		worker: worker{
 			bots:            nil,
-			db:              db,
+			db:              db.NewDatabase(connStr, true),
 			cfg:             &testConfig,
 			clients:         nil,
 			tr:              map[string]*cmdlib.Translations{"test": &testTranslations},
-			durations:       map[string]queryDurationsData{},
 			lowPriorityMsg:  make(chan outgoingPacket, 10000),
 			highPriorityMsg: make(chan outgoingPacket, 10000),
-			mainGID:         gid(),
 		},
-		terminate: func() {
-			checkErr(db.Close())
-			checkErr(pgContainer.Terminate(ctx))
-		},
+	}
+	w.terminate = func() {
+		checkErr(w.worker.db.Close())
+		checkErr(pgContainer.Terminate(ctx))
 	}
 	return w
 }
@@ -92,10 +84,10 @@ func newTestWorker() *testWorker {
 func (w *testWorker) chatsForModel(modelID string) (chats []int64, endpoints []string) {
 	var chatID int64
 	var endpoint string
-	w.mustQuery(
+	w.db.MustQuery(
 		`select chat_id, endpoint from signals where model_id = $1 order by chat_id`,
-		queryParams{modelID},
-		scanTo{&chatID, &endpoint},
+		db.QueryParams{modelID},
+		db.ScanTo{&chatID, &endpoint},
 		func() {
 			chats = append(chats, chatID)
 			endpoints = append(endpoints, endpoint)

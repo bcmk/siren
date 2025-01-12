@@ -5,48 +5,49 @@ import (
 	"runtime/debug"
 	"testing"
 
+	"github.com/bcmk/siren/internal/db"
 	"github.com/bcmk/siren/lib/cmdlib"
 	tg "github.com/bcmk/telegram-bot-api"
 )
 
 func TestSql(t *testing.T) {
-	linf = func(string, ...interface{}) {}
+	cmdlib.Verbosity = cmdlib.SilentVerbosity
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
 	w.initCache()
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 1, "a")
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 2, "b")
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 3, "c")
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 3, "c2")
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 3, "c3")
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 4, "d")
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 5, "d")
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 6, "e")
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 7, "f")
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep2", 6, "e")
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep2", 7, "f")
-	w.mustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep2", 8, "g")
-	w.mustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 2, 0)
-	w.mustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 3, w.cfg.BlockThreshold)
-	w.mustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 4, w.cfg.BlockThreshold-1)
-	w.mustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 5, w.cfg.BlockThreshold+1)
-	w.mustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 6, w.cfg.BlockThreshold)
-	w.mustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 7, w.cfg.BlockThreshold)
-	w.mustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep2", 7, w.cfg.BlockThreshold)
-	w.mustExec("insert into models (model_id, status) values ($1, $2)", "a", cmdlib.StatusOnline)
-	w.mustExec("insert into models (model_id, status) values ($1, $2)", "b", cmdlib.StatusOnline)
-	w.mustExec("insert into models (model_id, status) values ($1, $2)", "c", cmdlib.StatusOnline)
-	w.mustExec("insert into models (model_id, status) values ($1, $2)", "c2", cmdlib.StatusOnline)
-	models := w.modelsToPoll()
+	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 1, "a")
+	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 2, "b")
+	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 3, "c")
+	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 3, "c2")
+	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 3, "c3")
+	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 4, "d")
+	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 5, "d")
+	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 6, "e")
+	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 7, "f")
+	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep2", 6, "e")
+	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep2", 7, "f")
+	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep2", 8, "g")
+	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 2, 0)
+	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 3, w.cfg.BlockThreshold)
+	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 4, w.cfg.BlockThreshold-1)
+	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 5, w.cfg.BlockThreshold+1)
+	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 6, w.cfg.BlockThreshold)
+	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 7, w.cfg.BlockThreshold)
+	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep2", 7, w.cfg.BlockThreshold)
+	w.db.MustExec("insert into models (model_id, status) values ($1, $2)", "a", cmdlib.StatusOnline)
+	w.db.MustExec("insert into models (model_id, status) values ($1, $2)", "b", cmdlib.StatusOnline)
+	w.db.MustExec("insert into models (model_id, status) values ($1, $2)", "c", cmdlib.StatusOnline)
+	w.db.MustExec("insert into models (model_id, status) values ($1, $2)", "c2", cmdlib.StatusOnline)
+	models := w.db.ModelsToPoll(w.cfg.BlockThreshold)
 	if !reflect.DeepEqual(models, []string{"a", "d", "e", "g"}) {
 		t.Error("unexpected models result", models)
 	}
-	broadcastChats := w.broadcastChats("ep1")
+	broadcastChats := w.db.BroadcastChats("ep1")
 	if !reflect.DeepEqual(broadcastChats, []int64{1, 2, 3, 4, 5, 6, 7}) {
 		t.Error("unexpected broadcast chats result", broadcastChats)
 	}
-	broadcastChats = w.broadcastChats("ep2")
+	broadcastChats = w.db.BroadcastChats("ep2")
 	if !reflect.DeepEqual(broadcastChats, []int64{6, 7, 8}) {
 		t.Error("unexpected broadcast chats result", broadcastChats)
 	}
@@ -77,31 +78,31 @@ func TestSql(t *testing.T) {
 	if !reflect.DeepEqual(chatsForModel, []int64{7, 7}) {
 		t.Error("unexpected chats for model result", chatsForModel)
 	}
-	w.incrementBlock("ep1", 2)
-	w.incrementBlock("ep1", 2)
-	if w.mustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep1") != 2 {
+	w.db.IncrementBlock("ep1", 2)
+	w.db.IncrementBlock("ep1", 2)
+	if w.db.MustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep1") != 2 {
 		t.Error("unexpected block for model result", chatsForModel)
 	}
-	w.incrementBlock("ep2", 2)
-	if w.mustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep2") != 1 {
+	w.db.IncrementBlock("ep2", 2)
+	if w.db.MustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep2") != 1 {
 		t.Error("unexpected block for model result", chatsForModel)
 	}
-	w.resetBlock("ep1", 2)
-	if w.mustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep1") != 0 {
+	w.db.ResetBlock("ep1", 2)
+	if w.db.MustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep1") != 0 {
 		t.Error("unexpected block for model result", chatsForModel)
 	}
-	if w.mustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep2") != 1 {
+	if w.db.MustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep2") != 1 {
 		t.Error("unexpected block for model result", chatsForModel)
 	}
-	w.incrementBlock("ep1", 1)
-	w.incrementBlock("ep1", 1)
-	if w.mustInt("select block from block where chat_id = $1", 1) != 2 {
+	w.db.IncrementBlock("ep1", 1)
+	w.db.IncrementBlock("ep1", 1)
+	if w.db.MustInt("select block from block where chat_id = $1", 1) != 2 {
 		t.Error("unexpected block for model result", chatsForModel)
 	}
-	statuses := w.statusesForChat("ep1", 3)
-	if !reflect.DeepEqual(statuses, []model{
-		{modelID: "c", status: cmdlib.StatusOnline},
-		{modelID: "c2", status: cmdlib.StatusOnline}}) {
+	statuses := w.db.StatusesForChat("ep1", 3)
+	if !reflect.DeepEqual(statuses, []db.Model{
+		{ModelID: "c", Status: cmdlib.StatusOnline},
+		{ModelID: "c2", Status: cmdlib.StatusOnline}}) {
 		t.Error("unexpected statuses", statuses)
 	}
 	_ = w.db.Close()
@@ -366,61 +367,61 @@ func TestCleanStatuses(t *testing.T) {
 
 func TestNotificationsStorage(t *testing.T) {
 	timeDiff := 2
-	nots := []notification{
+	nots := []db.Notification{
 		{
-			endpoint: "endpoint_a",
-			chatID:   1,
-			modelID:  "model_a",
-			status:   cmdlib.StatusUnknown,
-			timeDiff: nil,
-			imageURL: "image_a",
-			social:   false,
-			priority: 1,
-			sound:    false,
-			kind:     notificationPacket,
+			Endpoint: "endpoint_a",
+			ChatID:   1,
+			ModelID:  "model_a",
+			Status:   cmdlib.StatusUnknown,
+			TimeDiff: nil,
+			ImageURL: "image_a",
+			Social:   false,
+			Priority: 1,
+			Sound:    false,
+			Kind:     db.NotificationPacket,
 		},
 		{
-			endpoint: "endpoint_b",
-			chatID:   2,
-			modelID:  "model_b",
-			status:   cmdlib.StatusOffline,
-			timeDiff: &timeDiff,
-			imageURL: "image_b",
-			social:   true,
-			priority: 2,
-			sound:    true,
-			kind:     replyPacket,
+			Endpoint: "endpoint_b",
+			ChatID:   2,
+			ModelID:  "model_b",
+			Status:   cmdlib.StatusOffline,
+			TimeDiff: &timeDiff,
+			ImageURL: "image_b",
+			Social:   true,
+			Priority: 2,
+			Sound:    true,
+			Kind:     db.ReplyPacket,
 		},
 	}
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
-	w.storeNotifications(nots)
-	newNots := w.newNotifications()
-	nots[0].id = 1
-	nots[1].id = 2
+	w.db.StoreNotifications(nots)
+	newNots := w.db.NewNotifications()
+	nots[0].ID = 1
+	nots[1].ID = 2
 	if !reflect.DeepEqual(nots, newNots) {
 		t.Errorf("unexpected notifications, expocted: %v, got: %v", nots, newNots)
 	}
-	nots = []notification{
+	nots = []db.Notification{
 		{
-			endpoint: "endpoint_c",
-			chatID:   3,
-			modelID:  "model_c",
-			status:   cmdlib.StatusOnline,
-			timeDiff: nil,
-			imageURL: "image_c",
-			social:   true,
-			priority: 3,
+			Endpoint: "endpoint_c",
+			ChatID:   3,
+			ModelID:  "model_c",
+			Status:   cmdlib.StatusOnline,
+			TimeDiff: nil,
+			ImageURL: "image_c",
+			Social:   true,
+			Priority: 3,
 		},
 	}
-	w.storeNotifications(nots)
-	newNots = w.newNotifications()
-	nots[0].id = 3
+	w.db.StoreNotifications(nots)
+	newNots = w.db.NewNotifications()
+	nots[0].ID = 3
 	if !reflect.DeepEqual(nots, newNots) {
 		t.Errorf("unexpected notifications, expocted: %v, got: %v", nots, newNots)
 	}
-	count := w.mustInt("select count(*) from notification_queue")
+	count := w.db.MustInt("select count(*) from notification_queue")
 	if count != 3 {
 		t.Errorf("unexpected notifications count %d", count)
 	}
@@ -430,11 +431,11 @@ func TestModels(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
-	w.mustExec("insert into models (model_id, status) values ($1, $2)", "a", cmdlib.StatusUnknown)
-	if w.maybeModel("a") == nil {
+	w.db.MustExec("insert into models (model_id, status) values ($1, $2)", "a", cmdlib.StatusUnknown)
+	if w.db.MaybeModel("a") == nil {
 		t.Error("unexpected result")
 	}
-	if w.maybeModel("b") != nil {
+	if w.db.MaybeModel("b") != nil {
 		t.Error("unexpected result")
 	}
 }
@@ -523,10 +524,10 @@ func TestCommandParser(t *testing.T) {
 }
 
 func checkInv(w *worker, t *testing.T) {
-	a := map[string]statusChange{}
-	b := map[string]statusChange{}
-	var recStatus statusChange
-	w.mustQuery(`
+	a := map[string]db.StatusChange{}
+	b := map[string]db.StatusChange{}
+	var recStatus db.StatusChange
+	w.db.MustQuery(`
 		select model_id, status, timestamp
 		from (
 			select *, row_number() over (partition by model_id order by timestamp desc) as row
@@ -534,13 +535,13 @@ func checkInv(w *worker, t *testing.T) {
 		)
 		where row = 1`,
 		nil,
-		scanTo{&recStatus.modelID, &recStatus.status, &recStatus.timestamp},
-		func() { a[recStatus.modelID] = recStatus })
-	w.mustQuery(
+		db.ScanTo{&recStatus.ModelID, &recStatus.Status, &recStatus.Timestamp},
+		func() { a[recStatus.ModelID] = recStatus })
+	w.db.MustQuery(
 		`select model_id, status, timestamp from last_status_changes`,
 		nil,
-		scanTo{&recStatus.modelID, &recStatus.status, &recStatus.timestamp},
-		func() { b[recStatus.modelID] = recStatus })
+		db.ScanTo{&recStatus.ModelID, &recStatus.Status, &recStatus.Timestamp},
+		func() { b[recStatus.ModelID] = recStatus })
 
 	if !reflect.DeepEqual(a, b) {
 		t.Errorf("unexpected inv check result, statuses: %v, last statuses: %v", a, b)
@@ -551,14 +552,14 @@ func checkInv(w *worker, t *testing.T) {
 		t.Log(string(debug.Stack()))
 	}
 	confOnline := map[string]bool{}
-	var rec model
-	w.mustQuery(
+	var rec db.Model
+	w.db.MustQuery(
 		`select model_id, status from models`,
 		nil,
-		scanTo{&rec.modelID, &rec.status},
+		db.ScanTo{&rec.ModelID, &rec.Status},
 		func() {
-			if rec.status == cmdlib.StatusOnline {
-				confOnline[rec.modelID] = true
+			if rec.Status == cmdlib.StatusOnline {
+				confOnline[rec.ModelID] = true
 			}
 		})
 	if !reflect.DeepEqual(w.ourOnline, confOnline) {
