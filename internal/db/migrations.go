@@ -8,7 +8,7 @@ var migrations = []func(d *Database){
 	func(d *Database) {
 		d.MustExec(`
 			create table block (
-				chat_id integer not null,
+				chat_id bigint not null,
 				endpoint text not null,
 				block integer not null,
 				primary key (chat_id, endpoint)
@@ -16,7 +16,7 @@ var migrations = []func(d *Database){
 		`)
 		d.MustExec(`
 			create table feedback (
-				chat_id integer,
+				chat_id bigint,
 				text text,
 				endpoint text not null default ''
 			);
@@ -26,7 +26,7 @@ var migrations = []func(d *Database){
 				priority integer not null,
 				timestamp integer not null,
 				endpoint text not null,
-				chat_id integer not null,
+				chat_id bigint not null,
 				result integer not null,
 				delay integer not null,
 				kind integer not null default 0
@@ -53,7 +53,7 @@ var migrations = []func(d *Database){
 			create table notification_queue (
 				id serial primary key,
 				endpoint text not null,
-				chat_id integer not null,
+				chat_id bigint not null,
 				model_id text not null,
 				status integer not null,
 				time_diff integer,
@@ -67,14 +67,14 @@ var migrations = []func(d *Database){
 		`)
 		d.MustExec(`
 			create table referrals (
-				chat_id integer primary key,
+				chat_id bigint primary key,
 				referral_id text not null default '',
 				referred_users integer not null default 0
 			);
 		`)
 		d.MustExec(`
 			create table signals (
-				chat_id integer not null,
+				chat_id bigint not null,
 				model_id text not null,
 				endpoint text not null default '',
 				confirmed integer not null default 1,
@@ -92,7 +92,7 @@ var migrations = []func(d *Database){
 		d.MustExec(`create index ix_status_changes_timestamp on status_changes ("timestamp");`)
 		d.MustExec(`
 			create table users (
-				chat_id integer primary key,
+				chat_id bigint primary key,
 				max_models integer not null default 0,
 				reports integer not null default 0,
 				blacklist integer not null default 0,
