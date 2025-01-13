@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 
+	"github.com/bcmk/siren/internal/botconfig"
 	"github.com/bcmk/siren/internal/db"
 	"github.com/bcmk/siren/lib/cmdlib"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -10,11 +11,11 @@ import (
 	_ "github.com/lib/pq"
 )
 
-var testConfig = config{
+var testConfig = botconfig.Config{
 	CheckGID:  true,
 	MaxModels: 3,
 	AdminID:   1,
-	StatusConfirmationSeconds: statusConfirmationSeconds{
+	StatusConfirmationSeconds: botconfig.StatusConfirmationSeconds{
 		Offline:  5,
 		NotFound: 5,
 	},

@@ -31,6 +31,7 @@ import (
 
 	_ "golang.org/x/image/webp"
 
+	"github.com/bcmk/siren/internal/botconfig"
 	"github.com/bcmk/siren/internal/checkers"
 	"github.com/bcmk/siren/internal/db"
 	"github.com/bcmk/siren/lib/cmdlib"
@@ -66,7 +67,7 @@ type worker struct {
 	db                       db.Database
 	clients                  []*cmdlib.Client
 	bots                     map[string]*tg.BotAPI
-	cfg                      *config
+	cfg                      *botconfig.Config
 	httpQueriesDuration      time.Duration
 	updatesDuration          time.Duration
 	cleaningDuration         time.Duration
@@ -152,7 +153,7 @@ func newWorker(args []string) *worker {
 	if len(args) != 1 {
 		panic("usage: siren <config>")
 	}
-	cfg := readConfig(args[0])
+	cfg := botconfig.ReadConfig(args[0])
 
 	var err error
 
@@ -184,8 +185,8 @@ func newWorker(args []string) *worker {
 		tpl:                    tpl,
 		trAds:                  trAds,
 		tplAds:                 tplAds,
-		unsuccessfulRequests:   make([]bool, cfg.errorDenominator),
-		downloadErrors:         make([]bool, cfg.errorDenominator),
+		unsuccessfulRequests:   make([]bool, cfg.ErrorDenominator),
+		downloadErrors:         make([]bool, cfg.ErrorDenominator),
 		downloadResults:        make(chan bool),
 		images:                 map[string]string{},
 		botNames:               map[string]string{},
@@ -196,7 +197,7 @@ func newWorker(args []string) *worker {
 		onlineModelsChan:       make(chan cmdlib.StatusUpdateResults),
 		sendingNotifications:   make(chan []db.Notification, 1000),
 		sentNotifications:      make(chan []db.Notification),
-		ourIDs:                 cfg.getOurIDs(),
+		ourIDs:                 getOurIDs(cfg),
 	}
 	for endpoint, a := range tr {
 		for _, b := range a.ToMap() {
@@ -266,7 +267,7 @@ func (w *worker) loadImageForTranslation(endpoint string, tr *cmdlib.Translation
 	}
 }
 
-func trsByEndpoint(cfg *config) map[string][]string {
+func trsByEndpoint(cfg *botconfig.Config) map[string][]string {
 	result := make(map[string][]string)
 	for k, v := range cfg.Endpoints {
 		result[k] = v.Translation
@@ -274,7 +275,7 @@ func trsByEndpoint(cfg *config) map[string][]string {
 	return result
 }
 
-func trsAdsByEndpoint(cfg *config) map[string][]string {
+func trsAdsByEndpoint(cfg *botconfig.Config) map[string][]string {
 	result := map[string][]string{}
 	for k, v := range cfg.Endpoints {
 		result[k] = v.Ads
@@ -1464,8 +1465,8 @@ func (w *worker) subscriptions() map[string]cmdlib.StatusKind {
 func (w *worker) periodic() {
 	unsuccessfulRequestsCount := w.unsuccessfulRequestsCount()
 	now := time.Now()
-	if w.nextErrorReport.Before(now) && unsuccessfulRequestsCount > w.cfg.errorThreshold {
-		text := fmt.Sprintf("Dangerous error rate reached: %d/%d", unsuccessfulRequestsCount, w.cfg.errorDenominator)
+	if w.nextErrorReport.Before(now) && unsuccessfulRequestsCount > w.cfg.ErrorThreshold {
+		text := fmt.Sprintf("Dangerous error rate reached: %d/%d", unsuccessfulRequestsCount, w.cfg.ErrorDenominator)
 		w.sendText(
 			w.highPriorityMsg,
 			w.cfg.AdminEndpoint,
@@ -1670,8 +1671,8 @@ func (w *worker) getStat(endpoint string) statistics {
 		QueriesDurationMilliseconds:  int(w.httpQueriesDuration.Milliseconds()),
 		UpdatesDurationMilliseconds:  int(w.updatesDuration.Milliseconds()),
 		CleaningDurationMilliseconds: int(w.cleaningDuration.Milliseconds()),
-		ErrorRate:                    [2]int{w.unsuccessfulRequestsCount(), w.cfg.errorDenominator},
-		DownloadErrorRate:            [2]int{w.downloadErrorsCount(), w.cfg.errorDenominator},
+		ErrorRate:                    [2]int{w.unsuccessfulRequestsCount(), w.cfg.ErrorDenominator},
+		DownloadErrorRate:            [2]int{w.downloadErrorsCount(), w.cfg.ErrorDenominator},
 		Rss:                          rss / 1024,
 		MaxRss:                       rusage.Maxrss,
 		UserReferralsCount:           w.db.UserReferralsCount(),
@@ -1740,7 +1741,7 @@ func (w *worker) incoming() chan incomingPacket {
 	return result
 }
 
-func (c *config) getOurIDs() []int64 {
+func getOurIDs(c *botconfig.Config) []int64 {
 	var ids []int64
 	for _, e := range c.Endpoints {
 		if idx := strings.Index(e.BotToken, ":"); idx != -1 {
@@ -1765,7 +1766,7 @@ func (w *worker) logQueryErrors(errors int) {
 
 func (w *worker) logSingleQueryResult(success bool) {
 	w.unsuccessfulRequests[w.unsuccessfulRequestsPos] = !success
-	w.unsuccessfulRequestsPos = (w.unsuccessfulRequestsPos + 1) % w.cfg.errorDenominator
+	w.unsuccessfulRequestsPos = (w.unsuccessfulRequestsPos + 1) % w.cfg.ErrorDenominator
 }
 
 func (w *worker) cleanStatusChanges(now int64) time.Duration {
@@ -2062,7 +2063,7 @@ func main() {
 			}
 		case r := <-w.downloadResults:
 			w.downloadErrors[w.downloadResultsPos] = !r
-			w.downloadResultsPos = (w.downloadResultsPos + 1) % w.cfg.errorDenominator
+			w.downloadResultsPos = (w.downloadResultsPos + 1) % w.cfg.ErrorDenominator
 		}
 	}
 }

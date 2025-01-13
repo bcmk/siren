@@ -1,4 +1,5 @@
-package main
+// Package botconfig represents bot configuration
+package botconfig
 
 import (
 	"encoding/json"
@@ -10,7 +11,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+
+	"github.com/bcmk/siren/lib/cmdlib"
 )
+
+var checkErr = cmdlib.CheckErr
 
 type endpoint struct {
 	ListenPath          string   `json:"listen_path"`          // the path excluding domain to listen to, the good choice is "/your-telegram-bot-token"
@@ -24,14 +29,16 @@ type endpoint struct {
 	MaintenanceResponse string   `json:"maintenance_response"` // the maintenance response
 }
 
-type statusConfirmationSeconds struct {
+// StatusConfirmationSeconds represents a configureation of confirmation durations for each of specific statuses
+type StatusConfirmationSeconds struct {
 	Offline  int `json:"offline"`
 	Online   int `json:"online"`
 	NotFound int `json:"not_found"`
 	Denied   int `json:"denied"`
 }
 
-type config struct {
+// Config represents bot configuration
+type Config struct {
 	Debug                           bool                      `json:"debug"`                              // debug mode
 	CheckGID                        bool                      `json:"check_gid"`                          // check goroutines ids
 	ListenAddress                   string                    `json:"listen_address"`                     // the address to listen to
@@ -57,7 +64,7 @@ type config struct {
 	ReferralBonus                   int                       `json:"referral_bonus"`                     // number of additional subscriptions for a referrer
 	FollowerBonus                   int                       `json:"follower_bonus"`                     // number of additional subscriptions for a new user registered by a referral link
 	UsersOnlineEndpoint             []string                  `json:"users_online_endpoint"`              // the endpoint to fetch online users
-	StatusConfirmationSeconds       statusConfirmationSeconds `json:"status_confirmation_seconds"`        // a status is confirmed only if it lasts for at least this number of seconds
+	StatusConfirmationSeconds       StatusConfirmationSeconds `json:"status_confirmation_seconds"`        // a status is confirmed only if it lasts for at least this number of seconds
 	OfflineNotifications            bool                      `json:"offline_notifications"`              // enable offline notifications
 	SQLPrelude                      []string                  `json:"sql_prelude"`                        // run these SQL commands before any other
 	EnableWeek                      bool                      `json:"enable_week"`                        // enable week command
@@ -70,23 +77,24 @@ type config struct {
 	SubsConfirmationPeriodSeconds   int                       `json:"subs_confirmation_period_seconds"`   // subscriptions confirmation period
 	NotificationsReadyPeriodSeconds int                       `json:"notifications_ready_period_seconds"` // notifications ready check period
 
-	errorThreshold   int
-	errorDenominator int
+	ErrorThreshold   int
+	ErrorDenominator int
 }
 
 var fractionRegexp = regexp.MustCompile(`^(\d+)/(\d+)$`)
 
-func readConfig(path string) *config {
+// ReadConfig read config
+func ReadConfig(path string) *Config {
 	file, err := os.Open(filepath.Clean(path))
 	checkErr(err)
 	defer func() { checkErr(file.Close()) }()
 	return parseConfig(file)
 }
 
-func parseConfig(r io.Reader) *config {
+func parseConfig(r io.Reader) *Config {
 	decoder := json.NewDecoder(r)
 	decoder.DisallowUnknownFields()
-	cfg := &config{}
+	cfg := &Config{}
 	err := decoder.Decode(cfg)
 	checkErr(err)
 	checkErr(checkConfig(cfg))
@@ -96,7 +104,7 @@ func parseConfig(r io.Reader) *config {
 	return cfg
 }
 
-func checkConfig(cfg *config) error {
+func checkConfig(cfg *Config) error {
 	for _, x := range cfg.SourceIPAddresses {
 		if net.ParseIP(x) == nil {
 			return fmt.Errorf("cannot parse sourece IP address %s", x)
@@ -212,8 +220,8 @@ func checkConfig(cfg *config) error {
 			return errors.New(`configure dangerous_errors_rate as "x/y", where y > 0`)
 		}
 
-		cfg.errorThreshold = int(errorThreshold)
-		cfg.errorDenominator = int(errorDenominator)
+		cfg.ErrorThreshold = int(errorThreshold)
+		cfg.ErrorDenominator = int(errorDenominator)
 	} else {
 		return errors.New("configure dangerous_error_rate")
 	}
