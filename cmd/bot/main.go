@@ -3,7 +3,7 @@ package main
 
 import (
 	"bytes"
-	"database/sql"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -36,7 +36,8 @@ import (
 	"github.com/bcmk/siren/internal/db"
 	"github.com/bcmk/siren/lib/cmdlib"
 	tg "github.com/bcmk/telegram-bot-api"
-	_ "github.com/lib/pq"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var (
@@ -582,21 +583,27 @@ func (w *worker) confirmationSeconds(status cmdlib.StatusKind) int {
 	}
 }
 
-func (w *worker) updateStatus(insertStatusChangeStmt, updateLastStatusChangeStmt *sql.Stmt, next db.StatusChange) {
-	prev := w.siteStatuses[next.ModelID]
-	if next.Status != prev.Status {
-		w.db.MustExecPrepared(insertStatusChangeStmt, next.ModelID, next.Status, next.Timestamp)
-		w.db.MustExecPrepared(updateLastStatusChangeStmt, next.ModelID, next.Status, next.Timestamp)
-		w.siteStatuses[next.ModelID] = next
-		if next.Status == cmdlib.StatusOnline {
-			w.siteOnline[next.ModelID] = true
-		} else {
-			delete(w.siteOnline, next.ModelID)
+func (w *worker) changedStatuses(newStatuses []cmdlib.StatusUpdate, now int) []db.StatusChange {
+	result := []db.StatusChange{}
+	for _, next := range newStatuses {
+		prev := w.siteStatuses[next.ModelID]
+		if next.Status != prev.Status {
+			result = append(result, db.StatusChange{ModelID: next.ModelID, Status: next.Status, Timestamp: now})
 		}
+	}
+	return result
+}
+
+func (w *worker) updateCachedStatus(next db.StatusChange) {
+	w.siteStatuses[next.ModelID] = next
+	if next.Status == cmdlib.StatusOnline {
+		w.siteOnline[next.ModelID] = true
+	} else {
+		delete(w.siteOnline, next.ModelID)
 	}
 }
 
-func (w *worker) confirmStatus(updateModelStatusStmt *sql.Stmt, now int) []string {
+func (w *worker) confirmStatus(updateModelStatusStmt *pgconn.StatementDescription, now int, batch *pgx.Batch) []string {
 	all := cmdlib.HashDiffAll(w.ourOnline, w.siteOnline)
 	var confirmations []string
 	for _, modelID := range all {
@@ -609,7 +616,7 @@ func (w *worker) confirmStatus(updateModelStatusStmt *sql.Stmt, now int) []strin
 			} else {
 				delete(w.ourOnline, modelID)
 			}
-			w.db.MustExecPrepared(updateModelStatusStmt, modelID, statusChange.Status)
+			batch.Queue(updateModelStatusStmt.Name, modelID, statusChange.Status)
 			confirmations = append(confirmations, modelID)
 		}
 	}
@@ -1514,24 +1521,32 @@ func (w *worker) processStatusUpdates(updates []cmdlib.StatusUpdate, now int) (
 	tx, err := w.db.Begin()
 	checkErr(err)
 
-	insertStatusChangeStmt, err := tx.Prepare(db.InsertStatusChange)
+	updateLastStatusChangeStmt, err := tx.Prepare(context.Background(), "update_last_status_change", db.UpdateLastStatusChange)
 	checkErr(err)
-	updateLastStatusChangeStmt, err := tx.Prepare(db.UpdateLastStatusChange)
-	checkErr(err)
-	updateModelStatusStmt, err := tx.Prepare(db.UpdateModelStatus)
+	updateModelStatusStmt, err := tx.Prepare(context.Background(), "update_model_status", db.UpdateModelStatus)
 	checkErr(err)
 
 	changesCount = len(updates)
 
 	statusDone := w.db.Measure("db: status updates")
-	for _, u := range updates {
-		statusChange := db.StatusChange{ModelID: u.ModelID, Status: u.Status, Timestamp: now}
-		w.updateStatus(insertStatusChangeStmt, updateLastStatusChangeStmt, statusChange)
+	changedStatuses := w.changedStatuses(updates, now)
+	w.db.InsertStatusChanges(tx, changedStatuses)
+
+	batch := &pgx.Batch{}
+	for _, i := range changedStatuses {
+		batch.Queue(updateLastStatusChangeStmt.Name, i.ModelID, i.Status, i.Timestamp)
+	}
+
+	for _, statusChange := range changedStatuses {
+		w.updateCachedStatus(statusChange)
 	}
 	statusDone()
 
 	confirmationsDone := w.db.Measure("db: confirmations")
-	confirmations := w.confirmStatus(updateModelStatusStmt, now)
+	confirmations := w.confirmStatus(updateModelStatusStmt, now, batch)
+
+	batchResults := tx.SendBatch(context.Background(), batch)
+	checkErr(batchResults.Close())
 	confirmationsDone()
 
 	if w.cfg.Debug {
@@ -1563,10 +1578,7 @@ func (w *worker) processStatusUpdates(updates []cmdlib.StatusUpdate, now int) (
 	confirmedChangesCount = len(confirmations)
 
 	defer w.db.Measure("db: status updates commit")()
-	checkErr(insertStatusChangeStmt.Close())
-	checkErr(updateLastStatusChangeStmt.Close())
-	checkErr(updateModelStatusStmt.Close())
-	checkErr(tx.Commit())
+	checkErr(tx.Commit(context.Background()))
 	elapsed = time.Since(start)
 	return
 }

@@ -7,8 +7,6 @@ import (
 	"github.com/bcmk/siren/internal/db"
 	"github.com/bcmk/siren/lib/cmdlib"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
-
-	_ "github.com/lib/pq"
 )
 
 var testConfig = botconfig.Config{

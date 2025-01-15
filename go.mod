@@ -7,7 +7,7 @@ require (
 	github.com/chromedp/chromedp v0.7.4
 	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0
-	github.com/lib/pq v1.10.9
+	github.com/jackc/pgx/v5 v5.5.4
 	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/nicklaw5/helix v1.25.0
 	github.com/tdewolff/minify/v2 v2.21.2
@@ -41,6 +41,8 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/klauspost/compress v1.17.4 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
@@ -73,6 +75,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.24.0 // indirect
 	golang.org/x/crypto v0.24.0 // indirect
 	golang.org/x/sys v0.25.0 // indirect
+	golang.org/x/text v0.16.0 // indirect
 )
 
 go 1.23

@@ -7,8 +7,6 @@ import (
 	"github.com/bcmk/siren/internal/botconfig"
 	"github.com/bcmk/siren/internal/db"
 	"github.com/bcmk/siren/lib/cmdlib"
-
-	_ "github.com/lib/pq"
 )
 
 var linf = cmdlib.Linf

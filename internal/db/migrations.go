@@ -1,7 +1,9 @@
 package db
 
 import (
-	"database/sql"
+	"context"
+
+	"github.com/jackc/pgx/v5"
 )
 
 var migrations = []func(d *Database){
@@ -95,7 +97,7 @@ var migrations = []func(d *Database){
 				chat_id bigint primary key,
 				max_models integer not null default 0,
 				reports integer not null default 0,
-				blacklist integer not null default 0,
+				blacklist boolean not null default false,
 				show_images boolean not null default true,
 				offline_notifications boolean not null default true
 			);
@@ -105,10 +107,10 @@ var migrations = []func(d *Database){
 
 // ApplyMigrations applies all migrations to the database
 func (d *Database) ApplyMigrations() {
-	row := d.db.QueryRow("select version from schema_version")
+	row := d.db.QueryRow(context.Background(), "select version from schema_version")
 	var version int
 	err := row.Scan(&version)
-	if err == sql.ErrNoRows {
+	if err == pgx.ErrNoRows {
 		version = -1
 		d.MustExec("insert into schema_version(version) values (0)")
 	} else {

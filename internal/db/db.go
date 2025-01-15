@@ -2,7 +2,7 @@
 package db
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
 	"runtime"
 	"strconv"
@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/bcmk/siren/lib/cmdlib"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var (
@@ -26,14 +28,14 @@ type QueryDurationsData struct {
 // Database represents a database and operatons with it
 type Database struct {
 	Durations      map[string]QueryDurationsData
-	db             *sql.DB
+	db             *pgx.Conn
 	mainGID        int
 	shouldCheckGID bool
 }
 
 // NewDatabase creates a new database object
 func NewDatabase(connString string, shouldCheckGID bool) Database {
-	db, err := sql.Open("postgres", connString)
+	db, err := pgx.Connect(context.Background(), connString)
 	checkErr(err)
 	return Database{
 		Durations:      map[string]QueryDurationsData{},
@@ -86,24 +88,20 @@ func (d *Database) Measure(query string) func() {
 // MustExec executes the query
 func (d *Database) MustExec(query string, args ...interface{}) {
 	defer d.Measure("db: " + query)()
-	stmt, err := d.db.Prepare(query)
+	_, err := d.db.Exec(context.Background(), query, args...)
 	checkErr(err)
-	_, err = stmt.Exec(args...)
-	checkErr(err)
-	checkErr(stmt.Close())
 }
 
 // MustExecPrepared executes the prepared query
-func (d *Database) MustExecPrepared(stmt *sql.Stmt, args ...interface{}) {
+func (d *Database) MustExecPrepared(stmt *pgconn.StatementDescription, args ...interface{}) {
 	d.checkTID()
-	_, err := stmt.Exec(args...)
-	checkErr(err)
+	d.MustExec(stmt.Name, args...)
 }
 
 // MustInt executes the query and returns single integer
 func (d *Database) MustInt(query string, args ...interface{}) (result int) {
 	defer d.Measure("db: " + query)()
-	row := d.db.QueryRow(query, args...)
+	row := d.db.QueryRow(context.Background(), query, args...)
 	checkErr(row.Scan(&result))
 	return result
 }
@@ -111,9 +109,9 @@ func (d *Database) MustInt(query string, args ...interface{}) (result int) {
 // MaybeRecord executes the query and returns single record on no records
 func (d *Database) MaybeRecord(query string, args QueryParams, record ScanTo) bool {
 	defer d.Measure("db: " + query)()
-	row := d.db.QueryRow(query, args...)
+	row := d.db.QueryRow(context.Background(), query, args...)
 	err := row.Scan(record...)
-	if err == sql.ErrNoRows {
+	if err == pgx.ErrNoRows {
 		return false
 	}
 	checkErr(err)
@@ -130,20 +128,28 @@ func (d *Database) MustStrings(queryString string, args ...interface{}) (result 
 // MustQuery executes the query and stores data using store function
 func (d *Database) MustQuery(queryString string, args QueryParams, record ScanTo, store func()) {
 	defer d.Measure("db: " + queryString)()
-	query, err := d.db.Query(queryString, args...)
+	query, err := d.db.Query(context.Background(), queryString, args...)
 	checkErr(err)
 	for query.Next() {
 		checkErr(query.Scan(record...))
 		store()
 	}
-	checkErr(query.Close())
+	query.Close()
 }
 
 // Begin begins a transaction
-func (d *Database) Begin() (*sql.Tx, error) { return d.db.Begin() }
+func (d *Database) Begin() (pgx.Tx, error) { return d.db.Begin(context.Background()) }
+
+// SendBatch sends a batch
+func (d *Database) SendBatch(batch *pgx.Batch) {
+	conn := d.db.SendBatch(context.Background(), batch)
+	_, err := conn.Exec()
+	checkErr(err)
+	checkErr(conn.Close())
+}
 
 // Close closes a database
-func (d *Database) Close() error { return d.db.Close() }
+func (d *Database) Close() error { return d.db.Close(context.Background()) }
 
 // Total returns total duration of the query
 func (q QueryDurationsData) Total() float64 {

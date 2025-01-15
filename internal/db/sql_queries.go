@@ -1,9 +1,11 @@
 package db
 
 import (
+	"context"
 	"time"
 
 	"github.com/bcmk/siren/lib/cmdlib"
+	"github.com/jackc/pgx/v5"
 )
 
 // InsertStatusChange is a SQL query inserting a status change
@@ -59,13 +61,12 @@ func (d *Database) NewNotifications() []Notification {
 func (d *Database) StoreNotifications(nots []Notification) {
 	tx, err := d.Begin()
 	checkErr(err)
-	stmt, err := tx.Prepare(StoreNotification)
+	stmt, err := tx.Prepare(context.Background(), "store_notifications", StoreNotification)
 	checkErr(err)
 	for _, n := range nots {
 		d.MustExecPrepared(stmt, n.Endpoint, n.ChatID, n.ModelID, n.Status, n.TimeDiff, n.ImageURL, n.Social, n.Priority, n.Sound, n.Kind)
 	}
-	checkErr(stmt.Close())
-	checkErr(tx.Commit())
+	checkErr(tx.Commit(context.Background()))
 }
 
 // LastSeenInfo returns last seen info for a model
@@ -349,7 +350,7 @@ func (d *Database) ModelsToPollTotalCount(blockThreshold int) int {
 
 // StatusChangesCount returns the total number of stored status changes
 func (d *Database) StatusChangesCount() int {
-	return d.MustInt("select count(*) from status_changes")
+	return d.MustInt("select reltuples::bigint as estimate from pg_class where relname = 'status_changes'")
 }
 
 // HeavyUsersCount returns the number of heavy users for the endpoint
@@ -432,4 +433,23 @@ func (d *Database) IncrementBlock(endpoint string, chatID int64) {
 // ResetBlock resets blocking count for particular chat ID
 func (d *Database) ResetBlock(endpoint string, chatID int64) {
 	d.MustExec("update block set block=0 where endpoint = $1 and chat_id = $2", endpoint, chatID)
+}
+
+// InsertStatusChanges inserts status changes using a bulk method
+func (d *Database) InsertStatusChanges(tx pgx.Tx, statusChanges []StatusChange) {
+	statusChangeRows := [][]interface{}{}
+	for _, statusChange := range statusChanges {
+		statusChangeRows = append(statusChangeRows, []interface{}{
+			statusChange.ModelID,
+			statusChange.Status,
+			statusChange.Timestamp,
+		})
+	}
+	_, err := tx.CopyFrom(
+		context.Background(),
+		[]string{"status_changes"},
+		[]string{"model_id", "status", "timestamp"},
+		pgx.CopyFromRows(statusChangeRows),
+	)
+	checkErr(err)
 }
