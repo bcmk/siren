@@ -8,26 +8,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// InsertStatusChange is a SQL query inserting a status change
-var InsertStatusChange = "insert into status_changes (model_id, status, timestamp) values ($1, $2, $3)"
-
-// UpdateLastStatusChange is a SQL query updating last status change
-var UpdateLastStatusChange = `
-	insert into last_status_changes (model_id, status, timestamp)
-	values ($1, $2, $3)
-	on conflict(model_id) do update set status = excluded.status, timestamp = excluded.timestamp`
-
-// UpdateModelStatus is a SQL query updating model status
-var UpdateModelStatus = `
-	insert into models (model_id, status)
-	values ($1, $2)
-	on conflict(model_id) do update set status = excluded.status`
-
-// StoreNotification is a SQL query inserting a notification
-var StoreNotification = `
-	insert into notification_queue (endpoint, chat_id, model_id, status, time_diff, image_url, social, priority, sound, kind)
-	values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
-
 // NewNotifications retuns new notifications
 func (d *Database) NewNotifications() []Notification {
 	var nots []Notification
@@ -59,14 +39,31 @@ func (d *Database) NewNotifications() []Notification {
 
 // StoreNotifications stores notifications
 func (d *Database) StoreNotifications(nots []Notification) {
-	tx, err := d.Begin()
-	checkErr(err)
-	stmt, err := tx.Prepare(context.Background(), "store_notifications", StoreNotification)
-	checkErr(err)
+	measureDone := d.Measure("db: insert notifications")
+	defer measureDone()
+	batch := &pgx.Batch{}
 	for _, n := range nots {
-		d.MustExecPrepared(stmt, n.Endpoint, n.ChatID, n.ModelID, n.Status, n.TimeDiff, n.ImageURL, n.Social, n.Priority, n.Sound, n.Kind)
+		batch.Queue(
+			`
+				insert into notification_queue (
+					endpoint,
+					chat_id,
+					model_id,
+					status,
+					time_diff,
+					image_url,
+					social,
+					priority,
+					sound,
+					kind
+				)
+				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			`,
+			n.Endpoint, n.ChatID, n.ModelID, n.Status, n.TimeDiff, n.ImageURL, n.Social, n.Priority, n.Sound, n.Kind,
+		)
 	}
-	checkErr(tx.Commit(context.Background()))
+	d.SendBatch(batch)
+
 }
 
 // LastSeenInfo returns last seen info for a model
@@ -386,7 +383,7 @@ func (d *Database) QueryLastStatusChanges() map[string]StatusChange {
 	statusChanges := map[string]StatusChange{}
 	var statusChange StatusChange
 	d.MustQuery(
-		`select model_id, status, timestamp from last_status_changes`,
+		`select model_id, status, timestamp from status_changes where is_latest = true`,
 		nil,
 		ScanTo{&statusChange.ModelID, &statusChange.Status, &statusChange.Timestamp},
 		func() { statusChanges[statusChange.ModelID] = statusChange })
@@ -436,20 +433,60 @@ func (d *Database) ResetBlock(endpoint string, chatID int64) {
 }
 
 // InsertStatusChanges inserts status changes using a bulk method
-func (d *Database) InsertStatusChanges(tx pgx.Tx, statusChanges []StatusChange) {
+func (d *Database) InsertStatusChanges(changedStatuses []StatusChange) {
+	statusDone := d.Measure("db: insert unconfirmed status updates")
+	defer statusDone()
+	tx, err := d.Begin()
+	checkErr(err)
+
+	changedModelIDs := []string{}
+	for _, i := range changedStatuses {
+		changedModelIDs = append(changedModelIDs, i.ModelID)
+	}
+	_, err = tx.Exec(
+		context.Background(),
+		`
+			update status_changes
+			set is_latest = false
+			where model_id = any($1) and is_latest = true
+		`,
+		changedModelIDs)
+	checkErr(err)
+
 	statusChangeRows := [][]interface{}{}
-	for _, statusChange := range statusChanges {
+	for _, statusChange := range changedStatuses {
 		statusChangeRows = append(statusChangeRows, []interface{}{
 			statusChange.ModelID,
 			statusChange.Status,
 			statusChange.Timestamp,
+			true,
 		})
 	}
-	_, err := tx.CopyFrom(
+	_, err = tx.CopyFrom(
 		context.Background(),
 		[]string{"status_changes"},
-		[]string{"model_id", "status", "timestamp"},
+		[]string{"model_id", "status", "timestamp", "is_latest"},
 		pgx.CopyFromRows(statusChangeRows),
 	)
 	checkErr(err)
+
+	checkErr(tx.Commit(context.Background()))
+}
+
+// InsertConfirmedStatusChanges inserts status changes using a bulk method
+func (d *Database) InsertConfirmedStatusChanges(changedStatuses []StatusChange) {
+	confirmationsDone := d.Measure("db: insert confirmed status changes")
+	defer confirmationsDone()
+	batch := &pgx.Batch{}
+	for _, i := range changedStatuses {
+		batch.Queue(
+			`
+				insert into models (model_id, status)
+				values ($1, $2)
+				on conflict(model_id) do update set status = excluded.status
+			`,
+			i.ModelID,
+			i.Status)
+	}
+	d.SendBatch(batch)
 }

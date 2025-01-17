@@ -88,10 +88,15 @@ var migrations = []func(d *Database){
 			create table status_changes (
 				model_id text,
 				status integer not null default 0,
-				timestamp integer not null default 0
+				timestamp integer not null default 0,
+				is_latest boolean not null default false
 			);`)
 		d.MustExec(`create index ix_status_changes_model_id on status_changes (model_id);`)
 		d.MustExec(`create index ix_status_changes_timestamp on status_changes ("timestamp");`)
+		d.MustExec(`
+			create unique index ix_status_changes_model_id_is_latest
+			on status_changes (model_id)
+			where is_latest = true;`)
 		d.MustExec(`
 			create table users (
 				chat_id bigint primary key,

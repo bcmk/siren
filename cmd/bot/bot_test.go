@@ -538,7 +538,7 @@ func checkInv(w *worker, t *testing.T) {
 		db.ScanTo{&recStatus.ModelID, &recStatus.Status, &recStatus.Timestamp},
 		func() { a[recStatus.ModelID] = recStatus })
 	w.db.MustQuery(
-		`select model_id, status, timestamp from last_status_changes`,
+		`select model_id, status, timestamp from status_changes where is_latest = true`,
 		nil,
 		db.ScanTo{&recStatus.ModelID, &recStatus.Status, &recStatus.Timestamp},
 		func() { b[recStatus.ModelID] = recStatus })
@@ -551,7 +551,7 @@ func checkInv(w *worker, t *testing.T) {
 		t.Errorf("unexpected inv check result, statuses: %v, site statuses: %v", a, w.siteStatuses)
 		t.Log(string(debug.Stack()))
 	}
-	confOnline := map[string]bool{}
+	dbOnline := map[string]bool{}
 	var rec db.Model
 	w.db.MustQuery(
 		`select model_id, status from models`,
@@ -559,11 +559,11 @@ func checkInv(w *worker, t *testing.T) {
 		db.ScanTo{&rec.ModelID, &rec.Status},
 		func() {
 			if rec.Status == cmdlib.StatusOnline {
-				confOnline[rec.ModelID] = true
+				dbOnline[rec.ModelID] = true
 			}
 		})
-	if !reflect.DeepEqual(w.ourOnline, confOnline) {
-		t.Errorf("unexpected inv check result, left: %v, right: %v", w.ourOnline, confOnline)
+	if !reflect.DeepEqual(w.ourOnline, dbOnline) {
+		t.Errorf("unexpected inv check result, left: %v, right: %v", w.ourOnline, dbOnline)
 		t.Log(string(debug.Stack()))
 	}
 }

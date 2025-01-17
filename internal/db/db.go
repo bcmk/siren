@@ -11,7 +11,6 @@ import (
 
 	"github.com/bcmk/siren/lib/cmdlib"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var (
@@ -92,12 +91,6 @@ func (d *Database) MustExec(query string, args ...interface{}) {
 	checkErr(err)
 }
 
-// MustExecPrepared executes the prepared query
-func (d *Database) MustExecPrepared(stmt *pgconn.StatementDescription, args ...interface{}) {
-	d.checkTID()
-	d.MustExec(stmt.Name, args...)
-}
-
 // MustInt executes the query and returns single integer
 func (d *Database) MustInt(query string, args ...interface{}) (result int) {
 	defer d.Measure("db: " + query)()
@@ -143,8 +136,6 @@ func (d *Database) Begin() (pgx.Tx, error) { return d.db.Begin(context.Backgroun
 // SendBatch sends a batch
 func (d *Database) SendBatch(batch *pgx.Batch) {
 	conn := d.db.SendBatch(context.Background(), batch)
-	_, err := conn.Exec()
-	checkErr(err)
 	checkErr(conn.Close())
 }
 

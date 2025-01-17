@@ -3,7 +3,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -36,8 +35,6 @@ import (
 	"github.com/bcmk/siren/internal/db"
 	"github.com/bcmk/siren/lib/cmdlib"
 	tg "github.com/bcmk/telegram-bot-api"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var (
@@ -594,19 +591,21 @@ func (w *worker) changedStatuses(newStatuses []cmdlib.StatusUpdate, now int) []d
 	return result
 }
 
-func (w *worker) updateCachedStatus(next db.StatusChange) {
-	w.siteStatuses[next.ModelID] = next
-	if next.Status == cmdlib.StatusOnline {
-		w.siteOnline[next.ModelID] = true
-	} else {
-		delete(w.siteOnline, next.ModelID)
+func (w *worker) updateCachedStatus(changedStatuses []db.StatusChange) {
+	for _, statusChange := range changedStatuses {
+		w.siteStatuses[statusChange.ModelID] = statusChange
+		if statusChange.Status == cmdlib.StatusOnline {
+			w.siteOnline[statusChange.ModelID] = true
+		} else {
+			delete(w.siteOnline, statusChange.ModelID)
+		}
 	}
 }
 
-func (w *worker) confirmStatus(updateModelStatusStmt *pgconn.StatementDescription, now int, batch *pgx.Batch) []string {
-	all := cmdlib.HashDiffAll(w.ourOnline, w.siteOnline)
-	var confirmations []string
-	for _, modelID := range all {
+func (w *worker) confirmStatusChanges(now int) []db.StatusChange {
+	unmatchedStatusesStreamIDs := cmdlib.HashDiffAll(w.ourOnline, w.siteOnline)
+	var result []db.StatusChange
+	for _, modelID := range unmatchedStatusesStreamIDs {
 		statusChange := w.siteStatuses[modelID]
 		confirmationSeconds := w.confirmationSeconds(statusChange.Status)
 		durationConfirmed := confirmationSeconds == 0 || statusChange.Timestamp == 0 || (now-statusChange.Timestamp >= confirmationSeconds)
@@ -616,11 +615,10 @@ func (w *worker) confirmStatus(updateModelStatusStmt *pgconn.StatementDescriptio
 			} else {
 				delete(w.ourOnline, modelID)
 			}
-			batch.Queue(updateModelStatusStmt.Name, modelID, statusChange.Status)
-			confirmations = append(confirmations, modelID)
+			result = append(result, db.StatusChange{ModelID: modelID, Status: statusChange.Status, Timestamp: now})
 		}
 	}
-	return confirmations
+	return result
 }
 
 func (w *worker) notifyOfAddResults(queue chan outgoingPacket, notifications []db.Notification) {
@@ -1518,67 +1516,44 @@ func (w *worker) processStatusUpdates(updates []cmdlib.StatusUpdate, now int) (
 ) {
 	start := time.Now()
 	usersForModels, endpointsForModels := w.db.UsersForModels()
-	tx, err := w.db.Begin()
-	checkErr(err)
-
-	updateLastStatusChangeStmt, err := tx.Prepare(context.Background(), "update_last_status_change", db.UpdateLastStatusChange)
-	checkErr(err)
-	updateModelStatusStmt, err := tx.Prepare(context.Background(), "update_model_status", db.UpdateModelStatus)
-	checkErr(err)
 
 	changesCount = len(updates)
 
-	statusDone := w.db.Measure("db: status updates")
 	changedStatuses := w.changedStatuses(updates, now)
-	w.db.InsertStatusChanges(tx, changedStatuses)
+	w.db.InsertStatusChanges(changedStatuses)
+	w.updateCachedStatus(changedStatuses)
 
-	batch := &pgx.Batch{}
-	for _, i := range changedStatuses {
-		batch.Queue(updateLastStatusChangeStmt.Name, i.ModelID, i.Status, i.Timestamp)
-	}
-
-	for _, statusChange := range changedStatuses {
-		w.updateCachedStatus(statusChange)
-	}
-	statusDone()
-
-	confirmationsDone := w.db.Measure("db: confirmations")
-	confirmations := w.confirmStatus(updateModelStatusStmt, now, batch)
-
-	batchResults := tx.SendBatch(context.Background(), batch)
-	checkErr(batchResults.Close())
-	confirmationsDone()
+	confirmedStatusChanges := w.confirmStatusChanges(now)
+	w.db.InsertConfirmedStatusChanges(confirmedStatusChanges)
 
 	if w.cfg.Debug {
 		ldbg("confirmed online models: %d", len(w.ourOnline))
 	}
 
-	for _, c := range confirmations {
-		users := usersForModels[c]
-		endpoints := endpointsForModels[c]
+	for _, c := range confirmedStatusChanges {
+		users := usersForModels[c.ModelID]
+		endpoints := endpointsForModels[c.ModelID]
 		for i, user := range users {
-			status := w.siteStatuses[c].Status
+			status := w.siteStatuses[c.ModelID].Status
 			if (w.cfg.OfflineNotifications && user.OfflineNotifications) || status != cmdlib.StatusOffline {
 				n := db.Notification{
 					Endpoint: endpoints[i],
 					ChatID:   user.ChatID,
-					ModelID:  c,
+					ModelID:  c.ModelID,
 					Status:   status,
 					Social:   user.ChatID > 0,
 					Sound:    status == cmdlib.StatusOnline,
 					Kind:     db.NotificationPacket}
 				if user.ShowImages {
-					n.ImageURL = w.images[c]
+					n.ImageURL = w.images[c.ModelID]
 				}
 				notifications = append(notifications, n)
 			}
 		}
 	}
 
-	confirmedChangesCount = len(confirmations)
+	confirmedChangesCount = len(confirmedStatusChanges)
 
-	defer w.db.Measure("db: status updates commit")()
-	checkErr(tx.Commit(context.Background()))
 	elapsed = time.Since(start)
 	return
 }
@@ -1789,7 +1764,6 @@ func (w *worker) cleanStatusChanges(now int64) time.Duration {
 		threshold = limit
 	}
 	w.db.MustExec("delete from status_changes where timestamp < $1", threshold)
-	w.db.MustExec("delete from last_status_changes where timestamp < $1", threshold)
 	for k, v := range w.siteStatuses {
 		if v.Timestamp < threshold {
 			delete(w.siteStatuses, k)
