@@ -20,3 +20,4 @@ backup/
 .DS_Store
 ?*.ignore
 ?*.ignore.?*
+!Dockerfile
