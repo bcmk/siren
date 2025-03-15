@@ -1,10 +1,10 @@
 <svg width="1e4" height="4e3" version="1.1" viewBox="0 0 9000.1 3600" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="gr" x1="50%" x2="50%" y2="99.258%">
-      <stop stop-color="#2aabee" offset="0"/>
-      <stop stop-color="#229ed9" offset="1"/>
-    </linearGradient>
-  </defs>
-  <rect x="6216.7" y="1277.6" width="463.67" height="1044.9" ry="337.79" fill="url(#gr)" stroke-width="0"/>
-  <path d="m5776.1 324.53c-41.857-0.7428-90.828 9.3937-146.55 32.486l-3142.6 1235.2c-111.4 46.272-167.23 126.91-167.23 207.83 0 80.918 55.828 161.56 167.23 207.83l50.574 19.934 2772.7-1089.7v416.04l-2243.3 881.9 2562.7 1007c222.89 92.366 335.05-23.282 335.18-208.21v-2469.5c-0.1-138.69-63.065-238.47-188.64-240.68z" color="#000000" color-rendering="auto" dominant-baseline="auto" fill="url(#gr)" image-rendering="auto" shape-rendering="auto" solid-color="#000000" stroke-width="189" style="font-feature-settings:normal;font-variant-alternates:normal;font-variant-caps:normal;font-variant-ligatures:normal;font-variant-numeric:normal;font-variant-position:normal;isolation:auto;mix-blend-mode:normal;paint-order:normal;shape-padding:0;text-decoration-color:#000000;text-decoration-line:none;text-decoration-style:solid;text-indent:0;text-orientation:mixed;text-transform:none;white-space:normal"/>
+    <defs>
+        <linearGradient id="gr" x1="5%" x2="-5%" y2="100%" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#8c5af2" offset="0"/>
+            <stop stop-color="#e35c4a" offset="1"/>
+        </linearGradient>
+    </defs>
+    <rect x="6216.7" y="1277.6" width="463.67" height="1044.9" ry="337.79" fill="url(#gr)" stroke-width="0"/>
+    <path d="m5776.1 324.53c-41.857-0.7428-90.828 9.3937-146.55 32.486l-3142.6 1235.2c-111.4 46.272-167.23 126.91-167.23 207.83 0 80.918 55.828 161.56 167.23 207.83l50.574 19.934 2772.7-1089.7v416.04l-2243.3 881.9 2562.7 1007c222.89 92.366 335.05-23.282 335.18-208.21v-2469.5c-0.1-138.69-63.065-238.47-188.64-240.68z" fill="url(#gr)"/>
 </svg>
