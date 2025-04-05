@@ -1,6 +1,13 @@
 site:
   parse: html
   str: CAM4
+start:
+  parse: html
+  disable_preview: true
+  str: |-
+    {{ template "hello" .website_link }}
+
+    {{ template "commands" }}
 help:
   parse: html
   disable_preview: true

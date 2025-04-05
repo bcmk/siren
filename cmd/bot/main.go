@@ -1356,7 +1356,7 @@ func (w *worker) start(endpoint string, chatID int64, referrer string, now int) 
 			return
 		}
 	}
-	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Help, tplData{
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Start, tplData{
 		"website_link": w.cfg.WebsiteLink,
 	}, db.ReplyPacket)
 	if chatID > 0 && referrer != "" {
@@ -1376,6 +1376,12 @@ func (w *worker) start(endpoint string, chatID int64, referrer string, now int) 
 			w.db.MustExec("update models set referred_users=referred_users+1 where model_id = $1", modelID)
 		}
 	}
+}
+
+func (w *worker) help(endpoint string, chatID int64) {
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Help, tplData{
+		"website_link": w.cfg.WebsiteLink,
+	}, db.ReplyPacket)
 }
 
 func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, arguments string, now int) bool {
@@ -1407,8 +1413,10 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		w.listModels(endpoint, chatID, now)
 	case "pics", "online":
 		w.listOnlineModels(endpoint, chatID, now)
-	case "start", "help":
+	case "start":
 		w.start(endpoint, chatID, arguments, now)
+	case "help":
+		w.help(endpoint, chatID)
 	case "ad":
 		w.ad(w.highPriorityMsg, endpoint, chatID)
 	case "faq":

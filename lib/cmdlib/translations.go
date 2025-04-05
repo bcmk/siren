@@ -11,6 +11,7 @@ import (
 )
 
 // ParseKind specifies Telegram message parsing method
+//
 //go:generate yamlenums -type=ParseKind
 type ParseKind int
 
@@ -50,6 +51,7 @@ type AllTranslations map[string]*Translation
 
 // Translations represents a collection of translated texts for Telegram messages
 type Translations struct {
+	Start                       *Translation `yaml:"start"`
 	Help                        *Translation `yaml:"help"`
 	Online                      *Translation `yaml:"online"`
 	List                        *Translation `yaml:"list"`
