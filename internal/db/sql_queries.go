@@ -421,7 +421,7 @@ func (d *Database) ChatForReferralID(referralID string) *int64 {
 // IncrementBlock increments blocking count for particular chat ID
 func (d *Database) IncrementBlock(endpoint string, chatID int64) {
 	d.MustExec(`
-		insert into block included (endpoint, chat_id, block) values ($1, $2, 1)
+		insert into block as included (endpoint, chat_id, block) values ($1, $2, 1)
 		on conflict(chat_id, endpoint) do update set block = included.block + 1`,
 		endpoint,
 		chatID)

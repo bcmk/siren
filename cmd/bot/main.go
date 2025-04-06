@@ -1314,7 +1314,7 @@ func (w *worker) refer(followerChatID int64, referrer string) (applied appliedKi
 	}
 	w.db.MustExec("insert into users (chat_id, max_models) values ($1, $2)", followerChatID, w.cfg.MaxModels+w.cfg.FollowerBonus)
 	w.db.MustExec(`
-		insert into users included (chat_id, max_models) values ($1, $2)
+		insert into users as included (chat_id, max_models) values ($1, $2)
 		on conflict(chat_id) do update set max_models=included.max_models + $3`,
 		*referrerChatID,
 		w.cfg.MaxModels+w.cfg.ReferralBonus,
