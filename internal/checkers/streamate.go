@@ -120,9 +120,8 @@ func (c *StreamateChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 			Exact:   true,
 			PageNum: 1,
 			Constraints: constraintsRequest{
-				PublicProfile: &publicProfileRequest{},
-				StreamType:    &streamTypeRequest{Value: "live,recorded,offline"},
-				Name:          &nameRequest{Value: modelID},
+				StreamType: &streamTypeRequest{Value: "live,recorded,offline"},
+				Name:       &nameRequest{Value: modelID},
 			},
 		},
 	}
@@ -180,22 +179,24 @@ func (c *StreamateChecker) CheckEndpoint(endpoint string) (onlineModels map[stri
 	client := c.ClientsLoop.NextClient()
 	onlineModels = map[string]cmdlib.StatusKind{}
 	images = map[string]string{}
-	page := 500
+	// Somehow 500 doesn't work well
+	queriedPageSize := 400
+	pages := 1
 	i := 0
-	for i < 20 {
+	for i < pages {
 		i++
 		reqData := streamateRequest{
-			Options: optionsRequest{MaxResults: page},
+			Options: optionsRequest{MaxResults: queriedPageSize},
 			AvailablePerformers: availablePerformersRequest{
 				Exact:             true,
 				PageNum:           i,
-				CountTotalResults: true,
+				CountTotalResults: i == 1,
 				Include: includeRequest{
-					Media: &mediaRequest{Value: "biopic"},
+					Media:      &mediaRequest{Value: "biopic"},
+					StaticSort: &staticSortRequest{},
 				},
 				Constraints: constraintsRequest{
-					PublicProfile: &publicProfileRequest{},
-					StreamType:    &streamTypeRequest{Value: "live"},
+					StreamType: &streamTypeRequest{Value: "live"},
 				},
 			},
 		}
@@ -230,8 +231,11 @@ func (c *StreamateChecker) CheckEndpoint(endpoint string) (onlineModels map[stri
 			onlineModels[modelID] = cmdlib.StatusOnline
 			images[modelID] = image
 		}
-		if parsed.AvailablePerformers.ExactMatches != page {
-			break
+		if i == 1 {
+			pages = (parsed.AvailablePerformers.TotalResultCount + queriedPageSize - 1) / queriedPageSize
+			if pages > 20 {
+				pages = 20
+			}
 		}
 	}
 	return
