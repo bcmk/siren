@@ -37,13 +37,6 @@ var migrations = []func(d *Database){
 		d.MustExec(`create index ix_interactions_endpoint on interactions (endpoint);`)
 		d.MustExec(`create index ix_interactions_timestamp on interactions ("timestamp");`)
 		d.MustExec(`
-			create table last_status_changes (
-				model_id text primary key,
-				status integer not null default 0,
-				timestamp integer not null default 0
-			);
-		`)
-		d.MustExec(`
 			create table models (
 				model_id text primary key,
 				status integer not null default 0,
