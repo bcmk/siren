@@ -380,6 +380,9 @@ func (d *Database) DenySub(sub Subscription) {
 
 // QueryLastStatusChanges returns all known latest status changes
 func (d *Database) QueryLastStatusChanges() map[string]StatusChange {
+	queryString := `select model_id, status, timestamp from status_changes where is_latest = true`
+	measure := d.Measure(queryString)
+	defer measure()
 	statusChanges := map[string]StatusChange{}
 	var statusChange StatusChange
 	tx, err := d.Begin()
@@ -387,7 +390,7 @@ func (d *Database) QueryLastStatusChanges() map[string]StatusChange {
 	checkErr(err)
 	_, err = tx.Exec(ctx, `set local enable_indexscan = off`)
 	checkErr(err)
-	query, err := tx.Query(ctx, `select model_id, status, timestamp from status_changes where is_latest = true`)
+	query, err := tx.Query(ctx, queryString)
 	checkErr(err)
 	defer query.Close()
 
