@@ -382,11 +382,21 @@ func (d *Database) DenySub(sub Subscription) {
 func (d *Database) QueryLastStatusChanges() map[string]StatusChange {
 	statusChanges := map[string]StatusChange{}
 	var statusChange StatusChange
-	d.MustQuery(
-		`select model_id, status, timestamp from status_changes where is_latest = true`,
-		nil,
-		ScanTo{&statusChange.ModelID, &statusChange.Status, &statusChange.Timestamp},
-		func() { statusChanges[statusChange.ModelID] = statusChange })
+	tx, err := d.Begin()
+	ctx := context.Background()
+	checkErr(err)
+	_, err = tx.Exec(ctx, `set local enable_indexscan = off`)
+	checkErr(err)
+	query, err := tx.Query(ctx, `select model_id, status, timestamp from status_changes where is_latest = true`)
+	checkErr(err)
+	defer query.Close()
+
+	for query.Next() {
+		checkErr(query.Scan(&statusChange.ModelID, &statusChange.Status, &statusChange.Timestamp))
+		statusChanges[statusChange.ModelID] = statusChange
+	}
+
+	checkErr(tx.Commit(ctx))
 	return statusChanges
 }
 
