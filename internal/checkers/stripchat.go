@@ -153,9 +153,11 @@ func (c *StripchatChecker) CheckEndpoint(endpoint string) (
 			totalModels = parsed.Total
 		}
 		for _, m := range parsed.Models {
-			modelID := strings.ToLower(m.Username)
-			onlineModels[modelID] = cmdlib.StatusOnline
-			images[modelID] = m.SnapshotURL
+			if m.Username != "" {
+				modelID := strings.ToLower(m.Username)
+				onlineModels[modelID] = cmdlib.StatusOnline
+				images[modelID] = m.SnapshotURL
+			}
 		}
 		if (currentQuery+1)*offsetK > totalModels {
 			break
