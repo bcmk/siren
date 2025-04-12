@@ -34,7 +34,7 @@ func main() {
 		}})
 	models, images, err := checker.CheckStatusesMany(cmdlib.NewQueryModelList(flag.Args()), cmdlib.CheckStatuses)
 	if err != nil {
-		fmt.Printf("error occurred: %v", err)
+		fmt.Printf("error occurred: %v\n", err)
 		return
 	}
 	for model, status := range models {

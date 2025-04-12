@@ -36,7 +36,7 @@ func main() {
 	checker.Init(checker, cmdlib.CheckerConfig{UsersOnlineEndpoints: toSlice(endpoints), Clients: []*cmdlib.Client{client}, Dbg: *verbose})
 	models, images, err := checker.CheckStatusesMany(cmdlib.AllModels, cmdlib.CheckOnline)
 	if err != nil {
-		fmt.Printf("error occurred: %v", err)
+		fmt.Printf("error occurred: %v\n", err)
 		return
 	}
 	for model := range models {

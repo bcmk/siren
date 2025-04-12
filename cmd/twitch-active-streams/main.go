@@ -35,7 +35,7 @@ func main() {
 		}})
 	models, images, err := checker.CheckStatusesMany(cmdlib.AllModels, cmdlib.CheckOnline)
 	if err != nil {
-		fmt.Printf("error occurred: %v", err)
+		fmt.Printf("error occurred: %v\n", err)
 		return
 	}
 	for model := range models {
