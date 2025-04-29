@@ -24,6 +24,7 @@ Installation
 * CamSoda: [t.me/CamSodaSirenBot](https://t.me/CamSodaSirenBot)
 * Flirt4Free: [t.me/Flirt4FreeSirenBot](https://t.me/Flirt4FreeSirenBot)
 * Streamate: [t.me/StreamateSirenBot](https://t.me/StreamateSirenBot)
+* CAM4: [t.me/C4SirenBot](https://t.me/C4SirenBot)
 
 Commands
 --------
