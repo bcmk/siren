@@ -104,6 +104,8 @@ online:
   parse: html
   disable_preview: true
   str: |-
+    🟢
+    {{- print " " -}}
     {{- template "affiliate_link" .model -}}
     {{- print " " -}}
     <i>в сети {{- if .time_diff }} {{ template "duration" .time_diff -}} {{- end -}}</i>
@@ -111,6 +113,8 @@ offline:
   parse: html
   disable_preview: true
   str: |-
+    🔴
+    {{- print " " -}}
     {{ template "affiliate_link" .model }}
     {{- print " " -}}
     <i>не в сети {{- if .time_diff -}}, была {{ template "duration" .time_diff }} назад {{- end -}}</i>
@@ -128,6 +132,8 @@ list:
     {{- $printed := false -}}
     {{- if .online -}}
       {{- $printed = true -}}
+      🟢
+      {{- print " " -}}
       <code>В СЕТИ</code>
       {{- print "\n" -}}
       {{- range .online -}}
@@ -142,6 +148,8 @@ list:
         {{- print "\n" -}}
       {{- end -}}
       {{- $printed = true -}}
+      🔴
+      {{- print " " -}}
       <code>НЕ В СЕТИ</code>
       {{- print "\n" -}}
       {{- range .offline -}}
