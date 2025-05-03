@@ -104,6 +104,8 @@ online:
   parse: html
   disable_preview: true
   str: |-
+    🟢
+    {{- print " " -}}
     {{- template "affiliate_link" .model }}
     {{- print " " -}}
     <i>online {{- if .time_diff }} for {{ template "duration" .time_diff }} {{- end -}}</i>
@@ -111,6 +113,8 @@ offline:
   parse: html
   disable_preview: true
   str: |-
+    🔴
+    {{- print " " -}}
     {{- template "affiliate_link" .model }}
     {{- print " " -}}
     <i>offline {{- if .time_diff }}, last seen {{ template "duration" .time_diff }} ago {{- end -}}</i>
@@ -128,6 +132,8 @@ list:
     {{- $printed := false -}}
     {{- if .online -}}
       {{- $printed = true -}}
+      🟢
+      {{- print " " -}}
       <code>ONLINE</code>
       {{- print "\n" -}}
       {{- range .online -}}
@@ -142,6 +148,8 @@ list:
         {{- print "\n" -}}
       {{- end -}}
       {{- $printed = true -}}
+      🔴
+      {{- print " " -}}
       <code>OFFLINE</code>
       {{- print "\n" -}}
       {{- range .offline -}}
