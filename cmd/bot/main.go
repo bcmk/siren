@@ -1045,12 +1045,12 @@ func (w *worker) week(modelID string) ([]bool, time.Time) {
 	return hours, start
 }
 
-func (w *worker) feedback(endpoint string, chatID int64, text string) {
+func (w *worker) feedback(endpoint string, chatID int64, text string, now int) {
 	if text == "" {
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].SyntaxFeedback, nil, db.ReplyPacket)
 		return
 	}
-	w.db.MustExec("insert into feedback (endpoint, chat_id, text) values ($1, $2, $3)", endpoint, chatID, text)
+	w.db.MustExec("insert into feedback (endpoint, chat_id, text, timestamp) values ($1, $2, $3, $4)", endpoint, chatID, text, now)
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Feedback, nil, db.ReplyPacket)
 	user := w.mustUser(chatID)
 	if !user.Blacklist {
@@ -1424,7 +1424,7 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 			"max_models": w.cfg.MaxModels,
 		}, db.ReplyPacket)
 	case "feedback":
-		w.feedback(endpoint, chatID, arguments)
+		w.feedback(endpoint, chatID, arguments, now)
 	case "social":
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Social, nil, db.ReplyPacket)
 	case "version":

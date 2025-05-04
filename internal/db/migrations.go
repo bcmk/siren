@@ -101,6 +101,11 @@ var migrations = []func(d *Database){
 			);
 		`)
 	},
+	func(d *Database) {
+		d.MustExec(`alter table feedback add column timestamp integer;`)
+		d.MustExec(`update feedback set timestamp = extract(epoch from now())::integer;`)
+		d.MustExec(`alter table feedback alter column timestamp set not null;`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database
