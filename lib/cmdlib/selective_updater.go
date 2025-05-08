@@ -12,7 +12,13 @@ func (f *selectiveUpdater) PushUpdateRequest(updateRequest StatusUpdateRequest) 
 		var updateResults StatusUpdateResults
 		if res.Data != nil {
 			online := onlyOnline(res.Data.Statuses)
-			updates := getUpdates(f.siteOnlineModels, online)
+			unfilteredUpdates := getUpdates(f.siteOnlineModels, online)
+			var updates []StatusUpdate
+			for _, x := range unfilteredUpdates {
+				if subsSet[x.ModelID] {
+					updates = append(updates, x)
+				}
+			}
 			f.siteOnlineModels = online
 			_, unknowns := HashDiffNewRemoved(f.knowns, subsSet)
 			f.knowns = subsSet

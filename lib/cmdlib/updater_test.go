@@ -116,6 +116,7 @@ func TestSelectiveUpdater(t *testing.T) {
 	callback := func(res StatusUpdateResults) { resultsCh <- res }
 	checker.Start()
 	up := checker.Updater()
+
 	checker.online = toSet("c")
 	if err := up.PushUpdateRequest(StatusUpdateRequest{
 		Callback:      callback,
@@ -124,7 +125,11 @@ func TestSelectiveUpdater(t *testing.T) {
 		t.Errorf("cannot query updates, %v", err)
 		return
 	}
-	uSet := updatesSet((<-resultsCh).Data.Updates)
+	updates := (<-resultsCh).Data.Updates
+	uSet := updatesSet(updates)
+	if len(updates) != len(uSet) {
+		t.Errorf("duplicates found: %v", updates)
+	}
 	expected := map[string]StatusKind{"a": StatusOffline, "b": StatusUnknown, "c": StatusOnline}
 	if !reflect.DeepEqual(uSet, expected) {
 		t.Errorf("wrong updates, expected: %v, got: %v", expected, uSet)
