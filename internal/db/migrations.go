@@ -106,6 +106,14 @@ var migrations = []func(d *Database){
 		d.MustExec(`update feedback set timestamp = extract(epoch from now())::integer;`)
 		d.MustExec(`alter table feedback alter column timestamp set not null;`)
 	},
+	func(d *Database) {
+		d.MustExec(`drop index ix_status_changes_model_id_is_latest;`)
+		d.MustExec(`
+			create unique index ix_status_changes_model_id_is_latest
+			on status_changes (model_id)
+			include (status, timestamp)
+			where is_latest = true;`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database
