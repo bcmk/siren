@@ -196,6 +196,7 @@ func newWorker(args []string) *worker {
 		sendingNotifications:   make(chan []db.Notification, 1000),
 		sentNotifications:      make(chan []db.Notification),
 		ourIDs:                 getOurIDs(cfg),
+		specialModels:          map[string]bool{},
 	}
 	for endpoint, a := range tr {
 		for _, b := range a.ToMap() {
@@ -550,7 +551,10 @@ func (w *worker) initCache() {
 	start := time.Now()
 	w.siteStatuses = w.db.QueryLastStatusChanges()
 	w.siteOnline = w.getLastOnlineModels()
-	w.ourOnline, w.specialModels = w.db.QueryConfirmedModels()
+	w.ourOnline = w.db.QueryConfirmedModels()
+	if w.cfg.SpecialModels {
+		w.specialModels = w.db.QuerySpecialModels()
+	}
 	elapsed := time.Since(start)
 	linf("cache initialized in %d ms", elapsed.Milliseconds())
 }
@@ -1213,10 +1217,12 @@ func (w *worker) addSpecialModel(endpoint string, arguments string) {
 		on conflict(model_id) do update set special=excluded.special`,
 		modelID,
 		set)
-	if set {
-		w.specialModels[modelID] = true
-	} else {
-		delete(w.specialModels, modelID)
+	if w.cfg.SpecialModels {
+		if set {
+			w.specialModels[modelID] = true
+		} else {
+			delete(w.specialModels, modelID)
+		}
 	}
 	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
 }

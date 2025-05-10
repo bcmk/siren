@@ -391,13 +391,19 @@ func (d *Database) QueryLastStatusChanges() map[string]StatusChange {
 }
 
 // QueryConfirmedModels returns all known confirmed models
-func (d *Database) QueryConfirmedModels() (map[string]bool, map[string]bool) {
+func (d *Database) QueryConfirmedModels() map[string]bool {
 	statuses := map[string]bool{}
-	specialModels := map[string]bool{}
 	var modelID string
 	d.MustQuery("select model_id from models where status = $1", QueryParams{cmdlib.StatusOnline}, ScanTo{&modelID}, func() { statuses[modelID] = true })
+	return statuses
+}
+
+// QuerySpecialModels returns all known special models
+func (d *Database) QuerySpecialModels() map[string]bool {
+	specialModels := map[string]bool{}
+	var modelID string
 	d.MustQuery("select model_id from models where special = true", nil, ScanTo{&modelID}, func() { specialModels[modelID] = true })
-	return statuses, specialModels
+	return specialModels
 }
 
 // ReferralID returns referral identifier

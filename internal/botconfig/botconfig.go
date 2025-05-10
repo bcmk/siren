@@ -76,6 +76,7 @@ type Config struct {
 	MaxCleanSeconds                 int                       `json:"max_clean_seconds"`                  // maximum number of seconds to clean
 	SubsConfirmationPeriodSeconds   int                       `json:"subs_confirmation_period_seconds"`   // subscriptions confirmation period
 	NotificationsReadyPeriodSeconds int                       `json:"notifications_ready_period_seconds"` // notifications ready check period
+	SpecialModels                   bool                      `json:"special_models"`                     // process special models
 
 	ErrorThreshold   int
 	ErrorDenominator int
