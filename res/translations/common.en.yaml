@@ -87,7 +87,7 @@ model_added:
   parse: raw
   str: |-
     Model {{ .model }} added successfully
-    Bot will notify you whenever she enters or leaves
+    Bot will notify you whenever they enters or leaves
 model_not_in_list:
   parse: raw
   str: 'Model {{ .model }} is not in your list'
