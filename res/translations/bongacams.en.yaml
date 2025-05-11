@@ -93,7 +93,7 @@ faq_no_notifications:
 
     We use the same list of online models as affiliate sites use for advertisements.
     Some models decided to not appear there so we cannot know when they are online.
-    You can tell a model about this bot and a model may probably change her or his mind on this setting.
+    You can tell a model about this bot and a model may probably change their mind on this setting.
 faq:
   parse: html
   str: |-

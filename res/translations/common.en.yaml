@@ -180,7 +180,7 @@ own_referral_link_hit:
   str: You've just hit your own referral link
 profile_removed:
   parse: raw
-  str: 'Model {{ .model }} probably has removed her profile'
+  str: 'Model {{ .model }} probably has removed their profile'
 referral_applied:
   parse: raw
   str: Congrats! You've just got more subscriptions for the referral link!

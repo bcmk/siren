@@ -33,9 +33,8 @@ faq_direct_subscriptions:
   str: >
     <b>It would be nice if I can subscribe to models directly from their profile pages</b>
 
-    Actually models can provide a link in their profile pages exacly for this purpose.
+    Actually models can provide a link on their profile pages exacly for this purpose.
     You can tell a model about this feature.
-    A model can write to siren.chat@gmail.com and we will help her to do it.
 faq:
   parse: html
   str: |-
