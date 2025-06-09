@@ -115,10 +115,12 @@ func (c *StripchatChecker) CheckEndpoint(endpoint string) (
 ) {
 	onlineModels = map[string]cmdlib.StatusKind{}
 	images = map[string]string{}
-	maxQueries := 20
+	maxQueries := 80
 	totalModels := 0
 	limit := 1000
-	offsetK := 900 // It overlaps limit
+	// It must be below the limit for queries to overlap
+	// Additionally, it must overlap multiple times; otherwise, the list of models will not be complete
+	offsetK := 250
 	for currentQuery := 0; currentQuery < maxQueries; currentQuery++ {
 		client := c.ClientsLoop.NextClient()
 
