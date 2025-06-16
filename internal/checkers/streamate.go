@@ -216,10 +216,10 @@ func (c *StreamateChecker) CheckEndpoint(endpoint string) (onlineModels map[stri
 		decoder := xml.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 		parsed := &streamateResponse{}
 		err = decoder.Decode(parsed)
+		if c.Dbg {
+			cmdlib.Ldbg("response: %s", buf.String())
+		}
 		if err != nil {
-			if c.Dbg {
-				cmdlib.Ldbg("response: %s", buf.String())
-			}
 			return nil, nil, fmt.Errorf("[%v] cannot parse response %v", client.Addr, err)
 		}
 		for _, m := range parsed.AvailablePerformers.Performers {
