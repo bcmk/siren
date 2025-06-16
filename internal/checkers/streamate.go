@@ -155,11 +155,11 @@ func (c *StreamateChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 	decoder := xml.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	parsed := &streamateResponse{}
 	err = decoder.Decode(parsed)
+	if c.Dbg {
+		cmdlib.Ldbg("response: %s", buf.String())
+	}
 	if err != nil {
 		cmdlib.Lerr("[%v] cannot parse response for model %s, %v", client.Addr, modelID, err)
-		if c.Dbg {
-			cmdlib.Ldbg("response: %s", buf.String())
-		}
 		return cmdlib.StatusUnknown
 	}
 	if parsed.AvailablePerformers.ExactMatches != 1 || len(parsed.AvailablePerformers.Performers) != 1 {
