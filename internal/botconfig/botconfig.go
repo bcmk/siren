@@ -77,6 +77,7 @@ type Config struct {
 	SubsConfirmationPeriodSeconds   int                       `json:"subs_confirmation_period_seconds"`   // subscriptions confirmation period
 	NotificationsReadyPeriodSeconds int                       `json:"notifications_ready_period_seconds"` // notifications ready check period
 	SpecialModels                   bool                      `json:"special_models"`                     // process special models
+	ShowImages                      bool                      `json:"show_images"`                        // images support
 
 	ErrorThreshold   int
 	ErrorDenominator int
@@ -95,7 +96,7 @@ func ReadConfig(path string) *Config {
 func parseConfig(r io.Reader) *Config {
 	decoder := json.NewDecoder(r)
 	decoder.DisallowUnknownFields()
-	cfg := &Config{}
+	cfg := &Config{ShowImages: true}
 	err := decoder.Decode(cfg)
 	checkErr(err)
 	checkErr(checkConfig(cfg))

@@ -650,7 +650,10 @@ func (w *worker) downloadImages(notifications []db.Notification) map[string][]by
 }
 
 func (w *worker) notifyOfStatuses(highPriorityQueue chan outgoingPacket, lowPriorityQueue chan outgoingPacket, notifications []db.Notification) {
-	images := w.downloadImages(notifications)
+	images := map[string][]byte{}
+	if w.cfg.ShowImages {
+		images = w.downloadImages(notifications)
+	}
 	for _, n := range notifications {
 		queue := lowPriorityQueue
 		if n.Priority > 0 {
