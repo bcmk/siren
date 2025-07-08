@@ -114,6 +114,13 @@ var migrations = []func(d *Database){
 			include (status, timestamp)
 			where is_latest = true;`)
 	},
+	func(d *Database) {
+		d.MustExec(`drop index ix_interactions_endpoint;`)
+		d.MustExec(`drop index ix_interactions_timestamp;`)
+		d.MustExec(`drop index ix_status_changes_timestamp;`)
+		d.MustExec(`create index ix_interactions_timestamp on interactions using brin ("timestamp");`)
+		d.MustExec(`create index ix_status_changes_timestamp on status_changes using brin ("timestamp");`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database
