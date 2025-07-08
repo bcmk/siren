@@ -1776,9 +1776,11 @@ func (w *worker) logSingleQueryResult(success bool) {
 func (w *worker) cleanStatusChanges(now int64) time.Duration {
 	start := time.Now()
 	threshold := int(now) - w.cfg.KeepStatusesForDays*24*60*60
-	limit := w.db.MustInt("select coalesce(min(timestamp), 0) from status_changes") + w.cfg.MaxCleanSeconds
-	if limit < threshold {
-		threshold = limit
+	if w.cfg.MaxCleanSeconds != 0 {
+		limit := w.db.MustInt("select coalesce(min(timestamp), 0) from status_changes") + w.cfg.MaxCleanSeconds
+		if limit < threshold {
+			threshold = limit
+		}
 	}
 	w.db.MustExec("delete from status_changes where timestamp < $1", threshold)
 	for k, v := range w.siteStatuses {
