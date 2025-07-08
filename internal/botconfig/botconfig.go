@@ -197,9 +197,6 @@ func checkConfig(cfg *Config) error {
 	if cfg.KeepStatusesForDays == 0 {
 		return errors.New("configure keep_statuses_for_days")
 	}
-	if cfg.MaxCleanSeconds == 0 {
-		return errors.New("configure max_clean_seconds")
-	}
 	if cfg.SubsConfirmationPeriodSeconds == 0 {
 		return errors.New("configure subs_confirmation_period_seconds")
 	}
