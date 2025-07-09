@@ -121,6 +121,10 @@ var migrations = []func(d *Database){
 		d.MustExec(`create index ix_interactions_timestamp on interactions using brin ("timestamp");`)
 		d.MustExec(`create index ix_status_changes_timestamp on status_changes using brin ("timestamp");`)
 	},
+	func(d *Database) {
+		d.MustExec(`alter index ix_status_changes_timestamp set (pages_per_range = 8);`)
+		d.MustExec(`reindex index ix_status_changes_timestamp;`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database
