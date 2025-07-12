@@ -138,9 +138,6 @@ func checkConfig(cfg *Config) error {
 	if cfg.PeriodSeconds == 0 {
 		return errors.New("configure period_seconds")
 	}
-	if cfg.CleaningPeriodSeconds == 0 {
-		return errors.New("configure cleaning_period_seconds")
-	}
 	if cfg.MaxModels == 0 {
 		return errors.New("configure max_models")
 	}

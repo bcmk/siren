@@ -1916,16 +1916,6 @@ func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacke
 						}
 						return true
 					}
-				case "clean":
-					if processing {
-						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "still processing", db.ReplyPacket)
-					} else {
-						processing = true
-						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
-						go func() {
-							processingDone <- w.cleanStatusChanges(time.Now().Unix())
-						}()
-					}
 				case "sql":
 					if processing {
 						w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "still processing", db.ReplyPacket)
@@ -1986,7 +1976,10 @@ func main() {
 	w.handleStatEndpoints(statRequests)
 
 	var requestTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
-	var cleaningTimer = time.NewTicker(time.Duration(w.cfg.CleaningPeriodSeconds) * time.Second)
+	var cleaningTimerChannel <-chan time.Time
+	if w.cfg.CleaningPeriodSeconds != 0 {
+		cleaningTimerChannel = time.NewTicker(time.Duration(w.cfg.CleaningPeriodSeconds) * time.Second).C
+	}
 	var subsConfirmTimer = time.NewTicker(time.Duration(w.cfg.SubsConfirmationPeriodSeconds) * time.Second)
 	var notificationSenderTimer = time.NewTicker(time.Duration(w.cfg.NotificationsReadyPeriodSeconds) * time.Second)
 	w.checker.Init(w.checker, cmdlib.CheckerConfig{
@@ -2010,7 +2003,7 @@ func main() {
 		case <-requestTimer.C:
 			runtime.GC()
 			w.periodic()
-		case <-cleaningTimer.C:
+		case <-cleaningTimerChannel:
 			w.cleaningDuration = w.cleanStatusChanges(time.Now().Unix())
 		case <-subsConfirmTimer.C:
 			w.queryUnconfirmedSubs()
