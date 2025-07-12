@@ -390,6 +390,42 @@ func (d *Database) QueryLastStatusChanges() map[string]StatusChange {
 	return statusChanges
 }
 
+// QueryLastStatusChangesForModels returns all known latest status changes for specific models
+func (d *Database) QueryLastStatusChangesForModels(modelIDs []string) map[string]StatusChange {
+	statusChanges := map[string]StatusChange{}
+	var statusChange StatusChange
+	d.MustQuery(
+		`select model_id, status, timestamp from status_changes where is_latest = true and model_id = any($1)`,
+		QueryParams{modelIDs},
+		ScanTo{&statusChange.ModelID, &statusChange.Status, &statusChange.Timestamp},
+		func() { statusChanges[statusChange.ModelID] = statusChange })
+	return statusChanges
+}
+
+// QueryLastSubscriptionStatuses returns latest statuses for subscriptions
+func (d *Database) QueryLastSubscriptionStatuses() map[string]cmdlib.StatusKind {
+	statuses := map[string]cmdlib.StatusKind{}
+	var statusChange StatusChange
+	d.MustQuery(
+		`select model_id, status from status_changes join (select distinct model_id from signals where confirmed = 1) using (model_id) where is_latest`,
+		nil,
+		ScanTo{&statusChange.ModelID, &statusChange.Status},
+		func() { statuses[statusChange.ModelID] = statusChange.Status })
+	return statuses
+}
+
+// QueryLastOnlineModels queries latest online models
+func (d *Database) QueryLastOnlineModels() map[string]bool {
+	onlineModels := map[string]bool{}
+	var modelID string
+	d.MustQuery(
+		`select model_id from status_changes where is_latest and status = 2`,
+		nil,
+		ScanTo{&modelID},
+		func() { onlineModels[modelID] = true })
+	return onlineModels
+}
+
 // QueryConfirmedModels returns all known confirmed models
 func (d *Database) QueryConfirmedModels() map[string]bool {
 	statuses := map[string]bool{}

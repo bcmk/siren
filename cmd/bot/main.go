@@ -73,7 +73,6 @@ type worker struct {
 	confirmedChangesInPeriod int
 	ourOnline                map[string]bool
 	specialModels            map[string]bool
-	siteStatuses             map[string]db.StatusChange
 	siteOnline               map[string]bool
 	tr                       map[string]*cmdlib.Translations
 	tpl                      map[string]*template.Template
@@ -549,24 +548,13 @@ func (w *worker) createDatabase(done chan bool) {
 
 func (w *worker) initCache() {
 	start := time.Now()
-	w.siteStatuses = w.db.QueryLastStatusChanges()
-	w.siteOnline = w.getLastOnlineModels()
+	w.siteOnline = w.db.QueryLastOnlineModels()
 	w.ourOnline = w.db.QueryConfirmedModels()
 	if w.cfg.SpecialModels {
 		w.specialModels = w.db.QuerySpecialModels()
 	}
 	elapsed := time.Since(start)
 	linf("cache initialized in %d ms", elapsed.Milliseconds())
-}
-
-func (w *worker) getLastOnlineModels() map[string]bool {
-	res := map[string]bool{}
-	for k, v := range w.siteStatuses {
-		if v.Status == cmdlib.StatusOnline {
-			res[k] = true
-		}
-	}
-	return res
 }
 
 func (w *worker) confirmationSeconds(status cmdlib.StatusKind) int {
@@ -585,9 +573,14 @@ func (w *worker) confirmationSeconds(status cmdlib.StatusKind) int {
 }
 
 func (w *worker) changedStatuses(newStatuses []cmdlib.StatusUpdate, now int) []db.StatusChange {
-	result := []db.StatusChange{}
+	var modelIDs []string
 	for _, next := range newStatuses {
-		prev := w.siteStatuses[next.ModelID]
+		modelIDs = append(modelIDs, next.ModelID)
+	}
+	result := []db.StatusChange{}
+	siteStatuses := w.db.QueryLastStatusChangesForModels(modelIDs)
+	for _, next := range newStatuses {
+		prev := siteStatuses[next.ModelID]
 		if next.Status != prev.Status {
 			result = append(result, db.StatusChange{ModelID: next.ModelID, Status: next.Status, Timestamp: now})
 		}
@@ -597,7 +590,6 @@ func (w *worker) changedStatuses(newStatuses []cmdlib.StatusUpdate, now int) []d
 
 func (w *worker) updateCachedStatus(changedStatuses []db.StatusChange) {
 	for _, statusChange := range changedStatuses {
-		w.siteStatuses[statusChange.ModelID] = statusChange
 		if statusChange.Status == cmdlib.StatusOnline {
 			w.siteOnline[statusChange.ModelID] = true
 		} else {
@@ -608,9 +600,10 @@ func (w *worker) updateCachedStatus(changedStatuses []db.StatusChange) {
 
 func (w *worker) confirmStatusChanges(now int) []db.StatusChange {
 	unmatchedStatusesStreamIDs := cmdlib.HashDiffAll(w.ourOnline, w.siteOnline)
+	siteStatuses := w.db.QueryLastStatusChangesForModels(unmatchedStatusesStreamIDs)
 	var result []db.StatusChange
 	for _, modelID := range unmatchedStatusesStreamIDs {
-		statusChange := w.siteStatuses[modelID]
+		statusChange := siteStatuses[modelID]
 		confirmationSeconds := w.confirmationSeconds(statusChange.Status)
 		durationConfirmed := confirmationSeconds == 0 || statusChange.Timestamp == 0 || (now-statusChange.Timestamp >= confirmationSeconds)
 		if durationConfirmed {
@@ -768,9 +761,10 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 		return false
 	}
 	var confirmedStatus cmdlib.StatusKind
+	siteStatuses := w.db.QueryLastStatusChangesForModels([]string{modelID})
 	if w.ourOnline[modelID] {
 		confirmedStatus = cmdlib.StatusOnline
-	} else if _, ok := w.siteStatuses[modelID]; ok {
+	} else if _, ok := siteStatuses[modelID]; ok {
 		confirmedStatus = cmdlib.StatusOffline
 	} else if w.db.MaybeModel(modelID) != nil {
 		confirmedStatus = cmdlib.StatusOffline
@@ -1475,15 +1469,6 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	return false
 }
 
-func (w *worker) subscriptions() map[string]cmdlib.StatusKind {
-	subs := w.db.MustStrings("select distinct(model_id) from signals where confirmed = 1")
-	result := map[string]cmdlib.StatusKind{}
-	for _, s := range subs {
-		result[s] = w.siteStatuses[s].Status
-	}
-	return result
-}
-
 func (w *worker) periodic() {
 	unsuccessfulRequestsCount := w.unsuccessfulRequestsCount()
 	now := time.Now()
@@ -1507,7 +1492,7 @@ func (w *worker) pushOnlineRequest() {
 	err := w.checker.Updater().PushUpdateRequest(cmdlib.StatusUpdateRequest{
 		Callback:      func(res cmdlib.StatusUpdateResults) { w.onlineModelsChan <- res },
 		SpecialModels: w.specialModels,
-		Subscriptions: w.subscriptions(),
+		Subscriptions: w.db.QueryLastSubscriptionStatuses(),
 	})
 	if err != nil {
 		lerr("%v", err)
@@ -1551,15 +1536,14 @@ func (w *worker) processStatusUpdates(updates []cmdlib.StatusUpdate, now int) (
 		users := usersForModels[c.ModelID]
 		endpoints := endpointsForModels[c.ModelID]
 		for i, user := range users {
-			status := w.siteStatuses[c.ModelID].Status
-			if (w.cfg.OfflineNotifications && user.OfflineNotifications) || status != cmdlib.StatusOffline {
+			if (w.cfg.OfflineNotifications && user.OfflineNotifications) || c.Status != cmdlib.StatusOffline {
 				n := db.Notification{
 					Endpoint: endpoints[i],
 					ChatID:   user.ChatID,
 					ModelID:  c.ModelID,
-					Status:   status,
+					Status:   c.Status,
 					Social:   user.ChatID > 0,
-					Sound:    status == cmdlib.StatusOnline,
+					Sound:    c.Status == cmdlib.StatusOnline,
 					Kind:     db.NotificationPacket}
 				if user.ShowImages {
 					n.ImageURL = w.images[c.ModelID]
@@ -1669,7 +1653,7 @@ func (w *worker) getStat(endpoint string) statistics {
 		ModelsToPollOnEndpointCount:  w.db.ModelsToPollOnEndpointCount(endpoint, w.cfg.BlockThreshold),
 		ModelsToPollTotalCount:       w.db.ModelsToPollTotalCount(w.cfg.BlockThreshold),
 		OnlineModelsCount:            len(w.ourOnline),
-		KnownModelsCount:             len(w.siteStatuses),
+		KnownModelsCount:             w.db.MustInt("select count(*) from models"),
 		SpecialModelsCount:           len(w.specialModels),
 		StatusChangesCount:           w.db.StatusChangesCount(),
 		QueriesDurationMilliseconds:  int(w.httpQueriesDuration.Milliseconds()),
@@ -1782,12 +1766,20 @@ func (w *worker) cleanStatusChanges(now int64) time.Duration {
 			threshold = limit
 		}
 	}
-	w.db.MustExec("delete from status_changes where timestamp < $1", threshold)
-	for k, v := range w.siteStatuses {
-		if v.Timestamp < threshold {
-			delete(w.siteStatuses, k)
-			delete(w.siteOnline, k)
-		}
+	var modelID string
+	var isLatest bool
+	deletedLatestChanges := map[string]bool{}
+	w.db.MustQuery(
+		"delete from status_changes where timestamp < $1 returning model_id, is_latest",
+		db.QueryParams{threshold},
+		db.ScanTo{&modelID, &isLatest},
+		func() {
+			if isLatest {
+				deletedLatestChanges[modelID] = true
+			}
+		})
+	for k, _ := range deletedLatestChanges {
+		delete(w.siteOnline, k)
 	}
 	return time.Since(start)
 }
@@ -1990,7 +1982,7 @@ func main() {
 		SpecificConfig:       w.cfg.SpecificConfig,
 		QueueSize:            5,
 		SiteOnlineModels:     w.siteOnline,
-		Subscriptions:        w.subscriptions(),
+		Subscriptions:        w.db.QueryLastSubscriptionStatuses(),
 		IntervalMs:           w.cfg.IntervalMs,
 	})
 	w.checker.Start()
