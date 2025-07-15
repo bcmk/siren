@@ -1778,7 +1778,7 @@ func (w *worker) cleanStatusChanges(now int64) time.Duration {
 				deletedLatestChanges[modelID] = true
 			}
 		})
-	for k, _ := range deletedLatestChanges {
+	for k := range deletedLatestChanges {
 		delete(w.siteOnline, k)
 	}
 	return time.Since(start)

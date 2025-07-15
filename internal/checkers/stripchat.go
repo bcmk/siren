@@ -117,52 +117,74 @@ func (c *StripchatChecker) CheckEndpoint(endpoint string) (
 	images = map[string]string{}
 	maxQueries := 80
 	totalModels := 0
-	limit := 1000
+	// This is the actual limit, although the documentation states 1000
+	limit := 800
 	// It must be below the limit for queries to overlap
 	// Additionally, it must overlap multiple times; otherwise, the list of models will not be complete
-	offsetK := 250
-	for currentQuery := 0; currentQuery < maxQueries; currentQuery++ {
-		client := c.ClientsLoop.NextClient()
+	offsetK := 200
+	repeatCounterK := 4
+	for repeatCounter := 0; repeatCounter < repeatCounterK; repeatCounter++ {
+		addedOnOuterIteration := 0
+		for currentQuery := 0; currentQuery < maxQueries; currentQuery++ {
+			client := c.ClientsLoop.NextClient()
 
-		request, err := url.Parse(endpoint)
-		if err != nil {
-			return nil, nil, fmt.Errorf("cannot parse endpoint %q", endpoint)
-		}
+			request, err := url.Parse(endpoint)
+			if err != nil {
+				return nil, nil, fmt.Errorf("cannot parse endpoint %q", endpoint)
+			}
 
-		q := request.Query()
-		q.Set("offset", strconv.Itoa(currentQuery*offsetK))
-		q.Set("limit", strconv.Itoa(limit))
+			q := request.Query()
+			q.Set("offset", strconv.Itoa(currentQuery*offsetK+repeatCounter))
+			q.Set("limit", strconv.Itoa(limit))
 
-		request.RawQuery = q.Encode()
+			request.RawQuery = q.Encode()
 
-		resp, buf, err := cmdlib.OnlineQuery(request.String(), client, c.Headers)
-		if err != nil {
-			return nil, nil, fmt.Errorf("cannot send a query, %v", err)
-		}
-		if resp.StatusCode != 200 {
-			return nil, nil, fmt.Errorf("query status %d", resp.StatusCode)
-		}
-		decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
-		parsed := &stripchatResponse{}
-		err = decoder.Decode(parsed)
-		if err != nil {
+			resp, buf, err := cmdlib.OnlineQuery(request.String(), client, c.Headers)
+			if err != nil {
+				return nil, nil, fmt.Errorf("cannot send a query, %v", err)
+			}
+			if resp.StatusCode != 200 {
+				return nil, nil, fmt.Errorf("query status %d", resp.StatusCode)
+			}
+			decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
+			parsed := &stripchatResponse{}
+			err = decoder.Decode(parsed)
+			if err != nil {
+				if c.Dbg {
+					cmdlib.Ldbg("response: %s", buf.String())
+				}
+				return nil, nil, fmt.Errorf("cannot parse response, %v", err)
+			}
 			if c.Dbg {
-				cmdlib.Ldbg("response: %s", buf.String())
+				cmdlib.Ldbg("streams count in the response: %d", len(parsed.Models))
 			}
-			return nil, nil, fmt.Errorf("cannot parse response, %v", err)
-		}
-		if totalModels == 0 {
-			totalModels = parsed.Total
-		}
-		for _, m := range parsed.Models {
-			if m.Username != "" {
-				modelID := strings.ToLower(m.Username)
-				onlineModels[modelID] = cmdlib.StatusOnline
-				images[modelID] = m.SnapshotURL
+			if currentQuery == 0 {
+				totalModels = parsed.Total
+			}
+			addedOnInnerIteration := 0
+			for _, m := range parsed.Models {
+				if m.Username != "" {
+					modelID := strings.ToLower(m.Username)
+					if _, ok := onlineModels[modelID]; !ok {
+						onlineModels[modelID] = cmdlib.StatusOnline
+						addedOnInnerIteration++
+						addedOnOuterIteration++
+					}
+					images[modelID] = m.SnapshotURL
+				}
+			}
+			if c.Dbg {
+				cmdlib.Ldbg("added on inner iteration: %d", addedOnInnerIteration)
+			}
+			if currentQuery*offsetK+limit > totalModels {
+				break
 			}
 		}
-		if (currentQuery+1)*offsetK > totalModels {
-			break
+		if c.Dbg {
+			cmdlib.Ldbg("added on outer iteration: %d", addedOnOuterIteration)
+		}
+		if repeatCounter < repeatCounterK-1 {
+			time.Sleep(5 * time.Second)
 		}
 	}
 	return
