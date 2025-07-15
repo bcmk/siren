@@ -118,11 +118,10 @@ func (c *StripchatChecker) CheckEndpoint(endpoint string) (
 	maxQueries := 80
 	totalModels := 0
 	// This is the actual limit, although the documentation states 1000
-	limit := 800
-	// It must be below the limit for queries to overlap
-	// Additionally, it must overlap multiple times; otherwise, the list of models will not be complete
+	limitK := 800
+	// It must be below the limit for queries to overlap; otherwise, the list of models will not be complete
 	offsetK := 200
-	repeatCounterK := 4
+	repeatCounterK := 6
 	for repeatCounter := 0; repeatCounter < repeatCounterK; repeatCounter++ {
 		addedOnOuterIteration := 0
 		for currentQuery := 0; currentQuery < maxQueries; currentQuery++ {
@@ -135,7 +134,7 @@ func (c *StripchatChecker) CheckEndpoint(endpoint string) (
 
 			q := request.Query()
 			q.Set("offset", strconv.Itoa(currentQuery*offsetK+repeatCounter))
-			q.Set("limit", strconv.Itoa(limit))
+			q.Set("limit", strconv.Itoa(limitK))
 
 			request.RawQuery = q.Encode()
 
@@ -174,14 +173,14 @@ func (c *StripchatChecker) CheckEndpoint(endpoint string) (
 				}
 			}
 			if c.Dbg {
-				cmdlib.Ldbg("added on inner iteration: %d", addedOnInnerIteration)
+				cmdlib.Ldbg("added on inner iteration %d: %d", currentQuery+1, addedOnInnerIteration)
 			}
-			if currentQuery*offsetK+limit > totalModels {
+			if currentQuery*offsetK+limitK > totalModels {
 				break
 			}
 		}
 		if c.Dbg {
-			cmdlib.Ldbg("added on outer iteration: %d", addedOnOuterIteration)
+			cmdlib.Ldbg("added on outer iteration %d: %d", repeatCounter+1, addedOnOuterIteration)
 		}
 		if repeatCounter < repeatCounterK-1 {
 			time.Sleep(5 * time.Second)
