@@ -428,7 +428,7 @@ func (s *server) measure(h http.Handler) http.Handler {
 }
 
 func (s *server) likesForPack(pack string) int {
-	return s.mustInt(`select coalesce(sum("like") * 2 - count(*), 0) from likes where pack = $1`, pack)
+	return s.mustInt(`select sum(case when "like" then 1 else -1 end) from likes where pack = $1`, pack)
 }
 
 func (s *server) iconsCount() int {
