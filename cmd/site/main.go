@@ -4,7 +4,7 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"database/sql"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -26,18 +26,17 @@ import (
 	"github.com/bcmk/siren/sitelib"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	"github.com/jackc/pgx/v5"
 	"github.com/tdewolff/minify/v2"
 	hmin "github.com/tdewolff/minify/v2/html"
 
 	_ "image/png"
-
-	_ "github.com/mattn/go-sqlite3"
 )
 
 type server struct {
 	cfg          sitelib.Config
 	enabledPacks []sitelib.Pack
-	db           *sql.DB
+	db           *pgx.Conn
 	packs        []sitelib.Pack
 
 	enIndexTemplate    *ht.Template
@@ -340,8 +339,8 @@ func (s *server) likeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	ip := r.Header.Get("X-Forwarded-For")
 	s.mustExec(`
-		insert into likes (address, pack, like, timestamp) values (?, ?, ?, ?)
-		on conflict(address, pack) do update set like=excluded.like, timestamp=excluded.timestamp`,
+		insert into likes (address, pack, "like", timestamp) values ($1, $2, $3, $4)
+		on conflict(address, pack) do update set "like"=excluded."like", timestamp=excluded.timestamp`,
 		ip,
 		like.Pack,
 		like.Like,
@@ -350,8 +349,8 @@ func (s *server) likeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) likes() map[string]int {
-	query := s.mustQuery("select pack, sum(like) * 2 - count(*) from likes group by pack")
-	defer func() { checkErr(query.Close()) }()
+	query := s.mustQuery(`select pack, sum(case when "like" then 1 else -1 end) from likes group by pack`)
+	defer query.Close()
 	results := map[string]int{}
 	for query.Next() {
 		var pack string
@@ -429,7 +428,7 @@ func (s *server) measure(h http.Handler) http.Handler {
 }
 
 func (s *server) likesForPack(pack string) int {
-	return s.mustInt("select coalesce(sum(like) * 2 - count(*), 0) from likes where pack=?", pack)
+	return s.mustInt(`select coalesce(sum("like") * 2 - count(*), 0) from likes where pack = $1`, pack)
 }
 
 func (s *server) iconsCount() int {
@@ -499,7 +498,7 @@ func main() {
 	srv.fillTemplates()
 	srv.fillEnabledPacks()
 	srv.fillCSS()
-	db, err := sql.Open("sqlite3", srv.cfg.DBPath)
+	db, err := pgx.Connect(context.Background(), srv.cfg.DBPath)
 	checkErr(err)
 	srv.db = db
 	srv.createDatabase()

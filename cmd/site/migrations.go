@@ -1,15 +1,17 @@
 package main
 
 import (
-	"database/sql"
+	"context"
+
+	"github.com/jackc/pgx/v5"
 )
 
 var migrations = []func(s *server){
 	func(s *server) {
-		s.mustExec(`create table if not exists likes (
+		s.mustExec(`create table likes (
 			address text,
 			pack text,
-			like integer not null default 0,
+			"like" boolean not null default false,
 			primary key (address, pack));`)
 	},
 	func(s *server) {
@@ -18,12 +20,12 @@ var migrations = []func(s *server){
 }
 
 func (s *server) applyMigrations() {
-	row := s.db.QueryRow("select version from schema_version")
+	row := s.db.QueryRow(context.Background(), "select version from schema_version")
 	var version int
 	err := row.Scan(&version)
-	if err == sql.ErrNoRows {
+	if err == pgx.ErrNoRows {
 		version = -1
-		s.mustExec("insert into schema_version(version) values (0)")
+		s.mustExec("insert into schema_version(version) values (-1)")
 	} else {
 		checkErr(err)
 	}
@@ -31,7 +33,7 @@ func (s *server) applyMigrations() {
 		n := i + version + 1
 		linf("applying migration %d", n)
 		m(s)
-		s.mustExec("update schema_version set version=?", n)
+		s.mustExec("update schema_version set version = $1", n)
 	}
 }
 

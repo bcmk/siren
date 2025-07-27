@@ -8,7 +8,6 @@ require (
 	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0
 	github.com/jackc/pgx/v5 v5.5.4
-	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/nicklaw5/helix v1.25.0
 	github.com/tdewolff/minify/v2 v2.21.2
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.34.0
