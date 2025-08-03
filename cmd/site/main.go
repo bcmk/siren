@@ -35,9 +35,9 @@ import (
 
 type server struct {
 	cfg          sitelib.Config
-	enabledPacks []sitelib.Pack
+	enabledPacks []sitelib.PackV2
 	db           *pgx.Conn
-	packs        []sitelib.Pack
+	packs        []sitelib.PackV2
 
 	enIndexTemplate    *ht.Template
 	ruIndexTemplate    *ht.Template
@@ -105,11 +105,12 @@ var funcMap = ht.FuncMap{
 	"trimPrefix": func(s, prefix string) string {
 		return strings.TrimPrefix(prefix, s)
 	},
-	"versioned": func(pack *sitelib.Pack, name string) string {
-		if pack.Version < 2 {
+	"versioned": func(pack *sitelib.PackV2, name string) string {
+		icon := pack.Icons[name]
+		if icon.Version == 0 {
 			return name
 		}
-		return name + ".v" + strconv.Itoa(pack.Version)
+		return name + ".v" + strconv.Itoa(icon.Version)
 	},
 }
 
@@ -212,6 +213,7 @@ func (s *server) tparams(r *http.Request, more map[string]interface{}) map[strin
 		imgExts["png"] = "svgz"
 	}
 	res["img_exts"] = imgExts
+	res["base_bucket_url"] = s.cfg.BaseBucketURL
 	return res
 }
 
@@ -361,7 +363,7 @@ func (s *server) likes() map[string]int {
 	return results
 }
 
-func (s *server) findPack(name string) *sitelib.Pack {
+func (s *server) findPack(name string) *sitelib.PackV2 {
 	for _, pack := range s.packs {
 		if pack.Name == name {
 			return &pack
@@ -375,7 +377,7 @@ type iconSize struct {
 	Height float64
 }
 
-func (s *server) chaturbateCode(pack *sitelib.Pack, params map[string]string) string {
+func (s *server) chaturbateCode(pack *sitelib.PackV2, params map[string]string) string {
 	t := parseHTMLTemplate("common/icons-code-generator.gohtml")
 	var b bytes.Buffer
 	w := bufio.NewWriter(&b)
@@ -385,7 +387,7 @@ func (s *server) chaturbateCode(pack *sitelib.Pack, params map[string]string) st
 		hgap = *pack.HGap
 	}
 	iconSizes := map[string]iconSize{}
-	for k, v := range pack.FinalIcons {
+	for k, v := range pack.Icons {
 		iconSizes[k] = iconSize{
 			Width:  width,
 			Height: width * v.Height / v.Width,
@@ -428,13 +430,13 @@ func (s *server) measure(h http.Handler) http.Handler {
 }
 
 func (s *server) likesForPack(pack string) int {
-	return s.mustInt(`select sum(case when "like" then 1 else -1 end) from likes where pack = $1`, pack)
+	return s.mustInt(`select coalesce(sum(case when "like" then 1 else -1 end), 0) from likes where pack = $1`, pack)
 }
 
 func (s *server) iconsCount() int {
 	count := 0
 	for _, i := range s.packs {
-		count += len(i.FinalIcons)
+		count += len(i.Icons)
 	}
 	return count
 }
@@ -468,7 +470,7 @@ func (s *server) fillTemplates() {
 }
 
 func (s *server) fillEnabledPacks() {
-	packs := make([]sitelib.Pack, 0, len(s.packs))
+	packs := make([]sitelib.PackV2, 0, len(s.packs))
 	for _, pack := range s.packs {
 		if !pack.Disable {
 			packs = append(packs, pack)
@@ -490,15 +492,15 @@ func main() {
 		panic("usage: site <config>")
 	}
 	srv := &server{cfg: sitelib.ReadConfig(flag.Arg(0))}
-	srv.packs = sitelib.ParsePacks(srv.cfg.Files)
+	srv.packs = sitelib.ParsePacksV2(&srv.cfg)
 	if len(srv.packs) > 2 {
-		srv.packs = append([]sitelib.Pack{srv.packs[len(srv.packs)-1]}, srv.packs[:len(srv.packs)-1]...)
+		srv.packs = append([]sitelib.PackV2{srv.packs[len(srv.packs)-1]}, srv.packs[:len(srv.packs)-1]...)
 	}
 	srv.fillRawFiles()
 	srv.fillTemplates()
 	srv.fillEnabledPacks()
 	srv.fillCSS()
-	db, err := pgx.Connect(context.Background(), srv.cfg.DBPath)
+	db, err := pgx.Connect(context.Background(), srv.cfg.ConnectionString)
 	checkErr(err)
 	srv.db = db
 	srv.createDatabase()
@@ -520,16 +522,6 @@ func main() {
 	r.Handle("/chic/test/{pack}", srv.measure(handlers.CompressHandler(http.HandlerFunc(srv.testHandler))))
 	r.Handle("/chic/like/{pack}", srv.measure(http.HandlerFunc(srv.likeHandler)))
 
-	svgzHeaders := func(h http.Handler) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			if strings.HasSuffix(r.URL.Path, ".svgz") {
-				w.Header().Set("Content-Encoding", "gzip")
-				w.Header().Set("Content-Type", "image/svg+xml")
-			}
-			h.ServeHTTP(w, r)
-		}
-	}
-	r.PathPrefix("/chic/i/{pack}/{file:.*\\.(?:png|svg|svgz|webp|jpg)}").Handler(http.StripPrefix("/chic/i", svgzHeaders(cacheControlHandler(http.FileServer(http.Dir(srv.cfg.Files)), 120))))
 	r.PathPrefix("/icons/").Handler(http.StripPrefix("/icons", cacheControlHandler(http.FileServer(http.Dir("icons")), 120)))
 	r.PathPrefix("/node_modules/").Handler(http.StripPrefix("/node_modules", cacheControlHandler(handlers.CompressHandler(http.FileServer(http.Dir("node_modules"))), 120)))
 

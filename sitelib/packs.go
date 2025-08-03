@@ -1,16 +1,24 @@
 package sitelib
 
 import (
+	"bytes"
 	"encoding/json"
 	"encoding/xml"
+	"fmt"
 	"image"
+	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/bcmk/siren/lib/cmdlib"
 )
 
@@ -54,13 +62,23 @@ func buildInputIconFileSetNeedle(parsedPack *Pack) map[string]bool {
 	return fileSet
 }
 
-func parseInputIcon(parsedPack *Pack, iconFileSetNeedle map[string]bool, iconFileName string) *Icon {
+func parseInputIcon(parsedPack *Pack, iconFileSetNeedle map[string]bool, packDir string, iconFileName string) *Icon {
 	if !iconFileSetNeedle[iconFileName] {
 		return nil
 	}
 
+	width, height := .0, .0
+	switch parsedPack.InputType {
+	case "svg":
+		width, height = parseSVGSize(path.Join(packDir, iconFileName))
+	case "png":
+		width, height = parsePNGSize(path.Join(packDir, iconFileName))
+	}
+
 	return &Icon{
 		NotVersionedName: strings.TrimSuffix(iconFileName, "."+parsedPack.InputType),
+		Width:            width,
+		Height:           height,
 	}
 }
 
@@ -82,9 +100,10 @@ func parseFinalIcon(parsedPack *Pack, iconFileSetNeedle map[string]bool, packDir
 	}
 
 	width, height := .0, .0
-	if parsedPack.FinalType == "svg" {
+	switch parsedPack.FinalType {
+	case "svg":
 		width, height = parseSVGSize(path.Join(packDir, iconFileName))
-	} else if parsedPack.FinalType == "png" {
+	case "png":
 		width, height = parsePNGSize(path.Join(packDir, iconFileName))
 	}
 
@@ -135,7 +154,7 @@ func parsePack(libraryDir, packName string) Pack {
 	inputIconFileSetNeedle := buildInputIconFileSetNeedle(&parsedPack)
 	finalIconFileSetNeedle := buildFinalIconFileSetNeedle(&parsedPack)
 	for _, iconFile := range iconFiles {
-		inputIcon := parseInputIcon(&parsedPack, inputIconFileSetNeedle, iconFile.Name())
+		inputIcon := parseInputIcon(&parsedPack, inputIconFileSetNeedle, packDir, iconFile.Name())
 		if inputIcon != nil {
 			foundInputIcons[inputIcon.NotVersionedName] = *inputIcon
 		}
@@ -168,6 +187,58 @@ func ParsePacks(dir string) []Pack {
 		parsed := parsePack(dir, packName)
 		packs = append(packs, parsed)
 	}
+	sort.Slice(packs, func(i, j int) bool { return packs[i].Timestamp < packs[j].Timestamp })
+	return packs
+}
+
+func download(svc *s3.S3, bucketName string, key *string) (*bytes.Buffer, error) {
+	out, err := svc.GetObject(&s3.GetObjectInput{
+		Bucket: aws.String(bucketName),
+		Key:    key,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { cmdlib.CheckErr(out.Body.Close()) }()
+
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, out.Body); err != nil {
+		return nil, err
+	}
+
+	return &buf, nil
+}
+
+// ParsePacksV2 parses icons packs for config V2
+func ParsePacksV2(config *Config) []PackV2 {
+	sess, err := session.NewSession(&aws.Config{
+		Region:           aws.String(config.BucketRegion),
+		Endpoint:         aws.String(config.BucketEndpoint),
+		S3ForcePathStyle: aws.Bool(true),
+		Credentials:      credentials.NewStaticCredentials(config.BucketAccessKey, config.BucketSecretKey, ""),
+	})
+	cmdlib.CheckErr(err)
+	svc := s3.New(sess)
+	var packs []PackV2
+	err = svc.ListObjectsV2Pages(&s3.ListObjectsV2Input{
+		Bucket: aws.String(config.BucketName),
+	}, func(page *s3.ListObjectsV2Output, _ bool) bool {
+		for _, obj := range page.Contents {
+			if strings.HasSuffix(*obj.Key, "/config_v2.json") {
+				fmt.Printf("Parsing %s...\n", *obj.Key)
+				buf, err := download(svc, config.BucketName, obj.Key)
+				cmdlib.CheckErr(err)
+				var pack PackV2
+				cmdlib.CheckErr(json.Unmarshal(buf.Bytes(), &pack))
+				fullDirPath := filepath.Dir(*obj.Key)
+				dirName := filepath.Base(fullDirPath)
+				pack.Name = dirName
+				packs = append(packs, pack)
+			}
+		}
+		return true
+	})
+	cmdlib.CheckErr(err)
 	sort.Slice(packs, func(i, j int) bool { return packs[i].Timestamp < packs[j].Timestamp })
 	return packs
 }

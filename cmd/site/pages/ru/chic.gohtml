@@ -3,6 +3,7 @@
 
 {{ $likes := .likes }}
 {{ $img_exts := .img_exts }}
+{{ $base_bucket_url := .base_bucket_url }}
 
 <html lang="ru" xmlns:og="http://ogp.me/ns#">
 <head>
@@ -49,7 +50,7 @@
                     <div class="col-12 col-lg-10">
                         <div class="swiper-container dark-stripes">
                             <img style="height: 90px;"
-                                 src="/chic/i/{{ $pack.Name }}/line.{{ index $img_exts "png" }}"
+                                 src="{{ $base_bucket_url }}/{{ $pack.Name }}/line.{{ index $img_exts "png" }}"
                                  alt=""
                                  draggable="false"
                                  ondragstart="return false;"
