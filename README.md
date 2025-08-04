@@ -1,7 +1,7 @@
 __[Русский](README-ru.md)__
 
-<img src="cmd/site/icons/siren-dia.svg" height="23">&ensp;SIREN
-===============================================================
+<img src="https://xiren.ams3.digitaloceanspaces.com/icons/siren-dia.svg" height="23">&ensp;SIREN
+================================================================================================
 Telegram bot for webcasts alerts
 
 [![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
