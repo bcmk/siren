@@ -1,16 +1,11 @@
 module github.com/bcmk/siren
 
 require (
-	github.com/aohorodnyk/mimeheader v0.0.5
-	github.com/aws/aws-sdk-go v1.55.8
 	github.com/bcmk/telegram-bot-api v1.0.1-0.20200926205526-fa6e30cde1b9
 	github.com/chromedp/cdproto v0.0.0-20211002082225-0242b9dca9f4
 	github.com/chromedp/chromedp v0.7.4
-	github.com/gorilla/handlers v1.5.1
-	github.com/gorilla/mux v1.8.0
 	github.com/jackc/pgx/v5 v5.5.4
 	github.com/nicklaw5/helix v1.25.0
-	github.com/tdewolff/minify/v2 v2.21.2
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.34.0
 	golang.org/x/image v0.18.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -43,7 +38,6 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
-	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/klauspost/compress v1.17.4 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
@@ -64,7 +58,6 @@ require (
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/stretchr/testify v1.9.0 // indirect
-	github.com/tdewolff/parse/v2 v2.7.19 // indirect
 	github.com/technoweenie/multipartstreamer v1.0.1 // indirect
 	github.com/testcontainers/testcontainers-go v0.34.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
