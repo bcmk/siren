@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-function purge() {
-    npx purgecss -con "pages/**/*.gohtml" -css wwwroot/styles.css -o wwwroot/styles.css -s tbody -s tfoot
-}
-
-sass --no-source-map scss/styles.scss wwwroot/styles.css && purge
-
