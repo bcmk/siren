@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! [[ "$1" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "error: invalid version format"
+    echo "expected 'vX.Y.Z'"
+    exit 1
+fi
+
+docker buildx build --platform linux/amd64 --build-arg SIREN_BOT_VERSION="${1#v}" -t "bot:$1" -t "registry.digitalocean.com/reg-xiren/bot:$1" --progress=plain .
+docker push "registry.digitalocean.com/reg-xiren/bot:$1"
+./scripts/registry-cleanup

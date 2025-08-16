@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+manifest_list=$(doctl registry repository list-manifests bot --output json)
+
+get_old_digests() {
+    jq -r "sort_by(.updated_at) | reverse | .[3:] | .[].digest" <<< "$manifest_list"
+}
+
+get_tags_from_digest() {
+    jq -c --arg digest "$1" '.[] | select(.digest == $digest) | .tags // []' <<< "$manifest_list"
+}
+
+delete_manifest() {
+    local digest="$1"
+    local tags=""
+    tags=$(get_tags_from_digest "$digest")
+    echo "deleting digest: $digest, tags: $tags..."
+    doctl registry repository delete-manifest bot "$digest" --force
+}
+
+get_old_digests | while read -r digest; do
+    delete_manifest "$digest"
+done

@@ -1,1 +1,3 @@
-.idea
+**/*.ignore
+**/*.ignore.*
+cmd/bot/bot

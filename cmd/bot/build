@@ -1,1 +1,0 @@
-go build -v -ldflags="-s -X 'github.com/bcmk/siren/lib/cmdlib.Version=$(../../scripts/describe-version)'"

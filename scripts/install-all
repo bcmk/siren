@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-cur="$(dirname "$(readlink -f "$0")")"
-cd "$cur/.."
-go install -ldflags="-s -X 'github.com/bcmk/siren/lib/cmdlib.Version=$(scripts/describe-version)'" ./...
