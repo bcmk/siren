@@ -5,79 +5,84 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	"io/fs"
+	"log"
 	"net"
-	"os"
-	"path/filepath"
+	"reflect"
 	"regexp"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/bcmk/siren/lib/cmdlib"
+	"github.com/go-viper/mapstructure/v2"
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 )
 
 var checkErr = cmdlib.CheckErr
 
 type endpoint struct {
-	ListenPath          string   `json:"listen_path"`          // the path excluding domain to listen to, the good choice is "/your-telegram-bot-token"
-	StatPath            string   `json:"stat_path"`            // the path for statistics
-	WebhookDomain       string   `json:"webhook_domain"`       // the domain listening to the webhook
-	CertificatePath     string   `json:"certificate_path"`     // a path to your certificate, it is used to set up a webhook and to set up this HTTP server
-	BotToken            string   `json:"bot_token"`            // your Telegram bot token
-	Translation         []string `json:"translation"`          // translation files
-	Ads                 []string `json:"ads"`                  // ads files
-	Images              string   `json:"images"`               // images directory
-	MaintenanceResponse string   `json:"maintenance_response"` // the maintenance response
+	ListenPath          string   `mapstructure:"listen_path"`          // the path excluding domain to listen to, the good choice is "/your-telegram-bot-token"
+	StatPath            string   `mapstructure:"stat_path"`            // the path for statistics
+	WebhookDomain       string   `mapstructure:"webhook_domain"`       // the domain listening to the webhook
+	CertificatePath     string   `mapstructure:"certificate_path"`     // a path to your certificate, it is used to set up a webhook and to set up this HTTP server
+	BotToken            string   `mapstructure:"bot_token"`            // your Telegram bot token
+	Translation         []string `mapstructure:"translation"`          // translation files
+	Ads                 []string `mapstructure:"ads"`                  // ads files
+	Images              string   `mapstructure:"images"`               // images directory
+	MaintenanceResponse string   `mapstructure:"maintenance_response"` // the maintenance response
 }
 
 // StatusConfirmationSeconds represents a configureation of confirmation durations for each of specific statuses
 type StatusConfirmationSeconds struct {
-	Offline  int `json:"offline"`
-	Online   int `json:"online"`
-	NotFound int `json:"not_found"`
-	Denied   int `json:"denied"`
+	Offline  int `mapstructure:"offline"`
+	Online   int `mapstructure:"online"`
+	NotFound int `mapstructure:"not_found"`
+	Denied   int `mapstructure:"denied"`
 }
 
 // Config represents bot configuration
 type Config struct {
-	Debug                           bool                      `json:"debug"`                              // debug mode
-	CheckGID                        bool                      `json:"check_gid"`                          // check goroutines ids
-	ListenAddress                   string                    `json:"listen_address"`                     // the address to listen to
-	Website                         string                    `json:"website"`                            // one of the following strings: "bongacams", "stripchat", "chaturbate", "livejasmin", "flirt4free", "streamate", "cam4"
-	WebsiteLink                     string                    `json:"website_link"`                       // affiliate link to website
-	PeriodSeconds                   int                       `json:"period_seconds"`                     // the period of querying models statuses
-	CleaningPeriodSeconds           int                       `json:"cleaning_period_seconds"`            // the cleaning period
-	MaxModels                       int                       `json:"max_models"`                         // maximum models per user
-	TimeoutSeconds                  int                       `json:"timeout_seconds"`                    // HTTP timeout
-	AdminID                         int64                     `json:"admin_id"`                           // admin Telegram ID
-	AdminEndpoint                   string                    `json:"admin_endpoint"`                     // admin endpoint
-	DBPath                          string                    `json:"db_path"`                            // path to the database
-	BlockThreshold                  int                       `json:"block_threshold"`                    // do not send a message to the user after being blocked by him this number of times
-	IntervalMs                      int                       `json:"interval_ms"`                        // queries interval per IP address for rate limited access
-	SourceIPAddresses               []string                  `json:"source_ip_addresses"`                // source IP addresses for rate limited access
-	DangerousErrorRate              string                    `json:"dangerous_error_rate"`               // dangerous error rate, warn admin if it is reached, format "1000/10000"
-	EnableCookies                   bool                      `json:"enable_cookies"`                     // enable cookies, it can be useful to mitigate rate limits
-	Headers                         [][2]string               `json:"headers"`                            // HTTP headers to make queries with
-	StatPassword                    string                    `json:"stat_password"`                      // password for statistics
-	ErrorReportingPeriodMinutes     int                       `json:"error_reporting_period_minutes"`     // the period of the error reports
-	Endpoints                       map[string]endpoint       `json:"endpoints"`                          // the endpoints by simple name, used for the support of the bots in different languages accessing the same database
-	HeavyUserRemainder              int                       `json:"heavy_user_remainder"`               // the maximum remainder of models to treat a user as heavy
-	ReferralBonus                   int                       `json:"referral_bonus"`                     // number of additional subscriptions for a referrer
-	FollowerBonus                   int                       `json:"follower_bonus"`                     // number of additional subscriptions for a new user registered by a referral link
-	UsersOnlineEndpoint             []string                  `json:"users_online_endpoint"`              // the endpoint to fetch online users
-	StatusConfirmationSeconds       StatusConfirmationSeconds `json:"status_confirmation_seconds"`        // a status is confirmed only if it lasts for at least this number of seconds
-	OfflineNotifications            bool                      `json:"offline_notifications"`              // enable offline notifications
-	SQLPrelude                      []string                  `json:"sql_prelude"`                        // run these SQL commands before any other
-	EnableWeek                      bool                      `json:"enable_week"`                        // enable week command
-	AffiliateLink                   string                    `json:"affiliate_link"`                     // affiliate link template
-	SpecificConfig                  map[string]string         `json:"specific_config"`                    // the config for specific website
-	TelegramTimeoutSeconds          int                       `json:"telegram_timeout_seconds"`           // the timeout for Telegram queries
-	MaxSubscriptionsForPics         int                       `json:"max_subscriptions_for_pics"`         // the maximum amount of subscriptions for pics in a group chat
-	KeepStatusesForDays             int                       `json:"keep_statuses_for_days"`             // keep statuses for this number of days
-	MaxCleanSeconds                 int                       `json:"max_clean_seconds"`                  // maximum number of seconds to clean
-	SubsConfirmationPeriodSeconds   int                       `json:"subs_confirmation_period_seconds"`   // subscriptions confirmation period
-	NotificationsReadyPeriodSeconds int                       `json:"notifications_ready_period_seconds"` // notifications ready check period
-	SpecialModels                   bool                      `json:"special_models"`                     // process special models
-	ShowImages                      bool                      `json:"show_images"`                        // images support
+	Debug                           bool                      `mapstructure:"debug"`                              // debug mode
+	CheckGID                        bool                      `mapstructure:"check_gid"`                          // check goroutines ids
+	ListenAddress                   string                    `mapstructure:"listen_address"`                     // the address to listen to
+	Website                         string                    `mapstructure:"website"`                            // one of the following strings: "bongacams", "stripchat", "chaturbate", "livejasmin", "flirt4free", "streamate", "cam4"
+	WebsiteLink                     string                    `mapstructure:"website_link"`                       // affiliate link to website
+	PeriodSeconds                   int                       `mapstructure:"period_seconds"`                     // the period of querying models statuses
+	CleaningPeriodSeconds           int                       `mapstructure:"cleaning_period_seconds"`            // the cleaning period
+	MaxModels                       int                       `mapstructure:"max_models"`                         // maximum models per user
+	TimeoutSeconds                  int                       `mapstructure:"timeout_seconds"`                    // HTTP timeout
+	AdminID                         int64                     `mapstructure:"admin_id"`                           // admin Telegram ID
+	AdminEndpoint                   string                    `mapstructure:"admin_endpoint"`                     // admin endpoint
+	DBPath                          string                    `mapstructure:"db_path"`                            // path to the database
+	BlockThreshold                  int                       `mapstructure:"block_threshold"`                    // do not send a message to the user after being blocked by him this number of times
+	IntervalMs                      int                       `mapstructure:"interval_ms"`                        // queries interval per IP address for rate limited access
+	SourceIPAddresses               []string                  `mapstructure:"source_ip_addresses"`                // source IP addresses for rate limited access
+	DangerousErrorRate              string                    `mapstructure:"dangerous_error_rate"`               // dangerous error rate, warn admin if it is reached, format "1000/10000"
+	EnableCookies                   bool                      `mapstructure:"enable_cookies"`                     // enable cookies, it can be useful to mitigate rate limits
+	Headers                         [][2]string               `mapstructure:"headers"`                            // HTTP headers to make queries with
+	StatPassword                    string                    `mapstructure:"stat_password"`                      // password for statistics
+	ErrorReportingPeriodMinutes     int                       `mapstructure:"error_reporting_period_minutes"`     // the period of the error reports
+	Endpoints                       map[string]endpoint       `mapstructure:"endpoints"`                          // the endpoints by simple name, used for the support of the bots in different languages accessing the same database
+	HeavyUserRemainder              int                       `mapstructure:"heavy_user_remainder"`               // the maximum remainder of models to treat a user as heavy
+	ReferralBonus                   int                       `mapstructure:"referral_bonus"`                     // number of additional subscriptions for a referrer
+	FollowerBonus                   int                       `mapstructure:"follower_bonus"`                     // number of additional subscriptions for a new user registered by a referral link
+	UsersOnlineEndpoint             []string                  `mapstructure:"users_online_endpoint"`              // the endpoint to fetch online users
+	StatusConfirmationSeconds       StatusConfirmationSeconds `mapstructure:"status_confirmation_seconds"`        // a status is confirmed only if it lasts for at least this number of seconds
+	OfflineNotifications            bool                      `mapstructure:"offline_notifications"`              // enable offline notifications
+	SQLPrelude                      []string                  `mapstructure:"sql_prelude"`                        // run these SQL commands before any other
+	EnableWeek                      bool                      `mapstructure:"enable_week"`                        // enable week command
+	AffiliateLink                   string                    `mapstructure:"affiliate_link"`                     // affiliate link template
+	SpecificConfig                  map[string]string         `mapstructure:"specific_config"`                    // the config for specific website
+	TelegramTimeoutSeconds          int                       `mapstructure:"telegram_timeout_seconds"`           // the timeout for Telegram queries
+	MaxSubscriptionsForPics         int                       `mapstructure:"max_subscriptions_for_pics"`         // the maximum amount of subscriptions for pics in a group chat
+	KeepStatusesForDays             int                       `mapstructure:"keep_statuses_for_days"`             // keep statuses for this number of days
+	MaxCleanSeconds                 int                       `mapstructure:"max_clean_seconds"`                  // maximum number of seconds to clean
+	SubsConfirmationPeriodSeconds   int                       `mapstructure:"subs_confirmation_period_seconds"`   // subscriptions confirmation period
+	NotificationsReadyPeriodSeconds int                       `mapstructure:"notifications_ready_period_seconds"` // notifications ready check period
+	SpecialModels                   bool                      `mapstructure:"special_models"`                     // process special models
+	ShowImages                      bool                      `mapstructure:"show_images"`                        // images support
 
 	ErrorThreshold   int
 	ErrorDenominator int
@@ -85,24 +90,140 @@ type Config struct {
 
 var fractionRegexp = regexp.MustCompile(`^(\d+)/(\d+)$`)
 
-// ReadConfig read config
-func ReadConfig(path string) *Config {
-	file, err := os.Open(filepath.Clean(path))
-	checkErr(err)
-	defer func() { checkErr(file.Close()) }()
-	return parseConfig(file)
+type configFile struct {
+	name     string
+	required bool
 }
 
-func parseConfig(r io.Reader) *Config {
-	decoder := json.NewDecoder(r)
-	decoder.DisallowUnknownFields()
+func bindEnvForStructType(v *viper.Viper, t reflect.Type, prefix string, bindPrimitiveMaps bool) {
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
+	switch t.Kind() {
+	case reflect.Struct:
+		for i := 0; i < t.NumField(); i++ {
+			f := t.Field(i)
+			if f.PkgPath != "" {
+				continue
+			}
+			tag := f.Tag.Get("mapstructure")
+			if tag == "" || tag == "-" {
+				continue
+			}
+			key := tag
+			if prefix != "" {
+				key = prefix + "." + tag
+			}
+			bindEnvForStructType(v, f.Type, key, bindPrimitiveMaps)
+		}
+	case reflect.Map:
+		if !bindPrimitiveMaps {
+			return
+		}
+		k, e := t.Key(), t.Elem()
+		for e.Kind() == reflect.Ptr {
+			e = e.Elem()
+		}
+		if k.Kind() == reflect.String && isPrimitiveKind(e.Kind()) {
+			_ = v.BindEnv(prefix)
+		}
+	default:
+		_ = v.BindEnv(prefix)
+	}
+}
+
+func isPrimitiveKind(k reflect.Kind) bool {
+	switch k {
+	case
+		reflect.Bool,
+		reflect.Int,
+		reflect.Int8,
+		reflect.Int16,
+		reflect.Int32,
+		reflect.Int64,
+		reflect.Uint,
+		reflect.Uint8,
+		reflect.Uint16,
+		reflect.Uint32,
+		reflect.Uint64,
+		reflect.Uintptr,
+		reflect.Float32,
+		reflect.Float64,
+		reflect.String:
+
+		return true
+	default:
+		return false
+	}
+}
+
+func stringToMapHook() mapstructure.DecodeHookFunc {
+	return func(from, to reflect.Type, data any) (any, error) {
+		if from.Kind() == reflect.String && to.Kind() == reflect.Map {
+			if s := data.(string); s != "" {
+				m := reflect.New(to).Interface()
+				if err := json.Unmarshal([]byte(s), m); err != nil {
+					return data, err
+				}
+				return reflect.ValueOf(m).Elem().Interface(), nil
+			}
+		}
+		return data, nil
+	}
+}
+
+var cfgPath = pflag.StringP("config", "c", "", "path to a config file (overrides default search)")
+
+// ReadConfig reads config
+func ReadConfig() *Config {
+	pflag.Parse()
+
+	var configFiles []configFile
+	if *cfgPath != "" {
+		configFiles = []configFile{{*cfgPath, true}}
+	} else {
+		configFiles = []configFile{
+			{"config.json", true},
+			{"config.dev.ignore.json", false},
+		}
+	}
+
+	v := viper.New()
+	v.SetConfigType("json")
+
+	for _, f := range configFiles {
+		v.SetConfigFile(f.name)
+		if err := v.MergeInConfig(); err != nil {
+			if errors.Is(err, fs.ErrNotExist) && !f.required {
+				log.Printf("skip config %q", f.name)
+				continue
+			}
+			log.Fatalf("error reading %q: %v", f.name, err)
+		}
+		log.Printf("successfully read config %q", f.name)
+	}
+
+	v.SetEnvPrefix("XRN")
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AutomaticEnv()
 	cfg := &Config{ShowImages: true}
-	err := decoder.Decode(cfg)
-	checkErr(err)
+	bindEnvForStructType(v, reflect.TypeOf(cfg), "", false)
+	checkErr(v.Unmarshal(&cfg, func(dc *mapstructure.DecoderConfig) {
+		dc.ErrorUnused = true
+		dc.DecodeHook = mapstructure.ComposeDecodeHookFunc(
+			mapstructure.StringToSliceHookFunc(","),
+			mapstructure.StringToTimeDurationHookFunc(),
+			mapstructure.StringToTimeHookFunc(time.RFC3339),
+			mapstructure.TextUnmarshallerHookFunc(),
+			stringToMapHook(),
+		)
+	}))
 	checkErr(checkConfig(cfg))
 	if len(cfg.SourceIPAddresses) == 0 {
 		cfg.SourceIPAddresses = append(cfg.SourceIPAddresses, "")
 	}
+
 	return cfg
 }
 

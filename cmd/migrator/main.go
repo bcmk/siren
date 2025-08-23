@@ -17,7 +17,7 @@ func main() {
 	if len(args) != 1 {
 		panic("usage: migrator <config>")
 	}
-	cfg := botconfig.ReadConfig(args[0])
+	cfg := botconfig.ReadConfig()
 
 	db := db.NewDatabase(cfg.DBPath, cfg.CheckGID)
 

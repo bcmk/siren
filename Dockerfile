@@ -18,4 +18,4 @@ WORKDIR /app
 RUN apk add --no-cache ca-certificates
 COPY res/ ./res/
 COPY --from=gobuilder /app/cmd/bot/bot ./cmd/bot/bot
-CMD ["./cmd/bot/bot", "/app/config/config.yaml"]
+ENTRYPOINT ["./cmd/bot/bot"]

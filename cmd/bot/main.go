@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"html"
 	"image"
@@ -35,6 +34,7 @@ import (
 	"github.com/bcmk/siren/internal/db"
 	"github.com/bcmk/siren/lib/cmdlib"
 	tg "github.com/bcmk/telegram-bot-api"
+	"github.com/spf13/pflag"
 )
 
 var (
@@ -146,12 +146,7 @@ type waitingUser struct {
 	endpoint string
 }
 
-func newWorker(args []string) *worker {
-	if len(args) != 1 {
-		panic("usage: siren <config>")
-	}
-	cfg := botconfig.ReadConfig(args[0])
-
+func newWorker(cfg *botconfig.Config) *worker {
 	var err error
 
 	var clients []*cmdlib.Client
@@ -1939,14 +1934,24 @@ func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacke
 }
 
 func main() {
-	version := flag.Bool("v", false, "prints current version")
-	flag.Parse()
+	version := pflag.BoolP("version", "v", false, "prints current version")
+	printCfg := pflag.BoolP("print-config", "p", false, "print config and exit")
+	pflag.Parse()
 	if *version {
 		fmt.Println(cmdlib.Version)
 		os.Exit(0)
 	}
 
-	w := newWorker(flag.Args())
+	cfg := botconfig.ReadConfig()
+	if *printCfg {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetEscapeHTML(false)
+		enc.SetIndent("", "  ")
+		checkErr(enc.Encode(cfg))
+		os.Exit(0)
+	}
+
+	w := newWorker(cfg)
 	w.logConfig()
 	w.setWebhook()
 	w.setCommands()
