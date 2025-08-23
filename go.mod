@@ -4,6 +4,7 @@ require (
 	github.com/bcmk/telegram-bot-api v1.0.1-0.20200926205526-fa6e30cde1b9
 	github.com/chromedp/cdproto v0.0.0-20211002082225-0242b9dca9f4
 	github.com/chromedp/chromedp v0.7.4
+	github.com/go-viper/mapstructure/v2 v2.2.1
 	github.com/jackc/pgx/v5 v5.5.4
 	github.com/nicklaw5/helix v1.25.0
 	github.com/spf13/pflag v1.0.6
@@ -15,17 +16,17 @@ require (
 
 require (
 	dario.cat/mergo v1.0.0 // indirect
+	github.com/AdaLogics/go-fuzz-headers v0.0.0-20230811130428-ced1acdcaa24 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
 	github.com/chromedp/sysutil v1.0.0 // indirect
-	github.com/containerd/containerd v1.7.18 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/platforms v0.2.1 // indirect
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
-	github.com/docker/docker v27.1.1+incompatible // indirect
+	github.com/docker/docker v28.0.0+incompatible // indirect
 	github.com/docker/go-connections v0.5.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
@@ -33,7 +34,6 @@ require (
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
-	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.1.0 // indirect
@@ -51,6 +51,7 @@ require (
 	github.com/moby/patternmatcher v0.6.0 // indirect
 	github.com/moby/sys/sequential v0.5.0 // indirect
 	github.com/moby/sys/user v0.1.0 // indirect
+	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/moby/term v0.5.0 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
@@ -75,6 +76,7 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.3 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.54.0 // indirect
 	go.opentelemetry.io/otel v1.29.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.19.0 // indirect
 	go.opentelemetry.io/otel/metric v1.29.0 // indirect
 	go.opentelemetry.io/otel/trace v1.29.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
