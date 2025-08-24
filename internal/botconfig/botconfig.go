@@ -158,7 +158,7 @@ func isPrimitiveKind(k reflect.Kind) bool {
 	}
 }
 
-func stringToMapHook() mapstructure.DecodeHookFunc {
+func stringToMapHookFunc() mapstructure.DecodeHookFunc {
 	return func(from, to reflect.Type, data any) (any, error) {
 		if from.Kind() == reflect.String && to.Kind() == reflect.Map {
 			if s := data.(string); s != "" {
@@ -170,6 +170,32 @@ func stringToMapHook() mapstructure.DecodeHookFunc {
 			}
 		}
 		return data, nil
+	}
+}
+
+func stringToSliceHookFunc(sep string) mapstructure.DecodeHookFunc {
+	return func(
+		f reflect.Type,
+		t reflect.Type,
+		data interface{},
+	) (interface{}, error) {
+		if f.Kind() != reflect.String {
+			return data, nil
+		}
+		if t != reflect.SliceOf(f) {
+			return data, nil
+		}
+
+		raw := data.(string)
+		if raw == "" {
+			return []string{}, nil
+		}
+
+		result := strings.Split(raw, sep)
+		for k, v := range result {
+			result[k] = strings.TrimLeft(v, " ")
+		}
+		return result, nil
 	}
 }
 
@@ -212,11 +238,11 @@ func ReadConfig() *Config {
 	checkErr(v.Unmarshal(&cfg, func(dc *mapstructure.DecoderConfig) {
 		dc.ErrorUnused = true
 		dc.DecodeHook = mapstructure.ComposeDecodeHookFunc(
-			mapstructure.StringToSliceHookFunc(","),
+			stringToSliceHookFunc(","),
 			mapstructure.StringToTimeDurationHookFunc(),
 			mapstructure.StringToTimeHookFunc(time.RFC3339),
 			mapstructure.TextUnmarshallerHookFunc(),
-			stringToMapHook(),
+			stringToMapHookFunc(),
 		)
 	}))
 	checkErr(checkConfig(cfg))
