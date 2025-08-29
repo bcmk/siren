@@ -132,6 +132,18 @@ var migrations = []func(d *Database){
 			include (model_id, timestamp)
 			where is_latest = true;`)
 	},
+	func(d *Database) {
+		d.MustExec(`drop index ix_status_changes_status_is_latest;`)
+		d.MustExec(`
+			create index ix_status_changes_model_id_is_online
+			on status_changes (model_id)
+			include (status, timestamp)
+			where status = 2 and is_latest;`)
+		d.MustExec(`
+			create index ix_models_model_id_is_online
+			on models (model_id)
+			where status = 2;`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database
@@ -147,7 +159,7 @@ func (d *Database) ApplyMigrations() {
 	}
 	for i, m := range migrations[version+1:] {
 		n := i + version + 1
-		linf("applying migration %d", n)
+		linf("applying migration %d...", n)
 		m(d)
 		d.MustExec("update schema_version set version = $1", n)
 	}

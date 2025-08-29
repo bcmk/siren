@@ -1487,6 +1487,7 @@ func (w *worker) pushOnlineRequest() {
 	err := w.checker.Updater().PushUpdateRequest(cmdlib.StatusUpdateRequest{
 		Callback:      func(res cmdlib.StatusUpdateResults) { w.onlineModelsChan <- res },
 		SpecialModels: w.specialModels,
+		// TODO: this is likely unnecessary in the full checker daemon, so let's investigate and pass nil if appropriate
 		Subscriptions: w.db.QueryLastSubscriptionStatuses(),
 	})
 	if err != nil {
@@ -1987,8 +1988,9 @@ func main() {
 		SpecificConfig:       w.cfg.SpecificConfig,
 		QueueSize:            5,
 		SiteOnlineModels:     w.siteOnline,
-		Subscriptions:        w.db.QueryLastSubscriptionStatuses(),
-		IntervalMs:           w.cfg.IntervalMs,
+		// TODO: this is likely unnecessary in the full checker daemon, so let's investigate and pass nil if appropriate
+		Subscriptions: w.db.QueryLastSubscriptionStatuses(),
+		IntervalMs:    w.cfg.IntervalMs,
 	})
 	w.checker.Start()
 	signals := make(chan os.Signal, 16)
