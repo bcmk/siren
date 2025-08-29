@@ -378,18 +378,6 @@ func (d *Database) DenySub(sub Subscription) {
 	d.MustExec("delete from signals where endpoint = $1 and chat_id = $2 and model_id = $3", sub.Endpoint, sub.ChatID, sub.ModelID)
 }
 
-// QueryLastStatusChanges returns all known latest status changes
-func (d *Database) QueryLastStatusChanges() map[string]StatusChange {
-	statusChanges := map[string]StatusChange{}
-	var statusChange StatusChange
-	d.MustQuery(
-		`select model_id, status, timestamp from status_changes where is_latest = true`,
-		nil,
-		ScanTo{&statusChange.ModelID, &statusChange.Status, &statusChange.Timestamp},
-		func() { statusChanges[statusChange.ModelID] = statusChange })
-	return statusChanges
-}
-
 // QueryLastStatusChangesForModels returns all known latest status changes for specific models
 func (d *Database) QueryLastStatusChangesForModels(modelIDs []string) map[string]StatusChange {
 	statusChanges := map[string]StatusChange{}

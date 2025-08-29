@@ -297,6 +297,17 @@ func TestUpdateStatus(t *testing.T) {
 	_ = w.db.Close()
 }
 
+func queryLastStatusChanges(d *db.Database) map[string]db.StatusChange {
+	statusChanges := map[string]db.StatusChange{}
+	var statusChange db.StatusChange
+	d.MustQuery(
+		`select model_id, status, timestamp from status_changes where is_latest = true`,
+		nil,
+		db.ScanTo{&statusChange.ModelID, &statusChange.Status, &statusChange.Timestamp},
+		func() { statusChanges[statusChange.ModelID] = statusChange })
+	return statusChanges
+}
+
 func TestCleanStatuses(t *testing.T) {
 	const day = 60 * 60 * 24
 	w := newTestWorker()
@@ -307,57 +318,57 @@ func TestCleanStatuses(t *testing.T) {
 	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 18)
 	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}, {ModelID: "b", Status: cmdlib.StatusOnline}}, 53)
 	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "b", Status: cmdlib.StatusOffline}}, 55)
-	if len(w.db.QueryLastStatusChanges()) != 2 {
+	if len(queryLastStatusChanges(&w.db)) != 2 {
 		t.Error("wrong number of statuses")
 	}
 	w.cleanStatusChanges(day + 54)
-	if len(w.db.QueryLastStatusChanges()) != 1 {
-		t.Logf("site statuses: %v", w.db.QueryLastStatusChanges())
-		t.Errorf("wrong number of statuses: %d", len(w.db.QueryLastStatusChanges()))
+	if len(queryLastStatusChanges(&w.db)) != 1 {
+		t.Logf("site statuses: %v", queryLastStatusChanges(&w.db))
+		t.Errorf("wrong number of statuses: %d", len(queryLastStatusChanges(&w.db)))
 	}
 	checkInv(&w.worker, t)
 	w.processStatusUpdates([]cmdlib.StatusUpdate{}, day+56)
 	if len(w.ourOnline) != 1 {
-		t.Logf("site statuses: %v", w.db.QueryLastStatusChanges())
+		t.Logf("site statuses: %v", queryLastStatusChanges(&w.db))
 		t.Logf("our online: %v", w.ourOnline)
 		t.Errorf("wrong number of online: %d", len(w.ourOnline))
 	}
 	checkInv(&w.worker, t)
 	w.processStatusUpdates([]cmdlib.StatusUpdate{}, day+60)
 	if len(w.ourOnline) != 0 {
-		t.Logf("site statuses: %v", w.db.QueryLastStatusChanges())
+		t.Logf("site statuses: %v", queryLastStatusChanges(&w.db))
 		t.Logf("our online: %v", w.ourOnline)
 		t.Errorf("wrong number of online: %d", len(w.ourOnline))
 	}
 	checkInv(&w.worker, t)
 	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, day+100)
 	if len(w.ourOnline) != 1 {
-		t.Logf("site statuses: %v", w.db.QueryLastStatusChanges())
+		t.Logf("site statuses: %v", queryLastStatusChanges(&w.db))
 		t.Logf("our online: %v", w.ourOnline)
 		t.Errorf("wrong number of online: %d", len(w.ourOnline))
 	}
 	w.cleanStatusChanges(day*100 + 50)
 	if len(w.ourOnline) != 1 {
-		t.Logf("site statuses: %v", w.db.QueryLastStatusChanges())
+		t.Logf("site statuses: %v", queryLastStatusChanges(&w.db))
 		t.Logf("our online: %v", w.ourOnline)
 		t.Errorf("wrong number of online: %d", len(w.ourOnline))
 	}
-	if len(w.db.QueryLastStatusChanges()) != 0 {
-		t.Errorf("wrong number of site statuses: %d", len(w.db.QueryLastStatusChanges()))
+	if len(queryLastStatusChanges(&w.db)) != 0 {
+		t.Errorf("wrong number of site statuses: %d", len(queryLastStatusChanges(&w.db)))
 	}
 	if len(w.siteOnline) != 0 {
 		t.Errorf("wrong number of site online models: %d", len(w.siteOnline))
 	}
 	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, day+155)
 	if len(w.ourOnline) != 1 {
-		t.Logf("site statuses: %v", w.db.QueryLastStatusChanges())
+		t.Logf("site statuses: %v", queryLastStatusChanges(&w.db))
 		t.Logf("site online: %v", w.siteOnline)
 		t.Logf("our online: %v", w.ourOnline)
 		t.Errorf("wrong number of online: %d", len(w.ourOnline))
 	}
 	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 3*day)
 	if len(w.ourOnline) != 0 {
-		t.Logf("site statuses: %v", w.db.QueryLastStatusChanges())
+		t.Logf("site statuses: %v", queryLastStatusChanges(&w.db))
 		t.Logf("site online: %v", w.siteOnline)
 		t.Logf("our online: %v", w.ourOnline)
 		t.Errorf("wrong number of online: %d", len(w.ourOnline))
@@ -547,8 +558,8 @@ func checkInv(w *worker, t *testing.T) {
 		t.Errorf("unexpected inv check result, statuses: %v, last statuses: %v", a, b)
 		t.Log(string(debug.Stack()))
 	}
-	if !reflect.DeepEqual(a, w.db.QueryLastStatusChanges()) {
-		t.Errorf("unexpected inv check result, statuses: %v, site statuses: %v", a, w.db.QueryLastStatusChanges())
+	if !reflect.DeepEqual(a, queryLastStatusChanges(&w.db)) {
+		t.Errorf("unexpected inv check result, statuses: %v, site statuses: %v", a, queryLastStatusChanges(&w.db))
 		t.Log(string(debug.Stack()))
 	}
 	dbOnline := map[string]bool{}
