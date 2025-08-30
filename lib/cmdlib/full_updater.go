@@ -5,6 +5,10 @@ type fullUpdater struct {
 	siteOnlineModels map[string]bool
 }
 
+func (f *fullUpdater) Init(updaterConfig UpdaterConfig) {
+	f.siteOnlineModels = updaterConfig.SiteOnlineModels
+}
+
 func (f *fullUpdater) PushUpdateRequest(updateRequest StatusUpdateRequest) error {
 	return f.checker.PushStatusRequest(fullUpdateReqToStatus(updateRequest, func(res StatusResults) {
 		var updateResults StatusUpdateResults
@@ -20,4 +24,8 @@ func (f *fullUpdater) PushUpdateRequest(updateRequest StatusUpdateRequest) error
 		updateResults.Errors = res.Errors
 		updateRequest.Callback(updateResults)
 	}))
+}
+
+func (f *fullUpdater) NeedsSubscriptionStatuses() bool {
+	return false
 }

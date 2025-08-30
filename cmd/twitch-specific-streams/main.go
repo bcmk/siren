@@ -25,7 +25,7 @@ func main() {
 	flag.Parse()
 	client := cmdlib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
 	checker := &checkers.TwitchChecker{}
-	checker.Init(checker, cmdlib.CheckerConfig{
+	checker.Init(nil, cmdlib.CheckerConfig{
 		Clients: []*cmdlib.Client{client},
 		Dbg:     *verbose,
 		SpecificConfig: map[string]string{

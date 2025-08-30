@@ -33,6 +33,6 @@ func main() {
 	}
 	client := cmdlib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
 	checker := &checkers.CamSodaChecker{}
-	checker.Init(checker, cmdlib.CheckerConfig{Clients: []*cmdlib.Client{client}, Dbg: *verbose})
+	checker.Init(nil, cmdlib.CheckerConfig{Clients: []*cmdlib.Client{client}, Dbg: *verbose})
 	fmt.Println(checker.CheckStatusSingle(modelID))
 }

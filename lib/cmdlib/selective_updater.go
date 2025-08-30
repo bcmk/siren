@@ -3,25 +3,30 @@ package cmdlib
 type selectiveUpdater struct {
 	checker          Checker
 	siteOnlineModels map[string]bool
-	knowns           map[string]bool
+	subscriptionSet  map[string]bool
 }
 
-func (f *selectiveUpdater) PushUpdateRequest(updateRequest StatusUpdateRequest) error {
-	subsSet := subscriptionsSet(updateRequest.Subscriptions)
-	return f.checker.PushStatusRequest(selectiveUpdateReqToStatus(updateRequest, func(res StatusResults) {
+func (u *selectiveUpdater) Init(updaterConfig UpdaterConfig) {
+	u.siteOnlineModels = updaterConfig.SiteOnlineModels
+	u.subscriptionSet = selectKnowns(updaterConfig.SubscriptionStatuses)
+}
+
+func (u *selectiveUpdater) PushUpdateRequest(updateRequest StatusUpdateRequest) error {
+	subscriptionStatusSet := convertToStatusSet(updateRequest.SubscriptionStatuses)
+	return u.checker.PushStatusRequest(selectiveUpdateReqToStatus(updateRequest, func(res StatusResults) {
 		var updateResults StatusUpdateResults
 		if res.Data != nil {
 			online := onlyOnline(res.Data.Statuses)
-			unfilteredUpdates := getUpdates(f.siteOnlineModels, online)
+			unfilteredUpdates := getUpdates(u.siteOnlineModels, online)
 			var updates []StatusUpdate
 			for _, x := range unfilteredUpdates {
-				if subsSet[x.ModelID] {
+				if subscriptionStatusSet[x.ModelID] {
 					updates = append(updates, x)
 				}
 			}
-			f.siteOnlineModels = online
-			_, unknowns := HashDiffNewRemoved(f.knowns, subsSet)
-			f.knowns = subsSet
+			u.siteOnlineModels = online
+			_, unknowns := HashDiffNewRemoved(u.subscriptionSet, subscriptionStatusSet)
+			u.subscriptionSet = subscriptionStatusSet
 			for _, u := range unknowns {
 				updates = append(updates, StatusUpdate{ModelID: u, Status: StatusUnknown})
 			}
@@ -30,11 +35,15 @@ func (f *selectiveUpdater) PushUpdateRequest(updateRequest StatusUpdateRequest) 
 				Images:  res.Data.Images,
 				Elapsed: res.Data.Elapsed,
 			}}
-			f.siteOnlineModels = online
+			u.siteOnlineModels = online
 		}
 		updateResults.Errors = res.Errors
 		updateRequest.Callback(updateResults)
 	}))
+}
+
+func (u *selectiveUpdater) NeedsSubscriptionStatuses() bool {
+	return true
 }
 
 func selectKnowns(xs map[string]StatusKind) map[string]bool {

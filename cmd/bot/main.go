@@ -1484,11 +1484,14 @@ func (w *worker) periodic() {
 }
 
 func (w *worker) pushOnlineRequest() {
+	subscriptionStatuses := map[string]cmdlib.StatusKind{}
+	if w.checker.Updater().NeedsSubscriptionStatuses() {
+		subscriptionStatuses = w.db.QueryLastSubscriptionStatuses()
+	}
 	err := w.checker.Updater().PushUpdateRequest(cmdlib.StatusUpdateRequest{
-		Callback:      func(res cmdlib.StatusUpdateResults) { w.onlineModelsChan <- res },
-		SpecialModels: w.specialModels,
-		// TODO: this is likely unnecessary in the full checker daemon, so let's investigate and pass nil if appropriate
-		Subscriptions: w.db.QueryLastSubscriptionStatuses(),
+		Callback:             func(res cmdlib.StatusUpdateResults) { w.onlineModelsChan <- res },
+		SpecialModels:        w.specialModels,
+		SubscriptionStatuses: subscriptionStatuses,
 	})
 	if err != nil {
 		lerr("%v", err)
@@ -1980,17 +1983,24 @@ func main() {
 	}
 	var subsConfirmTimer = time.NewTicker(time.Duration(w.cfg.SubsConfirmationPeriodSeconds) * time.Second)
 	var notificationSenderTimer = time.NewTicker(time.Duration(w.cfg.NotificationsReadyPeriodSeconds) * time.Second)
-	w.checker.Init(w.checker, cmdlib.CheckerConfig{
+
+	updater := w.checker.CreateUpdater()
+	subscriptionStatuses := map[string]cmdlib.StatusKind{}
+	if updater.NeedsSubscriptionStatuses() {
+		subscriptionStatuses = w.db.QueryLastSubscriptionStatuses()
+	}
+	updater.Init(cmdlib.UpdaterConfig{
+		SiteOnlineModels:     w.siteOnline,
+		SubscriptionStatuses: subscriptionStatuses,
+	})
+	w.checker.Init(updater, cmdlib.CheckerConfig{
 		UsersOnlineEndpoints: w.cfg.UsersOnlineEndpoint,
 		Clients:              w.clients,
 		Headers:              w.cfg.Headers,
 		Dbg:                  w.cfg.Debug,
 		SpecificConfig:       w.cfg.SpecificConfig,
 		QueueSize:            5,
-		SiteOnlineModels:     w.siteOnline,
-		// TODO: this is likely unnecessary in the full checker daemon, so let's investigate and pass nil if appropriate
-		Subscriptions: w.db.QueryLastSubscriptionStatuses(),
-		IntervalMs:    w.cfg.IntervalMs,
+		IntervalMs:           w.cfg.IntervalMs,
 	})
 	w.checker.Start()
 	signals := make(chan os.Signal, 16)

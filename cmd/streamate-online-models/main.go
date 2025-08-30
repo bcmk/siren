@@ -23,7 +23,7 @@ func main() {
 	flag.Parse()
 	client := cmdlib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
 	checker := &checkers.StreamateChecker{}
-	checker.Init(checker, cmdlib.CheckerConfig{
+	checker.Init(nil, cmdlib.CheckerConfig{
 		UsersOnlineEndpoints: []string{"http://affiliate.streamate.com/SMLive/SMLResult.xml"},
 		Clients:              []*cmdlib.Client{client},
 		Dbg:                  *verbose})

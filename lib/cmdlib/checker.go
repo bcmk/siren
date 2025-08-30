@@ -36,9 +36,13 @@ type CheckerConfig struct {
 	Dbg                  bool
 	SpecificConfig       map[string]string
 	QueueSize            int
-	SiteOnlineModels     map[string]bool
-	Subscriptions        map[string]StatusKind
 	IntervalMs           int
+}
+
+// UpdaterConfig represents updater config
+type UpdaterConfig struct {
+	SiteOnlineModels     map[string]bool
+	SubscriptionStatuses map[string]StatusKind
 }
 
 // Checker is the interface for a checker for specific site
@@ -46,7 +50,7 @@ type Checker interface {
 	CheckStatusSingle(modelID string) StatusKind
 	CheckStatusesMany(specific QueryModelList, checkMode CheckMode) (statuses map[string]StatusKind, images map[string]string, err error)
 	Start()
-	Init(checker Checker, config CheckerConfig)
+	Init(updater Updater, config CheckerConfig)
 	Updater() Updater
 	PushStatusRequest(statusRequest StatusRequest) error
 	CreateUpdater() Updater
@@ -93,18 +97,16 @@ type endpointChecker interface {
 }
 
 // Init initializes checker common fields
-func (c *CheckerCommon) Init(checker Checker, config CheckerConfig) {
+func (c *CheckerCommon) Init(updater Updater, config CheckerConfig) {
 	c.UsersOnlineEndpoints = config.UsersOnlineEndpoints
 	c.Headers = config.Headers
 	c.Dbg = config.Dbg
 	c.SpecificConfig = config.SpecificConfig
 	c.QueueSize = config.QueueSize
-	c.SiteOnlineModels = config.SiteOnlineModels
-	c.Subscriptions = config.Subscriptions
 	c.IntervalMs = config.IntervalMs
 	c.ClientsLoop = clientsLoop{clients: config.Clients}
 	c.statusRequests = make(chan StatusRequest, config.QueueSize)
-	c.updater = checker.CreateUpdater()
+	c.updater = updater
 }
 
 // CheckEndpoints performs queries to all available endpoints
@@ -197,12 +199,12 @@ func (c *CheckerCommon) StartSelectiveCheckerDaemon(checker Checker) {
 
 // CreateFullUpdater creates an updater quering for all streams
 func (c *CheckerCommon) CreateFullUpdater(checker Checker) Updater {
-	return &fullUpdater{checker: checker, siteOnlineModels: c.SiteOnlineModels}
+	return &fullUpdater{checker: checker}
 }
 
 // CreateSelectiveUpdater creates an updater for selected streams
 func (c *CheckerCommon) CreateSelectiveUpdater(checker Checker) Updater {
-	return &selectiveUpdater{checker: checker, siteOnlineModels: c.SiteOnlineModels, knowns: selectKnowns(c.Subscriptions)}
+	return &selectiveUpdater{checker: checker}
 }
 
 // DoGetRequest performs a GET request respecting the configuration

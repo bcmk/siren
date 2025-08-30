@@ -4,15 +4,17 @@ import "time"
 
 // Updater implements updater adapter
 type Updater interface {
+	Init(updaterConfig UpdaterConfig)
 	PushUpdateRequest(updateRequest StatusUpdateRequest) error
+	NeedsSubscriptionStatuses() bool
 }
 
 // StatusUpdateRequest represents a request of models updates
 type StatusUpdateRequest struct {
-	SpecialModels map[string]bool
-	Subscriptions map[string]StatusKind
-	Specific      map[string]bool
-	Callback      func(StatusUpdateResults)
+	SpecialModels        map[string]bool
+	SubscriptionStatuses map[string]StatusKind
+	Specific             map[string]bool
+	Callback             func(StatusUpdateResults)
 }
 
 // StatusUpdate represents an update of model status
@@ -62,16 +64,16 @@ func fullUpdateReqToStatus(r StatusUpdateRequest, callback func(StatusResults)) 
 }
 
 func selectiveUpdateReqToStatus(r StatusUpdateRequest, callback func(StatusResults)) StatusRequest {
-	subs := map[string]bool{}
-	for k := range r.Subscriptions {
-		subs[k] = true
+	specific := map[string]bool{}
+	for k := range r.SubscriptionStatuses {
+		specific[k] = true
 	}
 	for k := range r.Specific {
-		subs[k] = true
+		specific[k] = true
 	}
 	return StatusRequest{
 		SpecialModels: r.SpecialModels,
-		Specific:      subs,
+		Specific:      specific,
 		Callback:      callback,
 	}
 }
@@ -87,11 +89,11 @@ func onlyOnline(ss map[string]StatusKind) map[string]bool {
 }
 
 func onlineStatuses(ss map[string]bool) map[string]StatusKind {
-	boolMap := map[string]StatusKind{}
+	statusMap := map[string]StatusKind{}
 	for k, s := range ss {
 		if s {
-			boolMap[k] = StatusOnline
+			statusMap[k] = StatusOnline
 		}
 	}
-	return boolMap
+	return statusMap
 }
