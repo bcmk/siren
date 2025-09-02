@@ -144,6 +144,12 @@ var migrations = []func(d *Database){
 			on models (model_id)
 			where status = 2;`)
 	},
+	func(d *Database) {
+		d.MustExec(`
+			create index ix_models_model_id_special
+			on models (model_id)
+			where special;`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database
