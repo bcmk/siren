@@ -395,8 +395,12 @@ func (d *Database) QueryLastSubscriptionStatuses() map[string]cmdlib.StatusKind 
 	statuses := map[string]cmdlib.StatusKind{}
 	var statusChange StatusChange
 	d.MustQuery(
-		`select model_id, status from status_changes join (select distinct model_id from signals where confirmed = 1) using (model_id) where is_latest`,
-		nil,
+		`
+			select sub.model_id, coalesce(sc.status, $1) as status
+			from (select distinct model_id from signals where confirmed = 1) sub
+			left join status_changes sc on sc.model_id = sub.model_id and sc.is_latest
+		`,
+		QueryParams{cmdlib.StatusUnknown},
 		ScanTo{&statusChange.ModelID, &statusChange.Status},
 		func() { statuses[statusChange.ModelID] = statusChange.Status })
 	return statuses
