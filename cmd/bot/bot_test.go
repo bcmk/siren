@@ -297,6 +297,42 @@ func TestUpdateStatus(t *testing.T) {
 	_ = w.db.Close()
 }
 
+func TestUpdateNotifications(t *testing.T) {
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase(make(chan bool, 1))
+	w.initCache()
+
+	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 1, "a")
+	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 2, "b")
+	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 3, "a")
+	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 3, "c")
+	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 4, "d")
+	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep2", 4, "d")
+
+	w.db.MustExec("insert into users (chat_id) values ($1)", 1)
+	w.db.MustExec("insert into users (chat_id) values ($1)", 2)
+	w.db.MustExec("insert into users (chat_id) values ($1)", 3)
+	w.db.MustExec("insert into users (chat_id) values ($1)", 4)
+
+	if _, _, nots, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "x", Status: cmdlib.StatusOnline}}, 1); len(nots) != 0 {
+		t.Error("unexpected notification number")
+	}
+	if _, _, nots, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 2); len(nots) != 2 {
+		t.Error("unexpected notification number")
+	}
+	if _, _, nots, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 3); len(nots) != 0 {
+		t.Error("unexpected notification number")
+	}
+	if _, _, nots, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 8); len(nots) != 2 {
+		t.Error("unexpected notification number")
+	}
+	if _, _, nots, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "d", Status: cmdlib.StatusOnline}}, 2); len(nots) != 2 {
+		t.Error("unexpected notification number")
+	}
+	_ = w.db.Close()
+}
+
 func queryLastStatusChanges(d *db.Database) map[string]db.StatusChange {
 	statusChanges := map[string]db.StatusChange{}
 	var statusChange db.StatusChange
