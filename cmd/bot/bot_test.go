@@ -39,10 +39,6 @@ func TestSql(t *testing.T) {
 	w.db.MustExec("insert into models (model_id, status) values ($1, $2)", "b", cmdlib.StatusOnline)
 	w.db.MustExec("insert into models (model_id, status) values ($1, $2)", "c", cmdlib.StatusOnline)
 	w.db.MustExec("insert into models (model_id, status) values ($1, $2)", "c2", cmdlib.StatusOnline)
-	models := w.db.ModelsToPoll(w.cfg.BlockThreshold)
-	if !reflect.DeepEqual(models, []string{"a", "d", "e", "g"}) {
-		t.Error("unexpected models result", models)
-	}
 	broadcastChats := w.db.BroadcastChats("ep1")
 	if !reflect.DeepEqual(broadcastChats, []int64{1, 2, 3, 4, 5, 6, 7}) {
 		t.Error("unexpected broadcast chats result", broadcastChats)

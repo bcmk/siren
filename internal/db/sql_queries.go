@@ -96,20 +96,6 @@ func (d *Database) LastSeenInfo(modelID string) (begin int, end int, prevStatus 
 	return begin, *maybeEnd, *maybePrevStatus
 }
 
-// ModelsToPoll returns models to poll
-func (d *Database) ModelsToPoll(blockThreshold int) (models []string) {
-	var modelID string
-	d.MustQuery(`
-		select distinct model_id from signals
-		left join block on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
-		where block.block is null or block.block < $1
-		order by model_id`,
-		QueryParams{blockThreshold},
-		ScanTo{&modelID},
-		func() { models = append(models, modelID) })
-	return
-}
-
 // UsersForModels returns users subscribed to a particular model
 func (d *Database) UsersForModels() (users map[string][]User, endpoints map[string][]string) {
 	users = map[string][]User{}
