@@ -97,7 +97,7 @@ func (d *Database) LastSeenInfo(modelID string) (begin int, end int, prevStatus 
 }
 
 // UsersForModels returns users subscribed to a particular model
-func (d *Database) UsersForModels() (users map[string][]User, endpoints map[string][]string) {
+func (d *Database) UsersForModels(modelIDs []string) (users map[string][]User, endpoints map[string][]string) {
 	users = map[string][]User{}
 	endpoints = make(map[string][]string)
 	var modelID string
@@ -108,8 +108,9 @@ func (d *Database) UsersForModels() (users map[string][]User, endpoints map[stri
 	d.MustQuery(`
 		select signals.model_id, signals.chat_id, signals.endpoint, users.offline_notifications, users.show_images
 		from signals
-		join users on users.chat_id = signals.chat_id`,
-		QueryParams{},
+		join users on users.chat_id = signals.chat_id
+		where signals.model_id = any($1)`,
+		QueryParams{modelIDs},
 		ScanTo{&modelID, &chatID, &endpoint, &offlineNotifications, &showImages},
 		func() {
 			users[modelID] = append(users[modelID], User{ChatID: chatID, OfflineNotifications: offlineNotifications, ShowImages: showImages})

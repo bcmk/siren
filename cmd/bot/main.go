@@ -1516,7 +1516,6 @@ func (w *worker) processStatusUpdates(updates []cmdlib.StatusUpdate, now int) (
 	elapsed time.Duration,
 ) {
 	start := time.Now()
-	usersForModels, endpointsForModels := w.db.UsersForModels()
 
 	changesCount = len(updates)
 
@@ -1531,6 +1530,12 @@ func (w *worker) processStatusUpdates(updates []cmdlib.StatusUpdate, now int) (
 		ldbg("confirmed online models: %d", len(w.ourOnline))
 	}
 
+	confirmedModelIDs := []string{}
+	for _, c := range confirmedStatusChanges {
+		confirmedModelIDs = append(confirmedModelIDs, c.ModelID)
+	}
+
+	usersForModels, endpointsForModels := w.db.UsersForModels(confirmedModelIDs)
 	for _, c := range confirmedStatusChanges {
 		users := usersForModels[c.ModelID]
 		endpoints := endpointsForModels[c.ModelID]
