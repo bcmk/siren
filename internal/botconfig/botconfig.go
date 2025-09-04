@@ -51,6 +51,7 @@ type Config struct {
 	WebsiteLink                     string                    `mapstructure:"website_link"`                       // affiliate link to website
 	PeriodSeconds                   int                       `mapstructure:"period_seconds"`                     // the period of querying models statuses
 	CleaningPeriodSeconds           int                       `mapstructure:"cleaning_period_seconds"`            // the cleaning period
+	MaintainDBPeriodSeconds         int                       `mapstructure:"maintain_db_period_seconds"`         // the maintain DB period
 	MaxModels                       int                       `mapstructure:"max_models"`                         // maximum models per user
 	TimeoutSeconds                  int                       `mapstructure:"timeout_seconds"`                    // HTTP timeout
 	AdminID                         int64                     `mapstructure:"admin_id"`                           // admin Telegram ID

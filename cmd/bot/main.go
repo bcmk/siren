@@ -1788,6 +1788,10 @@ func (w *worker) cleanStatusChanges(now int64) time.Duration {
 	return time.Since(start)
 }
 
+func (w *worker) maintainDB() {
+	w.db.MustExec("select brin_summarize_new_values('ix_interactions_timestamp')")
+}
+
 func (w *worker) adminSQL(query string) time.Duration {
 	start := time.Now()
 	var result string
@@ -1986,6 +1990,10 @@ func main() {
 	if w.cfg.CleaningPeriodSeconds != 0 {
 		cleaningTimerChannel = time.NewTicker(time.Duration(w.cfg.CleaningPeriodSeconds) * time.Second).C
 	}
+	var maintainDBTimerChannel <-chan time.Time
+	if w.cfg.MaintainDBPeriodSeconds != 0 {
+		maintainDBTimerChannel = time.NewTicker(time.Duration(w.cfg.MaintainDBPeriodSeconds) * time.Second).C
+	}
 	var subsConfirmTimer = time.NewTicker(time.Duration(w.cfg.SubsConfirmationPeriodSeconds) * time.Second)
 	var notificationSenderTimer = time.NewTicker(time.Duration(w.cfg.NotificationsReadyPeriodSeconds) * time.Second)
 
@@ -2019,6 +2027,8 @@ func main() {
 			w.periodic()
 		case <-cleaningTimerChannel:
 			w.cleaningDuration = w.cleanStatusChanges(time.Now().Unix())
+		case <-maintainDBTimerChannel:
+			w.maintainDB()
 		case <-subsConfirmTimer.C:
 			w.queryUnconfirmedSubs()
 		case <-notificationSenderTimer.C:
