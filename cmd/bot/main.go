@@ -1648,18 +1648,9 @@ func (w *worker) getStat(endpoint string) statistics {
 	checkErr(syscall.Getrusage(syscall.RUSAGE_SELF, &rusage))
 
 	return statistics{
-		UsersCount:                   w.db.UsersCount(endpoint),
-		GroupsCount:                  w.db.GroupsCount(endpoint),
-		ActiveUsersOnEndpointCount:   w.db.ActiveUsersOnEndpointCount(endpoint),
-		ActiveUsersTotalCount:        w.db.ActiveUsersTotalCount(),
-		HeavyUsersCount:              w.db.HeavyUsersCount(endpoint, w.cfg.MaxModels, w.cfg.HeavyUserRemainder),
-		ModelsCount:                  w.db.ModelsCount(endpoint),
-		ModelsToPollOnEndpointCount:  w.db.ModelsToPollOnEndpointCount(endpoint, w.cfg.BlockThreshold),
-		ModelsToPollTotalCount:       w.db.ModelsToPollTotalCount(w.cfg.BlockThreshold),
 		OnlineModelsCount:            len(w.ourOnline),
 		KnownModelsCount:             w.db.MustInt("select count(*) from models"),
 		SpecialModelsCount:           len(w.specialModels),
-		StatusChangesCount:           w.db.StatusChangesCount(),
 		QueriesDurationMilliseconds:  int(w.httpQueriesDuration.Milliseconds()),
 		UpdatesDurationMilliseconds:  int(w.updatesDuration.Milliseconds()),
 		CleaningDurationMilliseconds: int(w.cleaningDuration.Milliseconds()),
@@ -1667,8 +1658,6 @@ func (w *worker) getStat(endpoint string) statistics {
 		DownloadErrorRate:            [2]int{w.downloadErrorsCount(), w.cfg.ErrorDenominator},
 		Rss:                          rss / 1024,
 		MaxRss:                       rusage.Maxrss,
-		UserReferralsCount:           w.db.UserReferralsCount(),
-		ModelReferralsCount:          w.db.ModelReferralsCount(),
 		ReportsCount:                 w.db.Reports(),
 		ChangesInPeriod:              w.changesInPeriod,
 		ConfirmedChangesInPeriod:     w.confirmedChangesInPeriod,

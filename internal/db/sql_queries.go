@@ -234,16 +234,6 @@ func (d *Database) SetLimit(chatID int64, maxModels int) {
 		maxModels)
 }
 
-// UserReferralsCount returns a count of referrals of a particular user
-func (d *Database) UserReferralsCount() int {
-	return d.MustInt("select coalesce(sum(referred_users), 0) from referrals")
-}
-
-// ModelReferralsCount returns a count of referrals of a particular model
-func (d *Database) ModelReferralsCount() int {
-	return d.MustInt("select coalesce(sum(referred_users), 0) from models")
-}
-
 // Reports returns the total number of reports
 func (d *Database) Reports() int {
 	return d.MustInt("select coalesce(sum(reports), 0) from users")
@@ -275,79 +265,6 @@ func (d *Database) InteractionsByKindToday(endpoint string) map[PacketKind]int {
 		ScanTo{&kind, &count},
 		func() { results[kind] = count })
 	return results
-}
-
-// UsersCount returns the count of users for particular endpoint
-func (d *Database) UsersCount(endpoint string) int {
-	return d.MustInt("select count(distinct chat_id) from signals where endpoint = $1", endpoint)
-}
-
-// GroupsCount returns the count of groups for particular endpoint
-func (d *Database) GroupsCount(endpoint string) int {
-	return d.MustInt("select count(distinct chat_id) from signals where endpoint = $1 and chat_id < 0", endpoint)
-}
-
-// ActiveUsersOnEndpointCount returns the number of not blocked users for particular endpoint
-func (d *Database) ActiveUsersOnEndpointCount(endpoint string) int {
-	return d.MustInt(`
-		select count(distinct signals.chat_id)
-		from signals
-		left join block on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
-		where (block.block is null or block.block = 0) and signals.endpoint = $1`,
-		endpoint)
-}
-
-// ActiveUsersTotalCount returns the total number of not blocked users
-func (d *Database) ActiveUsersTotalCount() int {
-	return d.MustInt(`
-		select count(distinct signals.chat_id)
-		from signals
-		left join block on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
-		where (block.block is null or block.block = 0)`)
-}
-
-// ModelsCount returns the total number of known streamers
-func (d *Database) ModelsCount(endpoint string) int {
-	return d.MustInt("select count(distinct model_id) from signals where endpoint = $1", endpoint)
-}
-
-// ModelsToPollOnEndpointCount returns what it says
-func (d *Database) ModelsToPollOnEndpointCount(endpoint string, blockThreshold int) int {
-	return d.MustInt(`
-		select count(distinct signals.model_id)
-		from signals
-		left join block on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
-		where (block.block is null or block.block < $1) and signals.endpoint = $2`,
-		blockThreshold,
-		endpoint)
-}
-
-// ModelsToPollTotalCount returns what it says
-func (d *Database) ModelsToPollTotalCount(blockThreshold int) int {
-	return d.MustInt(`
-		select count(distinct signals.model_id)
-		from signals
-		left join block on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
-		where (block.block is null or block.block < $1)`,
-		blockThreshold)
-}
-
-// StatusChangesCount returns the total number of stored status changes
-func (d *Database) StatusChangesCount() int {
-	return d.MustInt("select reltuples::bigint as estimate from pg_class where relname = 'status_changes'")
-}
-
-// HeavyUsersCount returns the number of heavy users for the endpoint
-func (d *Database) HeavyUsersCount(endpoint string, maxModels int, heavyUserRemainder int) int {
-	return d.MustInt(`
-		select count(*) from (
-			select 1 from signals
-			left join block on signals.chat_id=block.chat_id and signals.endpoint=block.endpoint
-			where (block.block is null or block.block = 0) and signals.endpoint = $1
-			group by signals.chat_id
-			having count(*) >= $2);`,
-		endpoint,
-		maxModels-heavyUserRemainder)
 }
 
 // ConfirmSub confirms subscription
