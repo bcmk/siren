@@ -492,6 +492,7 @@ func (d *Database) InsertStatusChanges(changedStatuses []StatusChange) {
 	checkErr(err)
 
 	checkErr(tx.Commit(context.Background()))
+	d.MustExec("select brin_summarize_new_values('ix_status_changes_timestamp')")
 }
 
 // InsertConfirmedStatusChanges inserts status changes using a bulk method
