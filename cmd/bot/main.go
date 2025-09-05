@@ -1075,35 +1075,6 @@ func (w *worker) downloadErrorsCount() int {
 	return count
 }
 
-func (w *worker) statStrings() []string {
-	stat := w.getStat()
-	return []string{
-		fmt.Sprintf("Users: %d", stat.UsersCount),
-		fmt.Sprintf("Groups: %d", stat.GroupsCount),
-		fmt.Sprintf("Active users: %d", stat.ActiveUsersOnEndpointCount),
-		fmt.Sprintf("Heavy: %d", stat.HeavyUsersCount),
-		fmt.Sprintf("Models: %d", stat.ModelsCount),
-		fmt.Sprintf("Models to poll: %d", stat.ModelsToPollOnEndpointCount),
-		fmt.Sprintf("Models to poll total: %d", stat.ModelsToPollTotalCount),
-		fmt.Sprintf("Models online: %d", stat.OnlineModelsCount),
-		fmt.Sprintf("Status changes: %d", stat.StatusChangesCount),
-		fmt.Sprintf("Queries duration: %d ms", stat.QueriesDurationMilliseconds),
-		fmt.Sprintf("Updates duration: %d ms", stat.UpdatesDurationMilliseconds),
-		fmt.Sprintf("Error rate: %d/%d", stat.ErrorRate[0], stat.ErrorRate[1]),
-		fmt.Sprintf("Memory usage: %d KiB", stat.Rss),
-		fmt.Sprintf("Reports: %d", stat.ReportsCount),
-		fmt.Sprintf("User referrals: %d", stat.UserReferralsCount),
-		fmt.Sprintf("Model referrals: %d", stat.ModelReferralsCount),
-		fmt.Sprintf("Changes in period: %d", stat.ChangesInPeriod),
-		fmt.Sprintf("Confirmed changes in period: %d", stat.ConfirmedChangesInPeriod),
-	}
-}
-
-func (w *worker) stat(endpoint string) {
-	text := strings.Join(w.statStrings(), "\n")
-	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, text, db.ReplyPacket)
-}
-
 func (w *worker) performanceStat(endpoint string, arguments string) {
 	parts := strings.Split(arguments, " ")
 	if len(parts) > 2 {
@@ -1237,9 +1208,6 @@ func (w *worker) logConfig() {
 
 func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arguments string) (processed bool, maintenance bool) {
 	switch command {
-	case "stat":
-		w.stat(endpoint)
-		return true, false
 	case "performance":
 		w.performanceStat(endpoint, arguments)
 		return true, false
@@ -1644,19 +1612,15 @@ func (w *worker) getStat() statistics {
 	measureDone := w.db.Measure("db: retrieving stats")
 	defer measureDone()
 	rss, _ := getRss()
-	var rusage syscall.Rusage
-	checkErr(syscall.Getrusage(syscall.RUSAGE_SELF, &rusage))
 
 	return statistics{
-		QueriesDurationMilliseconds:  int(w.httpQueriesDuration.Milliseconds()),
-		UpdatesDurationMilliseconds:  int(w.updatesDuration.Milliseconds()),
-		CleaningDurationMilliseconds: int(w.cleaningDuration.Milliseconds()),
-		ErrorRate:                    [2]int{w.unsuccessfulRequestsCount(), w.cfg.ErrorDenominator},
-		DownloadErrorRate:            [2]int{w.downloadErrorsCount(), w.cfg.ErrorDenominator},
-		Rss:                          rss / 1024,
-		MaxRss:                       rusage.Maxrss,
-		ChangesInPeriod:              w.changesInPeriod,
-		ConfirmedChangesInPeriod:     w.confirmedChangesInPeriod,
+		QueriesDurationMilliseconds: int(w.httpQueriesDuration.Milliseconds()),
+		UpdatesDurationMilliseconds: int(w.updatesDuration.Milliseconds()),
+		ErrorRate:                   [2]int{w.unsuccessfulRequestsCount(), w.cfg.ErrorDenominator},
+		DownloadErrorRate:           [2]int{w.downloadErrorsCount(), w.cfg.ErrorDenominator},
+		Rss:                         rss / 1024,
+		ChangesInPeriod:             w.changesInPeriod,
+		ConfirmedChangesInPeriod:    w.confirmedChangesInPeriod,
 	}
 }
 
