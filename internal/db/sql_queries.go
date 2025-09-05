@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"time"
 
 	"github.com/bcmk/siren/lib/cmdlib"
 	"github.com/jackc/pgx/v5"
@@ -232,39 +231,6 @@ func (d *Database) SetLimit(chatID int64, maxModels int) {
 		on conflict(chat_id) do update set max_models=excluded.max_models`,
 		chatID,
 		maxModels)
-}
-
-// Reports returns the total number of reports
-func (d *Database) Reports() int {
-	return d.MustInt("select coalesce(sum(reports), 0) from users")
-}
-
-// InteractionsByResultToday return the number of interactions grouped by result today
-func (d *Database) InteractionsByResultToday(endpoint string) map[int]int {
-	timestamp := time.Now().Add(time.Hour * -24).Unix()
-	results := map[int]int{}
-	var result int
-	var count int
-	d.MustQuery(
-		"select result, count(*) from interactions where endpoint = $1 and timestamp > $2 group by result",
-		QueryParams{endpoint, timestamp},
-		ScanTo{&result, &count},
-		func() { results[result] = count })
-	return results
-}
-
-// InteractionsByKindToday return the number of interactions grouped by kind today
-func (d *Database) InteractionsByKindToday(endpoint string) map[PacketKind]int {
-	timestamp := time.Now().Add(time.Hour * -24).Unix()
-	results := map[PacketKind]int{}
-	var kind PacketKind
-	var count int
-	d.MustQuery(
-		"select kind, count(*) from interactions where endpoint = $1 and timestamp > $2 and result=200 group by kind",
-		QueryParams{endpoint, timestamp},
-		ScanTo{&kind, &count},
-		func() { results[kind] = count })
-	return results
 }
 
 // ConfirmSub confirms subscription

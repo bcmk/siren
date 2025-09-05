@@ -1075,8 +1075,8 @@ func (w *worker) downloadErrorsCount() int {
 	return count
 }
 
-func (w *worker) statStrings(endpoint string) []string {
-	stat := w.getStat(endpoint)
+func (w *worker) statStrings() []string {
+	stat := w.getStat()
 	return []string{
 		fmt.Sprintf("Users: %d", stat.UsersCount),
 		fmt.Sprintf("Groups: %d", stat.GroupsCount),
@@ -1100,7 +1100,7 @@ func (w *worker) statStrings(endpoint string) []string {
 }
 
 func (w *worker) stat(endpoint string) {
-	text := strings.Join(w.statStrings(endpoint), "\n")
+	text := strings.Join(w.statStrings(), "\n")
 	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, text, db.ReplyPacket)
 }
 
@@ -1640,7 +1640,7 @@ func getRss() (int64, error) {
 	return rss * int64(os.Getpagesize()), err
 }
 
-func (w *worker) getStat(endpoint string) statistics {
+func (w *worker) getStat() statistics {
 	measureDone := w.db.Measure("db: retrieving stats")
 	defer measureDone()
 	rss, _ := getRss()
@@ -1648,9 +1648,6 @@ func (w *worker) getStat(endpoint string) statistics {
 	checkErr(syscall.Getrusage(syscall.RUSAGE_SELF, &rusage))
 
 	return statistics{
-		OnlineModelsCount:            len(w.ourOnline),
-		KnownModelsCount:             w.db.MustInt("select count(*) from models"),
-		SpecialModelsCount:           len(w.specialModels),
 		QueriesDurationMilliseconds:  int(w.httpQueriesDuration.Milliseconds()),
 		UpdatesDurationMilliseconds:  int(w.updatesDuration.Milliseconds()),
 		CleaningDurationMilliseconds: int(w.cleaningDuration.Milliseconds()),
@@ -1658,11 +1655,8 @@ func (w *worker) getStat(endpoint string) statistics {
 		DownloadErrorRate:            [2]int{w.downloadErrorsCount(), w.cfg.ErrorDenominator},
 		Rss:                          rss / 1024,
 		MaxRss:                       rusage.Maxrss,
-		ReportsCount:                 w.db.Reports(),
 		ChangesInPeriod:              w.changesInPeriod,
 		ConfirmedChangesInPeriod:     w.confirmedChangesInPeriod,
-		Interactions:                 w.db.InteractionsByResultToday(endpoint),
-		InteractionsByKind:           w.db.InteractionsByKindToday(endpoint),
 	}
 }
 
@@ -1679,7 +1673,7 @@ func (w *worker) handleStat(endpoint string, statRequests chan statRequest) func
 	}
 }
 
-func (w *worker) processStatCommand(endpoint string, writer http.ResponseWriter, r *http.Request, done chan bool) {
+func (w *worker) processStatCommand(writer http.ResponseWriter, r *http.Request, done chan bool) {
 	defer func() { done <- true }()
 	passwords, ok := r.URL.Query()["password"]
 	if !ok || len(passwords) < 1 {
@@ -1692,7 +1686,7 @@ func (w *worker) processStatCommand(endpoint string, writer http.ResponseWriter,
 	writer.WriteHeader(http.StatusOK)
 	writer.Header().Set("Content-Type", "application/json")
 
-	statJSON, err := json.MarshalIndent(w.getStat(endpoint), "", "    ")
+	statJSON, err := json.MarshalIndent(w.getStat(), "", "    ")
 	checkErr(err)
 	_, err = writer.Write(statJSON)
 	if err != nil {
@@ -2044,7 +2038,7 @@ func main() {
 				}
 			}
 		case s := <-statRequests:
-			w.processStatCommand(s.endpoint, s.writer, s.request, s.done)
+			w.processStatCommand(s.writer, s.request, s.done)
 		case s := <-signals:
 			linf("got signal %v", s)
 			if s == syscall.SIGINT || s == syscall.SIGTERM || s == syscall.SIGABRT {
