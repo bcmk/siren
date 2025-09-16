@@ -150,6 +150,28 @@ var migrations = []func(d *Database){
 			on models (model_id)
 			where special;`)
 	},
+	func(d *Database) {
+		d.MustExec(`
+			create table referral_events (
+				model_id text,
+				referrer_chat_id bigint,
+				follower_chat_id bigint,
+				timestamp integer not null
+			);`)
+		d.MustExec(`
+			insert into referral_events (model_id, timestamp)
+			select m.model_id, 0
+			from models m
+			cross join generate_series(1, m.referred_users)
+			where m.referred_users > 0;`)
+		d.MustExec(`
+			insert into referral_events (referrer_chat_id, timestamp)
+			select r.chat_id, 0
+			from referrals r
+			cross join generate_series(1, r.referred_users)
+			where r.referred_users > 0;`)
+		d.MustExec(`create index ix_referral_events_timestamp on referral_events (timestamp);`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database

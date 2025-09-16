@@ -4,7 +4,6 @@ package main
 import (
 	"flag"
 
-	"github.com/bcmk/siren/internal/botconfig"
 	"github.com/bcmk/siren/internal/db"
 	"github.com/bcmk/siren/lib/cmdlib"
 )
@@ -15,16 +14,11 @@ func main() {
 	flag.Parse()
 	args := flag.Args()
 	if len(args) != 1 {
-		panic("usage: migrator <config>")
+		panic("usage: migrator <dsn>")
 	}
-	cfg := botconfig.ReadConfig()
 
-	db := db.NewDatabase(cfg.DBPath, cfg.CheckGID)
-
+	db := db.NewDatabase(args[0], false)
 	linf("creating database if needed...")
-	for _, prelude := range cfg.SQLPrelude {
-		db.MustExec(prelude)
-	}
 	db.MustExec(`create table if not exists schema_version (version integer);`)
 	db.ApplyMigrations()
 }

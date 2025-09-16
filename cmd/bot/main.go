@@ -1270,7 +1270,7 @@ func (w *worker) newRandReferralID() (id string) {
 	return
 }
 
-func (w *worker) refer(followerChatID int64, referrer string) (applied appliedKind) {
+func (w *worker) refer(followerChatID int64, referrer string, now int) (applied appliedKind) {
 	referrerChatID := w.db.ChatForReferralID(referrer)
 	if referrerChatID == nil {
 		return invalidReferral
@@ -1286,6 +1286,7 @@ func (w *worker) refer(followerChatID int64, referrer string) (applied appliedKi
 		w.cfg.MaxModels+w.cfg.ReferralBonus,
 		w.cfg.ReferralBonus)
 	w.db.MustExec("update referrals set referred_users=referred_users+1 where chat_id = $1", referrerChatID)
+	w.db.MustExec("insert into referral_events (timestamp, referrer_chat_id, follower_chat_id) values ($1, $2, $3)", now, referrerChatID, followerChatID)
 	return referralApplied
 }
 
@@ -1326,7 +1327,7 @@ func (w *worker) start(endpoint string, chatID int64, referrer string, now int) 
 		"website_link": w.cfg.WebsiteLink,
 	}, db.ReplyPacket)
 	if chatID > 0 && referrer != "" {
-		applied := w.refer(chatID, referrer)
+		applied := w.refer(chatID, referrer, now)
 		switch applied {
 		case referralApplied:
 			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ReferralApplied, nil, db.ReplyPacket)
@@ -1339,7 +1340,7 @@ func (w *worker) start(endpoint string, chatID int64, referrer string, now int) 
 	w.db.AddUser(chatID, w.cfg.MaxModels)
 	if modelID != "" {
 		if w.addModel(endpoint, chatID, modelID, now) {
-			w.db.MustExec("update models set referred_users=referred_users+1 where model_id = $1", modelID)
+			w.db.MustExec("insert into referral_events (timestamp, model_id, follower_chat_id) values ($1, $2, $3)", now, modelID, chatID)
 		}
 	}
 }
