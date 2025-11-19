@@ -15,6 +15,7 @@ var timeout = flag.Int("t", 10, "timeout in seconds")
 var address = flag.String("a", "", "source IP address")
 var cookies = flag.Bool("c", false, "use cookies")
 var endpoint = flag.String("e", "", "online query endpoint")
+var userID = flag.String("user_id", "", "your user_id")
 
 func main() {
 	flag.Usage = func() {
@@ -22,9 +23,18 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+	if *userID == "" {
+		fmt.Println("specify user_id")
+		return
+	}
 	client := cmdlib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
 	checker := &checkers.StripchatChecker{}
-	checker.Init(nil, cmdlib.CheckerConfig{UsersOnlineEndpoints: []string{*endpoint}, Clients: []*cmdlib.Client{client}, Dbg: *verbose})
+	checker.Init(nil, cmdlib.CheckerConfig{
+		UsersOnlineEndpoints: []string{*endpoint},
+		Clients:              []*cmdlib.Client{client},
+		SpecificConfig:       map[string]string{"user_id": *userID},
+		Dbg:                  *verbose,
+	})
 	models, images, err := checker.CheckStatusesMany(cmdlib.AllModels, cmdlib.CheckOnline)
 	if err != nil {
 		fmt.Printf("error occurred: %v\n", err)

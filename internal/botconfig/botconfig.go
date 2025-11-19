@@ -315,6 +315,11 @@ func checkConfig(cfg *Config) error {
 			return errors.New("configure specific_config/access_key")
 		}
 	}
+	if cfg.Website == "stripchat" {
+		if cfg.SpecificConfig["user_id"] == "" {
+			return errors.New("configure specific_config/user_id")
+		}
+	}
 	if cfg.StatPassword == "" {
 		return errors.New("configure stat_password")
 	}
