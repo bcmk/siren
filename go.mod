@@ -4,6 +4,7 @@ require (
 	github.com/bcmk/telegram-bot-api v1.0.1-0.20200926205526-fa6e30cde1b9
 	github.com/chromedp/cdproto v0.0.0-20211002082225-0242b9dca9f4
 	github.com/chromedp/chromedp v0.7.4
+	github.com/go-viper/mapstructure/v2 v2.2.1
 	github.com/jackc/pgx/v5 v5.5.4
 	github.com/nicklaw5/helix v1.25.0
 	github.com/spf13/pflag v1.0.6
@@ -33,7 +34,6 @@ require (
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
-	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.1.0 // indirect
@@ -79,9 +79,9 @@ require (
 	go.opentelemetry.io/otel/trace v1.29.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
-	golang.org/x/crypto v0.32.0 // indirect
-	golang.org/x/sys v0.29.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/crypto v0.45.0 // indirect
+	golang.org/x/sys v0.38.0 // indirect
+	golang.org/x/text v0.31.0 // indirect
 )
 
-go 1.23
+go 1.24.0
