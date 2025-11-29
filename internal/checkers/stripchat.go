@@ -218,14 +218,10 @@ func (c *StripchatChecker) CheckEndpoint(endpoint string) (
 		if c.Dbg {
 			cmdlib.Ldbg("streams count in the response: %d", len(parsed.Models))
 		}
-		addedOnInnerIteration := 0
 		for _, m := range parsed.Models {
 			if m.Username != "" {
 				modelID := strings.ToLower(m.Username)
-				if _, ok := onlineModels[modelID]; !ok {
-					onlineModels[modelID] = cmdlib.StatusOnline
-					addedOnInnerIteration++
-				}
+				onlineModels[modelID] = cmdlib.StatusOnline
 				images[modelID] = m.SnapshotURL
 			}
 		}

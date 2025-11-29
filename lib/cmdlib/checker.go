@@ -120,6 +120,7 @@ func CheckEndpoints(c endpointChecker, endpoints []string, dbg bool) (map[string
 		}
 		if dbg {
 			Ldbg("got statuses for endpoint: %d", len(statuses))
+			Ldbg("got images for endpoint: %d", len(images))
 		}
 		for m, s := range statuses {
 			allStatuses[m] = s
