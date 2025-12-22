@@ -1737,7 +1737,7 @@ func (w *worker) cleanStatusChanges(now int64) time.Duration {
 }
 
 func (w *worker) maintainDB() {
-	w.db.MustExec("select brin_summarize_new_values('ix_interactions_timestamp')")
+	w.db.MustExec("select brin_summarize_new_values('ix_sent_message_log_timestamp')")
 }
 
 func (w *worker) adminSQL(query string) time.Duration {
@@ -2022,7 +2022,7 @@ func main() {
 			case messageSent:
 				w.db.ResetBlock(r.endpoint, r.chatID)
 			}
-			query := "insert into interactions (timestamp, chat_id, result, endpoint, priority, delay, kind) values ($1, $2, $3, $4, $5, $6, $7)"
+			query := "insert into sent_message_log (timestamp, chat_id, result, endpoint, priority, delay, kind) values ($1, $2, $3, $4, $5, $6, $7)"
 			w.db.MustExec(query, r.timestamp, r.chatID, r.result, r.endpoint, r.priority, r.delay, r.kind)
 		case r := <-w.unconfirmedSubsResults:
 			w.processSubsConfirmations(r)

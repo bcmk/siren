@@ -172,6 +172,10 @@ var migrations = []func(d *Database){
 			where r.referred_users > 0;`)
 		d.MustExec(`create index ix_referral_events_timestamp on referral_events (timestamp);`)
 	},
+	func(d *Database) {
+		d.MustExec(`alter table interactions rename to sent_message_log;`)
+		d.MustExec(`alter index ix_interactions_timestamp rename to ix_sent_message_log_timestamp;`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database
