@@ -176,6 +176,16 @@ var migrations = []func(d *Database){
 		d.MustExec(`alter table interactions rename to sent_message_log;`)
 		d.MustExec(`alter index ix_interactions_timestamp rename to ix_sent_message_log_timestamp;`)
 	},
+	func(d *Database) {
+		d.MustExec(`
+			create table received_message_log (
+				timestamp integer not null,
+				endpoint text not null,
+				chat_id bigint not null,
+				command text
+			);`)
+		d.MustExec(`create index ix_received_message_log_timestamp on received_message_log using brin ("timestamp");`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database

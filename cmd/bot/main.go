@@ -1569,12 +1569,48 @@ func getCommandAndArgs(update tg.Update, mention string, ourIDs []int64) (int64,
 	return chatID, parts[0], strings.TrimSpace(parts[1])
 }
 
+var loggedCommands = map[string]bool{
+	"ad":                            true,
+	"add":                           true,
+	"disable_images":                true,
+	"disable_offline_notifications": true,
+	"enable_images":                 true,
+	"enable_offline_notifications":  true,
+	"faq":                           true,
+	"feedback":                      true,
+	"help":                          true,
+	"list":                          true,
+	"online":                        true,
+	"pics":                          true,
+	"referral":                      true,
+	"remove":                        true,
+	"remove_all":                    true,
+	"settings":                      true,
+	"social":                        true,
+	"start":                         true,
+	"stop":                          true,
+	"sure_remove_all":               true,
+	"version":                       true,
+	"want_more":                     true,
+	"week":                          true,
+}
+
 func (w *worker) processTGUpdate(p incomingPacket) bool {
 	now := int(time.Now().Unix())
 	u := p.message
 	mention := "@" + w.botNames[p.endpoint]
 	chatID, command, args := getCommandAndArgs(u, mention, w.ourIDs)
 	if command != "" {
+		var loggedCommand *string
+		if loggedCommands[command] {
+			loggedCommand = &command
+		}
+		w.db.MustExec(
+			"insert into received_message_log (timestamp, endpoint, chat_id, command) values ($1, $2, $3, $4)",
+			now,
+			p.endpoint,
+			chatID,
+			loggedCommand)
 		return w.processIncomingCommand(p.endpoint, chatID, command, args, now)
 	}
 	return false
@@ -1728,6 +1764,7 @@ func (w *worker) cleanStatusChanges(now int64) time.Duration {
 
 func (w *worker) maintainDB() {
 	w.db.MustExec("select brin_summarize_new_values('ix_sent_message_log_timestamp')")
+	w.db.MustExec("select brin_summarize_new_values('ix_received_message_log_timestamp')")
 }
 
 func (w *worker) adminSQL(query string) time.Duration {
