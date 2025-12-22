@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./**/*.ignore)",
+      "Read(./**/*.ignore.*)",
+      "Read(./.idea/**)"
+    ]
+  }
+}
