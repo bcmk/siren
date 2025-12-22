@@ -556,14 +556,6 @@ func TestCommandParser(t *testing.T) {
 	if chatID != 1 || command != "command" || args != "" {
 		t.Error("unexpected result")
 	}
-	chatID, command, args = getCommandAndArgs(tg.Update{CallbackQuery: &tg.CallbackQuery{Data: "command"}}, "@bot", nil)
-	if chatID != 0 || command != "" || args != "" {
-		t.Error("unexpected result")
-	}
-	chatID, command, args = getCommandAndArgs(tg.Update{CallbackQuery: &tg.CallbackQuery{Data: "command", From: &tg.User{ID: 1}}}, "@bot", nil)
-	if chatID != 1 || command != "command" || args != "" {
-		t.Error("unexpected result")
-	}
 }
 
 func checkInv(w *worker, t *testing.T) {

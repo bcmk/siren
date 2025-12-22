@@ -1552,9 +1552,6 @@ func getCommandAndArgs(update tg.Update, mention string, ourIDs []int64) (int64,
 		text = update.ChannelPost.Text
 		chatID = update.ChannelPost.Chat.ID
 		forceMention = true
-	} else if update.CallbackQuery != nil && update.CallbackQuery.From != nil {
-		text = update.CallbackQuery.Data
-		chatID = int64(update.CallbackQuery.From.ID)
 	}
 	text = strings.TrimLeft(text, " /")
 	if text == "" {
@@ -1577,13 +1574,6 @@ func (w *worker) processTGUpdate(p incomingPacket) bool {
 	u := p.message
 	mention := "@" + w.botNames[p.endpoint]
 	chatID, command, args := getCommandAndArgs(u, mention, w.ourIDs)
-	if u.CallbackQuery != nil {
-		callback := tg.CallbackConfig{CallbackQueryID: u.CallbackQuery.ID}
-		_, err := w.bots[p.endpoint].AnswerCallbackQuery(callback)
-		if err != nil {
-			lerr("cannot answer callback query, %v", err)
-		}
-	}
 	if command != "" {
 		return w.processIncomingCommand(p.endpoint, chatID, command, args, now)
 	}
