@@ -186,6 +186,11 @@ var migrations = []func(d *Database){
 			);`)
 		d.MustExec(`create index ix_received_message_log_timestamp on received_message_log using brin ("timestamp");`)
 	},
+	func(d *Database) {
+		// StatusUnknown, StatusOffline, StatusOnline
+		d.MustExec(`alter table models add constraint chk_models_status check (status in (0, 1, 2));`)
+		d.MustExec(`alter table status_changes add constraint chk_status_changes_status check (status in (0, 1, 2));`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database
