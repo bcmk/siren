@@ -39,7 +39,7 @@ already_added:
   str: 'Model {{ .model }} is already in your list'
 denied:
   parse: raw
-  str: '{{ .model }} has blocked an access from the USA, the location of this bot'
+  str: '{{ .model }} has blocked access from the location of this bot'
 feedback:
   parse: raw
   str: Thank you for your feedback!
@@ -159,20 +159,7 @@ list:
       {{- end -}}
     {{- end -}}
 
-    {{- if .denied -}}
-      {{- if $printed -}}
-        {{- print "\n" -}}
-      {{- end -}}
-      <code>BLOCKED FROM BOT'S COUNTRY</code>
-      {{- print "\n" -}}
-      {{- range .denied -}}
-        {{- template "affiliate_link" .Model -}}
-        {{- if .End }}  <i>last seen {{ template "duration" .End }}</i> ago {{- end -}}
-        {{- print "\n" -}}
-      {{- end -}}
-    {{- end -}}
-
-    {{- if and (not .online) (not .offline) (not .denied) -}}
+    {{- if and (not .online) (not .offline) -}}
       {{- template "zero_subscriptions" -}}
     {{- end -}}
 own_referral_link_hit:

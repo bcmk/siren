@@ -891,8 +891,6 @@ func listModelsSortWeight(s cmdlib.StatusKind) int {
 	switch s {
 	case cmdlib.StatusOnline:
 		return 0
-	case cmdlib.StatusDenied:
-		return 2
 	default:
 		return 1
 	}
@@ -909,7 +907,7 @@ func (w *worker) listModels(endpoint string, chatID int64, now int) {
 	})
 	chunks := chunkModels(statuses, 50)
 	for _, chunk := range chunks {
-		var online, offline, denied []data
+		var online, offline []data
 		for _, s := range chunk {
 			data := data{
 				Model:    s.ModelID,
@@ -918,13 +916,11 @@ func (w *worker) listModels(endpoint string, chatID int64, now int) {
 			switch s.Status {
 			case cmdlib.StatusOnline:
 				online = append(online, data)
-			case cmdlib.StatusDenied:
-				denied = append(denied, data)
 			default:
 				offline = append(offline, data)
 			}
 		}
-		tplData := tplData{"online": online, "offline": offline, "denied": denied}
+		tplData := tplData{"online": online, "offline": offline}
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].List, tplData, db.ReplyPacket)
 	}
 }

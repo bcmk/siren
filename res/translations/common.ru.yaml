@@ -39,7 +39,7 @@ already_added:
   str: 'Модель {{ .model }} уже в вашем списке'
 denied:
   parse: raw
-  str: '{{ .model }} заблокировала доступ из США, где находится этот бот'
+  str: '{{ .model }} заблокировала доступ из региона этого бота'
 feedback:
   parse: raw
   str: Спасибо за отклик!
@@ -159,20 +159,7 @@ list:
       {{- end -}}
     {{- end -}}
 
-    {{- if .denied -}}
-      {{- if $printed -}}
-        {{- print "\n" -}}
-      {{- end -}}
-      <code>ЗАБЛОКИРОВАНЫ ИЗ СТРАНЫ БОТА</code>
-      {{- print "\n" -}}
-      {{- range .denied -}}
-        {{- template "affiliate_link" .Model -}}
-        {{- if .End }}  <i>была {{ template "duration" .End }} назад</i> {{- end -}}
-        {{- print "\n" -}}
-      {{- end -}}
-    {{- end -}}
-
-    {{- if and (not .online) (not .offline) (not .denied) -}}
+    {{- if and (not .online) (not .offline) -}}
       {{- template "zero_subscriptions" -}}
     {{- end -}}
 own_referral_link_hit:
