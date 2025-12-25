@@ -777,7 +777,7 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 		ChatID:   chatID,
 		ModelID:  modelID,
 		Status:   confirmedStatus,
-		TimeDiff: w.modelDuration(modelID, now),
+		TimeDiff: w.unconfirmedModelDuration(modelID, now),
 		Social:   false,
 		Priority: 1,
 		Kind:     db.ReplyPacket}}
@@ -901,7 +901,7 @@ func (w *worker) listModels(endpoint string, chatID int64, now int) {
 		Model    string
 		TimeDiff *timeDiff
 	}
-	statuses := w.db.StatusesForChat(endpoint, chatID)
+	statuses := w.db.UnconfirmedStatusesForChat(endpoint, chatID)
 	sort.SliceStable(statuses, func(i, j int) bool {
 		return listModelsSortWeight(statuses[i].Status) < listModelsSortWeight(statuses[j].Status)
 	})
@@ -911,7 +911,7 @@ func (w *worker) listModels(endpoint string, chatID int64, now int) {
 		for _, s := range chunk {
 			data := data{
 				Model:    s.ModelID,
-				TimeDiff: w.modelTimeDiff(s.ModelID, now),
+				TimeDiff: w.unconfirmedModelTimeDiff(s.ModelID, now),
 			}
 			switch s.Status {
 			case cmdlib.StatusOnline:
@@ -925,8 +925,8 @@ func (w *worker) listModels(endpoint string, chatID int64, now int) {
 	}
 }
 
-func (w *worker) modelDuration(modelID string, now int) *int {
-	begin, end, prevStatus := w.db.LastSeenInfo(modelID)
+func (w *worker) unconfirmedModelDuration(modelID string, now int) *int {
+	begin, end, prevStatus := w.db.LastSeenUnconfirmedInfo(modelID)
 	if end != 0 {
 		timeDiff := now - end
 		return &timeDiff
@@ -938,8 +938,8 @@ func (w *worker) modelDuration(modelID string, now int) *int {
 	return nil
 }
 
-func (w *worker) modelTimeDiff(modelID string, now int) *timeDiff {
-	dur := w.modelDuration(modelID, now)
+func (w *worker) unconfirmedModelTimeDiff(modelID string, now int) *timeDiff {
+	dur := w.unconfirmedModelDuration(modelID, now)
 	if dur != nil {
 		timeDiff := calcTimeDiff(*dur)
 		return &timeDiff
@@ -981,7 +981,7 @@ func (w *worker) downloadImageInternal(url string) ([]byte, error) {
 }
 
 func (w *worker) listOnlineModels(endpoint string, chatID int64, now int) {
-	statuses := w.db.StatusesForChat(endpoint, chatID)
+	statuses := w.db.UnconfirmedStatusesForChat(endpoint, chatID)
 	var online []db.Model
 	for _, s := range statuses {
 		if s.Status == cmdlib.StatusOnline {
@@ -1006,7 +1006,7 @@ func (w *worker) listOnlineModels(endpoint string, chatID int64, now int) {
 			ModelID:  s.ModelID,
 			Status:   cmdlib.StatusOnline,
 			ImageURL: w.images[s.ModelID],
-			TimeDiff: w.modelDuration(s.ModelID, now),
+			TimeDiff: w.unconfirmedModelDuration(s.ModelID, now),
 			Kind:     db.ReplyPacket,
 		}
 		nots = append(nots, not)

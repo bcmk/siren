@@ -95,7 +95,7 @@ func TestSql(t *testing.T) {
 	if w.db.MustInt("select block from block where chat_id = $1", 1) != 2 {
 		t.Error("unexpected block for model result", chatsForModel)
 	}
-	statuses := w.db.StatusesForChat("ep1", 3)
+	statuses := w.db.ConfirmedStatusesForChat("ep1", 3)
 	if !reflect.DeepEqual(statuses, []db.Model{
 		{ModelID: "c", Status: cmdlib.StatusOnline},
 		{ModelID: "c2", Status: cmdlib.StatusOnline}}) {

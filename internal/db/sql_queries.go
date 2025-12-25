@@ -65,8 +65,8 @@ func (d *Database) StoreNotifications(nots []Notification) {
 
 }
 
-// LastSeenInfo returns last seen info for a model
-func (d *Database) LastSeenInfo(modelID string) (begin int, end int, prevStatus cmdlib.StatusKind) {
+// LastSeenUnconfirmedInfo returns last seen info for a model
+func (d *Database) LastSeenUnconfirmedInfo(modelID string) (begin int, end int, prevStatus cmdlib.StatusKind) {
 	var maybeEnd *int
 	var maybePrevStatus *cmdlib.StatusKind
 	if !d.MaybeRecord(`
@@ -140,8 +140,8 @@ func (d *Database) ModelsForChat(endpoint string, chatID int64) (models []string
 	return
 }
 
-// StatusesForChat returns models that particular chat is subscribed to and their statuses
-func (d *Database) StatusesForChat(endpoint string, chatID int64) (statuses []Model) {
+// ConfirmedStatusesForChat returns models that particular chat is subscribed to and their statuses
+func (d *Database) ConfirmedStatusesForChat(endpoint string, chatID int64) (statuses []Model) {
 	var iter Model
 	d.MustQuery(`
 		select models.model_id, models.status
@@ -149,6 +149,21 @@ func (d *Database) StatusesForChat(endpoint string, chatID int64) (statuses []Mo
 		join signals on signals.model_id=models.model_id
 		where signals.chat_id = $1 and signals.endpoint = $2
 		order by models.model_id`,
+		QueryParams{chatID, endpoint},
+		ScanTo{&iter.ModelID, &iter.Status},
+		func() { statuses = append(statuses, iter) })
+	return
+}
+
+// UnconfirmedStatusesForChat returns models with their unconfirmed statuses from status_changes
+func (d *Database) UnconfirmedStatusesForChat(endpoint string, chatID int64) (statuses []Model) {
+	var iter Model
+	d.MustQuery(`
+		select signals.model_id, coalesce(sc.status, 0)
+		from signals
+		left join status_changes sc on sc.model_id = signals.model_id and sc.is_latest = true
+		where signals.chat_id = $1 and signals.endpoint = $2
+		order by signals.model_id`,
 		QueryParams{chatID, endpoint},
 		ScanTo{&iter.ModelID, &iter.Status},
 		func() { statuses = append(statuses, iter) })
