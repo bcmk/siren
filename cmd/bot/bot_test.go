@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"reflect"
 	"runtime/debug"
 	"testing"
@@ -8,6 +9,7 @@ import (
 	"github.com/bcmk/siren/internal/db"
 	"github.com/bcmk/siren/lib/cmdlib"
 	tg "github.com/bcmk/telegram-bot-api"
+	"github.com/jackc/pgx/v5"
 )
 
 func TestSql(t *testing.T) {
@@ -35,10 +37,10 @@ func TestSql(t *testing.T) {
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 6, w.cfg.BlockThreshold)
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 7, w.cfg.BlockThreshold)
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep2", 7, w.cfg.BlockThreshold)
-	w.db.MustExec("insert into models (model_id, status) values ($1, $2)", "a", cmdlib.StatusOnline)
-	w.db.MustExec("insert into models (model_id, status) values ($1, $2)", "b", cmdlib.StatusOnline)
-	w.db.MustExec("insert into models (model_id, status) values ($1, $2)", "c", cmdlib.StatusOnline)
-	w.db.MustExec("insert into models (model_id, status) values ($1, $2)", "c2", cmdlib.StatusOnline)
+	w.db.MustExec("insert into models (model_id, confirmed_status) values ($1, $2)", "a", cmdlib.StatusOnline)
+	w.db.MustExec("insert into models (model_id, confirmed_status) values ($1, $2)", "b", cmdlib.StatusOnline)
+	w.db.MustExec("insert into models (model_id, confirmed_status) values ($1, $2)", "c", cmdlib.StatusOnline)
+	w.db.MustExec("insert into models (model_id, confirmed_status) values ($1, $2)", "c2", cmdlib.StatusOnline)
 	broadcastChats := w.db.BroadcastChats("ep1")
 	if !reflect.DeepEqual(broadcastChats, []int64{1, 2, 3, 4, 5, 6, 7}) {
 		t.Error("unexpected broadcast chats result", broadcastChats)
@@ -97,8 +99,8 @@ func TestSql(t *testing.T) {
 	}
 	statuses := w.db.ConfirmedStatusesForChat("ep1", 3)
 	if !reflect.DeepEqual(statuses, []db.Model{
-		{ModelID: "c", Status: cmdlib.StatusOnline},
-		{ModelID: "c2", Status: cmdlib.StatusOnline}}) {
+		{ModelID: "c", ConfirmedStatus: cmdlib.StatusOnline},
+		{ModelID: "c2", ConfirmedStatus: cmdlib.StatusOnline}}) {
 		t.Error("unexpected statuses", statuses)
 	}
 	_ = w.db.Close()
@@ -333,79 +335,15 @@ func queryLastStatusChanges(d *db.Database) map[string]db.StatusChange {
 	statusChanges := map[string]db.StatusChange{}
 	var statusChange db.StatusChange
 	d.MustQuery(
-		`select model_id, status, timestamp from status_changes where is_latest = true`,
+		`
+			select distinct on (model_id) model_id, status, timestamp
+			from status_changes
+			order by model_id, timestamp desc
+		`,
 		nil,
 		db.ScanTo{&statusChange.ModelID, &statusChange.Status, &statusChange.Timestamp},
 		func() { statusChanges[statusChange.ModelID] = statusChange })
 	return statusChanges
-}
-
-func TestCleanStatuses(t *testing.T) {
-	const day = 60 * 60 * 24
-	w := newTestWorker()
-	defer w.terminate()
-	w.cfg.StatusConfirmationSeconds.Offline = day + 2
-	w.createDatabase(make(chan bool, 1))
-	w.initCache()
-	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 18)
-	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}, {ModelID: "b", Status: cmdlib.StatusOnline}}, 53)
-	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "b", Status: cmdlib.StatusOffline}}, 55)
-	if len(queryLastStatusChanges(&w.db)) != 2 {
-		t.Error("wrong number of statuses")
-	}
-	w.cleanStatusChanges(day + 54)
-	if len(queryLastStatusChanges(&w.db)) != 1 {
-		t.Logf("site statuses: %v", queryLastStatusChanges(&w.db))
-		t.Errorf("wrong number of statuses: %d", len(queryLastStatusChanges(&w.db)))
-	}
-	checkInv(&w.worker, t)
-	w.processStatusUpdates([]cmdlib.StatusUpdate{}, day+56)
-	if len(w.ourOnline) != 1 {
-		t.Logf("site statuses: %v", queryLastStatusChanges(&w.db))
-		t.Logf("our online: %v", w.ourOnline)
-		t.Errorf("wrong number of online: %d", len(w.ourOnline))
-	}
-	checkInv(&w.worker, t)
-	w.processStatusUpdates([]cmdlib.StatusUpdate{}, day+60)
-	if len(w.ourOnline) != 0 {
-		t.Logf("site statuses: %v", queryLastStatusChanges(&w.db))
-		t.Logf("our online: %v", w.ourOnline)
-		t.Errorf("wrong number of online: %d", len(w.ourOnline))
-	}
-	checkInv(&w.worker, t)
-	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, day+100)
-	if len(w.ourOnline) != 1 {
-		t.Logf("site statuses: %v", queryLastStatusChanges(&w.db))
-		t.Logf("our online: %v", w.ourOnline)
-		t.Errorf("wrong number of online: %d", len(w.ourOnline))
-	}
-	w.cleanStatusChanges(day*100 + 50)
-	if len(w.ourOnline) != 1 {
-		t.Logf("site statuses: %v", queryLastStatusChanges(&w.db))
-		t.Logf("our online: %v", w.ourOnline)
-		t.Errorf("wrong number of online: %d", len(w.ourOnline))
-	}
-	if len(queryLastStatusChanges(&w.db)) != 0 {
-		t.Errorf("wrong number of site statuses: %d", len(queryLastStatusChanges(&w.db)))
-	}
-	if len(w.siteOnline) != 0 {
-		t.Errorf("wrong number of site online models: %d", len(w.siteOnline))
-	}
-	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, day+155)
-	if len(w.ourOnline) != 1 {
-		t.Logf("site statuses: %v", queryLastStatusChanges(&w.db))
-		t.Logf("site online: %v", w.siteOnline)
-		t.Logf("our online: %v", w.ourOnline)
-		t.Errorf("wrong number of online: %d", len(w.ourOnline))
-	}
-	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 3*day)
-	if len(w.ourOnline) != 0 {
-		t.Logf("site statuses: %v", queryLastStatusChanges(&w.db))
-		t.Logf("site online: %v", w.siteOnline)
-		t.Logf("our online: %v", w.ourOnline)
-		t.Errorf("wrong number of online: %d", len(w.ourOnline))
-	}
-	_ = w.db.Close()
 }
 
 func TestNotificationsStorage(t *testing.T) {
@@ -474,12 +412,67 @@ func TestModels(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
-	w.db.MustExec("insert into models (model_id, status) values ($1, $2)", "a", cmdlib.StatusUnknown)
+	w.db.MustExec("insert into models (model_id, confirmed_status) values ($1, $2)", "a", cmdlib.StatusUnknown)
 	if w.db.MaybeModel("a") == nil {
 		t.Error("unexpected result")
 	}
 	if w.db.MaybeModel("b") != nil {
 		t.Error("unexpected result")
+	}
+}
+
+func TestCopyFromAndBatchInTransaction(t *testing.T) {
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase(make(chan bool, 1))
+
+	// Test that CopyFrom and SendBatch are in the same transaction
+	// by making SendBatch fail and verifying CopyFrom data is rolled back
+
+	tx, err := w.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+
+	// CopyFrom should succeed
+	rows := [][]interface{}{
+		{"test_model", cmdlib.StatusOnline, 100},
+	}
+	_, err = tx.CopyFrom(
+		context.Background(),
+		pgx.Identifier{"status_changes"},
+		[]string{"model_id", "status", "timestamp"},
+		pgx.CopyFromRows(rows),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// SendBatch with invalid status (violates check constraint) should fail
+	batch := &pgx.Batch{}
+	batch.Queue(
+		`
+			insert into models (model_id, unconfirmed_status)
+			values ($1, $2)
+		`,
+		"test_model", 999) // 999 violates check constraint
+	br := tx.SendBatch(context.Background(), batch)
+	err = br.Close()
+
+	// Batch should have failed
+	if err == nil {
+		t.Fatal("expected batch to fail due to constraint violation")
+	}
+
+	// Explicitly rollback the failed transaction
+	_ = tx.Rollback(context.Background())
+
+	// Verify status_changes has NO data (CopyFrom was rolled back)
+	// Query using a new connection, not the failed transaction
+	count := w.db.MustInt("select count(*) from status_changes where model_id = 'test_model'")
+	if count != 0 {
+		t.Errorf("expected 0 status_changes after rollback, got %d", count)
 	}
 }
 
@@ -558,9 +551,57 @@ func TestCommandParser(t *testing.T) {
 	}
 }
 
+func TestUnconfirmedStatusConsistency(t *testing.T) {
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase(make(chan bool, 1))
+	w.initCache()
+
+	// Insert first status change for model "a"
+	w.db.InsertStatusChanges([]db.StatusChange{
+		{ModelID: "a", Status: cmdlib.StatusOnline, Timestamp: 100},
+	})
+
+	model := w.db.MaybeModel("a")
+	if model == nil {
+		t.Fatal("model not found")
+	}
+	if model.UnconfirmedStatus != cmdlib.StatusOnline || model.UnconfirmedTimestamp != 100 {
+		t.Errorf("unexpected unconfirmed status: %+v", model)
+	}
+	if model.PrevUnconfirmedStatus != cmdlib.StatusUnknown || model.PrevUnconfirmedTimestamp != 0 {
+		t.Errorf("unexpected prev unconfirmed status: %+v", model)
+	}
+
+	// Insert second status change — prev should be updated
+	w.db.InsertStatusChanges([]db.StatusChange{
+		{ModelID: "a", Status: cmdlib.StatusOffline, Timestamp: 200},
+	})
+
+	model = w.db.MaybeModel("a")
+	if model.UnconfirmedStatus != cmdlib.StatusOffline || model.UnconfirmedTimestamp != 200 {
+		t.Errorf("unexpected unconfirmed status: %+v", model)
+	}
+	if model.PrevUnconfirmedStatus != cmdlib.StatusOnline || model.PrevUnconfirmedTimestamp != 100 {
+		t.Errorf("unexpected prev unconfirmed status: %+v", model)
+	}
+
+	// Insert third status change — prev should shift
+	w.db.InsertStatusChanges([]db.StatusChange{
+		{ModelID: "a", Status: cmdlib.StatusOnline, Timestamp: 300},
+	})
+
+	model = w.db.MaybeModel("a")
+	if model.UnconfirmedStatus != cmdlib.StatusOnline || model.UnconfirmedTimestamp != 300 {
+		t.Errorf("unexpected unconfirmed status: %+v", model)
+	}
+	if model.PrevUnconfirmedStatus != cmdlib.StatusOffline || model.PrevUnconfirmedTimestamp != 200 {
+		t.Errorf("unexpected prev unconfirmed status: %+v", model)
+	}
+}
+
 func checkInv(w *worker, t *testing.T) {
 	a := map[string]db.StatusChange{}
-	b := map[string]db.StatusChange{}
 	var recStatus db.StatusChange
 	w.db.MustQuery(`
 		select model_id, status, timestamp
@@ -572,16 +613,7 @@ func checkInv(w *worker, t *testing.T) {
 		nil,
 		db.ScanTo{&recStatus.ModelID, &recStatus.Status, &recStatus.Timestamp},
 		func() { a[recStatus.ModelID] = recStatus })
-	w.db.MustQuery(
-		`select model_id, status, timestamp from status_changes where is_latest = true`,
-		nil,
-		db.ScanTo{&recStatus.ModelID, &recStatus.Status, &recStatus.Timestamp},
-		func() { b[recStatus.ModelID] = recStatus })
 
-	if !reflect.DeepEqual(a, b) {
-		t.Errorf("unexpected inv check result, statuses: %v, last statuses: %v", a, b)
-		t.Log(string(debug.Stack()))
-	}
 	if !reflect.DeepEqual(a, queryLastStatusChanges(&w.db)) {
 		t.Errorf("unexpected inv check result, statuses: %v, site statuses: %v", a, queryLastStatusChanges(&w.db))
 		t.Log(string(debug.Stack()))
@@ -589,11 +621,11 @@ func checkInv(w *worker, t *testing.T) {
 	dbOnline := map[string]bool{}
 	var rec db.Model
 	w.db.MustQuery(
-		`select model_id, status from models`,
+		`select model_id, confirmed_status from models`,
 		nil,
-		db.ScanTo{&rec.ModelID, &rec.Status},
+		db.ScanTo{&rec.ModelID, &rec.ConfirmedStatus},
 		func() {
-			if rec.Status == cmdlib.StatusOnline {
+			if rec.ConfirmedStatus == cmdlib.StatusOnline {
 				dbOnline[rec.ModelID] = true
 			}
 		})
@@ -601,4 +633,52 @@ func checkInv(w *worker, t *testing.T) {
 		t.Errorf("unexpected inv check result, left: %v, right: %v", w.ourOnline, dbOnline)
 		t.Log(string(debug.Stack()))
 	}
+
+	// Check unconfirmed status consistency — models table must match last two status_changes
+	type lastTwo struct {
+		unconfirmed, prev db.StatusChange
+	}
+	fromStatusChanges := map[string]lastTwo{}
+	var sc db.StatusChange
+	var row int
+	w.db.MustQuery(`
+		select model_id, status, timestamp, row
+		from (
+			select *, row_number() over (partition by model_id order by timestamp desc) as row
+			from status_changes
+		)
+		where row <= 2
+		order by model_id, row`,
+		nil,
+		db.ScanTo{&sc.ModelID, &sc.Status, &sc.Timestamp, &row},
+		func() {
+			entry := fromStatusChanges[sc.ModelID]
+			if row == 1 {
+				entry.unconfirmed = sc
+			} else {
+				entry.prev = sc
+			}
+			fromStatusChanges[sc.ModelID] = entry
+		})
+
+	var model db.Model
+	w.db.MustQuery(`
+		select model_id, unconfirmed_status, unconfirmed_timestamp, prev_unconfirmed_status, prev_unconfirmed_timestamp
+		from models
+		where unconfirmed_timestamp > 0`,
+		nil,
+		db.ScanTo{&model.ModelID, &model.UnconfirmedStatus, &model.UnconfirmedTimestamp, &model.PrevUnconfirmedStatus, &model.PrevUnconfirmedTimestamp},
+		func() {
+			expected := fromStatusChanges[model.ModelID]
+			if model.UnconfirmedStatus != expected.unconfirmed.Status ||
+				model.UnconfirmedTimestamp != expected.unconfirmed.Timestamp {
+				t.Errorf("unconfirmed status mismatch for %s: model=%+v, expected=%+v", model.ModelID, model, expected)
+				t.Log(string(debug.Stack()))
+			}
+			if model.PrevUnconfirmedStatus != expected.prev.Status ||
+				model.PrevUnconfirmedTimestamp != expected.prev.Timestamp {
+				t.Errorf("prev unconfirmed status mismatch for %s: model=%+v, expected=%+v", model.ModelID, model, expected)
+				t.Log(string(debug.Stack()))
+			}
+		})
 }

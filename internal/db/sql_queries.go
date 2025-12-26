@@ -65,36 +65,6 @@ func (d *Database) StoreNotifications(nots []Notification) {
 
 }
 
-// LastSeenUnconfirmedInfo returns last seen info for a model
-func (d *Database) LastSeenUnconfirmedInfo(modelID string) (begin int, end int, prevStatus cmdlib.StatusKind) {
-	var maybeEnd *int
-	var maybePrevStatus *cmdlib.StatusKind
-	if !d.MaybeRecord(`
-		select timestamp, "end", prev_status from (
-			select
-				*,
-				lead(timestamp) over (order by timestamp) as "end",
-				lag(status) over (order by timestamp) as prev_status
-			from status_changes
-			where model_id = $1)
-		where status = $2
-		order by timestamp desc limit 1`,
-		QueryParams{modelID, cmdlib.StatusOnline},
-		ScanTo{&begin, &maybeEnd, &maybePrevStatus}) {
-
-		return 0, 0, cmdlib.StatusUnknown
-	}
-	if maybeEnd == nil {
-		zero := 0
-		maybeEnd = &zero
-	}
-	if maybePrevStatus == nil {
-		unknown := cmdlib.StatusUnknown
-		maybePrevStatus = &unknown
-	}
-	return begin, *maybeEnd, *maybePrevStatus
-}
-
 // UsersForModels returns users subscribed to a particular model
 func (d *Database) UsersForModels(modelIDs []string) (users map[string][]User, endpoints map[string][]string) {
 	users = map[string][]User{}
@@ -144,28 +114,39 @@ func (d *Database) ModelsForChat(endpoint string, chatID int64) (models []string
 func (d *Database) ConfirmedStatusesForChat(endpoint string, chatID int64) (statuses []Model) {
 	var iter Model
 	d.MustQuery(`
-		select models.model_id, models.status
+		select models.model_id, models.confirmed_status
 		from models
-		join signals on signals.model_id=models.model_id
+		join signals on signals.model_id = models.model_id
 		where signals.chat_id = $1 and signals.endpoint = $2
 		order by models.model_id`,
 		QueryParams{chatID, endpoint},
-		ScanTo{&iter.ModelID, &iter.Status},
+		ScanTo{&iter.ModelID, &iter.ConfirmedStatus},
 		func() { statuses = append(statuses, iter) })
 	return
 }
 
-// UnconfirmedStatusesForChat returns models with their unconfirmed statuses from status_changes
+// UnconfirmedStatusesForChat returns models with their unconfirmed statuses from models table
 func (d *Database) UnconfirmedStatusesForChat(endpoint string, chatID int64) (statuses []Model) {
 	var iter Model
 	d.MustQuery(`
-		select signals.model_id, coalesce(sc.status, 0)
-		from signals
-		left join status_changes sc on sc.model_id = signals.model_id and sc.is_latest = true
-		where signals.chat_id = $1 and signals.endpoint = $2
-		order by signals.model_id`,
+		select
+			s.model_id,
+			coalesce(m.unconfirmed_status, 0),
+			coalesce(m.unconfirmed_timestamp, 0),
+			coalesce(m.prev_unconfirmed_status, 0),
+			coalesce(m.prev_unconfirmed_timestamp, 0)
+		from signals s
+		left join models m on m.model_id = s.model_id
+		where s.chat_id = $1 and s.endpoint = $2
+		order by s.model_id`,
 		QueryParams{chatID, endpoint},
-		ScanTo{&iter.ModelID, &iter.Status},
+		ScanTo{
+			&iter.ModelID,
+			&iter.UnconfirmedStatus,
+			&iter.UnconfirmedTimestamp,
+			&iter.PrevUnconfirmedStatus,
+			&iter.PrevUnconfirmedTimestamp,
+		},
 		func() { statuses = append(statuses, iter) })
 	return
 }
@@ -202,7 +183,25 @@ func (d *Database) AddUser(chatID int64, maxModels int) {
 // MaybeModel returns a model if exists
 func (d *Database) MaybeModel(modelID string) *Model {
 	var result Model
-	if d.MaybeRecord("select model_id, status from models where model_id = $1", QueryParams{modelID}, ScanTo{&result.ModelID, &result.Status}) {
+	if d.MaybeRecord(
+		`select
+			model_id,
+			confirmed_status,
+			unconfirmed_status,
+			unconfirmed_timestamp,
+			prev_unconfirmed_status,
+			prev_unconfirmed_timestamp
+		from models
+		where model_id = $1`,
+		QueryParams{modelID},
+		ScanTo{
+			&result.ModelID,
+			&result.ConfirmedStatus,
+			&result.UnconfirmedStatus,
+			&result.UnconfirmedTimestamp,
+			&result.PrevUnconfirmedStatus,
+			&result.PrevUnconfirmedTimestamp,
+		}) {
 		return &result
 	}
 	return nil
@@ -268,7 +267,11 @@ func (d *Database) QueryLastStatusChangesForModels(modelIDs []string) map[string
 	statusChanges := map[string]StatusChange{}
 	var statusChange StatusChange
 	d.MustQuery(
-		`select model_id, status, timestamp from status_changes where is_latest = true and model_id = any($1)`,
+		`
+			select model_id, unconfirmed_status, unconfirmed_timestamp
+			from models
+			where model_id = any($1) and unconfirmed_timestamp > 0
+		`,
 		QueryParams{modelIDs},
 		ScanTo{&statusChange.ModelID, &statusChange.Status, &statusChange.Timestamp},
 		func() { statusChanges[statusChange.ModelID] = statusChange })
@@ -278,16 +281,17 @@ func (d *Database) QueryLastStatusChangesForModels(modelIDs []string) map[string
 // QueryLastSubscriptionStatuses returns latest statuses for subscriptions
 func (d *Database) QueryLastSubscriptionStatuses() map[string]cmdlib.StatusKind {
 	statuses := map[string]cmdlib.StatusKind{}
-	var statusChange StatusChange
+	var modelID string
+	var status cmdlib.StatusKind
 	d.MustQuery(
 		`
-			select sub.model_id, coalesce(sc.status, $1) as status
-			from (select distinct model_id from signals where confirmed = 1) sub
-			left join status_changes sc on sc.model_id = sub.model_id and sc.is_latest
+			select s.model_id, coalesce(m.unconfirmed_status, $1) as status
+			from (select distinct model_id from signals where confirmed = 1) s
+			left join models m on m.model_id = s.model_id
 		`,
 		QueryParams{cmdlib.StatusUnknown},
-		ScanTo{&statusChange.ModelID, &statusChange.Status},
-		func() { statuses[statusChange.ModelID] = statusChange.Status })
+		ScanTo{&modelID, &status},
+		func() { statuses[modelID] = status })
 	return statuses
 }
 
@@ -296,8 +300,8 @@ func (d *Database) QueryLastOnlineModels() map[string]bool {
 	onlineModels := map[string]bool{}
 	var modelID string
 	d.MustQuery(
-		`select model_id from status_changes where is_latest and status = 2`,
-		nil,
+		`select model_id from models where unconfirmed_status = $1`,
+		QueryParams{cmdlib.StatusOnline},
 		ScanTo{&modelID},
 		func() { onlineModels[modelID] = true })
 	return onlineModels
@@ -307,7 +311,11 @@ func (d *Database) QueryLastOnlineModels() map[string]bool {
 func (d *Database) QueryConfirmedModels() map[string]bool {
 	statuses := map[string]bool{}
 	var modelID string
-	d.MustQuery("select model_id from models where status = $1", QueryParams{cmdlib.StatusOnline}, ScanTo{&modelID}, func() { statuses[modelID] = true })
+	d.MustQuery(
+		"select model_id from models where confirmed_status = $1",
+		QueryParams{cmdlib.StatusOnline},
+		ScanTo{&modelID},
+		func() { statuses[modelID] = true })
 	return statuses
 }
 
@@ -355,42 +363,47 @@ func (d *Database) ResetBlock(endpoint string, chatID int64) {
 func (d *Database) InsertStatusChanges(changedStatuses []StatusChange) {
 	statusDone := d.Measure("db: insert unconfirmed status updates")
 	defer statusDone()
+
+	if len(changedStatuses) == 0 {
+		return
+	}
+
 	tx, err := d.Begin()
 	checkErr(err)
+	defer func() { _ = tx.Rollback(context.Background()) }()
 
-	changedModelIDs := []string{}
-	for _, i := range changedStatuses {
-		changedModelIDs = append(changedModelIDs, i.ModelID)
-	}
-	_, err = tx.Exec(
-		context.Background(),
-		`
-			update status_changes
-			set is_latest = false
-			where model_id = any($1) and is_latest = true
-		`,
-		changedModelIDs)
-	checkErr(err)
-
-	statusChangeRows := [][]interface{}{}
-	for _, statusChange := range changedStatuses {
-		statusChangeRows = append(statusChangeRows, []interface{}{
-			statusChange.ModelID,
-			statusChange.Status,
-			statusChange.Timestamp,
-			true,
-		})
+	// Use CopyFrom for fast bulk insert into status_changes
+	rows := make([][]interface{}, len(changedStatuses))
+	for i, sc := range changedStatuses {
+		rows[i] = []interface{}{sc.ModelID, sc.Status, sc.Timestamp}
 	}
 	_, err = tx.CopyFrom(
 		context.Background(),
-		[]string{"status_changes"},
-		[]string{"model_id", "status", "timestamp", "is_latest"},
-		pgx.CopyFromRows(statusChangeRows),
+		pgx.Identifier{"status_changes"},
+		[]string{"model_id", "status", "timestamp"},
+		pgx.CopyFromRows(rows),
 	)
 	checkErr(err)
 
+	// Use batch for models upserts within the same transaction
+	batch := &pgx.Batch{}
+	for _, sc := range changedStatuses {
+		batch.Queue(
+			`
+				insert into models (model_id, unconfirmed_status, unconfirmed_timestamp)
+				values ($1, $2, $3)
+				on conflict(model_id) do update set
+					prev_unconfirmed_status = models.unconfirmed_status,
+					prev_unconfirmed_timestamp = models.unconfirmed_timestamp,
+					unconfirmed_status = excluded.unconfirmed_status,
+					unconfirmed_timestamp = excluded.unconfirmed_timestamp
+			`,
+			sc.ModelID, sc.Status, sc.Timestamp)
+	}
+	br := tx.SendBatch(context.Background(), batch)
+	checkErr(br.Close())
+
 	checkErr(tx.Commit(context.Background()))
-	d.MustExec("select brin_summarize_new_values('ix_status_changes_timestamp')")
 }
 
 // InsertConfirmedStatusChanges inserts status changes using a bulk method
@@ -401,9 +414,9 @@ func (d *Database) InsertConfirmedStatusChanges(changedStatuses []StatusChange) 
 	for _, i := range changedStatuses {
 		batch.Queue(
 			`
-				insert into models (model_id, status)
+				insert into models (model_id, confirmed_status)
 				values ($1, $2)
-				on conflict(model_id) do update set status = excluded.status
+				on conflict(model_id) do update set confirmed_status = excluded.confirmed_status
 			`,
 			i.ModelID,
 			i.Status)

@@ -50,7 +50,6 @@ type Config struct {
 	Website                         string                    `mapstructure:"website"`                            // one of the following strings: "bongacams", "stripchat", "chaturbate", "livejasmin", "flirt4free", "streamate", "cam4"
 	WebsiteLink                     string                    `mapstructure:"website_link"`                       // affiliate link to website
 	PeriodSeconds                   int                       `mapstructure:"period_seconds"`                     // the period of querying models statuses
-	CleaningPeriodSeconds           int                       `mapstructure:"cleaning_period_seconds"`            // the cleaning period
 	MaintainDBPeriodSeconds         int                       `mapstructure:"maintain_db_period_seconds"`         // the maintain DB period
 	MaxModels                       int                       `mapstructure:"max_models"`                         // maximum models per user
 	TimeoutSeconds                  int                       `mapstructure:"timeout_seconds"`                    // HTTP timeout
@@ -78,8 +77,6 @@ type Config struct {
 	SpecificConfig                  map[string]string         `mapstructure:"specific_config"`                    // the config for specific website
 	TelegramTimeoutSeconds          int                       `mapstructure:"telegram_timeout_seconds"`           // the timeout for Telegram queries
 	MaxSubscriptionsForPics         int                       `mapstructure:"max_subscriptions_for_pics"`         // the maximum amount of subscriptions for pics in a group chat
-	KeepStatusesForDays             int                       `mapstructure:"keep_statuses_for_days"`             // keep statuses for this number of days
-	MaxCleanSeconds                 int                       `mapstructure:"max_clean_seconds"`                  // maximum number of seconds to clean
 	SubsConfirmationPeriodSeconds   int                       `mapstructure:"subs_confirmation_period_seconds"`   // subscriptions confirmation period
 	NotificationsReadyPeriodSeconds int                       `mapstructure:"notifications_ready_period_seconds"` // notifications ready check period
 	SpecialModels                   bool                      `mapstructure:"special_models"`                     // process special models
@@ -343,9 +340,6 @@ func checkConfig(cfg *Config) error {
 	}
 	if cfg.MaxSubscriptionsForPics == 0 {
 		return errors.New("configure max_subscriptions_for_pics")
-	}
-	if cfg.KeepStatusesForDays == 0 {
-		return errors.New("configure keep_statuses_for_days")
 	}
 	if cfg.SubsConfirmationPeriodSeconds == 0 {
 		return errors.New("configure subs_confirmation_period_seconds")

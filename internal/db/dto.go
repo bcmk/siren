@@ -46,8 +46,12 @@ type User struct {
 
 // Model represents a model
 type Model struct {
-	ModelID string
-	Status  cmdlib.StatusKind
+	ModelID                  string
+	ConfirmedStatus          cmdlib.StatusKind
+	UnconfirmedStatus        cmdlib.StatusKind
+	UnconfirmedTimestamp     int
+	PrevUnconfirmedStatus    cmdlib.StatusKind
+	PrevUnconfirmedTimestamp int
 }
 
 // StatusChange represents a status change

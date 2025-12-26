@@ -68,7 +68,6 @@ type worker struct {
 	cfg                      *botconfig.Config
 	httpQueriesDuration      time.Duration
 	updatesDuration          time.Duration
-	cleaningDuration         time.Duration
 	changesInPeriod          int
 	confirmedChangesInPeriod int
 	ourOnline                map[string]bool
@@ -769,7 +768,7 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 		return false
 	}
 	w.db.MustExec("insert into signals (chat_id, model_id, endpoint, confirmed) values ($1, $2, $3, $4)", chatID, modelID, endpoint, 1)
-	w.db.MustExec("insert into models (model_id, status) values ($1, $2) on conflict(model_id) do nothing", modelID, confirmedStatus)
+	w.db.MustExec("insert into models (model_id, confirmed_status) values ($1, $2) on conflict(model_id) do nothing", modelID, confirmedStatus)
 	subscriptionsNumber++
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ModelAdded, tplData{"model": modelID}, db.ReplyPacket)
 	nots := []db.Notification{{
@@ -777,7 +776,7 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 		ChatID:   chatID,
 		ModelID:  modelID,
 		Status:   confirmedStatus,
-		TimeDiff: w.unconfirmedModelDuration(modelID, now),
+		TimeDiff: w.modelDurationByID(modelID, now),
 		Social:   false,
 		Priority: 1,
 		Kind:     db.ReplyPacket}}
@@ -903,7 +902,7 @@ func (w *worker) listModels(endpoint string, chatID int64, now int) {
 	}
 	statuses := w.db.UnconfirmedStatusesForChat(endpoint, chatID)
 	sort.SliceStable(statuses, func(i, j int) bool {
-		return listModelsSortWeight(statuses[i].Status) < listModelsSortWeight(statuses[j].Status)
+		return listModelsSortWeight(statuses[i].UnconfirmedStatus) < listModelsSortWeight(statuses[j].UnconfirmedStatus)
 	})
 	chunks := chunkModels(statuses, 50)
 	for _, chunk := range chunks {
@@ -911,9 +910,9 @@ func (w *worker) listModels(endpoint string, chatID int64, now int) {
 		for _, s := range chunk {
 			data := data{
 				Model:    s.ModelID,
-				TimeDiff: w.unconfirmedModelTimeDiff(s.ModelID, now),
+				TimeDiff: w.modelTimeDiff(s, now),
 			}
-			switch s.Status {
+			switch s.UnconfirmedStatus {
 			case cmdlib.StatusOnline:
 				online = append(online, data)
 			default:
@@ -925,24 +924,38 @@ func (w *worker) listModels(endpoint string, chatID int64, now int) {
 	}
 }
 
-func (w *worker) unconfirmedModelDuration(modelID string, now int) *int {
-	begin, end, prevStatus := w.db.LastSeenUnconfirmedInfo(modelID)
-	if end != 0 {
-		timeDiff := now - end
-		return &timeDiff
-	}
-	if begin != 0 && prevStatus != cmdlib.StatusUnknown {
-		timeDiff := now - begin
-		return &timeDiff
+// modelDuration calculates time since last status change for display
+// Returns duration since going offline (if offline) or since going online (if online)
+func (w *worker) modelDuration(m db.Model, now int) *int {
+	if m.UnconfirmedStatus == cmdlib.StatusOnline {
+		// Model is online - show duration since going online
+		if m.UnconfirmedTimestamp != 0 && m.PrevUnconfirmedStatus != cmdlib.StatusUnknown {
+			dur := now - m.UnconfirmedTimestamp
+			return &dur
+		}
+	} else {
+		// Model is offline - show duration since going offline
+		if m.UnconfirmedTimestamp != 0 {
+			dur := now - m.UnconfirmedTimestamp
+			return &dur
+		}
 	}
 	return nil
 }
 
-func (w *worker) unconfirmedModelTimeDiff(modelID string, now int) *timeDiff {
-	dur := w.unconfirmedModelDuration(modelID, now)
+func (w *worker) modelDurationByID(modelID string, now int) *int {
+	m := w.db.MaybeModel(modelID)
+	if m == nil {
+		return nil
+	}
+	return w.modelDuration(*m, now)
+}
+
+func (w *worker) modelTimeDiff(m db.Model, now int) *timeDiff {
+	dur := w.modelDuration(m, now)
 	if dur != nil {
-		timeDiff := calcTimeDiff(*dur)
-		return &timeDiff
+		td := calcTimeDiff(*dur)
+		return &td
 	}
 	return nil
 }
@@ -984,7 +997,7 @@ func (w *worker) listOnlineModels(endpoint string, chatID int64, now int) {
 	statuses := w.db.UnconfirmedStatusesForChat(endpoint, chatID)
 	var online []db.Model
 	for _, s := range statuses {
-		if s.Status == cmdlib.StatusOnline {
+		if s.UnconfirmedStatus == cmdlib.StatusOnline {
 			online = append(online, s)
 		}
 	}
@@ -1006,7 +1019,7 @@ func (w *worker) listOnlineModels(endpoint string, chatID int64, now int) {
 			ModelID:  s.ModelID,
 			Status:   cmdlib.StatusOnline,
 			ImageURL: w.images[s.ModelID],
-			TimeDiff: w.unconfirmedModelDuration(s.ModelID, now),
+			TimeDiff: w.modelDuration(s, now),
 			Kind:     db.ReplyPacket,
 		}
 		nots = append(nots, not)
@@ -1731,33 +1744,6 @@ func (w *worker) logSingleQueryResult(success bool) {
 	w.unsuccessfulRequestsPos = (w.unsuccessfulRequestsPos + 1) % w.cfg.ErrorDenominator
 }
 
-func (w *worker) cleanStatusChanges(now int64) time.Duration {
-	start := time.Now()
-	threshold := int(now) - w.cfg.KeepStatusesForDays*24*60*60
-	if w.cfg.MaxCleanSeconds != 0 {
-		limit := w.db.MustInt("select coalesce(min(timestamp), 0) from status_changes") + w.cfg.MaxCleanSeconds
-		if limit < threshold {
-			threshold = limit
-		}
-	}
-	var modelID string
-	var isLatest bool
-	deletedLatestChanges := map[string]bool{}
-	w.db.MustQuery(
-		"delete from status_changes where timestamp < $1 returning model_id, is_latest",
-		db.QueryParams{threshold},
-		db.ScanTo{&modelID, &isLatest},
-		func() {
-			if isLatest {
-				deletedLatestChanges[modelID] = true
-			}
-		})
-	for k := range deletedLatestChanges {
-		delete(w.siteOnline, k)
-	}
-	return time.Since(start)
-}
-
 func (w *worker) maintainDB() {
 	w.db.MustExec("select brin_summarize_new_values('ix_sent_message_log_timestamp')")
 	w.db.MustExec("select brin_summarize_new_values('ix_received_message_log_timestamp')")
@@ -1957,10 +1943,6 @@ func main() {
 	w.handleStatEndpoints(statRequests)
 
 	var requestTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
-	var cleaningTimerChannel <-chan time.Time
-	if w.cfg.CleaningPeriodSeconds != 0 {
-		cleaningTimerChannel = time.NewTicker(time.Duration(w.cfg.CleaningPeriodSeconds) * time.Second).C
-	}
 	var maintainDBTimerChannel <-chan time.Time
 	if w.cfg.MaintainDBPeriodSeconds != 0 {
 		maintainDBTimerChannel = time.NewTicker(time.Duration(w.cfg.MaintainDBPeriodSeconds) * time.Second).C
@@ -1996,8 +1978,6 @@ func main() {
 		case <-requestTimer.C:
 			runtime.GC()
 			w.periodic()
-		case <-cleaningTimerChannel:
-			w.cleaningDuration = w.cleanStatusChanges(time.Now().Unix())
 		case <-maintainDBTimerChannel:
 			w.maintainDB()
 		case <-subsConfirmTimer.C:

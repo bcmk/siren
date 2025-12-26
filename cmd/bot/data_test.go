@@ -17,8 +17,6 @@ var testConfig = botconfig.Config{
 		Offline:  5,
 		NotFound: 5,
 	},
-	KeepStatusesForDays: 1,
-	MaxCleanSeconds:     1000000,
 }
 
 var testTranslations = cmdlib.Translations{
@@ -51,7 +49,7 @@ func newTestWorker() *testWorker {
 	ctx := context.Background()
 	pgContainer, err := postgres.Run(
 		ctx,
-		"postgres:17",
+		"postgres:18",
 		postgres.WithDatabase("test"),
 		postgres.WithUsername("test"),
 		postgres.WithPassword("test"),
