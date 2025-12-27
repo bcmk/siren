@@ -306,6 +306,8 @@ week:
       {{- $i = add $i 1 -}}
     {{- end -}}
     </code>
+week_retrieving:
+  str: Retrieving data, please wait...
 weekday:
   str: |-
     {{- if eq . 0 -}}Su{{- end -}}

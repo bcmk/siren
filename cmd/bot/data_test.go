@@ -38,6 +38,7 @@ var testTranslations = cmdlib.Translations{
 	Languages:      &cmdlib.Translation{Str: "Languages", Parse: cmdlib.ParseRaw},
 	Version:        &cmdlib.Translation{Str: "Version %s", Parse: cmdlib.ParseRaw},
 	ProfileRemoved: &cmdlib.Translation{Str: "ProfileRemoved %s", Parse: cmdlib.ParseRaw},
+	WeekRetrieving: &cmdlib.Translation{Str: "WeekRetrieving", Parse: cmdlib.ParseRaw},
 }
 
 type testWorker struct {

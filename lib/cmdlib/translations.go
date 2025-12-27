@@ -86,6 +86,7 @@ type Translations struct {
 	SubscriptionUsageAd         *Translation `yaml:"subscription_usage_ad"`
 	NotEnoughSubscriptions      *Translation `yaml:"not_enough_subscriptions"`
 	Week                        *Translation `yaml:"week"`
+	WeekRetrieving              *Translation `yaml:"week_retrieving"`
 	ZeroSubscriptions           *Translation `yaml:"zero_subscriptions"`
 	FAQ                         *Translation `yaml:"faq"`
 	RawCommands                 *Translation `yaml:"raw_commands"`

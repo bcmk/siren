@@ -723,9 +723,10 @@ func (w *worker) showWeek(endpoint string, chatID int64, modelID string) {
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ZeroSubscriptions, nil, db.ReplyPacket)
 		return
 	}
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].WeekRetrieving, nil, db.ReplyPacket)
 	hoursMap, start := w.weekForModels(models)
 	for _, m := range models {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Week, tplData{
+		w.sendTr(w.lowPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Week, tplData{
 			"hours":   hoursMap[m],
 			"weekday": int(start.UTC().Weekday()),
 			"model":   m,
