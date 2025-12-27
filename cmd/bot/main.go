@@ -16,6 +16,7 @@ import (
 	"path"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -725,12 +726,16 @@ func (w *worker) showWeek(endpoint string, chatID int64, modelID string) {
 	}
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].WeekRetrieving, nil, db.ReplyPacket)
 	hoursMap, start := w.weekForModels(models)
+	var weeks []string
 	for _, m := range models {
-		w.sendTr(w.lowPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Week, tplData{
+		weeks = append(weeks, templateToString(w.tpl[endpoint], w.tr[endpoint].Week.Key, tplData{
 			"hours":   hoursMap[m],
 			"weekday": int(start.UTC().Weekday()),
 			"model":   m,
-		}, db.ReplyPacket)
+		}))
+	}
+	for chunk := range slices.Chunk(weeks, 10) {
+		w.sendText(w.lowPriorityMsg, endpoint, chatID, false, true, w.tr[endpoint].Week.Parse, strings.Join(chunk, "\n\n"), db.ReplyPacket)
 	}
 }
 

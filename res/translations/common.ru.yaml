@@ -287,7 +287,7 @@ week:
   parse: html
   disable_preview: true
   str: |-
-    Неделя {{ template "affiliate_link" .model }} (UTC)
+    Неделя {{ template "affiliate_link" .model }} (UTC):
     {{- print "\n\n" -}}
     <code>
     {{- printf "    00     06     12     18\n" -}}
