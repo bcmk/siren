@@ -192,26 +192,10 @@ var migrations = []func(d *Database){
 		d.MustExec(`alter table status_changes add constraint chk_status_changes_status check (status in (0, 1, 2));`)
 	},
 	func(d *Database) {
-		// Before running this migration, execute manually:
-		//
-		//     create index concurrently ix_status_changes_model_timestamp on status_changes (model_id, timestamp desc) include (status);
-		//     create index concurrently ix_status_changes_timestamp_btree on status_changes (timestamp);
-		//     vacuum status_changes;
-		//     analyze status_changes;
-
-		// Check that manual steps were run (indexes exist) or table is empty (tests)
-		hasData := d.MustInt(`select count(*) from status_changes`) > 0
-		if hasData &&
-			d.MustInt(`
-				select count(*) from pg_indexes
-				where tablename = 'status_changes'
-				and indexname in (
-					'ix_status_changes_model_timestamp',
-					'ix_status_changes_timestamp_btree'
-				)
-			`) < 2 {
-			panic("run manual steps before migration")
-		}
+		// Create temporary indexes for efficient migration
+		d.MustExec(`create index ix_status_changes_model_timestamp on status_changes (model_id, timestamp desc) include (status);`)
+		d.MustExec(`create index ix_status_changes_timestamp_btree on status_changes (timestamp);`)
+		d.MustExec(`vacuum analyze status_changes;`)
 
 		// Rename status to confirmed_status in models
 		d.MustExec(`alter table models rename column status to confirmed_status;`)
@@ -249,12 +233,11 @@ var migrations = []func(d *Database){
 			where sub.rn = 1 and m.model_id = sub.model_id;
 		`)
 
-		// Drop temporary indexes and fix BRIN by clustering (skip for tests — no manual indexes)
-		if hasData {
-			d.MustExec(`drop index ix_status_changes_model_timestamp;`)
-			d.MustExec(`cluster status_changes using ix_status_changes_timestamp_btree;`)
-			d.MustExec(`drop index ix_status_changes_timestamp_btree;`)
-		}
+		// Drop temporary index and fix BRIN by clustering
+		d.MustExec(`drop index ix_status_changes_model_timestamp;`)
+		d.MustExec(`cluster status_changes using ix_status_changes_timestamp_btree;`)
+		d.MustExec(`drop index ix_status_changes_timestamp_btree;`)
+		d.MustExec(`analyze status_changes;`)
 	},
 	func(d *Database) {
 		d.MustExec(`create index ix_signals_model_id on signals (model_id);`)
