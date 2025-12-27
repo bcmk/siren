@@ -903,6 +903,10 @@ func (w *worker) listModels(endpoint string, chatID int64, now int) {
 		TimeDiff *timeDiff
 	}
 	statuses := w.db.UnconfirmedStatusesForChat(endpoint, chatID)
+	if len(statuses) == 0 {
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ZeroSubscriptions, nil, db.ReplyPacket)
+		return
+	}
 	sort.SliceStable(statuses, func(i, j int) bool {
 		return listModelsSortWeight(statuses[i].UnconfirmedStatus) < listModelsSortWeight(statuses[j].UnconfirmedStatus)
 	})
