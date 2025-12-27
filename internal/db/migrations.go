@@ -248,6 +248,11 @@ var migrations = []func(d *Database){
 		d.MustExec(`drop index ix_status_changes_model_id_is_online;`)
 		d.MustExec(`alter table status_changes drop column is_latest;`)
 	},
+	func(d *Database) {
+		d.MustExec(`drop index ix_status_changes_model_id;`)
+		d.MustExec(`create index ix_status_changes_model_id_timestamp on status_changes (model_id, timestamp) include (status);`)
+		d.MustExec(`vacuum analyze status_changes;`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database
