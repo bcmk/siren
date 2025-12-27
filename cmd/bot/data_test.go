@@ -72,7 +72,7 @@ func newTestWorker() *testWorker {
 		},
 	}
 	w.terminate = func() {
-		checkErr(w.worker.db.Close())
+		checkErr(w.db.Close())
 		checkErr(pgContainer.Terminate(ctx))
 	}
 	return w

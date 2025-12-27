@@ -203,7 +203,7 @@ func requestAppAccessToken(helixClient *helix.Client) (*helix.AppAccessTokenResp
 		return nil, fmt.Errorf("negotiation error on requesting an access token, %w", err)
 	}
 	if accessResponse.ErrorMessage != "" {
-		return nil, fmt.Errorf("Twitch returns an error on requesting an access token, %s", accessResponse.ErrorMessage)
+		return nil, fmt.Errorf("Twitch returns an error on requesting an access token, %s", accessResponse.ErrorMessage) //nolint:staticcheck
 	}
 	return accessResponse, nil
 }

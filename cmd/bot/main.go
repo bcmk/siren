@@ -442,7 +442,7 @@ func (w *worker) sendMessageInternal(endpoint string, msg baseChattable) int {
 				}
 				return messageTooManyRequests
 			case messageBadRequest:
-				if err.ResponseParameters.MigrateToChatID != 0 {
+				if err.MigrateToChatID != 0 {
 					if w.cfg.Debug {
 						ldbg("cannot send a message, group migration")
 					}
@@ -705,31 +705,32 @@ func (w *worker) mustUser(chatID int64) (user db.User) {
 
 func (w *worker) showWeek(endpoint string, chatID int64, modelID string) {
 	if modelID != "" {
-		w.showWeekForModel(endpoint, chatID, modelID)
+		modelID = w.modelIDPreprocessing(modelID)
+		if !w.modelIDRegexp.MatchString(modelID) {
+			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"model": modelID}, db.ReplyPacket)
+			return
+		}
+		hours, start := w.week(modelID)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Week, tplData{
+			"hours":   hours,
+			"weekday": int(start.UTC().Weekday()),
+			"model":   modelID,
+		}, db.ReplyPacket)
 		return
 	}
 	models := w.db.ModelsForChat(endpoint, chatID)
-	for _, m := range models {
-		w.showWeekForModel(endpoint, chatID, m)
-	}
 	if len(models) == 0 {
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ZeroSubscriptions, nil, db.ReplyPacket)
-	}
-
-}
-
-func (w *worker) showWeekForModel(endpoint string, chatID int64, modelID string) {
-	modelID = w.modelIDPreprocessing(modelID)
-	if !w.modelIDRegexp.MatchString(modelID) {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"model": modelID}, db.ReplyPacket)
 		return
 	}
-	hours, start := w.week(modelID)
-	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Week, tplData{
-		"hours":   hours,
-		"weekday": int(start.UTC().Weekday()),
-		"model":   modelID,
-	}, db.ReplyPacket)
+	hoursMap, start := w.weekForModels(models)
+	for _, m := range models {
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Week, tplData{
+			"hours":   hoursMap[m],
+			"weekday": int(start.UTC().Weekday()),
+			"model":   m,
+		}, db.ReplyPacket)
+	}
 }
 
 func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int) bool {
@@ -1028,26 +1029,35 @@ func (w *worker) listOnlineModels(endpoint string, chatID int64, now int) {
 }
 
 func (w *worker) week(modelID string) ([]bool, time.Time) {
+	result, start := w.weekForModels([]string{modelID})
+	return result[modelID], start
+}
+
+func (w *worker) weekForModels(modelIDs []string) (map[string][]bool, time.Time) {
 	now := time.Now()
 	nowTimestamp := int(now.Unix())
 	today := now.Truncate(24 * time.Hour)
 	start := today.Add(-6 * 24 * time.Hour)
 	weekTimestamp := int(start.Unix())
-	changes := w.db.ChangesFromTo(modelID, weekTimestamp, nowTimestamp)
-	hours := make([]bool, (nowTimestamp-weekTimestamp+3599)/3600)
-	for i, c := range changes[:len(changes)-1] {
-		if c.Status == cmdlib.StatusOnline {
-			begin := (c.Timestamp - weekTimestamp) / 3600
-			if begin < 0 {
-				begin = 0
-			}
-			end := (changes[i+1].Timestamp - weekTimestamp + 3599) / 3600
-			for j := begin; j < end; j++ {
-				hours[j] = true
+	changesMap := w.db.ChangesFromToForModels(modelIDs, weekTimestamp, nowTimestamp)
+	result := make(map[string][]bool)
+	for modelID, changes := range changesMap {
+		hours := make([]bool, (nowTimestamp-weekTimestamp+3599)/3600)
+		for i, c := range changes[:len(changes)-1] {
+			if c.Status == cmdlib.StatusOnline {
+				begin := (c.Timestamp - weekTimestamp) / 3600
+				if begin < 0 {
+					begin = 0
+				}
+				end := (changes[i+1].Timestamp - weekTimestamp + 3599) / 3600
+				for j := begin; j < end; j++ {
+					hours[j] = true
+				}
 			}
 		}
+		result[modelID] = hours
 	}
-	return hours, start
+	return result, start
 }
 
 func (w *worker) feedback(endpoint string, chatID int64, text string, now int) {
@@ -1380,10 +1390,10 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 
 	switch command {
 	case "add":
-		arguments = strings.Replace(arguments, "—", "--", -1)
+		arguments = strings.ReplaceAll(arguments, "—", "--")
 		_ = w.addModel(endpoint, chatID, arguments, now)
 	case "remove":
-		arguments = strings.Replace(arguments, "—", "--", -1)
+		arguments = strings.ReplaceAll(arguments, "—", "--")
 		w.removeModel(endpoint, chatID, arguments)
 	case "list":
 		w.listModels(endpoint, chatID, now)

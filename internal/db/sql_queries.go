@@ -207,35 +207,52 @@ func (d *Database) MaybeModel(modelID string) *Model {
 	return nil
 }
 
-// ChangesFromTo returns all changes for a particular model in specified period
-func (d *Database) ChangesFromTo(modelID string, from int, to int) []StatusChange {
-	var changes []StatusChange
-	first := true
+// ChangesFromToForModel returns all changes for a particular model in specified period
+func (d *Database) ChangesFromToForModel(modelID string, from int, to int) []StatusChange {
+	result := d.ChangesFromToForModels([]string{modelID}, from, to)
+	if changes, ok := result[modelID]; ok {
+		return changes
+	}
+	return []StatusChange{{Timestamp: to}}
+}
+
+// ChangesFromToForModels returns all changes for multiple models in specified period
+func (d *Database) ChangesFromToForModels(modelIDs []string, from int, to int) map[string][]StatusChange {
+	result := make(map[string][]StatusChange)
+	beforeRangeAdded := make(map[string]bool)
 	var change StatusChange
-	var firstStatus *cmdlib.StatusKind
-	var firstTimestamp *int
+	var beforeRangeStatus *cmdlib.StatusKind
+	var beforeRangeTimestamp *int
 	d.MustQuery(`
-		select status, timestamp, prev_status, prev_timestamp
-		from(
+		select model_id, status, timestamp, before_range_status, before_range_timestamp
+		from (
 			select
 				*,
-				lag(status) over (order by timestamp) as prev_status,
-				lag(timestamp) over (order by timestamp) as prev_timestamp
+				lag(status) over w as before_range_status,
+				lag(timestamp) over w as before_range_timestamp
 			from status_changes
-			where model_id = $1)
+			where model_id = any($1)
+			window w as (partition by model_id order by timestamp)
+		) sub
 		where timestamp >= $2
-		order by timestamp`,
-		QueryParams{modelID, from},
-		ScanTo{&change.Status, &change.Timestamp, &firstStatus, &firstTimestamp},
+		order by model_id, timestamp`,
+		QueryParams{modelIDs, from},
+		ScanTo{&change.ModelID, &change.Status, &change.Timestamp, &beforeRangeStatus, &beforeRangeTimestamp},
 		func() {
-			if first && firstStatus != nil && firstTimestamp != nil {
-				changes = append(changes, StatusChange{Status: *firstStatus, Timestamp: *firstTimestamp})
-				first = false
+			if !beforeRangeAdded[change.ModelID] && beforeRangeStatus != nil && beforeRangeTimestamp != nil {
+				result[change.ModelID] = append(result[change.ModelID], StatusChange{
+					ModelID:   change.ModelID,
+					Status:    *beforeRangeStatus,
+					Timestamp: *beforeRangeTimestamp,
+				})
+				beforeRangeAdded[change.ModelID] = true
 			}
-			changes = append(changes, change)
+			result[change.ModelID] = append(result[change.ModelID], change)
 		})
-	changes = append(changes, StatusChange{Timestamp: to})
-	return changes
+	for _, modelID := range modelIDs {
+		result[modelID] = append(result[modelID], StatusChange{ModelID: modelID, Timestamp: to})
+	}
+	return result
 }
 
 // SetLimit updates a particular user with its max models limit
