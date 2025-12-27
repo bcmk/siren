@@ -260,6 +260,11 @@ var migrations = []func(d *Database){
 		d.MustExec(`create index ix_signals_model_id on signals (model_id);`)
 		d.MustExec(`create index ix_models_unconfirmed_online on models (model_id) where unconfirmed_status = 2;`)
 	},
+	func(d *Database) {
+		d.MustExec(`drop index ix_status_changes_model_id_is_latest;`)
+		d.MustExec(`drop index ix_status_changes_model_id_is_online;`)
+		d.MustExec(`alter table status_changes drop column is_latest;`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database
