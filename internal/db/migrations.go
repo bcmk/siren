@@ -256,6 +256,10 @@ var migrations = []func(d *Database){
 			d.MustExec(`drop index ix_status_changes_timestamp_btree;`)
 		}
 	},
+	func(d *Database) {
+		d.MustExec(`create index ix_signals_model_id on signals (model_id);`)
+		d.MustExec(`create index ix_models_unconfirmed_online on models (model_id) where unconfirmed_status = 2;`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database
