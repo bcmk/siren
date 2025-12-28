@@ -253,6 +253,13 @@ var migrations = []func(d *Database){
 		d.MustExec(`create index ix_status_changes_model_id_timestamp on status_changes (model_id, timestamp) include (status);`)
 		d.MustExec(`vacuum analyze status_changes;`)
 	},
+	func(d *Database) {
+		// Treat unknown confirmed status as offline
+		d.MustExec(`update models set confirmed_status = 1 where confirmed_status = 0;`)
+		d.MustExec(`alter table models alter column confirmed_status set default 1;`)
+		d.MustExec(`alter table models drop constraint chk_models_confirmed_status;`)
+		d.MustExec(`alter table models add constraint chk_models_confirmed_status check (confirmed_status in (1, 2));`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database

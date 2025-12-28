@@ -34,12 +34,10 @@ type endpoint struct {
 	MaintenanceResponse string   `mapstructure:"maintenance_response"` // the maintenance response
 }
 
-// StatusConfirmationSeconds represents a configureation of confirmation durations for each of specific statuses
+// StatusConfirmationSeconds represents configuration of confirmation durations
 type StatusConfirmationSeconds struct {
-	Offline  int `mapstructure:"offline"`
-	Online   int `mapstructure:"online"`
-	NotFound int `mapstructure:"not_found"`
-	Denied   int `mapstructure:"denied"`
+	Offline int `mapstructure:"offline"`
+	Online  int `mapstructure:"online"`
 }
 
 // Config represents bot configuration

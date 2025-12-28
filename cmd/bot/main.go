@@ -71,7 +71,6 @@ type worker struct {
 	updatesDuration          time.Duration
 	changesInPeriod          int
 	confirmedChangesInPeriod int
-	ourOnline                map[string]bool
 	specialModels            map[string]bool
 	siteOnline               map[string]bool
 	tr                       map[string]*cmdlib.Translations
@@ -544,27 +543,11 @@ func (w *worker) createDatabase(done chan bool) {
 func (w *worker) initCache() {
 	start := time.Now()
 	w.siteOnline = w.db.QueryLastOnlineModels()
-	w.ourOnline = w.db.QueryConfirmedModels()
 	if w.cfg.SpecialModels {
 		w.specialModels = w.db.QuerySpecialModels()
 	}
 	elapsed := time.Since(start)
 	linf("cache initialized in %d ms", elapsed.Milliseconds())
-}
-
-func (w *worker) confirmationSeconds(status cmdlib.StatusKind) int {
-	switch status {
-	case cmdlib.StatusOnline:
-		return w.cfg.StatusConfirmationSeconds.Online
-	case cmdlib.StatusOffline:
-		return w.cfg.StatusConfirmationSeconds.Offline
-	case cmdlib.StatusDenied:
-		return w.cfg.StatusConfirmationSeconds.Denied
-	case cmdlib.StatusNotFound:
-		return w.cfg.StatusConfirmationSeconds.NotFound
-	default:
-		return 0
-	}
 }
 
 func (w *worker) changedStatuses(newStatuses []cmdlib.StatusUpdate, now int) []db.StatusChange {
@@ -591,26 +574,6 @@ func (w *worker) updateCachedStatus(changedStatuses []db.StatusChange) {
 			delete(w.siteOnline, statusChange.ModelID)
 		}
 	}
-}
-
-func (w *worker) confirmStatusChanges(now int) []db.StatusChange {
-	unmatchedStatusesStreamIDs := cmdlib.HashDiffAll(w.ourOnline, w.siteOnline)
-	siteStatuses := w.db.QueryLastStatusChangesForModels(unmatchedStatusesStreamIDs)
-	var result []db.StatusChange
-	for _, modelID := range unmatchedStatusesStreamIDs {
-		statusChange := siteStatuses[modelID]
-		confirmationSeconds := w.confirmationSeconds(statusChange.Status)
-		durationConfirmed := confirmationSeconds == 0 || statusChange.Timestamp == 0 || (now-statusChange.Timestamp >= confirmationSeconds)
-		if durationConfirmed {
-			if statusChange.Status == cmdlib.StatusOnline {
-				w.ourOnline[modelID] = true
-			} else {
-				delete(w.ourOnline, modelID)
-			}
-			result = append(result, db.StatusChange{ModelID: modelID, Status: statusChange.Status, Timestamp: now})
-		}
-	}
-	return result
 }
 
 func (w *worker) notifyOfAddResults(queue chan outgoingPacket, notifications []db.Notification) {
@@ -761,18 +724,15 @@ func (w *worker) addModel(endpoint string, chatID int64, modelID string, now int
 		w.subscriptionUsage(endpoint, chatID, true)
 		return false
 	}
-	var confirmedStatus cmdlib.StatusKind
-	siteStatuses := w.db.QueryLastStatusChangesForModels([]string{modelID})
-	if w.ourOnline[modelID] {
-		confirmedStatus = cmdlib.StatusOnline
-	} else if _, ok := siteStatuses[modelID]; ok {
-		confirmedStatus = cmdlib.StatusOffline
-	} else if w.db.MaybeModel(modelID) != nil {
-		confirmedStatus = cmdlib.StatusOffline
-	} else {
+	model := w.db.MaybeModel(modelID)
+	if model == nil {
 		w.db.MustExec("insert into signals (chat_id, model_id, endpoint, confirmed) values ($1, $2, $3, $4)", chatID, modelID, endpoint, 0)
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].CheckingModel, nil, db.ReplyPacket)
 		return false
+	}
+	confirmedStatus := model.ConfirmedStatus
+	if confirmedStatus != cmdlib.StatusOnline {
+		confirmedStatus = cmdlib.StatusOffline
 	}
 	w.db.MustExec("insert into signals (chat_id, model_id, endpoint, confirmed) values ($1, $2, $3, $4)", chatID, modelID, endpoint, 1)
 	w.db.MustExec("insert into models (model_id, confirmed_status) values ($1, $2) on conflict(model_id) do nothing", modelID, confirmedStatus)
@@ -1521,12 +1481,11 @@ func (w *worker) processStatusUpdates(updates []cmdlib.StatusUpdate, now int) (
 	w.db.InsertStatusChanges(changedStatuses)
 	w.updateCachedStatus(changedStatuses)
 
-	confirmedStatusChanges := w.confirmStatusChanges(now)
-	w.db.InsertConfirmedStatusChanges(confirmedStatusChanges)
-
-	if w.cfg.Debug {
-		ldbg("confirmed online models: %d", len(w.ourOnline))
-	}
+	confirmedStatusChanges := w.db.ConfirmStatusChanges(
+		now,
+		w.cfg.StatusConfirmationSeconds.Online,
+		w.cfg.StatusConfirmationSeconds.Offline,
+	)
 
 	confirmedModelIDs := []string{}
 	for _, c := range confirmedStatusChanges {

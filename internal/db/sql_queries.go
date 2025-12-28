@@ -207,15 +207,6 @@ func (d *Database) MaybeModel(modelID string) *Model {
 	return nil
 }
 
-// ChangesFromToForModel returns all changes for a particular model in specified period
-func (d *Database) ChangesFromToForModel(modelID string, from int, to int) []StatusChange {
-	result := d.ChangesFromToForModels([]string{modelID}, from, to)
-	if changes, ok := result[modelID]; ok {
-		return changes
-	}
-	return []StatusChange{{Timestamp: to}}
-}
-
 // ChangesFromToForModels returns all changes for multiple models in specified period
 func (d *Database) ChangesFromToForModels(modelIDs []string, from int, to int) map[string][]StatusChange {
 	result := make(map[string][]StatusChange)
@@ -324,18 +315,6 @@ func (d *Database) QueryLastOnlineModels() map[string]bool {
 	return onlineModels
 }
 
-// QueryConfirmedModels returns all known confirmed models
-func (d *Database) QueryConfirmedModels() map[string]bool {
-	statuses := map[string]bool{}
-	var modelID string
-	d.MustQuery(
-		"select model_id from models where confirmed_status = $1",
-		QueryParams{cmdlib.StatusOnline},
-		ScanTo{&modelID},
-		func() { statuses[modelID] = true })
-	return statuses
-}
-
 // QuerySpecialModels returns all known special models
 func (d *Database) QuerySpecialModels() map[string]bool {
 	specialModels := map[string]bool{}
@@ -423,20 +402,35 @@ func (d *Database) InsertStatusChanges(changedStatuses []StatusChange) {
 	checkErr(tx.Commit(context.Background()))
 }
 
-// InsertConfirmedStatusChanges inserts status changes using a bulk method
-func (d *Database) InsertConfirmedStatusChanges(changedStatuses []StatusChange) {
-	confirmationsDone := d.Measure("db: insert confirmed status changes")
-	defer confirmationsDone()
-	batch := &pgx.Batch{}
-	for _, i := range changedStatuses {
-		batch.Queue(
-			`
-				insert into models (model_id, confirmed_status)
-				values ($1, $2)
-				on conflict(model_id) do update set confirmed_status = excluded.confirmed_status
-			`,
-			i.ModelID,
-			i.Status)
-	}
-	d.SendBatch(batch)
+// ConfirmStatusChanges finds models needing confirmation and updates them in one query.
+// Returns the confirmed status changes.
+func (d *Database) ConfirmStatusChanges(now int, onlineSeconds int, offlineSeconds int) []StatusChange {
+	done := d.Measure("db: confirm status changes")
+	defer done()
+	var result []StatusChange
+	var change StatusChange
+	// Note: use explicit OR form for XOR-ing, not boolean comparison like
+	//     (confirmed_status = 2) != (unconfirmed_status = 2),
+	// because explicit OR is sargable.
+	d.MustQuery(
+		`
+			update models
+			set confirmed_status = case when unconfirmed_status = 2 then 2 else 1 end
+			where (
+				((confirmed_status = 2) and (unconfirmed_status != 2))
+				or ((confirmed_status != 2) and (unconfirmed_status = 2))
+			) and (
+				(unconfirmed_status = 2 and $1 - unconfirmed_timestamp >= $2)
+				or (unconfirmed_status = 1 and $1 - unconfirmed_timestamp >= $3)
+				or unconfirmed_status = 0
+			)
+			returning model_id, unconfirmed_status
+		`,
+		QueryParams{now, onlineSeconds, offlineSeconds},
+		ScanTo{&change.ModelID, &change.Status},
+		func() {
+			change.Timestamp = now
+			result = append(result, change)
+		})
+	return result
 }

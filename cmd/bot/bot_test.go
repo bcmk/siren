@@ -12,6 +12,15 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+func isConfirmedOnline(w *testWorker, modelID string) bool {
+	m := w.db.MaybeModel(modelID)
+	return m != nil && m.ConfirmedStatus == cmdlib.StatusOnline
+}
+
+func confirmedOnlineCount(w *testWorker) int {
+	return w.db.MustInt("select count(*) from models where confirmed_status = $1", cmdlib.StatusOnline)
+}
+
 func TestSql(t *testing.T) {
 	cmdlib.Verbosity = cmdlib.SilentVerbosity
 	w := newTestWorker()
@@ -128,7 +137,7 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if len(w.ourOnline) != 1 {
+	if confirmedOnlineCount(w) != 1 {
 		t.Error("wrong online models count")
 	}
 	checkInv(&w.worker, t)
@@ -140,7 +149,7 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if len(w.ourOnline) != 1 {
+	if confirmedOnlineCount(w) != 1 {
 		t.Error("wrong online models count")
 	}
 	checkInv(&w.worker, t)
@@ -148,7 +157,7 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if !w.ourOnline["a"] {
+	if !isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
 	checkInv(&w.worker, t)
@@ -156,7 +165,7 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if w.ourOnline["a"] {
+	if isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
 	checkInv(&w.worker, t)
@@ -210,22 +219,22 @@ func TestUpdateStatus(t *testing.T) {
 	checkInv(&w.worker, t)
 	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "b", Status: cmdlib.StatusOffline}}, 54)
 	checkInv(&w.worker, t)
-	if !w.ourOnline["b"] {
+	if !isConfirmedOnline(w, "b") {
 		t.Error("wrong active status")
 	}
 	checkInv(&w.worker, t)
 	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}, {ModelID: "b", Status: cmdlib.StatusOnline}}, 55)
 	checkInv(&w.worker, t)
-	if !w.ourOnline["b"] {
+	if !isConfirmedOnline(w, "b") {
 		t.Error("wrong active status")
 	}
 	checkInv(&w.worker, t)
-	if len(w.ourOnline) != 2 {
-		t.Errorf("wrong online models: %v", w.ourOnline)
+	if confirmedOnlineCount(w) != 2 {
+		t.Error("wrong online models count")
 	}
 	checkInv(&w.worker, t)
 	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "b", Status: cmdlib.StatusOffline}}, 56)
-	if count := len(w.ourOnline); count != 2 {
+	if count := confirmedOnlineCount(w); count != 2 {
 		t.Errorf("wrong online models count: %d", count)
 	}
 	w.cfg.OfflineNotifications = true
@@ -234,35 +243,35 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if !w.ourOnline["a"] {
+	if !isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
 	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{}, 68); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if w.ourOnline["a"] {
+	if isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
 	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 69); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if !w.ourOnline["a"] {
+	if !isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
 	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusUnknown}}, 70); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if w.ourOnline["a"] {
+	if isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
 	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 71); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if !w.ourOnline["a"] {
+	if !isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
 	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusUnknown}}, 72)
@@ -271,14 +280,14 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if w.ourOnline["a"] {
+	if isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
 	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{}, 79); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if w.ourOnline["a"] {
+	if isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
 	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusUnknown}}, 80); n != 0 {
@@ -289,7 +298,7 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if !w.ourOnline["a"] {
+	if !isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
 	_ = w.db.Close()
@@ -412,7 +421,7 @@ func TestModels(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
-	w.db.MustExec("insert into models (model_id, confirmed_status) values ($1, $2)", "a", cmdlib.StatusUnknown)
+	w.db.MustExec("insert into models (model_id, confirmed_status) values ($1, $2)", "a", cmdlib.StatusOffline)
 	if w.db.MaybeModel("a") == nil {
 		t.Error("unexpected result")
 	}
@@ -618,22 +627,6 @@ func checkInv(w *worker, t *testing.T) {
 		t.Errorf("unexpected inv check result, statuses: %v, site statuses: %v", a, queryLastStatusChanges(&w.db))
 		t.Log(string(debug.Stack()))
 	}
-	dbOnline := map[string]bool{}
-	var rec db.Model
-	w.db.MustQuery(
-		`select model_id, confirmed_status from models`,
-		nil,
-		db.ScanTo{&rec.ModelID, &rec.ConfirmedStatus},
-		func() {
-			if rec.ConfirmedStatus == cmdlib.StatusOnline {
-				dbOnline[rec.ModelID] = true
-			}
-		})
-	if !reflect.DeepEqual(w.ourOnline, dbOnline) {
-		t.Errorf("unexpected inv check result, left: %v, right: %v", w.ourOnline, dbOnline)
-		t.Log(string(debug.Stack()))
-	}
-
 	// Check unconfirmed status consistency — models table must match last two status_changes
 	type lastTwo struct {
 		unconfirmed, prev db.StatusChange

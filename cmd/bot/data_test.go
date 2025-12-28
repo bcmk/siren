@@ -14,8 +14,7 @@ var testConfig = botconfig.Config{
 	MaxModels: 3,
 	AdminID:   1,
 	StatusConfirmationSeconds: botconfig.StatusConfirmationSeconds{
-		Offline:  5,
-		NotFound: 5,
+		Offline: 5,
 	},
 }
 
