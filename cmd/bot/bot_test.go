@@ -675,3 +675,325 @@ func checkInv(w *worker, t *testing.T) {
 			}
 		})
 }
+
+func TestAddModel(t *testing.T) {
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase(make(chan bool, 1))
+	w.db.AddUser(1, 3)
+
+	// Add model that doesn't exist — should insert with confirmed=0 and return false
+	if w.addModel("test", 1, "newmodel", 100) {
+		t.Error("expected addModel to return false for new model")
+	}
+	if w.db.MustInt("select confirmed from signals where model_id = $1", "newmodel") != 0 {
+		t.Error("expected confirmed=0 for new model")
+	}
+	// Drain the "checking model" message
+	<-w.highPriorityMsg
+
+	// Add model that exists with online status — should return true
+	w.db.MustExec(
+		"insert into models (model_id, confirmed_status) values ($1, $2)",
+		"onlinemodel",
+		cmdlib.StatusOnline,
+	)
+	if !w.addModel("test", 1, "onlinemodel", 100) {
+		t.Error("expected addModel to return true for existing model")
+	}
+	if w.db.MustInt("select confirmed from signals where model_id = $1", "onlinemodel") != 1 {
+		t.Error("expected confirmed=1 for existing model")
+	}
+	// Drain messages
+	<-w.highPriorityMsg
+	nots := w.db.NewNotifications()
+	if len(nots) != 1 || nots[0].Status != cmdlib.StatusOnline {
+		t.Errorf("expected online notification, got %+v", nots)
+	}
+
+	// Add model that exists with offline status — should return true
+	w.db.MustExec(
+		"insert into models (model_id, confirmed_status) values ($1, $2)",
+		"offlinemodel",
+		cmdlib.StatusOffline,
+	)
+	if !w.addModel("test", 1, "offlinemodel", 100) {
+		t.Error("expected addModel to return true for existing offline model")
+	}
+	nots = w.db.NewNotifications()
+	if len(nots) != 1 || nots[0].Status != cmdlib.StatusOffline {
+		t.Errorf("expected offline notification, got %+v", nots)
+	}
+}
+
+func TestConfirmSub(t *testing.T) {
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase(make(chan bool, 1))
+
+	// Insert unconfirmed subscription
+	w.db.MustExec(
+		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
+		"test", 1, "model_a", 0,
+	)
+
+	// Confirm the subscription
+	w.db.ConfirmSub(db.Subscription{Endpoint: "test", ChatID: 1, ModelID: "model_a"})
+
+	// Check signal is confirmed
+	if w.db.MustInt("select confirmed from signals where model_id = $1", "model_a") != 1 {
+		t.Error("expected confirmed=1 after ConfirmSub")
+	}
+
+	// Check model was created
+	if w.db.MaybeModel("model_a") == nil {
+		t.Error("expected model to exist after ConfirmSub")
+	}
+}
+
+func TestDenySub(t *testing.T) {
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase(make(chan bool, 1))
+
+	// Insert unconfirmed subscription
+	w.db.MustExec(
+		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
+		"test", 1, "model_b", 0,
+	)
+
+	// Deny the subscription
+	w.db.DenySub(db.Subscription{Endpoint: "test", ChatID: 1, ModelID: "model_b"})
+
+	// Check signal is deleted
+	if w.db.MustInt("select count(*) from signals where model_id = $1", "model_b") != 0 {
+		t.Error("expected signal to be deleted after DenySub")
+	}
+}
+
+func TestProcessSubsConfirmations(t *testing.T) {
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase(make(chan bool, 1))
+
+	// Insert subscriptions waiting for confirmation (confirmed=2)
+	w.db.MustExec(
+		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
+		"test", 1, "online_model", 2,
+	)
+	w.db.MustExec(
+		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
+		"test", 2, "offline_model", 2,
+	)
+	w.db.MustExec(
+		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
+		"test", 3, "notfound_model", 2,
+	)
+	w.db.MustExec(
+		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
+		"test", 4, "denied_model", 2,
+	)
+	w.db.MustExec(
+		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
+		"test", 5, "notfound_denied_model", 2,
+	)
+	w.db.MustExec(
+		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
+		"test", 6, "online_offline_model", 2,
+	)
+	w.db.MustExec(
+		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
+		"test", 7, "unknown_model", 2,
+	)
+
+	// Process confirmations with checker results
+	w.processSubsConfirmations(cmdlib.StatusResults{
+		Data: &cmdlib.StatusResultsData{
+			Statuses: map[string]cmdlib.StatusKind{
+				"online_model":          cmdlib.StatusOnline,
+				"offline_model":         cmdlib.StatusOffline,
+				"notfound_model":        cmdlib.StatusNotFound,
+				"denied_model":          cmdlib.StatusDenied,
+				"notfound_denied_model": cmdlib.StatusNotFound | cmdlib.StatusDenied,
+				"online_offline_model":  cmdlib.StatusOnline | cmdlib.StatusOffline,
+				"unknown_model":         cmdlib.StatusUnknown,
+			},
+		},
+	})
+
+	// Online model should be confirmed
+	if w.db.MustInt("select confirmed from signals where model_id = $1", "online_model") != 1 {
+		t.Error("expected online_model to be confirmed")
+	}
+
+	// Offline model should be confirmed
+	if w.db.MustInt("select confirmed from signals where model_id = $1", "offline_model") != 1 {
+		t.Error("expected offline_model to be confirmed")
+	}
+
+	// NotFound model should be denied (deleted)
+	if w.db.MustInt("select count(*) from signals where model_id = $1", "notfound_model") != 0 {
+		t.Error("expected notfound_model to be deleted")
+	}
+
+	// Denied model should be confirmed (StatusDenied is a valid status)
+	if w.db.MustInt("select confirmed from signals where model_id = $1", "denied_model") != 1 {
+		t.Error("expected denied_model to be confirmed")
+	}
+
+	// NotFound|Denied model should be confirmed (StatusDenied bit is set)
+	if w.db.MustInt("select confirmed from signals where model_id = $1", "notfound_denied_model") != 1 {
+		t.Error("expected notfound_denied_model to be confirmed")
+	}
+
+	// Online|Offline model should be confirmed (found but status uncertain)
+	if w.db.MustInt("select confirmed from signals where model_id = $1", "online_offline_model") != 1 {
+		t.Error("expected online_offline_model to be confirmed")
+	}
+
+	// Unknown model should be denied (deleted)
+	if w.db.MustInt("select count(*) from signals where model_id = $1", "unknown_model") != 0 {
+		t.Error("expected unknown_model to be deleted")
+	}
+}
+
+func TestConfirmStatusChanges(t *testing.T) {
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase(make(chan bool, 1))
+
+	// Test config: onlineSeconds=0, offlineSeconds=5
+
+	// Case 1: confirmed=offline, unconfirmed=online → confirm immediately (onlineSeconds=0)
+	w.db.MustExec(
+		"insert into models (model_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
+		"offline_to_online", cmdlib.StatusOffline, cmdlib.StatusOnline, 100,
+	)
+
+	// Case 2: confirmed=online, unconfirmed=offline, timing met → confirm offline
+	w.db.MustExec(
+		"insert into models (model_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
+		"online_to_offline_met", cmdlib.StatusOnline, cmdlib.StatusOffline, 100,
+	)
+
+	// Case 3: confirmed=online, unconfirmed=offline, timing NOT met → no change
+	w.db.MustExec(
+		"insert into models (model_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
+		"online_to_offline_not_met", cmdlib.StatusOnline, cmdlib.StatusOffline, 103,
+	)
+
+	// Case 4: confirmed=online, unconfirmed=unknown → confirm offline immediately
+	w.db.MustExec(
+		"insert into models (model_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
+		"online_to_unknown", cmdlib.StatusOnline, cmdlib.StatusUnknown, 100,
+	)
+
+	// Case 5: confirmed=offline, unconfirmed=unknown → NO change (XOR fails)
+	w.db.MustExec(
+		"insert into models (model_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
+		"offline_to_unknown", cmdlib.StatusOffline, cmdlib.StatusUnknown, 100,
+	)
+
+	// Case 6: same status (online=online) → NO change (XOR fails)
+	w.db.MustExec(
+		"insert into models (model_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
+		"online_to_online", cmdlib.StatusOnline, cmdlib.StatusOnline, 100,
+	)
+
+	// Case 7: same status (offline=offline) → NO change (XOR fails)
+	w.db.MustExec(
+		"insert into models (model_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
+		"offline_to_offline", cmdlib.StatusOffline, cmdlib.StatusOffline, 100,
+	)
+
+	// Run confirmation at now=105 (5 seconds after timestamp 100)
+	changes := w.db.ConfirmStatusChanges(105, w.cfg.StatusConfirmationSeconds.Online, w.cfg.StatusConfirmationSeconds.Offline)
+
+	changesMap := map[string]cmdlib.StatusKind{}
+	for _, c := range changes {
+		changesMap[c.ModelID] = c.Status
+	}
+
+	// Case 1: should confirm online
+	if status, ok := changesMap["offline_to_online"]; !ok || status != cmdlib.StatusOnline {
+		t.Errorf("expected offline_to_online to be confirmed online, got %v, ok=%v", status, ok)
+	}
+
+	// Case 2: should confirm offline (timing met: 105-100=5 >= 5)
+	if status, ok := changesMap["online_to_offline_met"]; !ok || status != cmdlib.StatusOffline {
+		t.Errorf("expected online_to_offline_met to be confirmed offline, got %v, ok=%v", status, ok)
+	}
+
+	// Case 3: should NOT be confirmed (timing not met: 105-103=2 < 5)
+	if _, ok := changesMap["online_to_offline_not_met"]; ok {
+		t.Error("expected online_to_offline_not_met to NOT be confirmed")
+	}
+
+	// Case 4: should confirm (unknown → confirmed as offline)
+	if status, ok := changesMap["online_to_unknown"]; !ok || status != cmdlib.StatusUnknown {
+		t.Errorf("expected online_to_unknown to be confirmed with unknown status, got %v, ok=%v", status, ok)
+	}
+
+	// Case 5: should NOT be confirmed (XOR fails: both != 2)
+	if _, ok := changesMap["offline_to_unknown"]; ok {
+		t.Error("expected offline_to_unknown to NOT be confirmed")
+	}
+
+	// Case 6: should NOT be confirmed (XOR fails: both = 2)
+	if _, ok := changesMap["online_to_online"]; ok {
+		t.Error("expected online_to_online to NOT be confirmed")
+	}
+
+	// Case 7: should NOT be confirmed (XOR fails: both != 2)
+	if _, ok := changesMap["offline_to_offline"]; ok {
+		t.Error("expected offline_to_offline to NOT be confirmed")
+	}
+
+	// Verify DB state after confirmation
+	if w.db.MustInt("select confirmed_status from models where model_id = $1", "offline_to_online") != int(cmdlib.StatusOnline) {
+		t.Error("expected offline_to_online confirmed_status to be online in DB")
+	}
+	if w.db.MustInt("select confirmed_status from models where model_id = $1", "online_to_offline_met") != int(cmdlib.StatusOffline) {
+		t.Error("expected online_to_offline_met confirmed_status to be offline in DB")
+	}
+	if w.db.MustInt("select confirmed_status from models where model_id = $1", "online_to_offline_not_met") != int(cmdlib.StatusOnline) {
+		t.Error("expected online_to_offline_not_met confirmed_status to remain online in DB")
+	}
+	if w.db.MustInt("select confirmed_status from models where model_id = $1", "online_to_unknown") != int(cmdlib.StatusOffline) {
+		t.Error("expected online_to_unknown confirmed_status to be offline in DB")
+	}
+}
+
+func TestQueryLastSubscriptionStatuses(t *testing.T) {
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase(make(chan bool, 1))
+
+	// Insert confirmed subscriptions
+	w.db.MustExec(
+		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
+		"test", 1, "model_with_status", 1,
+	)
+	w.db.MustExec(
+		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
+		"test", 2, "model_without_status", 1,
+	)
+
+	// Insert model with unconfirmed_status for one model only
+	w.db.MustExec(
+		"insert into models (model_id, confirmed_status, unconfirmed_status) values ($1, $2, $3)",
+		"model_with_status", cmdlib.StatusOnline, cmdlib.StatusOnline,
+	)
+
+	statuses := w.db.QueryLastSubscriptionStatuses()
+
+	// Model with unconfirmed_status should return correct status
+	if statuses["model_with_status"] != cmdlib.StatusOnline {
+		t.Errorf("expected model_with_status to be online, got %v", statuses["model_with_status"])
+	}
+
+	// Model without models record should return StatusUnknown
+	if statuses["model_without_status"] != cmdlib.StatusUnknown {
+		t.Errorf("expected model_without_status to be unknown, got %v", statuses["model_without_status"])
+	}
+}
