@@ -9,10 +9,9 @@ import (
 
 // StatusRequest represents a request of model status
 type StatusRequest struct {
-	SpecialModels map[string]bool
-	Specific      map[string]bool
-	Callback      func(StatusResults)
-	CheckMode     CheckMode
+	Specific  map[string]bool
+	Callback  func(StatusResults)
+	CheckMode CheckMode
 }
 
 // StatusResultsData contains data from online checking algorithm
@@ -150,14 +149,10 @@ func (c *CheckerCommon) StartFullCheckerDaemon(checker Checker) {
 				}
 			}
 			nErrors := 0
-			manual := request.SpecialModels
-			if request.Specific != nil {
-				manual = request.Specific
-			}
-			for modelID := range manual {
+			for modelID := range request.Specific {
 				time.Sleep(time.Duration(c.IntervalMs) * time.Millisecond)
 				status := checker.CheckStatusSingle(modelID)
-				if status == StatusUnknown || (status&StatusNotFound != 0 && request.Specific == nil) {
+				if status == StatusUnknown {
 					Lerr("status for model %s reported: %v", modelID, status)
 					nErrors++
 				}

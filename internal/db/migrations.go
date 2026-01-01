@@ -260,6 +260,10 @@ var migrations = []func(d *Database){
 		d.MustExec(`alter table models drop constraint chk_models_confirmed_status;`)
 		d.MustExec(`alter table models add constraint chk_models_confirmed_status check (confirmed_status in (1, 2));`)
 	},
+	func(d *Database) {
+		d.MustExec(`drop index ix_models_model_id_special;`)
+		d.MustExec(`alter table models drop column special;`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database

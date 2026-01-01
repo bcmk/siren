@@ -71,7 +71,6 @@ type worker struct {
 	updatesDuration          time.Duration
 	changesInPeriod          int
 	confirmedChangesInPeriod int
-	specialModels            map[string]bool
 	siteOnline               map[string]bool
 	tr                       map[string]*cmdlib.Translations
 	tpl                      map[string]*template.Template
@@ -189,7 +188,6 @@ func newWorker(cfg *botconfig.Config) *worker {
 		sendingNotifications:   make(chan []db.Notification, 1000),
 		sentNotifications:      make(chan []db.Notification),
 		ourIDs:                 getOurIDs(cfg),
-		specialModels:          map[string]bool{},
 	}
 	for endpoint, a := range tr {
 		for _, b := range a.ToMap() {
@@ -543,9 +541,6 @@ func (w *worker) createDatabase(done chan bool) {
 func (w *worker) initCache() {
 	start := time.Now()
 	w.siteOnline = w.db.QueryLastOnlineModels()
-	if w.cfg.SpecialModels {
-		w.specialModels = w.db.QuerySpecialModels()
-	}
 	elapsed := time.Since(start)
 	linf("cache initialized in %d ms", elapsed.Milliseconds())
 }
@@ -1152,33 +1147,6 @@ func (w *worker) blacklist(endpoint string, arguments string) {
 	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
 }
 
-func (w *worker) addSpecialModel(endpoint string, arguments string) {
-	parts := strings.Split(arguments, " ")
-	if len(parts) != 2 || (parts[0] != "set" && parts[0] != "unset") {
-		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "usage: /special set/unset MODEL_ID", db.ReplyPacket)
-		return
-	}
-	modelID := w.modelIDPreprocessing(parts[1])
-	if !w.modelIDRegexp.MatchString(modelID) {
-		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "MODEL_ID is invalid", db.ReplyPacket)
-		return
-	}
-	set := parts[0] == "set"
-	w.db.MustExec(`
-		insert into models (model_id, special) values ($1, $2)
-		on conflict(model_id) do update set special=excluded.special`,
-		modelID,
-		set)
-	if w.cfg.SpecialModels {
-		if set {
-			w.specialModels[modelID] = true
-		} else {
-			delete(w.specialModels, modelID)
-		}
-	}
-	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
-}
-
 func (w *worker) serveEndpoints() {
 	go func() {
 		err := http.ListenAndServe(w.cfg.ListenAddress, nil)
@@ -1208,9 +1176,6 @@ func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arg
 		return true, false
 	case "blacklist":
 		w.blacklist(endpoint, arguments)
-		return true, false
-	case "special":
-		w.addSpecialModel(endpoint, arguments)
 		return true, false
 	case "set_max_models":
 		parts := strings.Fields(arguments)
@@ -1448,7 +1413,6 @@ func (w *worker) pushOnlineRequest() {
 	}
 	err := w.checker.Updater().PushUpdateRequest(cmdlib.StatusUpdateRequest{
 		Callback:             func(res cmdlib.StatusUpdateResults) { w.onlineModelsChan <- res },
-		SpecialModels:        w.specialModels,
 		SubscriptionStatuses: subscriptionStatuses,
 	})
 	if err != nil {

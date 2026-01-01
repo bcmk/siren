@@ -315,14 +315,6 @@ func (d *Database) QueryLastOnlineModels() map[string]bool {
 	return onlineModels
 }
 
-// QuerySpecialModels returns all known special models
-func (d *Database) QuerySpecialModels() map[string]bool {
-	specialModels := map[string]bool{}
-	var modelID string
-	d.MustQuery("select model_id from models where special = true", nil, ScanTo{&modelID}, func() { specialModels[modelID] = true })
-	return specialModels
-}
-
 // ReferralID returns referral identifier
 func (d *Database) ReferralID(chatID int64) *string {
 	var referralID string

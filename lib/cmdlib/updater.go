@@ -11,7 +11,6 @@ type Updater interface {
 
 // StatusUpdateRequest represents a request of models updates
 type StatusUpdateRequest struct {
-	SpecialModels        map[string]bool
 	SubscriptionStatuses map[string]StatusKind
 	Specific             map[string]bool
 	Callback             func(StatusUpdateResults)
@@ -57,9 +56,8 @@ func fullUpdateReqToStatus(r StatusUpdateRequest, callback func(StatusResults)) 
 		}
 	}
 	return StatusRequest{
-		SpecialModels: r.SpecialModels,
-		Specific:      specific,
-		Callback:      callback,
+		Specific: specific,
+		Callback: callback,
 	}
 }
 
@@ -72,9 +70,8 @@ func selectiveUpdateReqToStatus(r StatusUpdateRequest, callback func(StatusResul
 		specific[k] = true
 	}
 	return StatusRequest{
-		SpecialModels: r.SpecialModels,
-		Specific:      specific,
-		Callback:      callback,
+		Specific: specific,
+		Callback: callback,
 	}
 }
 

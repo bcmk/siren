@@ -77,7 +77,6 @@ type Config struct {
 	MaxSubscriptionsForPics         int                       `mapstructure:"max_subscriptions_for_pics"`         // the maximum amount of subscriptions for pics in a group chat
 	SubsConfirmationPeriodSeconds   int                       `mapstructure:"subs_confirmation_period_seconds"`   // subscriptions confirmation period
 	NotificationsReadyPeriodSeconds int                       `mapstructure:"notifications_ready_period_seconds"` // notifications ready check period
-	SpecialModels                   bool                      `mapstructure:"special_models"`                     // process special models
 	ShowImages                      bool                      `mapstructure:"show_images"`                        // images support
 
 	ErrorThreshold   int

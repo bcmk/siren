@@ -82,29 +82,6 @@ func TestFullUpdater(t *testing.T) {
 	if upd.Data != nil {
 		t.Error("unexpected updates")
 	}
-	checker.err = nil
-	checker.status = StatusOnline
-	checker.online = toSet("a", "b")
-	if err := up.PushUpdateRequest(StatusUpdateRequest{Callback: callback, SpecialModels: toSet("d"), SubscriptionStatuses: map[string]StatusKind{}}); err != nil {
-		t.Errorf("cannot query updates, %v", err)
-		return
-	}
-	checker.err = nil
-	uSet = updatesSet((<-resultsCh).Data.Updates)
-	expected = map[string]StatusKind{"a": StatusOnline, "c": StatusOffline, "d": StatusOnline}
-	if !reflect.DeepEqual(uSet, expected) {
-		t.Errorf("wrong updates, expected: %v, got: %v", expected, uSet)
-	}
-	checker.status = StatusOffline
-	if err := up.PushUpdateRequest(StatusUpdateRequest{Callback: callback, SpecialModels: toSet("d"), SubscriptionStatuses: map[string]StatusKind{}}); err != nil {
-		t.Errorf("cannot query updates, %v", err)
-		return
-	}
-	uSet = updatesSet((<-resultsCh).Data.Updates)
-	expected = map[string]StatusKind{"d": StatusOffline}
-	if !reflect.DeepEqual(uSet, expected) {
-		t.Errorf("wrong updates, expected: %v, got: %v", expected, uSet)
-	}
 }
 
 func TestSelectiveUpdater(t *testing.T) {
