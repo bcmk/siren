@@ -20,4 +20,5 @@
 - Use true em-dash (—) in comments when grammar requires
 - Wrap documentation and comments at 80 characters max,
   prefer breaking at full stops over commas over natural pauses over spaces
+- Keep lines no longer than 120 characters
 - Run `golangci-lint run ./...` before committing

@@ -23,8 +23,9 @@ type StatusResultsData struct {
 
 // StatusResults contains results from online checking algorithm
 type StatusResults struct {
-	Data   *StatusResultsData
-	Errors int
+	Request *StatusRequest
+	Data    *StatusResultsData
+	Errors  int
 }
 
 // CheckerConfig represents checker config
@@ -47,7 +48,10 @@ type UpdaterConfig struct {
 // Checker is the interface for a checker for specific site
 type Checker interface {
 	CheckStatusSingle(modelID string) StatusKind
-	CheckStatusesMany(specific QueryModelList, checkMode CheckMode) (statuses map[string]StatusKind, images map[string]string, err error)
+	CheckStatusesMany(
+		specific QueryModelList,
+		checkMode CheckMode,
+	) (statuses map[string]StatusKind, images map[string]string, err error)
 	Start()
 	Init(updater Updater, config CheckerConfig)
 	Updater() Updater
@@ -144,7 +148,7 @@ func (c *CheckerCommon) StartFullCheckerDaemon(checker Checker) {
 				statuses, images, err = checker.CheckStatusesMany(AllModels, request.CheckMode)
 				if err != nil {
 					Lerr("%v", err)
-					request.Callback(StatusResults{Errors: 1})
+					request.Callback(StatusResults{Request: &request, Errors: 1})
 					continue requests
 				}
 			}
@@ -163,7 +167,11 @@ func (c *CheckerCommon) StartFullCheckerDaemon(checker Checker) {
 			if c.Dbg {
 				Ldbg("got statuses: %d", len(statuses))
 			}
-			request.Callback(StatusResults{Data: &StatusResultsData{Statuses: statuses, Images: images, Elapsed: elapsed}, Errors: nErrors})
+			request.Callback(StatusResults{
+				Request: &request,
+				Data:    &StatusResultsData{Statuses: statuses, Images: images, Elapsed: elapsed},
+				Errors:  nErrors,
+			})
 		}
 	}()
 }
@@ -180,7 +188,7 @@ func (c *CheckerCommon) StartSelectiveCheckerDaemon(checker Checker) {
 			statuses, images, err = checker.CheckStatusesMany(NewQueryModelList(setToSlice(request.Specific)), request.CheckMode)
 			if err != nil {
 				Lerr("%v", err)
-				request.Callback(StatusResults{Errors: 1})
+				request.Callback(StatusResults{Request: &request, Errors: 1})
 				continue requests
 			}
 			time.Sleep(time.Duration(c.IntervalMs) * time.Millisecond)
@@ -188,7 +196,11 @@ func (c *CheckerCommon) StartSelectiveCheckerDaemon(checker Checker) {
 			if c.Dbg {
 				Ldbg("online streamers: %d", len(statuses))
 			}
-			request.Callback(StatusResults{Data: &StatusResultsData{Statuses: statuses, Images: images, Elapsed: elapsed}, Errors: 0})
+			request.Callback(StatusResults{
+				Request: &request,
+				Data:    &StatusResultsData{Statuses: statuses, Images: images, Elapsed: elapsed},
+				Errors:  0,
+			})
 		}
 	}()
 }
