@@ -2,6 +2,7 @@
 .DS_Store
 ?*.ignore
 ?*.ignore.?*
+**/.claude/settings.local.json
 cmd/bongacams-check/bongacams-check
 cmd/bongacams-online-models/bongacams-online-models
 cmd/bot/bot
