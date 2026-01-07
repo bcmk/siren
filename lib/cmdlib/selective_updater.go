@@ -1,48 +1,52 @@
 package cmdlib
 
+// SelectiveUpdater creates an updater for selected streams
+func SelectiveUpdater() Updater {
+	return &selectiveUpdater{}
+}
+
 type selectiveUpdater struct {
-	checker          Checker
 	siteOnlineModels map[string]bool
 	subscriptionSet  map[string]bool
 }
 
-func (u *selectiveUpdater) Init(updaterConfig UpdaterConfig) {
-	u.siteOnlineModels = updaterConfig.SiteOnlineModels
-	u.subscriptionSet = selectKnowns(updaterConfig.SubscriptionStatuses)
+func (u *selectiveUpdater) Init(config UpdaterConfig) {
+	u.siteOnlineModels = config.SiteOnlineModels
+	u.subscriptionSet = selectKnowns(config.SubscriptionStatuses)
 }
 
-func (u *selectiveUpdater) PushUpdateRequest(updateRequest StatusUpdateRequest) error {
-	subscriptionStatusSet := convertToStatusSet(updateRequest.SubscriptionStatuses)
-	return u.checker.PushStatusRequest(selectiveUpdateReqToStatus(updateRequest, func(res StatusResults) {
-		var updateResults StatusUpdateResults
-		if res.Data != nil {
-			online := onlyOnline(res.Data.Statuses)
-			unfilteredUpdates := getUpdates(u.siteOnlineModels, online)
-			var updates []StatusUpdate
-			for _, x := range unfilteredUpdates {
-				if subscriptionStatusSet[x.ModelID] {
-					updates = append(updates, x)
-				}
-			}
-			u.siteOnlineModels = online
-			_, unknowns := HashDiffNewRemoved(u.subscriptionSet, subscriptionStatusSet)
-			u.subscriptionSet = subscriptionStatusSet
-			for _, u := range unknowns {
-				updates = append(updates, StatusUpdate{ModelID: u, Status: StatusUnknown})
-			}
-			updateResults = StatusUpdateResults{Data: &StatusUpdateResultsData{
-				Updates: updates,
-				Images:  res.Data.Images,
-				Elapsed: res.Data.Elapsed,
-			}}
-			u.siteOnlineModels = online
+func (u *selectiveUpdater) ProcessStreams(result StatusResults) StatusUpdateResults {
+	queriedModels := result.Request.Models
+	if result.Error {
+		return StatusUpdateResults{Error: true}
+	}
+
+	online := onlyOnline(result.Statuses)
+	unfilteredUpdates := getUpdates(u.siteOnlineModels, online)
+
+	var updates []StatusUpdate
+	for _, x := range unfilteredUpdates {
+		if queriedModels[x.ModelID] {
+			updates = append(updates, x)
 		}
-		updateResults.Errors = res.Errors
-		updateRequest.Callback(updateResults)
-	}))
+	}
+	u.siteOnlineModels = online
+
+	// Add StatusUnknown for unsubscribed models
+	_, unknowns := HashDiffNewRemoved(u.subscriptionSet, queriedModels)
+	u.subscriptionSet = queriedModels
+	for _, m := range unknowns {
+		updates = append(updates, StatusUpdate{ModelID: m, Status: StatusUnknown})
+	}
+
+	return StatusUpdateResults{
+		Updates: updates,
+		Images:  result.Images,
+		Elapsed: result.Elapsed,
+	}
 }
 
-func (u *selectiveUpdater) NeedsSubscriptionStatuses() bool {
+func (u *selectiveUpdater) NeedsSubscribedModels() bool {
 	return true
 }
 

@@ -11,10 +11,11 @@ import (
 )
 
 var testConfig = botconfig.Config{
-	CheckGID:            true,
-	MaxModels:           3,
-	AdminID:             1,
-	HeavyUserRemainder:  1,
+	CheckGID:           true,
+	MaxModels:          3,
+	AdminID:            1,
+	HeavyUserRemainder: 1,
+	ErrorDenominator:   10,
 	StatusConfirmationSeconds: botconfig.StatusConfirmationSeconds{
 		Offline: 5,
 	},
@@ -85,6 +86,7 @@ func newTestWorker() *testWorker {
 			tpl:                  map[string]*template.Template{"test": tpl},
 			lowPriorityMsg:       make(chan outgoingPacket, 10000),
 			highPriorityMsg:      make(chan outgoingPacket, 10000),
+			unsuccessfulRequests: make([]bool, testConfig.ErrorDenominator),
 			modelIDPreprocessing: cmdlib.CanonicalModelID,
 			modelIDRegexp:        cmdlib.ModelIDRegexp,
 		},

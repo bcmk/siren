@@ -24,7 +24,7 @@ func main() {
 	flag.Parse()
 	client := cmdlib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
 	checker := &checkers.BongaCamsChecker{}
-	checker.Init(nil, cmdlib.CheckerConfig{UsersOnlineEndpoints: []string{*endpoint}, Clients: []*cmdlib.Client{client}, Dbg: *verbose})
+	checker.Init(cmdlib.CheckerConfig{UsersOnlineEndpoints: []string{*endpoint}, Clients: []*cmdlib.Client{client}, Dbg: *verbose})
 	models, images, err := checker.CheckStatusesMany(cmdlib.AllModels, cmdlib.CheckOnline)
 	if err != nil {
 		fmt.Printf("error occurred: %v\n", err)

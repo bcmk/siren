@@ -2,18 +2,17 @@ package cmdlib
 
 import "time"
 
-// Updater implements updater adapter
-type Updater interface {
-	Init(updaterConfig UpdaterConfig)
-	PushUpdateRequest(updateRequest StatusUpdateRequest) error
-	NeedsSubscriptionStatuses() bool
+// UpdaterConfig represents updater config
+type UpdaterConfig struct {
+	SiteOnlineModels     map[string]bool
+	SubscriptionStatuses map[string]StatusKind
 }
 
-// StatusUpdateRequest represents a request of models updates
-type StatusUpdateRequest struct {
-	SubscriptionStatuses map[string]StatusKind
-	Specific             map[string]bool
-	Callback             func(StatusUpdateResults)
+// Updater processes raw stream results into status updates
+type Updater interface {
+	Init(config UpdaterConfig)
+	ProcessStreams(result StatusResults) StatusUpdateResults
+	NeedsSubscribedModels() bool
 }
 
 // StatusUpdate represents an update of model status
@@ -22,17 +21,12 @@ type StatusUpdate struct {
 	Status  StatusKind
 }
 
-// StatusUpdateResultsData contains data from updates checking algorithm
-type StatusUpdateResultsData struct {
+// StatusUpdateResults contains results from updates checking algorithm
+type StatusUpdateResults struct {
 	Updates []StatusUpdate
 	Images  map[string]string
 	Elapsed time.Duration
-}
-
-// StatusUpdateResults contains results from updates checking algorithm
-type StatusUpdateResults struct {
-	Data   *StatusUpdateResultsData
-	Errors int
+	Error   bool
 }
 
 func getUpdates(prev, next map[string]bool) []StatusUpdate {
@@ -45,34 +39,6 @@ func getUpdates(prev, next map[string]bool) []StatusUpdate {
 		result = append(result, StatusUpdate{ModelID: i, Status: StatusOnline})
 	}
 	return result
-}
-
-func fullUpdateReqToStatus(r StatusUpdateRequest, callback func(StatusResults)) StatusRequest {
-	var specific map[string]bool
-	if r.Specific != nil {
-		specific = map[string]bool{}
-		for k := range r.Specific {
-			specific[k] = true
-		}
-	}
-	return StatusRequest{
-		Specific: specific,
-		Callback: callback,
-	}
-}
-
-func selectiveUpdateReqToStatus(r StatusUpdateRequest, callback func(StatusResults)) StatusRequest {
-	specific := map[string]bool{}
-	for k := range r.SubscriptionStatuses {
-		specific[k] = true
-	}
-	for k := range r.Specific {
-		specific[k] = true
-	}
-	return StatusRequest{
-		Specific: specific,
-		Callback: callback,
-	}
 }
 
 func onlyOnline(ss map[string]StatusKind) map[string]bool {

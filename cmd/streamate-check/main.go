@@ -32,6 +32,6 @@ func main() {
 	}
 	client := cmdlib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
 	checker := &checkers.StreamateChecker{}
-	checker.Init(nil, cmdlib.CheckerConfig{Clients: []*cmdlib.Client{client}, Dbg: *verbose})
+	checker.Init(cmdlib.CheckerConfig{Clients: []*cmdlib.Client{client}, Dbg: *verbose})
 	fmt.Println(checker.CheckStatusSingle(modelID))
 }

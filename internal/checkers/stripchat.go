@@ -240,6 +240,3 @@ func (c *StripchatChecker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.Check
 
 // Start starts a daemon
 func (c *StripchatChecker) Start() { c.StartFullCheckerDaemon(c) }
-
-// CreateUpdater creates an updater
-func (c *StripchatChecker) CreateUpdater() cmdlib.Updater { return c.CreateFullUpdater(c) }

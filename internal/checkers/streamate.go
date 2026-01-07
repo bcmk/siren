@@ -248,6 +248,3 @@ func (c *StreamateChecker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.Check
 
 // Start starts a daemon
 func (c *StreamateChecker) Start() { c.StartFullCheckerDaemon(c) }
-
-// CreateUpdater creates an updater
-func (c *StreamateChecker) CreateUpdater() cmdlib.Updater { return c.CreateFullUpdater(c) }

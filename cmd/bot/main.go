@@ -78,6 +78,8 @@ type worker struct {
 	tplAds                   map[string]*template.Template
 	modelIDPreprocessing     func(string) string
 	checker                  cmdlib.Checker
+	fullUpdater              cmdlib.Updater
+	selectiveUpdater         cmdlib.Updater
 	unsuccessfulRequests     []bool
 	unsuccessfulRequestsPos  int
 	downloadResults          chan bool
@@ -90,7 +92,7 @@ type worker struct {
 	highPriorityMsg          chan outgoingPacket
 	outgoingMsgResults       chan msgSendResult
 	unconfirmedSubsResults   chan cmdlib.StatusResults
-	onlineModelsChan         chan cmdlib.StatusUpdateResults
+	onlineModelsChan         chan cmdlib.StatusResults
 	sendingNotifications     chan []db.Notification
 	sentNotifications        chan []db.Notification
 	ourIDs                   []int64
@@ -175,6 +177,8 @@ func newWorker(cfg *botconfig.Config) *worker {
 		tpl:                    tpl,
 		trAds:                  trAds,
 		tplAds:                 tplAds,
+		fullUpdater:            cmdlib.FullUpdater(),
+		selectiveUpdater:       cmdlib.SelectiveUpdater(),
 		unsuccessfulRequests:   make([]bool, cfg.ErrorDenominator),
 		downloadErrors:         make([]bool, cfg.ErrorDenominator),
 		downloadResults:        make(chan bool),
@@ -184,7 +188,7 @@ func newWorker(cfg *botconfig.Config) *worker {
 		highPriorityMsg:        make(chan outgoingPacket, 10000),
 		outgoingMsgResults:     make(chan msgSendResult),
 		unconfirmedSubsResults: make(chan cmdlib.StatusResults),
-		onlineModelsChan:       make(chan cmdlib.StatusUpdateResults),
+		onlineModelsChan:       make(chan cmdlib.StatusResults),
 		sendingNotifications:   make(chan []db.Notification, 1000),
 		sentNotifications:      make(chan []db.Notification),
 		ourIDs:                 getOurIDs(cfg),
@@ -1407,28 +1411,51 @@ func (w *worker) periodic() {
 }
 
 func (w *worker) pushOnlineRequest() {
-	subscriptionStatuses := map[string]cmdlib.StatusKind{}
-	if w.checker.Updater().NeedsSubscriptionStatuses() {
-		subscriptionStatuses = w.db.QueryLastSubscriptionStatuses()
+	var models map[string]bool
+	if w.selectiveUpdater.NeedsSubscribedModels() {
+		models = w.db.SubscribedModels()
 	}
-	err := w.checker.Updater().PushUpdateRequest(cmdlib.StatusUpdateRequest{
-		Callback:             func(res cmdlib.StatusUpdateResults) { w.onlineModelsChan <- res },
-		SubscriptionStatuses: subscriptionStatuses,
+	err := w.checker.PushStatusRequest(cmdlib.StatusRequest{
+		Callback: func(res cmdlib.StatusResults) { w.onlineModelsChan <- res },
+		Models:   models,
 	})
 	if err != nil {
 		lerr("%v", err)
 	}
 }
 
-func (w *worker) pushSpecificRequest(resultsCh chan cmdlib.StatusResults, specific map[string]bool) error {
+func (w *worker) pushFixedStreamsRequest(resultsCh chan cmdlib.StatusResults, models map[string]bool) error {
 	err := w.checker.PushStatusRequest(cmdlib.StatusRequest{
 		Callback:  func(res cmdlib.StatusResults) { resultsCh <- res },
-		Specific:  specific,
-		CheckMode: cmdlib.CheckStatuses})
+		Models:    models,
+		CheckMode: cmdlib.CheckStatuses,
+	})
 	if err != nil {
 		lerr("%v", err)
 	}
 	return err
+}
+
+// TODO: rename processRawStatusUpdates → processStatusUpdates, processStatusUpdates → applyStatusUpdates
+func (w *worker) processRawStatusUpdates(rawResult cmdlib.StatusResults, now int) (
+	changesCount int,
+	confirmedChangesCount int,
+	notifications []db.Notification,
+	elapsed time.Duration,
+) {
+	var updateResults cmdlib.StatusUpdateResults
+	if rawResult.Request.Models == nil {
+		updateResults = w.fullUpdater.ProcessStreams(rawResult)
+	} else {
+		updateResults = w.selectiveUpdater.ProcessStreams(rawResult)
+	}
+	w.logQueryResult(updateResults.Error)
+	if updateResults.Error {
+		return
+	}
+	w.httpQueriesDuration = updateResults.Elapsed
+	w.images = updateResults.Images
+	return w.processStatusUpdates(updateResults.Updates, now)
 }
 
 func (w *worker) processStatusUpdates(updates []cmdlib.StatusUpdate, now int) (
@@ -1438,7 +1465,6 @@ func (w *worker) processStatusUpdates(updates []cmdlib.StatusUpdate, now int) (
 	elapsed time.Duration,
 ) {
 	start := time.Now()
-
 	changesCount = len(updates)
 
 	changedStatuses := w.changedStatuses(updates, now)
@@ -1673,13 +1699,8 @@ func getOurIDs(c *botconfig.Config) []int64 {
 	return ids
 }
 
-func (w *worker) logQueryErrors(errors int) {
-	for i := 0; i < errors; i++ {
-		w.logSingleQueryResult(false)
-	}
-	if errors == 0 {
-		w.logSingleQueryResult(true)
-	}
+func (w *worker) logQueryResult(err bool) {
+	w.logSingleQueryResult(!err)
 }
 
 func (w *worker) logSingleQueryResult(success bool) {
@@ -1739,17 +1760,14 @@ func (w *worker) queryUnconfirmedSubs() {
 	if len(unconfirmed) > 0 {
 		w.db.MustExec("update signals set confirmed = 2 where confirmed = 0")
 		ldbg("queueing unconfirmed subscriptions check for %d channels", len(unconfirmed))
-		if w.pushSpecificRequest(w.unconfirmedSubsResults, unconfirmed) != nil {
+		if w.pushFixedStreamsRequest(w.unconfirmedSubsResults, unconfirmed) != nil {
 			w.db.MustExec("update signals set confirmed = 0 where confirmed = 2")
 		}
 	}
 }
 
 func (w *worker) processSubsConfirmations(res cmdlib.StatusResults) {
-	statusesNumber := 0
-	if res.Data != nil {
-		statusesNumber = len(res.Data.Statuses)
-	}
+	statusesNumber := len(res.Statuses)
 	ldbg("processing subscription confirmations for %d channels", statusesNumber)
 	confirmationsInWork := map[string][]db.Subscription{}
 	var iter db.Subscription
@@ -1759,8 +1777,8 @@ func (w *worker) processSubsConfirmations(res cmdlib.StatusResults) {
 		db.ScanTo{&iter.Endpoint, &iter.ModelID, &iter.ChatID},
 		func() { confirmationsInWork[iter.ModelID] = append(confirmationsInWork[iter.ModelID], iter) })
 	var nots []db.Notification
-	if res.Data != nil {
-		for modelID, status := range res.Data.Statuses {
+	if !res.Error {
+		for modelID, status := range res.Statuses {
 			for _, sub := range confirmationsInWork[modelID] {
 				if status&(cmdlib.StatusOnline|cmdlib.StatusOffline|cmdlib.StatusDenied) != 0 {
 					w.db.ConfirmSub(sub)
@@ -1893,16 +1911,16 @@ func main() {
 	var subsConfirmTimer = time.NewTicker(time.Duration(w.cfg.SubsConfirmationPeriodSeconds) * time.Second)
 	var notificationSenderTimer = time.NewTicker(time.Duration(w.cfg.NotificationsReadyPeriodSeconds) * time.Second)
 
-	updater := w.checker.CreateUpdater()
-	subscriptionStatuses := map[string]cmdlib.StatusKind{}
-	if updater.NeedsSubscriptionStatuses() {
+	w.fullUpdater.Init(cmdlib.UpdaterConfig{SiteOnlineModels: w.siteOnline})
+	var subscriptionStatuses map[string]cmdlib.StatusKind
+	if w.selectiveUpdater.NeedsSubscribedModels() {
 		subscriptionStatuses = w.db.QueryLastSubscriptionStatuses()
 	}
-	updater.Init(cmdlib.UpdaterConfig{
+	w.selectiveUpdater.Init(cmdlib.UpdaterConfig{
 		SiteOnlineModels:     w.siteOnline,
 		SubscriptionStatuses: subscriptionStatuses,
 	})
-	w.checker.Init(updater, cmdlib.CheckerConfig{
+	w.checker.Init(cmdlib.CheckerConfig{
 		UsersOnlineEndpoints: w.cfg.UsersOnlineEndpoint,
 		Clients:              w.clients,
 		Headers:              w.cfg.Headers,
@@ -1927,21 +1945,16 @@ func main() {
 			w.queryUnconfirmedSubs()
 		case <-notificationSenderTimer.C:
 			w.sendReadyNotifications()
-		case onlineModels := <-w.onlineModelsChan:
-			if onlineModels.Data != nil {
-				w.httpQueriesDuration = onlineModels.Data.Elapsed
-				now := int(time.Now().Unix())
-				w.images = onlineModels.Data.Images
-				changesInPeriod, confirmedChangesInPeriod, notifications, elapsed := w.processStatusUpdates(onlineModels.Data.Updates, now)
-				w.updatesDuration = elapsed
-				w.changesInPeriod = changesInPeriod
-				w.confirmedChangesInPeriod = confirmedChangesInPeriod
-				w.db.StoreNotifications(notifications)
-				if w.cfg.Debug {
-					ldbg("status updates processed in %v", elapsed)
-				}
+		case rawResult := <-w.onlineModelsChan:
+			now := int(time.Now().Unix())
+			changesInPeriod, confirmedChangesInPeriod, notifications, elapsed := w.processRawStatusUpdates(rawResult, now)
+			w.updatesDuration = elapsed
+			w.changesInPeriod = changesInPeriod
+			w.confirmedChangesInPeriod = confirmedChangesInPeriod
+			w.db.StoreNotifications(notifications)
+			if w.cfg.Debug {
+				ldbg("status updates processed in %v", elapsed)
 			}
-			w.logQueryErrors(onlineModels.Errors)
 		case u := <-incoming:
 			if w.processTGUpdate(u) {
 				if !w.maintenance(signals, incoming) {

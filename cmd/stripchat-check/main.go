@@ -42,6 +42,6 @@ func main() {
 	}
 	client := cmdlib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
 	checker := &checkers.StripchatChecker{}
-	checker.Init(nil, cmdlib.CheckerConfig{Clients: []*cmdlib.Client{client}, Headers: headers, Dbg: *verbose})
+	checker.Init(cmdlib.CheckerConfig{Clients: []*cmdlib.Client{client}, Headers: headers, Dbg: *verbose})
 	fmt.Println(checker.CheckStatusSingle(modelID))
 }

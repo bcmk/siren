@@ -210,6 +210,3 @@ func requestAppAccessToken(helixClient *helix.Client) (*helix.AppAccessTokenResp
 
 // Start starts a daemon
 func (c *TwitchChecker) Start() { c.StartSelectiveCheckerDaemon(c) }
-
-// CreateUpdater creates an updater
-func (c *TwitchChecker) CreateUpdater() cmdlib.Updater { return c.CreateSelectiveUpdater(c) }

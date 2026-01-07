@@ -115,6 +115,3 @@ func (c *LiveJasminChecker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.Chec
 
 // Start starts a daemon
 func (c *LiveJasminChecker) Start() { c.StartFullCheckerDaemon(c) }
-
-// CreateUpdater creates an updater
-func (c *LiveJasminChecker) CreateUpdater() cmdlib.Updater { return c.CreateFullUpdater(c) }

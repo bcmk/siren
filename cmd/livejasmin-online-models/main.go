@@ -33,7 +33,7 @@ func main() {
 	flag.Parse()
 	client := cmdlib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
 	checker := &checkers.LiveJasminChecker{}
-	checker.Init(nil, cmdlib.CheckerConfig{UsersOnlineEndpoints: toSlice(endpoints), Clients: []*cmdlib.Client{client}, Dbg: *verbose})
+	checker.Init(cmdlib.CheckerConfig{UsersOnlineEndpoints: toSlice(endpoints), Clients: []*cmdlib.Client{client}, Dbg: *verbose})
 	models, images, err := checker.CheckStatusesMany(cmdlib.AllModels, cmdlib.CheckOnline)
 	if err != nil {
 		fmt.Printf("error occurred: %v\n", err)

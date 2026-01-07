@@ -808,16 +808,14 @@ func TestProcessSubsConfirmations(t *testing.T) {
 
 	// Process confirmations with checker results
 	w.processSubsConfirmations(cmdlib.StatusResults{
-		Data: &cmdlib.StatusResultsData{
-			Statuses: map[string]cmdlib.StatusKind{
-				"online_model":          cmdlib.StatusOnline,
-				"offline_model":         cmdlib.StatusOffline,
-				"notfound_model":        cmdlib.StatusNotFound,
-				"denied_model":          cmdlib.StatusDenied,
-				"notfound_denied_model": cmdlib.StatusNotFound | cmdlib.StatusDenied,
-				"online_offline_model":  cmdlib.StatusOnline | cmdlib.StatusOffline,
-				"unknown_model":         cmdlib.StatusUnknown,
-			},
+		Statuses: map[string]cmdlib.StatusKind{
+			"online_model":          cmdlib.StatusOnline,
+			"offline_model":         cmdlib.StatusOffline,
+			"notfound_model":        cmdlib.StatusNotFound,
+			"denied_model":          cmdlib.StatusDenied,
+			"notfound_denied_model": cmdlib.StatusNotFound | cmdlib.StatusDenied,
+			"online_offline_model":  cmdlib.StatusOnline | cmdlib.StatusOffline,
+			"unknown_model":         cmdlib.StatusUnknown,
 		},
 	})
 
@@ -995,5 +993,76 @@ func TestQueryLastSubscriptionStatuses(t *testing.T) {
 	// Model without models record should return StatusUnknown
 	if statuses["model_without_status"] != cmdlib.StatusUnknown {
 		t.Errorf("expected model_without_status to be unknown, got %v", statuses["model_without_status"])
+	}
+}
+
+func TestProcessStatusUpdates(t *testing.T) {
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase(make(chan bool, 1))
+	w.initCache()
+
+	// Initialize updaters
+	updaterConfig := cmdlib.UpdaterConfig{
+		SiteOnlineModels:     w.siteOnline,
+		SubscriptionStatuses: w.db.QueryLastSubscriptionStatuses(),
+	}
+	w.fullUpdater = cmdlib.FullUpdater()
+	w.fullUpdater.Init(updaterConfig)
+	w.selectiveUpdater = cmdlib.SelectiveUpdater()
+	w.selectiveUpdater.Init(updaterConfig)
+
+	// Insert a subscription
+	w.db.MustExec(
+		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
+		"test", 1, "model_a", 1,
+	)
+
+	// Test with Models == nil (uses fullUpdater)
+	request := cmdlib.StatusRequest{Models: nil}
+	rawResult := cmdlib.StatusResults{
+		Request:  &request,
+		Statuses: map[string]cmdlib.StatusKind{"model_a": cmdlib.StatusOnline},
+	}
+	changes, _, _, _ := w.processRawStatusUpdates(rawResult, 100)
+	if changes != 1 {
+		t.Errorf("expected 1 change with fullUpdater, got %d", changes)
+	}
+
+	// Test with Models != nil (uses selectiveUpdater)
+	request2 := cmdlib.StatusRequest{Models: map[string]bool{"model_a": true}}
+	rawResult2 := cmdlib.StatusResults{
+		Request:  &request2,
+		Statuses: map[string]cmdlib.StatusKind{"model_a": cmdlib.StatusOffline},
+	}
+	changes, _, _, _ = w.processRawStatusUpdates(rawResult2, 101)
+	if changes != 1 {
+		t.Errorf("expected 1 change with selectiveUpdater, got %d", changes)
+	}
+
+	// Test error case (should return early with zero values)
+	request3 := cmdlib.StatusRequest{Models: nil}
+	rawResult3 := cmdlib.StatusResults{
+		Request: &request3,
+		Error:   true,
+	}
+	changes, confirmedChanges, nots, elapsed := w.processRawStatusUpdates(rawResult3, 102)
+	if changes != 0 || confirmedChanges != 0 || len(nots) != 0 || elapsed != 0 {
+		t.Errorf(
+			"expected zero values on error, got changes=%d, confirmedChanges=%d, nots=%d, elapsed=%d",
+			changes, confirmedChanges, len(nots), elapsed)
+	}
+
+	// Test error case with selectiveUpdater (Models != nil)
+	request4 := cmdlib.StatusRequest{Models: map[string]bool{"model_a": true}}
+	rawResult4 := cmdlib.StatusResults{
+		Request: &request4,
+		Error:   true,
+	}
+	changes, confirmedChanges, nots, elapsed = w.processRawStatusUpdates(rawResult4, 103)
+	if changes != 0 || confirmedChanges != 0 || len(nots) != 0 || elapsed != 0 {
+		t.Errorf(
+			"expected zero values on error with selectiveUpdater, got changes=%d, confirmedChanges=%d, nots=%d, elapsed=%d",
+			changes, confirmedChanges, len(nots), elapsed)
 	}
 }

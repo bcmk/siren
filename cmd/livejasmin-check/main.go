@@ -42,7 +42,7 @@ func main() {
 	}
 	client := cmdlib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
 	checker := &checkers.LiveJasminChecker{}
-	checker.Init(nil, cmdlib.CheckerConfig{
+	checker.Init(cmdlib.CheckerConfig{
 		Clients:        []*cmdlib.Client{client},
 		Dbg:            *verbose,
 		SpecificConfig: map[string]string{"ps_id": *psID, "access_key": *accessKey}})

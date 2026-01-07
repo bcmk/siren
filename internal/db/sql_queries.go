@@ -286,6 +286,18 @@ func (d *Database) QueryLastStatusChangesForModels(modelIDs []string) map[string
 	return statusChanges
 }
 
+// SubscribedModels returns all confirmed subscribed models
+func (d *Database) SubscribedModels() map[string]bool {
+	models := map[string]bool{}
+	var modelID string
+	d.MustQuery(
+		`select distinct model_id from signals where confirmed = 1`,
+		nil,
+		ScanTo{&modelID},
+		func() { models[modelID] = true })
+	return models
+}
+
 // QueryLastSubscriptionStatuses returns latest statuses for subscriptions
 func (d *Database) QueryLastSubscriptionStatuses() map[string]cmdlib.StatusKind {
 	statuses := map[string]cmdlib.StatusKind{}

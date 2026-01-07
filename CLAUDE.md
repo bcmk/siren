@@ -21,4 +21,6 @@
 - Wrap documentation and comments at 80 characters max,
   prefer breaking at full stops over commas over natural pauses over spaces
 - Keep lines no longer than 120 characters
+- Run `go fmt ./...` after changes
 - Run `golangci-lint run ./...` before committing
+- GNU sed is installed as `sed`

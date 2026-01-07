@@ -54,6 +54,3 @@ func (c *RandomChecker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.CheckMod
 
 // Start starts a daemon
 func (c *RandomChecker) Start() { c.StartFullCheckerDaemon(c) }
-
-// CreateUpdater creates an updater
-func (c *RandomChecker) CreateUpdater() cmdlib.Updater { return c.CreateFullUpdater(c) }

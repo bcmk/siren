@@ -139,6 +139,3 @@ func (c *ChaturbateChecker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.Chec
 
 // Start starts a daemon
 func (c *ChaturbateChecker) Start() { c.StartFullCheckerDaemon(c) }
-
-// CreateUpdater Creates an updater
-func (c *ChaturbateChecker) CreateUpdater() cmdlib.Updater { return c.CreateFullUpdater(c) }

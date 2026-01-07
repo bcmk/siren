@@ -145,6 +145,3 @@ func (c *Flirt4FreeChecker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.Chec
 
 // Start starts a daemon
 func (c *Flirt4FreeChecker) Start() { c.StartFullCheckerDaemon(c) }
-
-// CreateUpdater creates an updater
-func (c *Flirt4FreeChecker) CreateUpdater() cmdlib.Updater { return c.CreateFullUpdater(c) }

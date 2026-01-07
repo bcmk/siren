@@ -7,25 +7,20 @@ import (
 	"time"
 )
 
-// StatusRequest represents a request of model status
+// StatusRequest represents a request for model statuses
 type StatusRequest struct {
-	Specific  map[string]bool
-	Callback  func(StatusResults)
+	Models    map[string]bool // nil for all online models, non-nil for specific models
 	CheckMode CheckMode
+	Callback  func(StatusResults)
 }
 
-// StatusResultsData contains data from online checking algorithm
-type StatusResultsData struct {
+// StatusResults contains results from querying models
+type StatusResults struct {
+	Request  *StatusRequest
 	Statuses map[string]StatusKind
 	Images   map[string]string
 	Elapsed  time.Duration
-}
-
-// StatusResults contains results from online checking algorithm
-type StatusResults struct {
-	Request *StatusRequest
-	Data    *StatusResultsData
-	Errors  int
+	Error    bool
 }
 
 // CheckerConfig represents checker config
@@ -39,12 +34,6 @@ type CheckerConfig struct {
 	IntervalMs           int
 }
 
-// UpdaterConfig represents updater config
-type UpdaterConfig struct {
-	SiteOnlineModels     map[string]bool
-	SubscriptionStatuses map[string]StatusKind
-}
-
 // Checker is the interface for a checker for specific site
 type Checker interface {
 	CheckStatusSingle(modelID string) StatusKind
@@ -53,17 +42,14 @@ type Checker interface {
 		checkMode CheckMode,
 	) (statuses map[string]StatusKind, images map[string]string, err error)
 	Start()
-	Init(updater Updater, config CheckerConfig)
-	Updater() Updater
-	PushStatusRequest(statusRequest StatusRequest) error
-	CreateUpdater() Updater
+	Init(config CheckerConfig)
+	PushStatusRequest(request StatusRequest) error
 }
 
 // CheckerCommon contains common fields for all the checkers
 type CheckerCommon struct {
 	CheckerConfig
 	ClientsLoop    clientsLoop
-	updater        Updater
 	statusRequests chan StatusRequest
 }
 
@@ -82,13 +68,10 @@ var AllModels = QueryModelList{All: true}
 // NewQueryModelList returns a query list for specific models
 func NewQueryModelList(list []string) QueryModelList { return QueryModelList{List: list} }
 
-// Updater returns default updater
-func (c *CheckerCommon) Updater() Updater { return c.updater }
-
 // PushStatusRequest adds a status request to the queue
-func (c *CheckerCommon) PushStatusRequest(statusRequest StatusRequest) error {
+func (c *CheckerCommon) PushStatusRequest(request StatusRequest) error {
 	select {
-	case c.statusRequests <- statusRequest:
+	case c.statusRequests <- request:
 		return nil
 	default:
 		return ErrFullQueue
@@ -100,7 +83,7 @@ type endpointChecker interface {
 }
 
 // Init initializes checker common fields
-func (c *CheckerCommon) Init(updater Updater, config CheckerConfig) {
+func (c *CheckerCommon) Init(config CheckerConfig) {
 	c.UsersOnlineEndpoints = config.UsersOnlineEndpoints
 	c.Headers = config.Headers
 	c.Dbg = config.Dbg
@@ -109,11 +92,14 @@ func (c *CheckerCommon) Init(updater Updater, config CheckerConfig) {
 	c.IntervalMs = config.IntervalMs
 	c.ClientsLoop = clientsLoop{clients: config.Clients}
 	c.statusRequests = make(chan StatusRequest, config.QueueSize)
-	c.updater = updater
 }
 
 // CheckEndpoints performs queries to all available endpoints
-func CheckEndpoints(c endpointChecker, endpoints []string, dbg bool) (map[string]StatusKind, map[string]string, error) {
+func CheckEndpoints(
+	c endpointChecker,
+	endpoints []string,
+	dbg bool,
+) (map[string]StatusKind, map[string]string, error) {
 	allStatuses := map[string]StatusKind{}
 	allImages := map[string]string{}
 	for _, endpoint := range endpoints {
@@ -141,36 +127,39 @@ func (c *CheckerCommon) StartFullCheckerDaemon(checker Checker) {
 	requests:
 		for request := range c.statusRequests {
 			start := time.Now()
-			statuses := map[string]StatusKind{}
-			images := map[string]string{}
-			var err error
-			if request.Specific == nil {
-				statuses, images, err = checker.CheckStatusesMany(AllModels, request.CheckMode)
-				if err != nil {
-					Lerr("%v", err)
-					request.Callback(StatusResults{Request: &request, Errors: 1})
-					continue requests
-				}
+			var queryList QueryModelList
+			if request.Models == nil {
+				queryList = AllModels
+			} else {
+				queryList = NewQueryModelList(setToSlice(request.Models))
 			}
-			nErrors := 0
-			for modelID := range request.Specific {
+			statuses, images, err := checker.CheckStatusesMany(queryList, request.CheckMode)
+			if err != nil {
+				Lerr("%v", err)
+				request.Callback(StatusResults{Request: &request, Error: true})
+				continue requests
+			}
+			if request.Models != nil {
+				filtered := make(map[string]StatusKind, len(request.Models))
+				for modelID := range request.Models {
+					if status, ok := statuses[modelID]; ok {
+						filtered[modelID] = status
+					} else {
+						filtered[modelID] = StatusUnknown
+					}
+				}
+				statuses = filtered
 				time.Sleep(time.Duration(c.IntervalMs) * time.Millisecond)
-				status := checker.CheckStatusSingle(modelID)
-				if status == StatusUnknown {
-					Lerr("status for model %s reported: %v", modelID, status)
-					nErrors++
-				}
-				statuses[modelID] = status
 			}
-			time.Sleep(time.Duration(c.IntervalMs) * time.Millisecond)
 			elapsed := time.Since(start)
 			if c.Dbg {
 				Ldbg("got statuses: %d", len(statuses))
 			}
 			request.Callback(StatusResults{
-				Request: &request,
-				Data:    &StatusResultsData{Statuses: statuses, Images: images, Elapsed: elapsed},
-				Errors:  nErrors,
+				Request:  &request,
+				Statuses: statuses,
+				Images:   images,
+				Elapsed:  elapsed,
 			})
 		}
 	}()
@@ -182,13 +171,13 @@ func (c *CheckerCommon) StartSelectiveCheckerDaemon(checker Checker) {
 	requests:
 		for request := range c.statusRequests {
 			start := time.Now()
-			var statuses map[string]StatusKind
-			var images map[string]string
-			var err error
-			statuses, images, err = checker.CheckStatusesMany(NewQueryModelList(setToSlice(request.Specific)), request.CheckMode)
+			statuses, images, err := checker.CheckStatusesMany(
+				NewQueryModelList(setToSlice(request.Models)),
+				request.CheckMode,
+			)
 			if err != nil {
 				Lerr("%v", err)
-				request.Callback(StatusResults{Request: &request, Errors: 1})
+				request.Callback(StatusResults{Request: &request, Error: true})
 				continue requests
 			}
 			time.Sleep(time.Duration(c.IntervalMs) * time.Millisecond)
@@ -197,22 +186,13 @@ func (c *CheckerCommon) StartSelectiveCheckerDaemon(checker Checker) {
 				Ldbg("online streamers: %d", len(statuses))
 			}
 			request.Callback(StatusResults{
-				Request: &request,
-				Data:    &StatusResultsData{Statuses: statuses, Images: images, Elapsed: elapsed},
-				Errors:  0,
+				Request:  &request,
+				Statuses: statuses,
+				Images:   images,
+				Elapsed:  elapsed,
 			})
 		}
 	}()
-}
-
-// CreateFullUpdater creates an updater quering for all streams
-func (c *CheckerCommon) CreateFullUpdater(checker Checker) Updater {
-	return &fullUpdater{checker: checker}
-}
-
-// CreateSelectiveUpdater creates an updater for selected streams
-func (c *CheckerCommon) CreateSelectiveUpdater(checker Checker) Updater {
-	return &selectiveUpdater{checker: checker}
 }
 
 // DoGetRequest performs a GET request respecting the configuration

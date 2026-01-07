@@ -79,6 +79,3 @@ func (c *BongaCamsChecker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.Check
 
 // Start starts a daemon
 func (c *BongaCamsChecker) Start() { c.StartFullCheckerDaemon(c) }
-
-// CreateUpdater Creates an updater
-func (c *BongaCamsChecker) CreateUpdater() cmdlib.Updater { return c.CreateFullUpdater(c) }
