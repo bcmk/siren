@@ -45,10 +45,6 @@ func (u *selectiveUpdater) init(siteOnlineModels map[string]bool, subscriptionSt
 	u.subscriptionSet = selectKnowns(subscriptionStatuses)
 }
 
-func (u *selectiveUpdater) needsSubscribedModels() bool {
-	return true
-}
-
 func (u *selectiveUpdater) processStreams(result cmdlib.StatusResults) statusUpdateResults {
 	queriedModels := result.Request.Models
 	if result.Error {

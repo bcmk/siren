@@ -1410,7 +1410,7 @@ func (w *worker) periodic() {
 
 func (w *worker) pushOnlineRequest() {
 	var models map[string]bool
-	if w.selectiveUpdater.needsSubscribedModels() {
+	if w.checker.NeedsSubscribedModels() {
 		models = w.db.SubscribedModels()
 	}
 	err := w.checker.PushStatusRequest(cmdlib.StatusRequest{
@@ -1911,7 +1911,7 @@ func main() {
 
 	w.fullUpdater.init(w.siteOnline)
 	var subscriptionStatuses map[string]cmdlib.StatusKind
-	if w.selectiveUpdater.needsSubscribedModels() {
+	if w.checker.NeedsSubscribedModels() {
 		subscriptionStatuses = w.db.QueryLastSubscriptionStatuses()
 	}
 	w.selectiveUpdater.init(w.siteOnline, subscriptionStatuses)

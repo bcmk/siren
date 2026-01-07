@@ -43,6 +43,9 @@ func (c *testFullChecker) CheckStatusesMany(
 // Start starts a daemon
 func (c *testFullChecker) Start() { c.StartFullCheckerDaemon(c) }
 
+// NeedsSubscribedModels returns false for full checkers
+func (c *testFullChecker) NeedsSubscribedModels() bool { return false }
+
 func TestFullCheckerHandlesFixedStreams(t *testing.T) {
 	checker := &testFullChecker{}
 	checker.Init(CheckerConfig{UsersOnlineEndpoints: []string{""}, QueueSize: queueSize})

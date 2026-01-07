@@ -50,6 +50,7 @@ type Checker interface {
 	Start()
 	Init(config CheckerConfig)
 	PushStatusRequest(request StatusRequest) error
+	NeedsSubscribedModels() bool
 }
 
 // CheckerCommon contains common fields for all the checkers

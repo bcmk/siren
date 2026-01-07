@@ -248,3 +248,6 @@ func (c *StreamateChecker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.Check
 
 // Start starts a daemon
 func (c *StreamateChecker) Start() { c.StartFullCheckerDaemon(c) }
+
+// NeedsSubscribedModels returns false for full checkers
+func (c *StreamateChecker) NeedsSubscribedModels() bool { return false }

@@ -54,3 +54,6 @@ func (c *RandomChecker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.CheckMod
 
 // Start starts a daemon
 func (c *RandomChecker) Start() { c.StartFullCheckerDaemon(c) }
+
+// NeedsSubscribedModels returns false for full checkers
+func (c *RandomChecker) NeedsSubscribedModels() bool { return false }

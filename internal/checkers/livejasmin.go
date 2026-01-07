@@ -115,3 +115,6 @@ func (c *LiveJasminChecker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.Chec
 
 // Start starts a daemon
 func (c *LiveJasminChecker) Start() { c.StartFullCheckerDaemon(c) }
+
+// NeedsSubscribedModels returns false for full checkers
+func (c *LiveJasminChecker) NeedsSubscribedModels() bool { return false }

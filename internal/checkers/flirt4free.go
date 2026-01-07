@@ -145,3 +145,6 @@ func (c *Flirt4FreeChecker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.Chec
 
 // Start starts a daemon
 func (c *Flirt4FreeChecker) Start() { c.StartFullCheckerDaemon(c) }
+
+// NeedsSubscribedModels returns false for full checkers
+func (c *Flirt4FreeChecker) NeedsSubscribedModels() bool { return false }
