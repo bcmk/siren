@@ -13,21 +13,21 @@ type statusUpdateResults struct {
 	err     bool
 }
 
-type fullUpdater struct {
-	siteOnlineModels map[string]bool
+type onlineListUpdater struct {
+	unconfirmedOnlineModels map[string]bool
 }
 
-func (f *fullUpdater) init(siteOnlineModels map[string]bool) {
-	f.siteOnlineModels = siteOnlineModels
+func (f *onlineListUpdater) init(unconfirmedOnlineModels map[string]bool) {
+	f.unconfirmedOnlineModels = unconfirmedOnlineModels
 }
 
-func (f *fullUpdater) processStreams(result cmdlib.StatusResults) statusUpdateResults {
+func (f *onlineListUpdater) processResults(result cmdlib.StatusResults) statusUpdateResults {
 	if result.Error {
 		return statusUpdateResults{err: true}
 	}
 	online := onlyOnline(result.Statuses)
-	updates := getUpdates(f.siteOnlineModels, online)
-	f.siteOnlineModels = online
+	updates := getUpdates(f.unconfirmedOnlineModels, online)
+	f.unconfirmedOnlineModels = online
 	return statusUpdateResults{
 		updates: updates,
 		images:  result.Images,
@@ -35,24 +35,24 @@ func (f *fullUpdater) processStreams(result cmdlib.StatusResults) statusUpdateRe
 	}
 }
 
-type selectiveUpdater struct {
-	siteOnlineModels map[string]bool
-	subscriptionSet  map[string]bool
+type fixedListUpdater struct {
+	unconfirmedOnlineModels map[string]bool
+	subscriptionSet         map[string]bool
 }
 
-func (u *selectiveUpdater) init(siteOnlineModels map[string]bool, subscriptionStatuses map[string]cmdlib.StatusKind) {
-	u.siteOnlineModels = siteOnlineModels
+func (u *fixedListUpdater) init(unconfirmedOnlineModels map[string]bool, subscriptionStatuses map[string]cmdlib.StatusKind) {
+	u.unconfirmedOnlineModels = unconfirmedOnlineModels
 	u.subscriptionSet = selectKnowns(subscriptionStatuses)
 }
 
-func (u *selectiveUpdater) processStreams(result cmdlib.StatusResults) statusUpdateResults {
+func (u *fixedListUpdater) processResults(result cmdlib.StatusResults) statusUpdateResults {
 	queriedModels := result.Request.Models
 	if result.Error {
 		return statusUpdateResults{err: true}
 	}
 
 	online := onlyOnline(result.Statuses)
-	unfilteredUpdates := getUpdates(u.siteOnlineModels, online)
+	unfilteredUpdates := getUpdates(u.unconfirmedOnlineModels, online)
 
 	var updates []cmdlib.StatusUpdate
 	for _, x := range unfilteredUpdates {
@@ -60,7 +60,7 @@ func (u *selectiveUpdater) processStreams(result cmdlib.StatusResults) statusUpd
 			updates = append(updates, x)
 		}
 	}
-	u.siteOnlineModels = online
+	u.unconfirmedOnlineModels = online
 
 	// Add StatusUnknown for unsubscribed models
 	_, unknowns := cmdlib.HashDiffNewRemoved(u.subscriptionSet, queriedModels)

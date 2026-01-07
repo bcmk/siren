@@ -121,31 +121,19 @@ func TestUpdateStatus(t *testing.T) {
 	w.createDatabase(make(chan bool, 1))
 	w.initCache()
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 18); n == 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 18); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 19); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 19); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{}, 20); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 20); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 21); n != 0 {
-		t.Error("unexpected status update")
-	}
-	checkInv(&w.worker, t)
-	if confirmedOnlineCount(w) != 1 {
-		t.Error("wrong online models count")
-	}
-	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{}, 22); n != 0 {
-		t.Error("unexpected status update")
-	}
-	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 23); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 21); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
@@ -153,7 +141,19 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("wrong online models count")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{}, 24); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 22); n != 0 {
+		t.Error("unexpected status update")
+	}
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 23); n != 0 {
+		t.Error("unexpected status update")
+	}
+	checkInv(&w.worker, t)
+	if confirmedOnlineCount(w) != 1 {
+		t.Error("wrong online models count")
+	}
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 24); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
@@ -161,7 +161,7 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("wrong active status")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{}, 29); n == 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 29); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
@@ -169,61 +169,61 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("wrong active status")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 31); n == 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 31); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 32); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 32); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{}, 33); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 33); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	w.processStatusUpdates([]cmdlib.StatusUpdate{}, 34)
+	w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 34)
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{}, 35); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 35); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 36); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 36); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{}, 37); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 37); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{}, 41); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 41); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 42); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 42); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 48); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 48); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	w.processStatusUpdates([]cmdlib.StatusUpdate{}, 49)
+	w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 49)
 	checkInv(&w.worker, t)
-	w.processStatusUpdates([]cmdlib.StatusUpdate{}, 50)
+	w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 50)
 	checkInv(&w.worker, t)
-	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 50)
+	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 50)
 	checkInv(&w.worker, t)
-	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 52)
+	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 52)
 	checkInv(&w.worker, t)
-	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "b", Status: cmdlib.StatusOnline}}, 53)
+	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "b", Status: cmdlib.StatusOnline}}, 53)
 	checkInv(&w.worker, t)
-	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "b", Status: cmdlib.StatusOffline}}, 54)
+	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "b", Status: cmdlib.StatusOffline}}, 54)
 	checkInv(&w.worker, t)
 	if !isConfirmedOnline(w, "b") {
 		t.Error("wrong active status")
 	}
 	checkInv(&w.worker, t)
-	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}, {ModelID: "b", Status: cmdlib.StatusOnline}}, 55)
+	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}, {ModelID: "b", Status: cmdlib.StatusOnline}}, 55)
 	checkInv(&w.worker, t)
 	if !isConfirmedOnline(w, "b") {
 		t.Error("wrong active status")
@@ -233,68 +233,68 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("wrong online models count")
 	}
 	checkInv(&w.worker, t)
-	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "b", Status: cmdlib.StatusOffline}}, 56)
+	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "b", Status: cmdlib.StatusOffline}}, 56)
 	if count := confirmedOnlineCount(w); count != 2 {
 		t.Errorf("wrong online models count: %d", count)
 	}
 	w.cfg.OfflineNotifications = true
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 57); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 57); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if !isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{}, 68); n == 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 68); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 69); n == 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 69); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if !isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusUnknown}}, 70); n == 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusUnknown}}, 70); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 71); n == 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 71); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if !isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
-	w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusUnknown}}, 72)
+	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusUnknown}}, 72)
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 73); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 73); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{}, 79); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 79); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusUnknown}}, 80); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusUnknown}}, 80); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 81); n == 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 81); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
@@ -322,19 +322,19 @@ func TestUpdateNotifications(t *testing.T) {
 	w.db.MustExec("insert into users (chat_id) values ($1)", 3)
 	w.db.MustExec("insert into users (chat_id) values ($1)", 4)
 
-	if _, _, nots, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "x", Status: cmdlib.StatusOnline}}, 1); len(nots) != 0 {
+	if _, _, nots, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "x", Status: cmdlib.StatusOnline}}, 1); len(nots) != 0 {
 		t.Error("unexpected notification number")
 	}
-	if _, _, nots, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 2); len(nots) != 2 {
+	if _, _, nots, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 2); len(nots) != 2 {
 		t.Error("unexpected notification number")
 	}
-	if _, _, nots, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 3); len(nots) != 0 {
+	if _, _, nots, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 3); len(nots) != 0 {
 		t.Error("unexpected notification number")
 	}
-	if _, _, nots, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 8); len(nots) != 2 {
+	if _, _, nots, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 8); len(nots) != 2 {
 		t.Error("unexpected notification number")
 	}
-	if _, _, nots, _ := w.processStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "d", Status: cmdlib.StatusOnline}}, 2); len(nots) != 2 {
+	if _, _, nots, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "d", Status: cmdlib.StatusOnline}}, 2); len(nots) != 2 {
 		t.Error("unexpected notification number")
 	}
 	_ = w.db.Close()
@@ -996,15 +996,15 @@ func TestQueryLastSubscriptionStatuses(t *testing.T) {
 	}
 }
 
-func TestProcessStatusUpdates(t *testing.T) {
+func TestHandleStatusUpdates(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
 	w.initCache()
 
 	// Initialize updaters
-	w.fullUpdater.init(w.siteOnline)
-	w.selectiveUpdater.init(w.siteOnline, w.db.QueryLastSubscriptionStatuses())
+	w.onlineListUpdater.init(w.unconfirmedOnline)
+	w.fixedListUpdater.init(w.unconfirmedOnline, w.db.QueryLastSubscriptionStatuses())
 
 	// Insert a subscription
 	w.db.MustExec(
@@ -1012,51 +1012,51 @@ func TestProcessStatusUpdates(t *testing.T) {
 		"test", 1, "model_a", 1,
 	)
 
-	// Test with Models == nil (uses fullUpdater)
+	// Test with Models == nil (uses onlineListUpdater)
 	request := cmdlib.StatusRequest{Models: nil}
-	rawResult := cmdlib.StatusResults{
+	result := cmdlib.StatusResults{
 		Request:  &request,
 		Statuses: map[string]cmdlib.StatusKind{"model_a": cmdlib.StatusOnline},
 	}
-	changes, _, _, _ := w.processRawStatusUpdates(rawResult, 100)
+	changes, _, _, _ := w.handleStatusUpdates(result, 100)
 	if changes != 1 {
-		t.Errorf("expected 1 change with fullUpdater, got %d", changes)
+		t.Errorf("expected 1 change with onlineListUpdater, got %d", changes)
 	}
 
-	// Test with Models != nil (uses selectiveUpdater)
+	// Test with Models != nil (uses fixedListUpdater)
 	request2 := cmdlib.StatusRequest{Models: map[string]bool{"model_a": true}}
-	rawResult2 := cmdlib.StatusResults{
+	result2 := cmdlib.StatusResults{
 		Request:  &request2,
 		Statuses: map[string]cmdlib.StatusKind{"model_a": cmdlib.StatusOffline},
 	}
-	changes, _, _, _ = w.processRawStatusUpdates(rawResult2, 101)
+	changes, _, _, _ = w.handleStatusUpdates(result2, 101)
 	if changes != 1 {
-		t.Errorf("expected 1 change with selectiveUpdater, got %d", changes)
+		t.Errorf("expected 1 change with fixedListUpdater, got %d", changes)
 	}
 
 	// Test error case (should return early with zero values)
 	request3 := cmdlib.StatusRequest{Models: nil}
-	rawResult3 := cmdlib.StatusResults{
+	result3 := cmdlib.StatusResults{
 		Request: &request3,
 		Error:   true,
 	}
-	changes, confirmedChanges, nots, elapsed := w.processRawStatusUpdates(rawResult3, 102)
+	changes, confirmedChanges, nots, elapsed := w.handleStatusUpdates(result3, 102)
 	if changes != 0 || confirmedChanges != 0 || len(nots) != 0 || elapsed != 0 {
 		t.Errorf(
 			"expected zero values on error, got changes=%d, confirmedChanges=%d, nots=%d, elapsed=%d",
 			changes, confirmedChanges, len(nots), elapsed)
 	}
 
-	// Test error case with selectiveUpdater (Models != nil)
+	// Test error case with fixedListUpdater (Models != nil)
 	request4 := cmdlib.StatusRequest{Models: map[string]bool{"model_a": true}}
-	rawResult4 := cmdlib.StatusResults{
+	result4 := cmdlib.StatusResults{
 		Request: &request4,
 		Error:   true,
 	}
-	changes, confirmedChanges, nots, elapsed = w.processRawStatusUpdates(rawResult4, 103)
+	changes, confirmedChanges, nots, elapsed = w.handleStatusUpdates(result4, 103)
 	if changes != 0 || confirmedChanges != 0 || len(nots) != 0 || elapsed != 0 {
 		t.Errorf(
-			"expected zero values on error with selectiveUpdater, got changes=%d, confirmedChanges=%d, nots=%d, elapsed=%d",
+			"expected zero values on error with fixedListUpdater, got changes=%d, confirmedChanges=%d, nots=%d, elapsed=%d",
 			changes, confirmedChanges, len(nots), elapsed)
 	}
 }

@@ -75,7 +75,7 @@ func (c *CamSodaChecker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.CheckMo
 }
 
 // Start starts a daemon
-func (c *CamSodaChecker) Start() { c.StartFullCheckerDaemon(c) }
+func (c *CamSodaChecker) Start() { c.StartOnlineListCheckerDaemon(c) }
 
-// NeedsSubscribedModels returns false for full checkers
-func (c *CamSodaChecker) NeedsSubscribedModels() bool { return false }
+// UsesFixedList returns false for online list checkers
+func (c *CamSodaChecker) UsesFixedList() bool { return false }

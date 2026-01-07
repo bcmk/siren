@@ -247,7 +247,7 @@ func (c *StreamateChecker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.Check
 }
 
 // Start starts a daemon
-func (c *StreamateChecker) Start() { c.StartFullCheckerDaemon(c) }
+func (c *StreamateChecker) Start() { c.StartOnlineListCheckerDaemon(c) }
 
-// NeedsSubscribedModels returns false for full checkers
-func (c *StreamateChecker) NeedsSubscribedModels() bool { return false }
+// UsesFixedList returns false for online list checkers
+func (c *StreamateChecker) UsesFixedList() bool { return false }

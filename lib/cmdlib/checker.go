@@ -50,7 +50,7 @@ type Checker interface {
 	Start()
 	Init(config CheckerConfig)
 	PushStatusRequest(request StatusRequest) error
-	NeedsSubscribedModels() bool
+	UsesFixedList() bool
 }
 
 // CheckerCommon contains common fields for all the checkers
@@ -128,8 +128,8 @@ func CheckEndpoints(
 	return allStatuses, allImages, nil
 }
 
-// StartFullCheckerDaemon starts a checker for all streams
-func (c *CheckerCommon) StartFullCheckerDaemon(checker Checker) {
+// StartOnlineListCheckerDaemon starts a checker for all streams
+func (c *CheckerCommon) StartOnlineListCheckerDaemon(checker Checker) {
 	go func() {
 	requests:
 		for request := range c.statusRequests {
@@ -172,8 +172,8 @@ func (c *CheckerCommon) StartFullCheckerDaemon(checker Checker) {
 	}()
 }
 
-// StartSelectiveCheckerDaemon starts a checker for selected streams
-func (c *CheckerCommon) StartSelectiveCheckerDaemon(checker Checker) {
+// StartFixedListCheckerDaemon starts a checker for a fixed list of streams
+func (c *CheckerCommon) StartFixedListCheckerDaemon(checker Checker) {
 	go func() {
 	requests:
 		for request := range c.statusRequests {

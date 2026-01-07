@@ -114,7 +114,7 @@ func (c *LiveJasminChecker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.Chec
 }
 
 // Start starts a daemon
-func (c *LiveJasminChecker) Start() { c.StartFullCheckerDaemon(c) }
+func (c *LiveJasminChecker) Start() { c.StartOnlineListCheckerDaemon(c) }
 
-// NeedsSubscribedModels returns false for full checkers
-func (c *LiveJasminChecker) NeedsSubscribedModels() bool { return false }
+// UsesFixedList returns false for online list checkers
+func (c *LiveJasminChecker) UsesFixedList() bool { return false }

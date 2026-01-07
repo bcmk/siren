@@ -78,7 +78,7 @@ func (c *BongaCamsChecker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.Check
 }
 
 // Start starts a daemon
-func (c *BongaCamsChecker) Start() { c.StartFullCheckerDaemon(c) }
+func (c *BongaCamsChecker) Start() { c.StartOnlineListCheckerDaemon(c) }
 
-// NeedsSubscribedModels returns false for full checkers
-func (c *BongaCamsChecker) NeedsSubscribedModels() bool { return false }
+// UsesFixedList returns false for online list checkers
+func (c *BongaCamsChecker) UsesFixedList() bool { return false }

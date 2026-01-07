@@ -116,7 +116,7 @@ func (c *Cam4Checker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.CheckMode)
 }
 
 // Start starts a daemon
-func (c *Cam4Checker) Start() { c.StartFullCheckerDaemon(c) }
+func (c *Cam4Checker) Start() { c.StartOnlineListCheckerDaemon(c) }
 
-// NeedsSubscribedModels returns false for full checkers
-func (c *Cam4Checker) NeedsSubscribedModels() bool { return false }
+// UsesFixedList returns false for online list checkers
+func (c *Cam4Checker) UsesFixedList() bool { return false }

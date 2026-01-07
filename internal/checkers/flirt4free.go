@@ -144,7 +144,7 @@ func (c *Flirt4FreeChecker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.Chec
 }
 
 // Start starts a daemon
-func (c *Flirt4FreeChecker) Start() { c.StartFullCheckerDaemon(c) }
+func (c *Flirt4FreeChecker) Start() { c.StartOnlineListCheckerDaemon(c) }
 
-// NeedsSubscribedModels returns false for full checkers
-func (c *Flirt4FreeChecker) NeedsSubscribedModels() bool { return false }
+// UsesFixedList returns false for online list checkers
+func (c *Flirt4FreeChecker) UsesFixedList() bool { return false }

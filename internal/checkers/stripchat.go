@@ -239,7 +239,7 @@ func (c *StripchatChecker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.Check
 }
 
 // Start starts a daemon
-func (c *StripchatChecker) Start() { c.StartFullCheckerDaemon(c) }
+func (c *StripchatChecker) Start() { c.StartOnlineListCheckerDaemon(c) }
 
-// NeedsSubscribedModels returns false for full checkers
-func (c *StripchatChecker) NeedsSubscribedModels() bool { return false }
+// UsesFixedList returns false for online list checkers
+func (c *StripchatChecker) UsesFixedList() bool { return false }

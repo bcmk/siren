@@ -14,7 +14,7 @@ type TestChecker struct {
 	err    error             //nolint:structcheck
 }
 
-type testFullChecker struct {
+type testOnlineListChecker struct {
 	TestChecker
 }
 
@@ -24,7 +24,7 @@ func (c *TestChecker) CheckStatusSingle(string) StatusKind {
 	return c.status
 }
 
-func (c *testFullChecker) CheckEndpoint(
+func (c *testOnlineListChecker) CheckEndpoint(
 	_ string,
 ) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	if c.err != nil {
@@ -33,7 +33,7 @@ func (c *testFullChecker) CheckEndpoint(
 	return onlineStatuses(c.online), c.images, nil
 }
 
-func (c *testFullChecker) CheckStatusesMany(
+func (c *testOnlineListChecker) CheckStatusesMany(
 	QueryModelList,
 	CheckMode,
 ) (onlineModels map[string]StatusKind, images map[string]string, err error) {
@@ -41,13 +41,13 @@ func (c *testFullChecker) CheckStatusesMany(
 }
 
 // Start starts a daemon
-func (c *testFullChecker) Start() { c.StartFullCheckerDaemon(c) }
+func (c *testOnlineListChecker) Start() { c.StartOnlineListCheckerDaemon(c) }
 
-// NeedsSubscribedModels returns false for full checkers
-func (c *testFullChecker) NeedsSubscribedModels() bool { return false }
+// UsesFixedList returns false for online list checkers
+func (c *testOnlineListChecker) UsesFixedList() bool { return false }
 
-func TestFullCheckerHandlesFixedStreams(t *testing.T) {
-	checker := &testFullChecker{}
+func TestOnlineListCheckerHandlesFixedList(t *testing.T) {
+	checker := &testOnlineListChecker{}
 	checker.Init(CheckerConfig{UsersOnlineEndpoints: []string{""}, QueueSize: queueSize})
 	resultsCh := make(chan StatusResults)
 	callback := func(res StatusResults) { resultsCh <- res }
@@ -61,25 +61,25 @@ func TestFullCheckerHandlesFixedStreams(t *testing.T) {
 		t.Errorf("cannot query updates, %v", err)
 		return
 	}
-	rawResult := <-resultsCh
-	if rawResult.Error {
+	result := <-resultsCh
+	if result.Error {
 		t.Error("unexpected error")
 	}
-	if rawResult.Statuses["a"] != StatusOnline {
-		t.Errorf("expected a to be online, got %v", rawResult.Statuses["a"])
+	if result.Statuses["a"] != StatusOnline {
+		t.Errorf("expected a to be online, got %v", result.Statuses["a"])
 	}
 	// c was queried but not returned by checker, should be reported as unknown
-	if rawResult.Statuses["c"] != StatusUnknown {
-		t.Errorf("expected c to be unknown, got %v", rawResult.Statuses["c"])
+	if result.Statuses["c"] != StatusUnknown {
+		t.Errorf("expected c to be unknown, got %v", result.Statuses["c"])
 	}
 	// b was online but not queried, should not be in the results
-	if _, ok := rawResult.Statuses["b"]; ok {
-		t.Errorf("expected b to not be in statuses, got %v", rawResult.Statuses["b"])
+	if _, ok := result.Statuses["b"]; ok {
+		t.Errorf("expected b to not be in statuses, got %v", result.Statuses["b"])
 	}
 }
 
-func TestFullCheckerError(t *testing.T) {
-	checker := &testFullChecker{}
+func TestOnlineListCheckerError(t *testing.T) {
+	checker := &testOnlineListChecker{}
 	checker.Init(CheckerConfig{UsersOnlineEndpoints: []string{""}, QueueSize: queueSize})
 	resultsCh := make(chan StatusResults)
 	callback := func(res StatusResults) { resultsCh <- res }
@@ -90,8 +90,8 @@ func TestFullCheckerError(t *testing.T) {
 		t.Errorf("cannot query updates, %v", err)
 		return
 	}
-	rawResult := <-resultsCh
-	if !rawResult.Error {
+	result := <-resultsCh
+	if !result.Error {
 		t.Error("expected error")
 	}
 }

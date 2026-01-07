@@ -71,15 +71,15 @@ type worker struct {
 	updatesDuration          time.Duration
 	changesInPeriod          int
 	confirmedChangesInPeriod int
-	siteOnline               map[string]bool
+	unconfirmedOnline        map[string]bool
 	tr                       map[string]*cmdlib.Translations
 	tpl                      map[string]*template.Template
 	trAds                    map[string]map[string]*cmdlib.Translation
 	tplAds                   map[string]*template.Template
 	modelIDPreprocessing     func(string) string
 	checker                  cmdlib.Checker
-	fullUpdater              fullUpdater
-	selectiveUpdater         selectiveUpdater
+	onlineListUpdater        onlineListUpdater
+	fixedListUpdater         fixedListUpdater
 	unsuccessfulRequests     []bool
 	unsuccessfulRequestsPos  int
 	downloadResults          chan bool
@@ -542,7 +542,7 @@ func (w *worker) createDatabase(done chan bool) {
 
 func (w *worker) initCache() {
 	start := time.Now()
-	w.siteOnline = w.db.QueryLastOnlineModels()
+	w.unconfirmedOnline = w.db.QueryLastOnlineModels()
 	elapsed := time.Since(start)
 	linf("cache initialized in %d ms", elapsed.Milliseconds())
 }
@@ -553,9 +553,9 @@ func (w *worker) changedStatuses(newStatuses []cmdlib.StatusUpdate, now int) []d
 		modelIDs = append(modelIDs, next.ModelID)
 	}
 	result := []db.StatusChange{}
-	siteStatuses := w.db.QueryLastStatusChangesForModels(modelIDs)
+	unconfirmedStatuses := w.db.QueryLastStatusChangesForModels(modelIDs)
 	for _, next := range newStatuses {
-		prev := siteStatuses[next.ModelID]
+		prev := unconfirmedStatuses[next.ModelID]
 		if next.Status != prev.Status {
 			result = append(result, db.StatusChange{ModelID: next.ModelID, Status: next.Status, Timestamp: now})
 		}
@@ -566,9 +566,9 @@ func (w *worker) changedStatuses(newStatuses []cmdlib.StatusUpdate, now int) []d
 func (w *worker) updateCachedStatus(changedStatuses []db.StatusChange) {
 	for _, statusChange := range changedStatuses {
 		if statusChange.Status == cmdlib.StatusOnline {
-			w.siteOnline[statusChange.ModelID] = true
+			w.unconfirmedOnline[statusChange.ModelID] = true
 		} else {
-			delete(w.siteOnline, statusChange.ModelID)
+			delete(w.unconfirmedOnline, statusChange.ModelID)
 		}
 	}
 }
@@ -1410,7 +1410,7 @@ func (w *worker) periodic() {
 
 func (w *worker) pushOnlineRequest() {
 	var models map[string]bool
-	if w.checker.NeedsSubscribedModels() {
+	if w.checker.UsesFixedList() {
 		models = w.db.SubscribedModels()
 	}
 	err := w.checker.PushStatusRequest(cmdlib.StatusRequest{
@@ -1422,7 +1422,7 @@ func (w *worker) pushOnlineRequest() {
 	}
 }
 
-func (w *worker) pushFixedStreamsRequest(resultsCh chan cmdlib.StatusResults, models map[string]bool) error {
+func (w *worker) pushFixedListRequest(resultsCh chan cmdlib.StatusResults, models map[string]bool) error {
 	err := w.checker.PushStatusRequest(cmdlib.StatusRequest{
 		Callback:  func(res cmdlib.StatusResults) { resultsCh <- res },
 		Models:    models,
@@ -1434,18 +1434,17 @@ func (w *worker) pushFixedStreamsRequest(resultsCh chan cmdlib.StatusResults, mo
 	return err
 }
 
-// TODO: rename processRawStatusUpdates → processStatusUpdates, processStatusUpdates → applyStatusUpdates
-func (w *worker) processRawStatusUpdates(rawResult cmdlib.StatusResults, now int) (
+func (w *worker) handleStatusUpdates(result cmdlib.StatusResults, now int) (
 	changesCount int,
 	confirmedChangesCount int,
 	notifications []db.Notification,
 	elapsed time.Duration,
 ) {
 	var updateResults statusUpdateResults
-	if rawResult.Request.Models == nil {
-		updateResults = w.fullUpdater.processStreams(rawResult)
+	if result.Request.Models == nil {
+		updateResults = w.onlineListUpdater.processResults(result)
 	} else {
-		updateResults = w.selectiveUpdater.processStreams(rawResult)
+		updateResults = w.fixedListUpdater.processResults(result)
 	}
 	w.logQueryResult(updateResults.err)
 	if updateResults.err {
@@ -1453,10 +1452,10 @@ func (w *worker) processRawStatusUpdates(rawResult cmdlib.StatusResults, now int
 	}
 	w.httpQueriesDuration = updateResults.elapsed
 	w.images = updateResults.images
-	return w.processStatusUpdates(updateResults.updates, now)
+	return w.applyStatusUpdates(updateResults.updates, now)
 }
 
-func (w *worker) processStatusUpdates(updates []cmdlib.StatusUpdate, now int) (
+func (w *worker) applyStatusUpdates(updates []cmdlib.StatusUpdate, now int) (
 	changesCount int,
 	confirmedChangesCount int,
 	notifications []db.Notification,
@@ -1758,7 +1757,7 @@ func (w *worker) queryUnconfirmedSubs() {
 	if len(unconfirmed) > 0 {
 		w.db.MustExec("update signals set confirmed = 2 where confirmed = 0")
 		ldbg("queueing unconfirmed subscriptions check for %d channels", len(unconfirmed))
-		if w.pushFixedStreamsRequest(w.unconfirmedSubsResults, unconfirmed) != nil {
+		if w.pushFixedListRequest(w.unconfirmedSubsResults, unconfirmed) != nil {
 			w.db.MustExec("update signals set confirmed = 0 where confirmed = 2")
 		}
 	}
@@ -1909,12 +1908,12 @@ func main() {
 	var subsConfirmTimer = time.NewTicker(time.Duration(w.cfg.SubsConfirmationPeriodSeconds) * time.Second)
 	var notificationSenderTimer = time.NewTicker(time.Duration(w.cfg.NotificationsReadyPeriodSeconds) * time.Second)
 
-	w.fullUpdater.init(w.siteOnline)
+	w.onlineListUpdater.init(w.unconfirmedOnline)
 	var subscriptionStatuses map[string]cmdlib.StatusKind
-	if w.checker.NeedsSubscribedModels() {
+	if w.checker.UsesFixedList() {
 		subscriptionStatuses = w.db.QueryLastSubscriptionStatuses()
 	}
-	w.selectiveUpdater.init(w.siteOnline, subscriptionStatuses)
+	w.fixedListUpdater.init(w.unconfirmedOnline, subscriptionStatuses)
 	w.checker.Init(cmdlib.CheckerConfig{
 		UsersOnlineEndpoints: w.cfg.UsersOnlineEndpoint,
 		Clients:              w.clients,
@@ -1940,9 +1939,9 @@ func main() {
 			w.queryUnconfirmedSubs()
 		case <-notificationSenderTimer.C:
 			w.sendReadyNotifications()
-		case rawResult := <-w.onlineModelsChan:
+		case result := <-w.onlineModelsChan:
 			now := int(time.Now().Unix())
-			changesInPeriod, confirmedChangesInPeriod, notifications, elapsed := w.processRawStatusUpdates(rawResult, now)
+			changesInPeriod, confirmedChangesInPeriod, notifications, elapsed := w.handleStatusUpdates(result, now)
 			w.updatesDuration = elapsed
 			w.changesInPeriod = changesInPeriod
 			w.confirmedChangesInPeriod = confirmedChangesInPeriod

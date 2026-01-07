@@ -209,7 +209,7 @@ func requestAppAccessToken(helixClient *helix.Client) (*helix.AppAccessTokenResp
 }
 
 // Start starts a daemon
-func (c *TwitchChecker) Start() { c.StartSelectiveCheckerDaemon(c) }
+func (c *TwitchChecker) Start() { c.StartFixedListCheckerDaemon(c) }
 
-// NeedsSubscribedModels returns true for selective checkers
-func (c *TwitchChecker) NeedsSubscribedModels() bool { return true }
+// UsesFixedList returns true for fixed list checkers
+func (c *TwitchChecker) UsesFixedList() bool { return true }
