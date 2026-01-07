@@ -78,8 +78,8 @@ type worker struct {
 	tplAds                   map[string]*template.Template
 	modelIDPreprocessing     func(string) string
 	checker                  cmdlib.Checker
-	fullUpdater              cmdlib.Updater
-	selectiveUpdater         cmdlib.Updater
+	fullUpdater              fullUpdater
+	selectiveUpdater         selectiveUpdater
 	unsuccessfulRequests     []bool
 	unsuccessfulRequestsPos  int
 	downloadResults          chan bool
@@ -177,8 +177,6 @@ func newWorker(cfg *botconfig.Config) *worker {
 		tpl:                    tpl,
 		trAds:                  trAds,
 		tplAds:                 tplAds,
-		fullUpdater:            cmdlib.FullUpdater(),
-		selectiveUpdater:       cmdlib.SelectiveUpdater(),
 		unsuccessfulRequests:   make([]bool, cfg.ErrorDenominator),
 		downloadErrors:         make([]bool, cfg.ErrorDenominator),
 		downloadResults:        make(chan bool),
@@ -1412,7 +1410,7 @@ func (w *worker) periodic() {
 
 func (w *worker) pushOnlineRequest() {
 	var models map[string]bool
-	if w.selectiveUpdater.NeedsSubscribedModels() {
+	if w.selectiveUpdater.needsSubscribedModels() {
 		models = w.db.SubscribedModels()
 	}
 	err := w.checker.PushStatusRequest(cmdlib.StatusRequest{
@@ -1443,19 +1441,19 @@ func (w *worker) processRawStatusUpdates(rawResult cmdlib.StatusResults, now int
 	notifications []db.Notification,
 	elapsed time.Duration,
 ) {
-	var updateResults cmdlib.StatusUpdateResults
+	var updateResults statusUpdateResults
 	if rawResult.Request.Models == nil {
-		updateResults = w.fullUpdater.ProcessStreams(rawResult)
+		updateResults = w.fullUpdater.processStreams(rawResult)
 	} else {
-		updateResults = w.selectiveUpdater.ProcessStreams(rawResult)
+		updateResults = w.selectiveUpdater.processStreams(rawResult)
 	}
-	w.logQueryResult(updateResults.Error)
-	if updateResults.Error {
+	w.logQueryResult(updateResults.err)
+	if updateResults.err {
 		return
 	}
-	w.httpQueriesDuration = updateResults.Elapsed
-	w.images = updateResults.Images
-	return w.processStatusUpdates(updateResults.Updates, now)
+	w.httpQueriesDuration = updateResults.elapsed
+	w.images = updateResults.images
+	return w.processStatusUpdates(updateResults.updates, now)
 }
 
 func (w *worker) processStatusUpdates(updates []cmdlib.StatusUpdate, now int) (
@@ -1911,15 +1909,12 @@ func main() {
 	var subsConfirmTimer = time.NewTicker(time.Duration(w.cfg.SubsConfirmationPeriodSeconds) * time.Second)
 	var notificationSenderTimer = time.NewTicker(time.Duration(w.cfg.NotificationsReadyPeriodSeconds) * time.Second)
 
-	w.fullUpdater.Init(cmdlib.UpdaterConfig{SiteOnlineModels: w.siteOnline})
+	w.fullUpdater.init(w.siteOnline)
 	var subscriptionStatuses map[string]cmdlib.StatusKind
-	if w.selectiveUpdater.NeedsSubscribedModels() {
+	if w.selectiveUpdater.needsSubscribedModels() {
 		subscriptionStatuses = w.db.QueryLastSubscriptionStatuses()
 	}
-	w.selectiveUpdater.Init(cmdlib.UpdaterConfig{
-		SiteOnlineModels:     w.siteOnline,
-		SubscriptionStatuses: subscriptionStatuses,
-	})
+	w.selectiveUpdater.init(w.siteOnline, subscriptionStatuses)
 	w.checker.Init(cmdlib.CheckerConfig{
 		UsersOnlineEndpoints: w.cfg.UsersOnlineEndpoint,
 		Clients:              w.clients,

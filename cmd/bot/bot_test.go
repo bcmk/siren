@@ -1003,14 +1003,8 @@ func TestProcessStatusUpdates(t *testing.T) {
 	w.initCache()
 
 	// Initialize updaters
-	updaterConfig := cmdlib.UpdaterConfig{
-		SiteOnlineModels:     w.siteOnline,
-		SubscriptionStatuses: w.db.QueryLastSubscriptionStatuses(),
-	}
-	w.fullUpdater = cmdlib.FullUpdater()
-	w.fullUpdater.Init(updaterConfig)
-	w.selectiveUpdater = cmdlib.SelectiveUpdater()
-	w.selectiveUpdater.Init(updaterConfig)
+	w.fullUpdater.init(w.siteOnline)
+	w.selectiveUpdater.init(w.siteOnline, w.db.QueryLastSubscriptionStatuses())
 
 	// Insert a subscription
 	w.db.MustExec(

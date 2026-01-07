@@ -23,6 +23,12 @@ type StatusResults struct {
 	Error    bool
 }
 
+// StatusUpdate represents an update of model status
+type StatusUpdate struct {
+	ModelID string
+	Status  StatusKind
+}
+
 // CheckerConfig represents checker config
 type CheckerConfig struct {
 	UsersOnlineEndpoints []string
@@ -235,4 +241,14 @@ func setToSlice(xs map[string]bool) []string {
 		i++
 	}
 	return result
+}
+
+func onlineStatuses(ss map[string]bool) map[string]StatusKind {
+	statusMap := map[string]StatusKind{}
+	for k, s := range ss {
+		if s {
+			statusMap[k] = StatusOnline
+		}
+	}
+	return statusMap
 }
