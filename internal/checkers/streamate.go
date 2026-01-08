@@ -242,7 +242,7 @@ func (c *StreamateChecker) CheckEndpoint(endpoint string) (onlineModels map[stri
 }
 
 // CheckStatusesMany returns Streamate online models
-func (c *StreamateChecker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+func (c *StreamateChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
 	return cmdlib.CheckEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 

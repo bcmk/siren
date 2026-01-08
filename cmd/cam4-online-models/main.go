@@ -1,4 +1,4 @@
-// Returns the list of online models
+// This program prints out all CAM4 models that are currently online
 package main
 
 import (
@@ -25,7 +25,7 @@ func main() {
 	client := cmdlib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
 	checker := &checkers.Cam4Checker{}
 	checker.Init(cmdlib.CheckerConfig{UsersOnlineEndpoints: []string{*endpoint}, Clients: []*cmdlib.Client{client}, Dbg: *verbose})
-	models, images, err := checker.CheckStatusesMany(cmdlib.AllModels, cmdlib.CheckOnline)
+	models, images, err := checker.CheckStatusesMany(cmdlib.AllChannels, cmdlib.CheckOnline)
 	if err != nil {
 		fmt.Printf("error occurred: %v\n", err)
 		return

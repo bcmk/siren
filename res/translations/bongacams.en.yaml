@@ -4,7 +4,7 @@ site:
 add_error:
   parse: html
   str: |-
-    Could not add the model {{ .model }}
+    Could not add the model {{ .channel }}
     Check the camname or try later
     Syntax: /add <code>CAMNAME</code>
     {{ template "address_line" }}

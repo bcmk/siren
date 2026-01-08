@@ -7,10 +7,10 @@ site:
 add_error:
   parse: html
   str: |-
-    Could not add the channel {{ .model }}
+    Could not add the channel {{ .channel }}
     Check the channel name or try later
     Syntax: /add <code>CHANNEL</code>
-checking_model:
+checking_channel:
   parse: raw
   str: Give us a second. We are checking this channel
 help:
@@ -77,7 +77,7 @@ faq:
     {{ template "faq_pricing" . }}
 already_added:
   parse: raw
-  str: 'Channel {{ .model }} is already in your list'
+  str: 'Channel {{ .channel }} is already in your list'
 raw_commands:
   parse: raw
   str: |-
@@ -108,18 +108,18 @@ commands:
 languages:
   parse: raw
   str: ""
-model_added:
+channel_added:
   parse: raw
   str: |-
-    Channel {{ .model }} added successfully
+    Channel {{ .channel }} added successfully
     Bot will notify you whenever it is online
-model_not_in_list:
+channel_not_in_list:
   parse: raw
-  str: 'Channel {{ .model }} is not in your list'
-model_removed:
+  str: 'Channel {{ .channel }} is not in your list'
+channel_removed:
   parse: raw
-  str: 'Channel {{ .model }} removed successfully'
-no_online_models:
+  str: 'Channel {{ .channel }} removed successfully'
+no_online_channels:
   parse: raw
   str: There are no online channels you subscribed to
 faq_pricing:
@@ -132,7 +132,7 @@ faq_pricing:
 invalid_symbols:
   parse: raw
   disable_preview: true
-  str: 'The channel name {{ .model }} has invalid symbols'
+  str: 'The channel name {{ .channel }} has invalid symbols'
 profile_removed:
   parse: raw
-  str: 'The channel {{ .model }} is probably removed'
+  str: 'The channel {{ .channel }} is probably removed'

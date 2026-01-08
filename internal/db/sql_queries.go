@@ -12,7 +12,7 @@ func (d *Database) NewNotifications() []Notification {
 	var nots []Notification
 	var iter Notification
 	d.MustQuery(
-		`select id, endpoint, chat_id, model_id, status, time_diff, image_url, social, priority, sound, kind
+		`select id, endpoint, chat_id, channel_id, status, time_diff, image_url, social, priority, sound, kind
 		from notification_queue
 		where sending = 0
 		order by id`,
@@ -21,7 +21,7 @@ func (d *Database) NewNotifications() []Notification {
 			&iter.ID,
 			&iter.Endpoint,
 			&iter.ChatID,
-			&iter.ModelID,
+			&iter.ChannelID,
 			&iter.Status,
 			&iter.TimeDiff,
 			&iter.ImageURL,
@@ -47,7 +47,7 @@ func (d *Database) StoreNotifications(nots []Notification) {
 				insert into notification_queue (
 					endpoint,
 					chat_id,
-					model_id,
+					channel_id,
 					status,
 					time_diff,
 					image_url,
@@ -58,32 +58,32 @@ func (d *Database) StoreNotifications(nots []Notification) {
 				)
 				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 			`,
-			n.Endpoint, n.ChatID, n.ModelID, n.Status, n.TimeDiff, n.ImageURL, n.Social, n.Priority, n.Sound, n.Kind,
+			n.Endpoint, n.ChatID, n.ChannelID, n.Status, n.TimeDiff, n.ImageURL, n.Social, n.Priority, n.Sound, n.Kind,
 		)
 	}
 	d.SendBatch(batch)
 
 }
 
-// UsersForModels returns users subscribed to a particular model
-func (d *Database) UsersForModels(modelIDs []string) (users map[string][]User, endpoints map[string][]string) {
+// UsersForChannels returns users subscribed to a particular channel
+func (d *Database) UsersForChannels(channelIDs []string) (users map[string][]User, endpoints map[string][]string) {
 	users = map[string][]User{}
 	endpoints = make(map[string][]string)
-	var modelID string
+	var channelID string
 	var chatID int64
 	var endpoint string
 	var offlineNotifications bool
 	var showImages bool
 	d.MustQuery(`
-		select signals.model_id, signals.chat_id, signals.endpoint, users.offline_notifications, users.show_images
+		select signals.channel_id, signals.chat_id, signals.endpoint, users.offline_notifications, users.show_images
 		from signals
 		join users on users.chat_id = signals.chat_id
-		where signals.model_id = any($1)`,
-		QueryParams{modelIDs},
-		ScanTo{&modelID, &chatID, &endpoint, &offlineNotifications, &showImages},
+		where signals.channel_id = any($1)`,
+		QueryParams{channelIDs},
+		ScanTo{&channelID, &chatID, &endpoint, &offlineNotifications, &showImages},
 		func() {
-			users[modelID] = append(users[modelID], User{ChatID: chatID, OfflineNotifications: offlineNotifications, ShowImages: showImages})
-			endpoints[modelID] = append(endpoints[modelID], endpoint)
+			users[channelID] = append(users[channelID], User{ChatID: chatID, OfflineNotifications: offlineNotifications, ShowImages: showImages})
+			endpoints[channelID] = append(endpoints[channelID], endpoint)
 		})
 	return
 }
@@ -99,49 +99,49 @@ func (d *Database) BroadcastChats(endpoint string) (chats []int64) {
 	return
 }
 
-// ModelsForChat returns models that particular chat is subscribed to
-func (d *Database) ModelsForChat(endpoint string, chatID int64) (models []string) {
-	var modelID string
+// ChannelsForChat returns channels that particular chat is subscribed to
+func (d *Database) ChannelsForChat(endpoint string, chatID int64) (channels []string) {
+	var channelID string
 	d.MustQuery(
-		`select model_id from signals where chat_id = $1 and endpoint = $2 order by model_id`,
+		`select channel_id from signals where chat_id = $1 and endpoint = $2 order by channel_id`,
 		QueryParams{chatID, endpoint},
-		ScanTo{&modelID},
-		func() { models = append(models, modelID) })
+		ScanTo{&channelID},
+		func() { channels = append(channels, channelID) })
 	return
 }
 
-// ConfirmedStatusesForChat returns models that particular chat is subscribed to and their statuses
-func (d *Database) ConfirmedStatusesForChat(endpoint string, chatID int64) (statuses []Model) {
-	var iter Model
+// ConfirmedStatusesForChat returns channels that particular chat is subscribed to and their statuses
+func (d *Database) ConfirmedStatusesForChat(endpoint string, chatID int64) (statuses []Channel) {
+	var iter Channel
 	d.MustQuery(`
-		select models.model_id, models.confirmed_status
-		from models
-		join signals on signals.model_id = models.model_id
+		select channels.channel_id, channels.confirmed_status
+		from channels
+		join signals on signals.channel_id = channels.channel_id
 		where signals.chat_id = $1 and signals.endpoint = $2
-		order by models.model_id`,
+		order by channels.channel_id`,
 		QueryParams{chatID, endpoint},
-		ScanTo{&iter.ModelID, &iter.ConfirmedStatus},
+		ScanTo{&iter.ChannelID, &iter.ConfirmedStatus},
 		func() { statuses = append(statuses, iter) })
 	return
 }
 
-// UnconfirmedStatusesForChat returns models with their unconfirmed statuses from models table
-func (d *Database) UnconfirmedStatusesForChat(endpoint string, chatID int64) (statuses []Model) {
-	var iter Model
+// UnconfirmedStatusesForChat returns channels with their unconfirmed statuses from channels table
+func (d *Database) UnconfirmedStatusesForChat(endpoint string, chatID int64) (statuses []Channel) {
+	var iter Channel
 	d.MustQuery(`
 		select
-			s.model_id,
+			s.channel_id,
 			coalesce(m.unconfirmed_status, 0),
 			coalesce(m.unconfirmed_timestamp, 0),
 			coalesce(m.prev_unconfirmed_status, 0),
 			coalesce(m.prev_unconfirmed_timestamp, 0)
 		from signals s
-		left join models m on m.model_id = s.model_id
+		left join channels m on m.channel_id = s.channel_id
 		where s.chat_id = $1 and s.endpoint = $2
-		order by s.model_id`,
+		order by s.channel_id`,
 		QueryParams{chatID, endpoint},
 		ScanTo{
-			&iter.ModelID,
+			&iter.ChannelID,
 			&iter.UnconfirmedStatus,
 			&iter.UnconfirmedTimestamp,
 			&iter.PrevUnconfirmedStatus,
@@ -152,8 +152,8 @@ func (d *Database) UnconfirmedStatusesForChat(endpoint string, chatID int64) (st
 }
 
 // SubscriptionExists checks if subscription exists
-func (d *Database) SubscriptionExists(endpoint string, chatID int64, modelID string) bool {
-	count := d.MustInt("select count(*) from signals where chat_id = $1 and model_id = $2 and endpoint = $3", chatID, modelID, endpoint)
+func (d *Database) SubscriptionExists(endpoint string, chatID int64, channelID string) bool {
+	count := d.MustInt("select count(*) from signals where chat_id = $1 and channel_id = $2 and endpoint = $3", chatID, channelID, endpoint)
 	return count != 0
 }
 
@@ -164,38 +164,38 @@ func (d *Database) SubscriptionsNumber(endpoint string, chatID int64) int {
 
 // User queries a user with particular ID
 func (d *Database) User(chatID int64) (user User, found bool) {
-	found = d.MaybeRecord("select chat_id, max_models, reports, blacklist, show_images, offline_notifications from users where chat_id = $1",
+	found = d.MaybeRecord("select chat_id, max_channels, reports, blacklist, show_images, offline_notifications from users where chat_id = $1",
 		QueryParams{chatID},
-		ScanTo{&user.ChatID, &user.MaxModels, &user.Reports, &user.Blacklist, &user.ShowImages, &user.OfflineNotifications})
+		ScanTo{&user.ChatID, &user.MaxChannels, &user.Reports, &user.Blacklist, &user.ShowImages, &user.OfflineNotifications})
 	return
 }
 
 // AddUser inserts a user
-func (d *Database) AddUser(chatID int64, maxModels int) {
+func (d *Database) AddUser(chatID int64, maxChannels int) {
 	d.MustExec(`
-		insert into users (chat_id, max_models)
+		insert into users (chat_id, max_channels)
 		values ($1, $2)
 		on conflict(chat_id) do nothing`,
 		chatID,
-		maxModels)
+		maxChannels)
 }
 
-// MaybeModel returns a model if exists
-func (d *Database) MaybeModel(modelID string) *Model {
-	var result Model
+// MaybeChannel returns a channel if exists
+func (d *Database) MaybeChannel(channelID string) *Channel {
+	var result Channel
 	if d.MaybeRecord(
 		`select
-			model_id,
+			channel_id,
 			confirmed_status,
 			unconfirmed_status,
 			unconfirmed_timestamp,
 			prev_unconfirmed_status,
 			prev_unconfirmed_timestamp
-		from models
-		where model_id = $1`,
-		QueryParams{modelID},
+		from channels
+		where channel_id = $1`,
+		QueryParams{channelID},
 		ScanTo{
-			&result.ModelID,
+			&result.ChannelID,
 			&result.ConfirmedStatus,
 			&result.UnconfirmedStatus,
 			&result.UnconfirmedTimestamp,
@@ -207,124 +207,124 @@ func (d *Database) MaybeModel(modelID string) *Model {
 	return nil
 }
 
-// ChangesFromToForModels returns all changes for multiple models in specified period
-func (d *Database) ChangesFromToForModels(modelIDs []string, from int, to int) map[string][]StatusChange {
+// ChangesFromToForChannels returns all changes for multiple channels in specified period
+func (d *Database) ChangesFromToForChannels(channelIDs []string, from int, to int) map[string][]StatusChange {
 	result := make(map[string][]StatusChange)
 	beforeRangeAdded := make(map[string]bool)
 	var change StatusChange
 	var beforeRangeStatus *cmdlib.StatusKind
 	var beforeRangeTimestamp *int
 	d.MustQuery(`
-		select model_id, status, timestamp, before_range_status, before_range_timestamp
+		select channel_id, status, timestamp, before_range_status, before_range_timestamp
 		from (
 			select
 				*,
 				lag(status) over w as before_range_status,
 				lag(timestamp) over w as before_range_timestamp
 			from status_changes
-			where model_id = any($1)
-			window w as (partition by model_id order by timestamp)
+			where channel_id = any($1)
+			window w as (partition by channel_id order by timestamp)
 		) sub
 		where timestamp >= $2
-		order by model_id, timestamp`,
-		QueryParams{modelIDs, from},
-		ScanTo{&change.ModelID, &change.Status, &change.Timestamp, &beforeRangeStatus, &beforeRangeTimestamp},
+		order by channel_id, timestamp`,
+		QueryParams{channelIDs, from},
+		ScanTo{&change.ChannelID, &change.Status, &change.Timestamp, &beforeRangeStatus, &beforeRangeTimestamp},
 		func() {
-			if !beforeRangeAdded[change.ModelID] && beforeRangeStatus != nil && beforeRangeTimestamp != nil {
-				result[change.ModelID] = append(result[change.ModelID], StatusChange{
-					ModelID:   change.ModelID,
+			if !beforeRangeAdded[change.ChannelID] && beforeRangeStatus != nil && beforeRangeTimestamp != nil {
+				result[change.ChannelID] = append(result[change.ChannelID], StatusChange{
+					ChannelID: change.ChannelID,
 					Status:    *beforeRangeStatus,
 					Timestamp: *beforeRangeTimestamp,
 				})
-				beforeRangeAdded[change.ModelID] = true
+				beforeRangeAdded[change.ChannelID] = true
 			}
-			result[change.ModelID] = append(result[change.ModelID], change)
+			result[change.ChannelID] = append(result[change.ChannelID], change)
 		})
-	for _, modelID := range modelIDs {
-		result[modelID] = append(result[modelID], StatusChange{ModelID: modelID, Timestamp: to})
+	for _, channelID := range channelIDs {
+		result[channelID] = append(result[channelID], StatusChange{ChannelID: channelID, Timestamp: to})
 	}
 	return result
 }
 
-// SetLimit updates a particular user with its max models limit
-func (d *Database) SetLimit(chatID int64, maxModels int) {
+// SetLimit updates a particular user with its max channels limit
+func (d *Database) SetLimit(chatID int64, maxChannels int) {
 	d.MustExec(`
-		insert into users (chat_id, max_models) values ($1, $2)
-		on conflict(chat_id) do update set max_models=excluded.max_models`,
+		insert into users (chat_id, max_channels) values ($1, $2)
+		on conflict(chat_id) do update set max_channels=excluded.max_channels`,
 		chatID,
-		maxModels)
+		maxChannels)
 }
 
 // ConfirmSub confirms subscription
 func (d *Database) ConfirmSub(sub Subscription) {
 	d.MustExec(`
-		insert into models (model_id)
+		insert into channels (channel_id)
 		values ($1)
-		on conflict(model_id) do nothing`,
-		sub.ModelID)
-	d.MustExec("update signals set confirmed=1 where endpoint = $1 and chat_id = $2 and model_id = $3", sub.Endpoint, sub.ChatID, sub.ModelID)
+		on conflict(channel_id) do nothing`,
+		sub.ChannelID)
+	d.MustExec("update signals set confirmed=1 where endpoint = $1 and chat_id = $2 and channel_id = $3", sub.Endpoint, sub.ChatID, sub.ChannelID)
 }
 
 // DenySub denies subscription
 func (d *Database) DenySub(sub Subscription) {
-	d.MustExec("delete from signals where endpoint = $1 and chat_id = $2 and model_id = $3", sub.Endpoint, sub.ChatID, sub.ModelID)
+	d.MustExec("delete from signals where endpoint = $1 and chat_id = $2 and channel_id = $3", sub.Endpoint, sub.ChatID, sub.ChannelID)
 }
 
-// QueryLastStatusChangesForModels returns all known latest status changes for specific models
-func (d *Database) QueryLastStatusChangesForModels(modelIDs []string) map[string]StatusChange {
+// QueryLastStatusChangesForChannels returns all known latest status changes for specific channels
+func (d *Database) QueryLastStatusChangesForChannels(channelIDs []string) map[string]StatusChange {
 	statusChanges := map[string]StatusChange{}
 	var statusChange StatusChange
 	d.MustQuery(
 		`
-			select model_id, unconfirmed_status, unconfirmed_timestamp
-			from models
-			where model_id = any($1) and unconfirmed_timestamp > 0
+			select channel_id, unconfirmed_status, unconfirmed_timestamp
+			from channels
+			where channel_id = any($1) and unconfirmed_timestamp > 0
 		`,
-		QueryParams{modelIDs},
-		ScanTo{&statusChange.ModelID, &statusChange.Status, &statusChange.Timestamp},
-		func() { statusChanges[statusChange.ModelID] = statusChange })
+		QueryParams{channelIDs},
+		ScanTo{&statusChange.ChannelID, &statusChange.Status, &statusChange.Timestamp},
+		func() { statusChanges[statusChange.ChannelID] = statusChange })
 	return statusChanges
 }
 
-// SubscribedModels returns all confirmed subscribed models
-func (d *Database) SubscribedModels() map[string]bool {
-	models := map[string]bool{}
-	var modelID string
+// SubscribedChannels returns all confirmed subscribed channels
+func (d *Database) SubscribedChannels() map[string]bool {
+	channels := map[string]bool{}
+	var channelID string
 	d.MustQuery(
-		`select distinct model_id from signals where confirmed = 1`,
+		`select distinct channel_id from signals where confirmed = 1`,
 		nil,
-		ScanTo{&modelID},
-		func() { models[modelID] = true })
-	return models
+		ScanTo{&channelID},
+		func() { channels[channelID] = true })
+	return channels
 }
 
 // QueryLastSubscriptionStatuses returns latest statuses for subscriptions
 func (d *Database) QueryLastSubscriptionStatuses() map[string]cmdlib.StatusKind {
 	statuses := map[string]cmdlib.StatusKind{}
-	var modelID string
+	var channelID string
 	var status cmdlib.StatusKind
 	d.MustQuery(
 		`
-			select s.model_id, coalesce(m.unconfirmed_status, $1) as status
-			from (select distinct model_id from signals where confirmed = 1) s
-			left join models m on m.model_id = s.model_id
+			select s.channel_id, coalesce(m.unconfirmed_status, $1) as status
+			from (select distinct channel_id from signals where confirmed = 1) s
+			left join channels m on m.channel_id = s.channel_id
 		`,
 		QueryParams{cmdlib.StatusUnknown},
-		ScanTo{&modelID, &status},
-		func() { statuses[modelID] = status })
+		ScanTo{&channelID, &status},
+		func() { statuses[channelID] = status })
 	return statuses
 }
 
-// QueryLastOnlineModels queries latest online models
-func (d *Database) QueryLastOnlineModels() map[string]bool {
-	onlineModels := map[string]bool{}
-	var modelID string
+// QueryLastOnlineChannels queries latest online channels
+func (d *Database) QueryLastOnlineChannels() map[string]bool {
+	onlineChannels := map[string]bool{}
+	var channelID string
 	d.MustQuery(
-		`select model_id from models where unconfirmed_status = $1`,
+		`select channel_id from channels where unconfirmed_status = $1`,
 		QueryParams{cmdlib.StatusOnline},
-		ScanTo{&modelID},
-		func() { onlineModels[modelID] = true })
-	return onlineModels
+		ScanTo{&channelID},
+		func() { onlineChannels[channelID] = true })
+	return onlineChannels
 }
 
 // ReferralID returns referral identifier
@@ -375,30 +375,30 @@ func (d *Database) InsertStatusChanges(changedStatuses []StatusChange) {
 	// Use CopyFrom for fast bulk insert into status_changes
 	rows := make([][]interface{}, len(changedStatuses))
 	for i, sc := range changedStatuses {
-		rows[i] = []interface{}{sc.ModelID, sc.Status, sc.Timestamp}
+		rows[i] = []interface{}{sc.ChannelID, sc.Status, sc.Timestamp}
 	}
 	_, err = tx.CopyFrom(
 		context.Background(),
 		pgx.Identifier{"status_changes"},
-		[]string{"model_id", "status", "timestamp"},
+		[]string{"channel_id", "status", "timestamp"},
 		pgx.CopyFromRows(rows),
 	)
 	checkErr(err)
 
-	// Use batch for models upserts within the same transaction
+	// Use batch for channels upserts within the same transaction
 	batch := &pgx.Batch{}
 	for _, sc := range changedStatuses {
 		batch.Queue(
 			`
-				insert into models (model_id, unconfirmed_status, unconfirmed_timestamp)
+				insert into channels (channel_id, unconfirmed_status, unconfirmed_timestamp)
 				values ($1, $2, $3)
-				on conflict(model_id) do update set
-					prev_unconfirmed_status = models.unconfirmed_status,
-					prev_unconfirmed_timestamp = models.unconfirmed_timestamp,
+				on conflict(channel_id) do update set
+					prev_unconfirmed_status = channels.unconfirmed_status,
+					prev_unconfirmed_timestamp = channels.unconfirmed_timestamp,
 					unconfirmed_status = excluded.unconfirmed_status,
 					unconfirmed_timestamp = excluded.unconfirmed_timestamp
 			`,
-			sc.ModelID, sc.Status, sc.Timestamp)
+			sc.ChannelID, sc.Status, sc.Timestamp)
 	}
 	br := tx.SendBatch(context.Background(), batch)
 	checkErr(br.Close())
@@ -406,7 +406,7 @@ func (d *Database) InsertStatusChanges(changedStatuses []StatusChange) {
 	checkErr(tx.Commit(context.Background()))
 }
 
-// ConfirmStatusChanges finds models needing confirmation and updates them in one query.
+// ConfirmStatusChanges finds channels needing confirmation and updates them in one query.
 // Returns the confirmed status changes.
 func (d *Database) ConfirmStatusChanges(now int, onlineSeconds int, offlineSeconds int) []StatusChange {
 	done := d.Measure("db: confirm status changes")
@@ -418,7 +418,7 @@ func (d *Database) ConfirmStatusChanges(now int, onlineSeconds int, offlineSecon
 	// because explicit OR is sargable.
 	d.MustQuery(
 		`
-			update models
+			update channels
 			set confirmed_status = case when unconfirmed_status = 2 then 2 else 1 end
 			where (
 				((confirmed_status = 2) and (unconfirmed_status != 2))
@@ -428,10 +428,10 @@ func (d *Database) ConfirmStatusChanges(now int, onlineSeconds int, offlineSecon
 				or (unconfirmed_status = 1 and $1 - unconfirmed_timestamp >= $3)
 				or unconfirmed_status = 0
 			)
-			returning model_id, unconfirmed_status
+			returning channel_id, unconfirmed_status
 		`,
 		QueryParams{now, onlineSeconds, offlineSeconds},
-		ScanTo{&change.ModelID, &change.Status},
+		ScanTo{&change.ChannelID, &change.Status},
 		func() {
 			change.Timestamp = now
 			result = append(result, change)

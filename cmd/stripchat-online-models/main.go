@@ -35,7 +35,7 @@ func main() {
 		SpecificConfig:       map[string]string{"user_id": *userID},
 		Dbg:                  *verbose,
 	})
-	models, images, err := checker.CheckStatusesMany(cmdlib.AllModels, cmdlib.CheckOnline)
+	models, images, err := checker.CheckStatusesMany(cmdlib.AllChannels, cmdlib.CheckOnline)
 	if err != nil {
 		fmt.Printf("error occurred: %v\n", err)
 		return

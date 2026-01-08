@@ -16,11 +16,11 @@ type ChaturbateChecker struct{ cmdlib.CheckerCommon }
 
 var _ cmdlib.Checker = &ChaturbateChecker{}
 
-var chaturbateModelRegex = regexp.MustCompile(`^(?:https?://)?(?:[A-Za-z]+\.)?chaturbate\.com(?:/p|/b)?/([A-Za-z0-9\-_@]+)/?(?:\?.*)?$`)
+var chaturbateModelRegexp = regexp.MustCompile(`^(?:https?://)?(?:[A-Za-z]+\.)?chaturbate\.com(?:/p|/b)?/([A-Za-z0-9\-_@]+)/?(?:\?.*)?$`)
 
 // ChaturbateCanonicalModelID preprocesses model ID string to canonical for Chaturbate form
 func ChaturbateCanonicalModelID(name string) string {
-	m := chaturbateModelRegex.FindStringSubmatch(name)
+	m := chaturbateModelRegexp.FindStringSubmatch(name)
 	if len(m) == 2 {
 		name = m[1]
 	}
@@ -133,7 +133,7 @@ func (c *ChaturbateChecker) CheckEndpoint(endpoint string) (onlineModels map[str
 }
 
 // CheckStatusesMany returns Chaturbate online models
-func (c *ChaturbateChecker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+func (c *ChaturbateChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
 	return cmdlib.CheckEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 

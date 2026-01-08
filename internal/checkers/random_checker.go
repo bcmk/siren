@@ -17,21 +17,21 @@ func (c *RandomChecker) CheckStatusSingle(_ string) cmdlib.StatusKind {
 	return cmdlib.StatusOnline
 }
 
-// CheckEndpoint returns random online models
-func (c *RandomChecker) CheckEndpoint(_ string) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+// CheckEndpoint returns random online channels
+func (c *RandomChecker) CheckEndpoint(_ string) (onlineChannels map[string]cmdlib.StatusKind, images map[string]string, err error) {
 	now := time.Now()
 	seconds := now.Sub(now.Truncate(time.Minute))
-	onlineModels = map[string]cmdlib.StatusKind{}
+	onlineChannels = map[string]cmdlib.StatusKind{}
 	images = map[string]string{}
 	if seconds < time.Second*30 {
 		toggle := "toggle"
-		onlineModels[toggle] = cmdlib.StatusOnline
+		onlineChannels[toggle] = cmdlib.StatusOnline
 		images[toggle] = ""
 	}
 	for i := 0; i < 300; i++ {
-		modelID := randString(4)
-		onlineModels[modelID] = cmdlib.StatusOnline
-		images[modelID] = ""
+		channelID := randString(4)
+		onlineChannels[channelID] = cmdlib.StatusOnline
+		images[channelID] = ""
 	}
 	return
 }
@@ -47,8 +47,8 @@ func randString(n int) string {
 	return string(b)
 }
 
-// CheckStatusesMany returns Random online models
-func (c *RandomChecker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+// CheckStatusesMany returns Random online channels
+func (c *RandomChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineChannels map[string]cmdlib.StatusKind, images map[string]string, err error) {
 	return cmdlib.CheckEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 

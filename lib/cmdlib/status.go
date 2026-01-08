@@ -2,10 +2,10 @@ package cmdlib
 
 import "strings"
 
-// StatusKind represents a status of a model
+// StatusKind represents a status of a channel
 type StatusKind int
 
-// Model statuses
+// Channel statuses
 const (
 	StatusUnknown  StatusKind = 0
 	StatusOffline  StatusKind = 1

@@ -17,16 +17,16 @@ type TwitchChecker struct {
 
 var _ cmdlib.Checker = &TwitchChecker{}
 
-// TwitchModelIDRegexp is a regular expression to check model IDs
-var TwitchModelIDRegexp = regexp.MustCompile(`^@?[a-z0-9][a-z0-9\-_]*$`)
+// TwitchChannelIDRegexp is a regular expression to check channel IDs
+var TwitchChannelIDRegexp = regexp.MustCompile(`^@?[a-z0-9][a-z0-9\-_]*$`)
 
-// TwitchCanonicalModelID preprocesses channel string to canonical form
-func TwitchCanonicalModelID(name string) string {
+// TwitchCanonicalChannelID preprocesses channel string to canonical form
+func TwitchCanonicalChannelID(name string) string {
 	return strings.ToLower(strings.TrimPrefix(name, "@"))
 }
 
 // CheckStatusSingle checks Twitch channel status
-func (c *TwitchChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
+func (c *TwitchChecker) CheckStatusSingle(channelID string) cmdlib.StatusKind {
 	client := c.ClientsLoop.NextClient()
 	helixClient, err := helix.NewClient(&helix.Options{
 		ClientID:     c.SpecificConfig["client_id"],
@@ -45,7 +45,7 @@ func (c *TwitchChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 
 	helixClient.SetAppAccessToken(accessResponse.Data.AccessToken)
 
-	streamsResponse, err := helixClient.GetStreams(&helix.StreamsParams{UserLogins: []string{modelID}})
+	streamsResponse, err := helixClient.GetStreams(&helix.StreamsParams{UserLogins: []string{channelID}})
 	if err != nil {
 		cmdlib.Lerr("negotiation error on getting streams, %v", err)
 		return cmdlib.StatusUnknown
@@ -59,7 +59,7 @@ func (c *TwitchChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 	}
 
 	chanResponse, err := helixClient.GetUsers(&helix.UsersParams{
-		Logins: []string{modelID},
+		Logins: []string{channelID},
 	})
 	if err != nil {
 		cmdlib.Lerr("negotiation error on getting users, %v", err)
@@ -76,7 +76,7 @@ func (c *TwitchChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 }
 
 // CheckStatusesMany checks Twitch channel status
-func (c *TwitchChecker) CheckStatusesMany(channels cmdlib.QueryModelList, checkMode cmdlib.CheckMode) (results map[string]cmdlib.StatusKind, images map[string]string, err error) {
+func (c *TwitchChecker) CheckStatusesMany(channels cmdlib.QueryChannelList, checkMode cmdlib.CheckMode) (results map[string]cmdlib.StatusKind, images map[string]string, err error) {
 	client := c.ClientsLoop.NextClient()
 	helixClient, err := helix.NewClient(&helix.Options{
 		ClientID:     c.SpecificConfig["client_id"],
@@ -152,10 +152,10 @@ func (c *TwitchChecker) checkExistingMany(helixClient *helix.Client, channels []
 	return results, images, nil
 }
 
-// CheckEndpoint returns all Twitch online channels
-func (c *TwitchChecker) CheckEndpoint(string) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+// CheckEndpoint returns all online Twitch channels
+func (c *TwitchChecker) CheckEndpoint(string) (onlineChannels map[string]cmdlib.StatusKind, images map[string]string, err error) {
 	httpClient := c.ClientsLoop.NextClient()
-	onlineModels = map[string]cmdlib.StatusKind{}
+	onlineChannels = map[string]cmdlib.StatusKind{}
 	images = map[string]string{}
 	helixClient, err := helix.NewClient(&helix.Options{
 		ClientID:     c.SpecificConfig["client_id"],
@@ -186,7 +186,7 @@ func (c *TwitchChecker) CheckEndpoint(string) (onlineModels map[string]cmdlib.St
 		}
 		for _, s := range streamsResponse.Data.Streams {
 			name := strings.ToLower(s.UserLogin)
-			onlineModels[name] = cmdlib.StatusOnline
+			onlineChannels[name] = cmdlib.StatusOnline
 			images[name] = thumbnail(s.ThumbnailURL)
 		}
 		if len(streamsResponse.Data.Streams) == 0 {
@@ -194,7 +194,7 @@ func (c *TwitchChecker) CheckEndpoint(string) (onlineModels map[string]cmdlib.St
 		}
 		after = streamsResponse.Data.Pagination.Cursor
 	}
-	return onlineModels, images, nil
+	return onlineChannels, images, nil
 }
 
 func requestAppAccessToken(helixClient *helix.Client) (*helix.AppAccessTokenResponse, error) {

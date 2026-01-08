@@ -1,18 +1,18 @@
 create table long_status_changes as
 with periods as (
     select
-        model_id,
+        channel_id,
         status,
         timestamp,
 
-        lead(timestamp) over (partition by model_id order by timestamp) as next_timestamp,
-        lead(status)    over (partition by model_id order by timestamp) as next_status,
+        lead(timestamp) over (partition by channel_id order by timestamp) as next_timestamp,
+        lead(status)    over (partition by channel_id order by timestamp) as next_status,
 
-        lag(timestamp)  over (partition by model_id order by timestamp) as prev_timestamp,
-        lag(status)     over (partition by model_id order by timestamp) as prev_status
+        lag(timestamp)  over (partition by channel_id order by timestamp) as prev_timestamp,
+        lag(status)     over (partition by channel_id order by timestamp) as prev_status
     from status_changes
 )
-select model_id, timestamp, status
+select channel_id, timestamp, status
 from periods
 where
     next_timestamp is null
@@ -27,6 +27,6 @@ drop index long_status_changes_timestamp_btree;
 alter table status_changes rename to status_changes_backup;
 alter table long_status_changes rename to status_changes;
 
-create index ix_status_changes_model_id_timestamp on status_changes (model_id, timestamp) include (status);
+create index ix_status_changes_channel_id_timestamp on status_changes (channel_id, timestamp) include (status);
 create index ix_status_changes_timestamp on status_changes using brin (timestamp) with (pages_per_range = 8);
 analyze status_changes;

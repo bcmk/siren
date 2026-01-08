@@ -7,14 +7,14 @@ import (
 	"time"
 )
 
-// StatusRequest represents a request for model statuses
+// StatusRequest represents a request for channel statuses
 type StatusRequest struct {
-	Models    map[string]bool // nil for all online models, non-nil for specific models
+	Channels  map[string]bool // nil for all online channels, non-nil for specific channels
 	CheckMode CheckMode
 	Callback  func(StatusResults)
 }
 
-// StatusResults contains results from querying models
+// StatusResults contains results from querying channels
 type StatusResults struct {
 	Request  *StatusRequest
 	Statuses map[string]StatusKind
@@ -23,10 +23,10 @@ type StatusResults struct {
 	Error    bool
 }
 
-// StatusUpdate represents an update of model status
+// StatusUpdate represents an update of channel status
 type StatusUpdate struct {
-	ModelID string
-	Status  StatusKind
+	ChannelID string
+	Status    StatusKind
 }
 
 // CheckerConfig represents checker config
@@ -42,9 +42,9 @@ type CheckerConfig struct {
 
 // Checker is the interface for a checker for specific site
 type Checker interface {
-	CheckStatusSingle(modelID string) StatusKind
+	CheckStatusSingle(channelID string) StatusKind
 	CheckStatusesMany(
-		specific QueryModelList,
+		specific QueryChannelList,
 		checkMode CheckMode,
 	) (statuses map[string]StatusKind, images map[string]string, err error)
 	Start()
@@ -60,8 +60,8 @@ type CheckerCommon struct {
 	statusRequests chan StatusRequest
 }
 
-// QueryModelList represents a model list to query
-type QueryModelList struct {
+// QueryChannelList represents a channel list to query
+type QueryChannelList struct {
 	All  bool
 	List []string
 }
@@ -69,11 +69,11 @@ type QueryModelList struct {
 // ErrFullQueue emerges whenever we unable to add a request because the queue is full
 var ErrFullQueue = errors.New("queue is full")
 
-// AllModels should be used to query all statuses
-var AllModels = QueryModelList{All: true}
+// AllChannels should be used to query all statuses
+var AllChannels = QueryChannelList{All: true}
 
-// NewQueryModelList returns a query list for specific models
-func NewQueryModelList(list []string) QueryModelList { return QueryModelList{List: list} }
+// NewQueryChannelList returns a query list for specific channels
+func NewQueryChannelList(list []string) QueryChannelList { return QueryChannelList{List: list} }
 
 // PushStatusRequest adds a status request to the queue
 func (c *CheckerCommon) PushStatusRequest(request StatusRequest) error {
@@ -86,7 +86,7 @@ func (c *CheckerCommon) PushStatusRequest(request StatusRequest) error {
 }
 
 type endpointChecker interface {
-	CheckEndpoint(endpoint string) (onlineModels map[string]StatusKind, images map[string]string, err error)
+	CheckEndpoint(endpoint string) (onlineChannels map[string]StatusKind, images map[string]string, err error)
 }
 
 // Init initializes checker common fields
@@ -118,27 +118,27 @@ func CheckEndpoints(
 			Ldbg("got statuses for endpoint: %d", len(statuses))
 			Ldbg("got images for endpoint: %d", len(images))
 		}
-		for m, s := range statuses {
-			allStatuses[m] = s
+		for channel, status := range statuses {
+			allStatuses[channel] = status
 		}
-		for k, v := range images {
-			allImages[k] = v
+		for channel, image := range images {
+			allImages[channel] = image
 		}
 	}
 	return allStatuses, allImages, nil
 }
 
-// StartOnlineListCheckerDaemon starts a checker for all streams
+// StartOnlineListCheckerDaemon starts a checker for all channels
 func (c *CheckerCommon) StartOnlineListCheckerDaemon(checker Checker) {
 	go func() {
 	requests:
 		for request := range c.statusRequests {
 			start := time.Now()
-			var queryList QueryModelList
-			if request.Models == nil {
-				queryList = AllModels
+			var queryList QueryChannelList
+			if request.Channels == nil {
+				queryList = AllChannels
 			} else {
-				queryList = NewQueryModelList(setToSlice(request.Models))
+				queryList = NewQueryChannelList(setToSlice(request.Channels))
 			}
 			statuses, images, err := checker.CheckStatusesMany(queryList, request.CheckMode)
 			if err != nil {
@@ -146,13 +146,13 @@ func (c *CheckerCommon) StartOnlineListCheckerDaemon(checker Checker) {
 				request.Callback(StatusResults{Request: &request, Error: true})
 				continue requests
 			}
-			if request.Models != nil {
-				filtered := make(map[string]StatusKind, len(request.Models))
-				for modelID := range request.Models {
-					if status, ok := statuses[modelID]; ok {
-						filtered[modelID] = status
+			if request.Channels != nil {
+				filtered := make(map[string]StatusKind, len(request.Channels))
+				for channelID := range request.Channels {
+					if status, ok := statuses[channelID]; ok {
+						filtered[channelID] = status
 					} else {
-						filtered[modelID] = StatusUnknown
+						filtered[channelID] = StatusUnknown
 					}
 				}
 				statuses = filtered
@@ -172,14 +172,14 @@ func (c *CheckerCommon) StartOnlineListCheckerDaemon(checker Checker) {
 	}()
 }
 
-// StartFixedListCheckerDaemon starts a checker for a fixed list of streams
+// StartFixedListCheckerDaemon starts a checker for a fixed list of channels
 func (c *CheckerCommon) StartFixedListCheckerDaemon(checker Checker) {
 	go func() {
 	requests:
 		for request := range c.statusRequests {
 			start := time.Now()
 			statuses, images, err := checker.CheckStatusesMany(
-				NewQueryModelList(setToSlice(request.Models)),
+				NewQueryChannelList(setToSlice(request.Channels)),
 				request.CheckMode,
 			)
 			if err != nil {
@@ -190,7 +190,7 @@ func (c *CheckerCommon) StartFixedListCheckerDaemon(checker Checker) {
 			time.Sleep(time.Duration(c.IntervalMs) * time.Millisecond)
 			elapsed := time.Since(start)
 			if c.Dbg {
-				Ldbg("online streamers: %d", len(statuses))
+				Ldbg("online channels: %d", len(statuses))
 			}
 			request.Callback(StatusResults{
 				Request:  &request,

@@ -14,11 +14,11 @@ type statusUpdateResults struct {
 }
 
 type onlineListUpdater struct {
-	unconfirmedOnlineModels map[string]bool
+	unconfirmedOnlineChannels map[string]bool
 }
 
-func (f *onlineListUpdater) init(unconfirmedOnlineModels map[string]bool) {
-	f.unconfirmedOnlineModels = unconfirmedOnlineModels
+func (f *onlineListUpdater) init(unconfirmedOnlineChannels map[string]bool) {
+	f.unconfirmedOnlineChannels = unconfirmedOnlineChannels
 }
 
 func (f *onlineListUpdater) processResults(result cmdlib.StatusResults) statusUpdateResults {
@@ -26,8 +26,8 @@ func (f *onlineListUpdater) processResults(result cmdlib.StatusResults) statusUp
 		return statusUpdateResults{err: true}
 	}
 	online := onlyOnline(result.Statuses)
-	updates := getUpdates(f.unconfirmedOnlineModels, online)
-	f.unconfirmedOnlineModels = online
+	updates := getUpdates(f.unconfirmedOnlineChannels, online)
+	f.unconfirmedOnlineChannels = online
 	return statusUpdateResults{
 		updates: updates,
 		images:  result.Images,
@@ -36,37 +36,37 @@ func (f *onlineListUpdater) processResults(result cmdlib.StatusResults) statusUp
 }
 
 type fixedListUpdater struct {
-	unconfirmedOnlineModels map[string]bool
-	subscriptionSet         map[string]bool
+	unconfirmedOnlineChannels map[string]bool
+	subscriptionSet           map[string]bool
 }
 
-func (u *fixedListUpdater) init(unconfirmedOnlineModels map[string]bool, subscriptionStatuses map[string]cmdlib.StatusKind) {
-	u.unconfirmedOnlineModels = unconfirmedOnlineModels
+func (u *fixedListUpdater) init(unconfirmedOnlineChannels map[string]bool, subscriptionStatuses map[string]cmdlib.StatusKind) {
+	u.unconfirmedOnlineChannels = unconfirmedOnlineChannels
 	u.subscriptionSet = selectKnowns(subscriptionStatuses)
 }
 
 func (u *fixedListUpdater) processResults(result cmdlib.StatusResults) statusUpdateResults {
-	queriedModels := result.Request.Models
+	queriedChannels := result.Request.Channels
 	if result.Error {
 		return statusUpdateResults{err: true}
 	}
 
 	online := onlyOnline(result.Statuses)
-	unfilteredUpdates := getUpdates(u.unconfirmedOnlineModels, online)
+	unfilteredUpdates := getUpdates(u.unconfirmedOnlineChannels, online)
 
 	var updates []cmdlib.StatusUpdate
 	for _, x := range unfilteredUpdates {
-		if queriedModels[x.ModelID] {
+		if queriedChannels[x.ChannelID] {
 			updates = append(updates, x)
 		}
 	}
-	u.unconfirmedOnlineModels = online
+	u.unconfirmedOnlineChannels = online
 
-	// Add StatusUnknown for unsubscribed models
-	_, unknowns := cmdlib.HashDiffNewRemoved(u.subscriptionSet, queriedModels)
-	u.subscriptionSet = queriedModels
+	// Add StatusUnknown for unsubscribed channels
+	_, unknowns := cmdlib.HashDiffNewRemoved(u.subscriptionSet, queriedChannels)
+	u.subscriptionSet = queriedChannels
 	for _, m := range unknowns {
-		updates = append(updates, cmdlib.StatusUpdate{ModelID: m, Status: cmdlib.StatusUnknown})
+		updates = append(updates, cmdlib.StatusUpdate{ChannelID: m, Status: cmdlib.StatusUnknown})
 	}
 
 	return statusUpdateResults{
@@ -80,10 +80,10 @@ func getUpdates(prev, next map[string]bool) []cmdlib.StatusUpdate {
 	var result []cmdlib.StatusUpdate
 	newElems, removed := cmdlib.HashDiffNewRemoved(prev, next)
 	for _, i := range removed {
-		result = append(result, cmdlib.StatusUpdate{ModelID: i, Status: cmdlib.StatusOffline})
+		result = append(result, cmdlib.StatusUpdate{ChannelID: i, Status: cmdlib.StatusOffline})
 	}
 	for _, i := range newElems {
-		result = append(result, cmdlib.StatusUpdate{ModelID: i, Status: cmdlib.StatusOnline})
+		result = append(result, cmdlib.StatusUpdate{ChannelID: i, Status: cmdlib.StatusOnline})
 	}
 	return result
 }

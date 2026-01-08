@@ -4,17 +4,17 @@ import "github.com/bcmk/siren/lib/cmdlib"
 
 // Notification represents a notification
 type Notification struct {
-	ID       int
-	Endpoint string
-	ChatID   int64
-	ModelID  string
-	Status   cmdlib.StatusKind
-	TimeDiff *int
-	ImageURL string
-	Social   bool
-	Sound    bool
-	Priority int
-	Kind     PacketKind
+	ID        int
+	Endpoint  string
+	ChatID    int64
+	ChannelID string
+	Status    cmdlib.StatusKind
+	TimeDiff  *int
+	ImageURL  string
+	Social    bool
+	Sound     bool
+	Priority  int
+	Kind      PacketKind
 }
 
 // PacketKind represents a notification kind
@@ -37,16 +37,16 @@ const (
 // User represents a chat
 type User struct {
 	ChatID               int64
-	MaxModels            int
+	MaxChannels          int
 	Reports              int
 	Blacklist            bool
 	ShowImages           bool
 	OfflineNotifications bool
 }
 
-// Model represents a model
-type Model struct {
-	ModelID                  string
+// Channel represents a channel
+type Channel struct {
+	ChannelID                string
 	ConfirmedStatus          cmdlib.StatusKind
 	UnconfirmedStatus        cmdlib.StatusKind
 	UnconfirmedTimestamp     int
@@ -56,14 +56,14 @@ type Model struct {
 
 // StatusChange represents a status change
 type StatusChange struct {
-	ModelID   string
+	ChannelID string
 	Status    cmdlib.StatusKind
 	Timestamp int
 }
 
-// Subscription represents a supscription
+// Subscription represents a subscription
 type Subscription struct {
-	ChatID   int64
-	ModelID  string
-	Endpoint string
+	ChatID    int64
+	ChannelID string
+	Endpoint  string
 }

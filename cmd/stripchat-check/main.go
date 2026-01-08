@@ -36,7 +36,7 @@ func main() {
 		return
 	}
 	modelID := flag.Arg(0)
-	if !cmdlib.ModelIDRegexp.MatchString(modelID) {
+	if !cmdlib.CommonChannelIDRegexp.MatchString(modelID) {
 		fmt.Println("invalid model ID")
 		return
 	}

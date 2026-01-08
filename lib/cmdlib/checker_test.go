@@ -34,7 +34,7 @@ func (c *testOnlineListChecker) CheckEndpoint(
 }
 
 func (c *testOnlineListChecker) CheckStatusesMany(
-	QueryModelList,
+	QueryChannelList,
 	CheckMode,
 ) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	return CheckEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
@@ -56,7 +56,7 @@ func TestOnlineListCheckerHandlesFixedList(t *testing.T) {
 	checker.online = toSet("a", "b")
 	if err := checker.PushStatusRequest(StatusRequest{
 		Callback: callback,
-		Models:   toSet("a", "c"),
+		Channels: toSet("a", "c"),
 	}); err != nil {
 		t.Errorf("cannot query updates, %v", err)
 		return

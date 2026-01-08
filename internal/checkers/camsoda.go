@@ -70,7 +70,7 @@ func (c *CamSodaChecker) CheckEndpoint(endpoint string) (onlineModels map[string
 }
 
 // CheckStatusesMany returns CamSoda online models
-func (c *CamSodaChecker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+func (c *CamSodaChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
 	return cmdlib.CheckEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 

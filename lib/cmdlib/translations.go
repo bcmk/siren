@@ -63,10 +63,10 @@ type Translations struct {
 	InvalidSymbols              *Translation `yaml:"invalid_symbols"`
 	AlreadyAdded                *Translation `yaml:"already_added"`
 	AddError                    *Translation `yaml:"add_error"`
-	ModelAdded                  *Translation `yaml:"model_added"`
-	ModelNotInList              *Translation `yaml:"model_not_in_list"`
-	ModelRemoved                *Translation `yaml:"model_removed"`
-	CheckingModel               *Translation `yaml:"checking_model"`
+	ChannelAdded                *Translation `yaml:"channel_added"`
+	ChannelNotInList            *Translation `yaml:"channel_not_in_list"`
+	ChannelRemoved              *Translation `yaml:"channel_removed"`
+	CheckingChannel             *Translation `yaml:"checking_channel"`
 	Feedback                    *Translation `yaml:"feedback"`
 	Social                      *Translation `yaml:"social"`
 	UnknownCommand              *Translation `yaml:"unknown_command"`
@@ -74,9 +74,9 @@ type Translations struct {
 	Languages                   *Translation `yaml:"languages"`
 	Version                     *Translation `yaml:"version"`
 	ProfileRemoved              *Translation `yaml:"profile_removed"`
-	NoOnlineModels              *Translation `yaml:"no_online_models"`
+	NoOnlineChannels            *Translation `yaml:"no_online_channels"`
 	RemoveAll                   *Translation `yaml:"remove_all"`
-	AllModelsRemoved            *Translation `yaml:"all_models_removed"`
+	AllChannelsRemoved          *Translation `yaml:"all_channels_removed"`
 	ReferralLink                *Translation `yaml:"referral_link"`
 	InvalidReferralLink         *Translation `yaml:"invalid_referral_link"`
 	FollowerExists              *Translation `yaml:"follower_exists"`

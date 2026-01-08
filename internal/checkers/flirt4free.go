@@ -139,7 +139,7 @@ func (c *Flirt4FreeChecker) CheckEndpoint(endpoint string) (onlineModels map[str
 }
 
 // CheckStatusesMany returns Flirt4Free online models
-func (c *Flirt4FreeChecker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+func (c *Flirt4FreeChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
 	return cmdlib.CheckEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 

@@ -25,21 +25,21 @@ ok:
 add_error:
   parse: html
   str: |-
-    Could not add the model {{ .model }}
+    Could not add the model {{ .channel }}
     Check the camname or try later
     Syntax: /add <code>CAMNAME</code>
-checking_model:
+checking_channel:
   parse: raw
   str: Give us a second. We are checking this model
-all_models_removed:
+all_channels_removed:
   parse: raw
   str: All your subscriptions removed
 already_added:
   parse: raw
-  str: 'Model {{ .model }} is already in your list'
+  str: 'Model {{ .channel }} is already in your list'
 denied:
   parse: raw
-  str: '{{ .model }} has blocked access from the location of this bot'
+  str: '{{ .channel }} has blocked access from the location of this bot'
 feedback:
   parse: raw
   str: Thank you for your feedback!
@@ -82,19 +82,19 @@ invalid_referral_link:
 invalid_symbols:
   parse: raw
   disable_preview: true
-  str: 'Camname {{ .model }} has invalid symbols'
-model_added:
+  str: 'Camname {{ .channel }} has invalid symbols'
+channel_added:
   parse: raw
   str: |-
-    Model {{ .model }} added successfully
+    Model {{ .channel }} added successfully
     Bot will notify you whenever they enters or leaves
-model_not_in_list:
+channel_not_in_list:
   parse: raw
-  str: 'Model {{ .model }} is not in your list'
-model_removed:
+  str: 'Model {{ .channel }} is not in your list'
+channel_removed:
   parse: raw
-  str: 'Model {{ .model }} removed successfully'
-no_online_models:
+  str: 'Model {{ .channel }} removed successfully'
+no_online_channels:
   parse: raw
   str: There are no online models you subscribed to
 not_enough_subscriptions:
@@ -106,7 +106,7 @@ online:
   str: |-
     🟢
     {{- print " " -}}
-    {{- template "affiliate_link" .model }}
+    {{- template "affiliate_link" .channel }}
     {{- print " " -}}
     <i>online {{- if .time_diff }} for {{ template "duration" .time_diff }} {{- end -}}</i>
 offline:
@@ -115,7 +115,7 @@ offline:
   str: |-
     🔴
     {{- print " " -}}
-    {{- template "affiliate_link" .model }}
+    {{- template "affiliate_link" .channel }}
     {{- print " " -}}
     <i>offline {{- if .time_diff }}, last seen {{ template "duration" .time_diff }} ago {{- end -}}</i>
 zero_subscriptions:
@@ -137,7 +137,7 @@ list:
       <code>ONLINE</code>
       {{- print "\n" -}}
       {{- range .online -}}
-        {{- template "affiliate_link" .Model -}}
+        {{- template "affiliate_link" .Channel -}}
         {{- if .TimeDiff }}  <i>for {{ template "duration" .TimeDiff }}</i> {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
@@ -153,7 +153,7 @@ list:
       <code>OFFLINE</code>
       {{- print "\n" -}}
       {{- range .offline -}}
-        {{- template "affiliate_link" .Model -}}
+        {{- template "affiliate_link" .Channel -}}
         {{- if .TimeDiff }}  <i>last seen {{ template "duration" .TimeDiff }}</i> ago {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
@@ -167,7 +167,7 @@ own_referral_link_hit:
   str: You've just hit your own referral link
 profile_removed:
   parse: raw
-  str: 'Model {{ .model }} probably has removed their profile'
+  str: 'Model {{ .channel }} probably has removed their profile'
 referral_applied:
   parse: raw
   str: Congrats! You've just got more subscriptions for the referral link!
@@ -287,7 +287,7 @@ week:
   parse: html
   disable_preview: true
   str: |-
-    {{- template "affiliate_link" .model }}'s week (UTC):
+    {{- template "affiliate_link" .channel }}'s week (UTC):
     {{- print "\n\n" -}}
     <code>
     {{- printf "    00     06     12     18\n" -}}

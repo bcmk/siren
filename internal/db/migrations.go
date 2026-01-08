@@ -264,6 +264,29 @@ var migrations = []func(d *Database){
 		d.MustExec(`drop index ix_models_model_id_special;`)
 		d.MustExec(`alter table models drop column special;`)
 	},
+	func(d *Database) {
+		// Rename model_id to channel_id and models to channels
+		d.MustExec(`alter table models rename column model_id to channel_id;`)
+		d.MustExec(`alter table models rename to channels;`)
+		d.MustExec(`alter table signals rename column model_id to channel_id;`)
+		d.MustExec(`alter table status_changes rename column model_id to channel_id;`)
+		d.MustExec(`alter table notification_queue rename column model_id to channel_id;`)
+		d.MustExec(`alter table referral_events rename column model_id to channel_id;`)
+
+		// Rename indexes
+		d.MustExec(`alter index ix_signals_model_id rename to ix_signals_channel_id;`)
+		d.MustExec(`alter index ix_models_unconfirmed_online rename to ix_channels_unconfirmed_online;`)
+		d.MustExec(`alter index ix_models_model_id_is_online rename to ix_channels_channel_id_is_online;`)
+		d.MustExec(`alter index ix_status_changes_model_id_timestamp rename to ix_status_changes_channel_id_timestamp;`)
+
+		// Rename constraints
+		d.MustExec(`alter table channels rename constraint chk_models_confirmed_status to chk_channels_confirmed_status;`)
+		d.MustExec(`alter table channels rename constraint chk_models_unconfirmed_status to chk_channels_unconfirmed_status;`)
+		d.MustExec(`alter table channels rename constraint chk_models_prev_unconfirmed_status to chk_channels_prev_unconfirmed_status;`)
+
+		// Rename users.max_models to users.max_channels
+		d.MustExec(`alter table users rename column max_models to max_channels;`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database

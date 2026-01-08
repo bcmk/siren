@@ -12,13 +12,13 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func isConfirmedOnline(w *testWorker, modelID string) bool {
-	m := w.db.MaybeModel(modelID)
+func isConfirmedOnline(w *testWorker, channelID string) bool {
+	m := w.db.MaybeChannel(channelID)
 	return m != nil && m.ConfirmedStatus == cmdlib.StatusOnline
 }
 
 func confirmedOnlineCount(w *testWorker) int {
-	return w.db.MustInt("select count(*) from models where confirmed_status = $1", cmdlib.StatusOnline)
+	return w.db.MustInt("select count(*) from channels where confirmed_status = $1", cmdlib.StatusOnline)
 }
 
 func TestSql(t *testing.T) {
@@ -27,18 +27,18 @@ func TestSql(t *testing.T) {
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
 	w.initCache()
-	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 1, "a")
-	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 2, "b")
-	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 3, "c")
-	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 3, "c2")
-	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 3, "c3")
-	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 4, "d")
-	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 5, "d")
-	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 6, "e")
-	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 7, "f")
-	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep2", 6, "e")
-	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep2", 7, "f")
-	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep2", 8, "g")
+	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 1, "a")
+	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 2, "b")
+	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 3, "c")
+	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 3, "c2")
+	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 3, "c3")
+	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 4, "d")
+	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 5, "d")
+	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 6, "e")
+	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 7, "f")
+	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep2", 6, "e")
+	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep2", 7, "f")
+	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep2", 8, "g")
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 2, 0)
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 3, w.cfg.BlockThreshold)
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 4, w.cfg.BlockThreshold-1)
@@ -46,10 +46,10 @@ func TestSql(t *testing.T) {
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 6, w.cfg.BlockThreshold)
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 7, w.cfg.BlockThreshold)
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep2", 7, w.cfg.BlockThreshold)
-	w.db.MustExec("insert into models (model_id, confirmed_status) values ($1, $2)", "a", cmdlib.StatusOnline)
-	w.db.MustExec("insert into models (model_id, confirmed_status) values ($1, $2)", "b", cmdlib.StatusOnline)
-	w.db.MustExec("insert into models (model_id, confirmed_status) values ($1, $2)", "c", cmdlib.StatusOnline)
-	w.db.MustExec("insert into models (model_id, confirmed_status) values ($1, $2)", "c2", cmdlib.StatusOnline)
+	w.db.MustExec("insert into channels (channel_id, confirmed_status) values ($1, $2)", "a", cmdlib.StatusOnline)
+	w.db.MustExec("insert into channels (channel_id, confirmed_status) values ($1, $2)", "b", cmdlib.StatusOnline)
+	w.db.MustExec("insert into channels (channel_id, confirmed_status) values ($1, $2)", "c", cmdlib.StatusOnline)
+	w.db.MustExec("insert into channels (channel_id, confirmed_status) values ($1, $2)", "c2", cmdlib.StatusOnline)
 	broadcastChats := w.db.BroadcastChats("ep1")
 	if !reflect.DeepEqual(broadcastChats, []int64{1, 2, 3, 4, 5, 6, 7}) {
 		t.Error("unexpected broadcast chats result", broadcastChats)
@@ -58,58 +58,58 @@ func TestSql(t *testing.T) {
 	if !reflect.DeepEqual(broadcastChats, []int64{6, 7, 8}) {
 		t.Error("unexpected broadcast chats result", broadcastChats)
 	}
-	chatsForModel, endpoints := w.chatsForModel("a")
+	chatsForChannel, endpoints := w.chatsForChannel("a")
 	if !reflect.DeepEqual(endpoints, []string{"ep1"}) {
-		t.Error("unexpected chats for model result", chatsForModel)
+		t.Error("unexpected chats for channel result", chatsForChannel)
 	}
-	if !reflect.DeepEqual(chatsForModel, []int64{1}) {
-		t.Error("unexpected chats for model result", chatsForModel)
+	if !reflect.DeepEqual(chatsForChannel, []int64{1}) {
+		t.Error("unexpected chats for channel result", chatsForChannel)
 	}
-	chatsForModel, _ = w.chatsForModel("b")
-	if !reflect.DeepEqual(chatsForModel, []int64{2}) {
-		t.Error("unexpected chats for model result", chatsForModel)
+	chatsForChannel, _ = w.chatsForChannel("b")
+	if !reflect.DeepEqual(chatsForChannel, []int64{2}) {
+		t.Error("unexpected chats for channel result", chatsForChannel)
 	}
-	chatsForModel, _ = w.chatsForModel("c")
-	if !reflect.DeepEqual(chatsForModel, []int64{3}) {
-		t.Error("unexpected chats for model result", chatsForModel)
+	chatsForChannel, _ = w.chatsForChannel("c")
+	if !reflect.DeepEqual(chatsForChannel, []int64{3}) {
+		t.Error("unexpected chats for channel result", chatsForChannel)
 	}
-	chatsForModel, _ = w.chatsForModel("d")
-	if !reflect.DeepEqual(chatsForModel, []int64{4, 5}) {
-		t.Error("unexpected chats for model result", chatsForModel)
+	chatsForChannel, _ = w.chatsForChannel("d")
+	if !reflect.DeepEqual(chatsForChannel, []int64{4, 5}) {
+		t.Error("unexpected chats for channel result", chatsForChannel)
 	}
-	chatsForModel, _ = w.chatsForModel("e")
-	if !reflect.DeepEqual(chatsForModel, []int64{6, 6}) {
-		t.Error("unexpected chats for model result", chatsForModel)
+	chatsForChannel, _ = w.chatsForChannel("e")
+	if !reflect.DeepEqual(chatsForChannel, []int64{6, 6}) {
+		t.Error("unexpected chats for channel result", chatsForChannel)
 	}
-	chatsForModel, _ = w.chatsForModel("f")
-	if !reflect.DeepEqual(chatsForModel, []int64{7, 7}) {
-		t.Error("unexpected chats for model result", chatsForModel)
+	chatsForChannel, _ = w.chatsForChannel("f")
+	if !reflect.DeepEqual(chatsForChannel, []int64{7, 7}) {
+		t.Error("unexpected chats for channel result", chatsForChannel)
 	}
 	w.db.IncrementBlock("ep1", 2)
 	w.db.IncrementBlock("ep1", 2)
 	if w.db.MustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep1") != 2 {
-		t.Error("unexpected block for model result", chatsForModel)
+		t.Error("unexpected block for channel result", chatsForChannel)
 	}
 	w.db.IncrementBlock("ep2", 2)
 	if w.db.MustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep2") != 1 {
-		t.Error("unexpected block for model result", chatsForModel)
+		t.Error("unexpected block for channel result", chatsForChannel)
 	}
 	w.db.ResetBlock("ep1", 2)
 	if w.db.MustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep1") != 0 {
-		t.Error("unexpected block for model result", chatsForModel)
+		t.Error("unexpected block for channel result", chatsForChannel)
 	}
 	if w.db.MustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep2") != 1 {
-		t.Error("unexpected block for model result", chatsForModel)
+		t.Error("unexpected block for channel result", chatsForChannel)
 	}
 	w.db.IncrementBlock("ep1", 1)
 	w.db.IncrementBlock("ep1", 1)
 	if w.db.MustInt("select block from block where chat_id = $1", 1) != 2 {
-		t.Error("unexpected block for model result", chatsForModel)
+		t.Error("unexpected block for channel result", chatsForChannel)
 	}
 	statuses := w.db.ConfirmedStatusesForChat("ep1", 3)
-	if !reflect.DeepEqual(statuses, []db.Model{
-		{ModelID: "c", ConfirmedStatus: cmdlib.StatusOnline},
-		{ModelID: "c2", ConfirmedStatus: cmdlib.StatusOnline}}) {
+	if !reflect.DeepEqual(statuses, []db.Channel{
+		{ChannelID: "c", ConfirmedStatus: cmdlib.StatusOnline},
+		{ChannelID: "c2", ConfirmedStatus: cmdlib.StatusOnline}}) {
 		t.Error("unexpected statuses", statuses)
 	}
 	_ = w.db.Close()
@@ -121,11 +121,11 @@ func TestUpdateStatus(t *testing.T) {
 	w.createDatabase(make(chan bool, 1))
 	w.initCache()
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 18); n == 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOnline}}, 18); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 19); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOffline}}, 19); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
@@ -133,24 +133,24 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 21); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOnline}}, 21); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if confirmedOnlineCount(w) != 1 {
-		t.Error("wrong online models count")
+		t.Error("wrong online channels count")
 	}
 	checkInv(&w.worker, t)
 	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 22); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 23); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOffline}}, 23); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if confirmedOnlineCount(w) != 1 {
-		t.Error("wrong online models count")
+		t.Error("wrong online channels count")
 	}
 	checkInv(&w.worker, t)
 	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 24); n != 0 {
@@ -169,11 +169,11 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("wrong active status")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 31); n == 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOnline}}, 31); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 32); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOffline}}, 32); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
@@ -187,7 +187,7 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 36); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOnline}}, 36); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
@@ -199,11 +199,11 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 42); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOffline}}, 42); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 48); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOnline}}, 48); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
@@ -211,35 +211,35 @@ func TestUpdateStatus(t *testing.T) {
 	checkInv(&w.worker, t)
 	w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 50)
 	checkInv(&w.worker, t)
-	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 50)
+	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOnline}}, 50)
 	checkInv(&w.worker, t)
-	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 52)
+	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOffline}}, 52)
 	checkInv(&w.worker, t)
-	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "b", Status: cmdlib.StatusOnline}}, 53)
+	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "b", Status: cmdlib.StatusOnline}}, 53)
 	checkInv(&w.worker, t)
-	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "b", Status: cmdlib.StatusOffline}}, 54)
+	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "b", Status: cmdlib.StatusOffline}}, 54)
 	checkInv(&w.worker, t)
 	if !isConfirmedOnline(w, "b") {
 		t.Error("wrong active status")
 	}
 	checkInv(&w.worker, t)
-	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}, {ModelID: "b", Status: cmdlib.StatusOnline}}, 55)
+	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOnline}, {ChannelID: "b", Status: cmdlib.StatusOnline}}, 55)
 	checkInv(&w.worker, t)
 	if !isConfirmedOnline(w, "b") {
 		t.Error("wrong active status")
 	}
 	checkInv(&w.worker, t)
 	if confirmedOnlineCount(w) != 2 {
-		t.Error("wrong online models count")
+		t.Error("wrong online channels count")
 	}
 	checkInv(&w.worker, t)
-	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "b", Status: cmdlib.StatusOffline}}, 56)
+	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "b", Status: cmdlib.StatusOffline}}, 56)
 	if count := confirmedOnlineCount(w); count != 2 {
-		t.Errorf("wrong online models count: %d", count)
+		t.Errorf("wrong online channels count: %d", count)
 	}
 	w.cfg.OfflineNotifications = true
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 57); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOffline}}, 57); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
@@ -253,30 +253,30 @@ func TestUpdateStatus(t *testing.T) {
 	if isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 69); n == 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOnline}}, 69); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if !isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusUnknown}}, 70); n == 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusUnknown}}, 70); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 71); n == 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOnline}}, 71); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if !isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
-	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusUnknown}}, 72)
+	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusUnknown}}, 72)
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 73); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOffline}}, 73); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
@@ -290,11 +290,11 @@ func TestUpdateStatus(t *testing.T) {
 	if isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusUnknown}}, 80); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusUnknown}}, 80); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 81); n == 0 {
+	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOnline}}, 81); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
@@ -310,31 +310,31 @@ func TestUpdateNotifications(t *testing.T) {
 	w.createDatabase(make(chan bool, 1))
 	w.initCache()
 
-	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 1, "a")
-	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 2, "b")
-	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 3, "a")
-	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 3, "c")
-	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep1", 4, "d")
-	w.db.MustExec("insert into signals (endpoint, chat_id, model_id) values ($1, $2, $3)", "ep2", 4, "d")
+	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 1, "a")
+	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 2, "b")
+	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 3, "a")
+	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 3, "c")
+	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 4, "d")
+	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep2", 4, "d")
 
 	w.db.MustExec("insert into users (chat_id) values ($1)", 1)
 	w.db.MustExec("insert into users (chat_id) values ($1)", 2)
 	w.db.MustExec("insert into users (chat_id) values ($1)", 3)
 	w.db.MustExec("insert into users (chat_id) values ($1)", 4)
 
-	if _, _, nots, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "x", Status: cmdlib.StatusOnline}}, 1); len(nots) != 0 {
+	if _, _, nots, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "x", Status: cmdlib.StatusOnline}}, 1); len(nots) != 0 {
 		t.Error("unexpected notification number")
 	}
-	if _, _, nots, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOnline}}, 2); len(nots) != 2 {
+	if _, _, nots, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOnline}}, 2); len(nots) != 2 {
 		t.Error("unexpected notification number")
 	}
-	if _, _, nots, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 3); len(nots) != 0 {
+	if _, _, nots, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOffline}}, 3); len(nots) != 0 {
 		t.Error("unexpected notification number")
 	}
-	if _, _, nots, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "a", Status: cmdlib.StatusOffline}}, 8); len(nots) != 2 {
+	if _, _, nots, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOffline}}, 8); len(nots) != 2 {
 		t.Error("unexpected notification number")
 	}
-	if _, _, nots, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ModelID: "d", Status: cmdlib.StatusOnline}}, 2); len(nots) != 2 {
+	if _, _, nots, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "d", Status: cmdlib.StatusOnline}}, 2); len(nots) != 2 {
 		t.Error("unexpected notification number")
 	}
 	_ = w.db.Close()
@@ -345,13 +345,13 @@ func queryLastStatusChanges(d *db.Database) map[string]db.StatusChange {
 	var statusChange db.StatusChange
 	d.MustQuery(
 		`
-			select distinct on (model_id) model_id, status, timestamp
+			select distinct on (channel_id) channel_id, status, timestamp
 			from status_changes
-			order by model_id, timestamp desc
+			order by channel_id, timestamp desc
 		`,
 		nil,
-		db.ScanTo{&statusChange.ModelID, &statusChange.Status, &statusChange.Timestamp},
-		func() { statusChanges[statusChange.ModelID] = statusChange })
+		db.ScanTo{&statusChange.ChannelID, &statusChange.Status, &statusChange.Timestamp},
+		func() { statusChanges[statusChange.ChannelID] = statusChange })
 	return statusChanges
 }
 
@@ -359,28 +359,28 @@ func TestNotificationsStorage(t *testing.T) {
 	timeDiff := 2
 	nots := []db.Notification{
 		{
-			Endpoint: "endpoint_a",
-			ChatID:   1,
-			ModelID:  "model_a",
-			Status:   cmdlib.StatusUnknown,
-			TimeDiff: nil,
-			ImageURL: "image_a",
-			Social:   false,
-			Priority: 1,
-			Sound:    false,
-			Kind:     db.NotificationPacket,
+			Endpoint:  "endpoint_a",
+			ChatID:    1,
+			ChannelID: "a",
+			Status:    cmdlib.StatusUnknown,
+			TimeDiff:  nil,
+			ImageURL:  "image_a",
+			Social:    false,
+			Priority:  1,
+			Sound:     false,
+			Kind:      db.NotificationPacket,
 		},
 		{
-			Endpoint: "endpoint_b",
-			ChatID:   2,
-			ModelID:  "model_b",
-			Status:   cmdlib.StatusOffline,
-			TimeDiff: &timeDiff,
-			ImageURL: "image_b",
-			Social:   true,
-			Priority: 2,
-			Sound:    true,
-			Kind:     db.ReplyPacket,
+			Endpoint:  "endpoint_b",
+			ChatID:    2,
+			ChannelID: "b",
+			Status:    cmdlib.StatusOffline,
+			TimeDiff:  &timeDiff,
+			ImageURL:  "image_b",
+			Social:    true,
+			Priority:  2,
+			Sound:     true,
+			Kind:      db.ReplyPacket,
 		},
 	}
 	w := newTestWorker()
@@ -395,14 +395,14 @@ func TestNotificationsStorage(t *testing.T) {
 	}
 	nots = []db.Notification{
 		{
-			Endpoint: "endpoint_c",
-			ChatID:   3,
-			ModelID:  "model_c",
-			Status:   cmdlib.StatusOnline,
-			TimeDiff: nil,
-			ImageURL: "image_c",
-			Social:   true,
-			Priority: 3,
+			Endpoint:  "endpoint_c",
+			ChatID:    3,
+			ChannelID: "c",
+			Status:    cmdlib.StatusOnline,
+			TimeDiff:  nil,
+			ImageURL:  "image_c",
+			Social:    true,
+			Priority:  3,
 		},
 	}
 	w.db.StoreNotifications(nots)
@@ -417,15 +417,15 @@ func TestNotificationsStorage(t *testing.T) {
 	}
 }
 
-func TestModels(t *testing.T) {
+func TestChannels(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
-	w.db.MustExec("insert into models (model_id, confirmed_status) values ($1, $2)", "a", cmdlib.StatusOffline)
-	if w.db.MaybeModel("a") == nil {
+	w.db.MustExec("insert into channels (channel_id, confirmed_status) values ($1, $2)", "a", cmdlib.StatusOffline)
+	if w.db.MaybeChannel("a") == nil {
 		t.Error("unexpected result")
 	}
-	if w.db.MaybeModel("b") != nil {
+	if w.db.MaybeChannel("b") != nil {
 		t.Error("unexpected result")
 	}
 }
@@ -446,12 +446,12 @@ func TestCopyFromAndBatchInTransaction(t *testing.T) {
 
 	// CopyFrom should succeed
 	rows := [][]interface{}{
-		{"test_model", cmdlib.StatusOnline, 100},
+		{"a", cmdlib.StatusOnline, 100},
 	}
 	_, err = tx.CopyFrom(
 		context.Background(),
 		pgx.Identifier{"status_changes"},
-		[]string{"model_id", "status", "timestamp"},
+		[]string{"channel_id", "status", "timestamp"},
 		pgx.CopyFromRows(rows),
 	)
 	if err != nil {
@@ -462,10 +462,10 @@ func TestCopyFromAndBatchInTransaction(t *testing.T) {
 	batch := &pgx.Batch{}
 	batch.Queue(
 		`
-			insert into models (model_id, unconfirmed_status)
+			insert into channels (channel_id, unconfirmed_status)
 			values ($1, $2)
 		`,
-		"test_model", 999) // 999 violates check constraint
+		"test_channel", 999) // 999 violates check constraint
 	br := tx.SendBatch(context.Background(), batch)
 	err = br.Close()
 
@@ -479,7 +479,7 @@ func TestCopyFromAndBatchInTransaction(t *testing.T) {
 
 	// Verify status_changes has NO data (CopyFrom was rolled back)
 	// Query using a new connection, not the failed transaction
-	count := w.db.MustInt("select count(*) from status_changes where model_id = 'test_model'")
+	count := w.db.MustInt("select count(*) from status_changes where channel_id = 'a'")
 	if count != 0 {
 		t.Errorf("expected 0 status_changes after rollback, got %d", count)
 	}
@@ -566,46 +566,46 @@ func TestUnconfirmedStatusConsistency(t *testing.T) {
 	w.createDatabase(make(chan bool, 1))
 	w.initCache()
 
-	// Insert first status change for model "a"
+	// Insert first status change for channel "a"
 	w.db.InsertStatusChanges([]db.StatusChange{
-		{ModelID: "a", Status: cmdlib.StatusOnline, Timestamp: 100},
+		{ChannelID: "a", Status: cmdlib.StatusOnline, Timestamp: 100},
 	})
 
-	model := w.db.MaybeModel("a")
-	if model == nil {
-		t.Fatal("model not found")
+	channel := w.db.MaybeChannel("a")
+	if channel == nil {
+		t.Fatal("channel not found")
 	}
-	if model.UnconfirmedStatus != cmdlib.StatusOnline || model.UnconfirmedTimestamp != 100 {
-		t.Errorf("unexpected unconfirmed status: %+v", model)
+	if channel.UnconfirmedStatus != cmdlib.StatusOnline || channel.UnconfirmedTimestamp != 100 {
+		t.Errorf("unexpected unconfirmed status: %+v", channel)
 	}
-	if model.PrevUnconfirmedStatus != cmdlib.StatusUnknown || model.PrevUnconfirmedTimestamp != 0 {
-		t.Errorf("unexpected prev unconfirmed status: %+v", model)
+	if channel.PrevUnconfirmedStatus != cmdlib.StatusUnknown || channel.PrevUnconfirmedTimestamp != 0 {
+		t.Errorf("unexpected prev unconfirmed status: %+v", channel)
 	}
 
 	// Insert second status change — prev should be updated
 	w.db.InsertStatusChanges([]db.StatusChange{
-		{ModelID: "a", Status: cmdlib.StatusOffline, Timestamp: 200},
+		{ChannelID: "a", Status: cmdlib.StatusOffline, Timestamp: 200},
 	})
 
-	model = w.db.MaybeModel("a")
-	if model.UnconfirmedStatus != cmdlib.StatusOffline || model.UnconfirmedTimestamp != 200 {
-		t.Errorf("unexpected unconfirmed status: %+v", model)
+	channel = w.db.MaybeChannel("a")
+	if channel.UnconfirmedStatus != cmdlib.StatusOffline || channel.UnconfirmedTimestamp != 200 {
+		t.Errorf("unexpected unconfirmed status: %+v", channel)
 	}
-	if model.PrevUnconfirmedStatus != cmdlib.StatusOnline || model.PrevUnconfirmedTimestamp != 100 {
-		t.Errorf("unexpected prev unconfirmed status: %+v", model)
+	if channel.PrevUnconfirmedStatus != cmdlib.StatusOnline || channel.PrevUnconfirmedTimestamp != 100 {
+		t.Errorf("unexpected prev unconfirmed status: %+v", channel)
 	}
 
 	// Insert third status change — prev should shift
 	w.db.InsertStatusChanges([]db.StatusChange{
-		{ModelID: "a", Status: cmdlib.StatusOnline, Timestamp: 300},
+		{ChannelID: "a", Status: cmdlib.StatusOnline, Timestamp: 300},
 	})
 
-	model = w.db.MaybeModel("a")
-	if model.UnconfirmedStatus != cmdlib.StatusOnline || model.UnconfirmedTimestamp != 300 {
-		t.Errorf("unexpected unconfirmed status: %+v", model)
+	channel = w.db.MaybeChannel("a")
+	if channel.UnconfirmedStatus != cmdlib.StatusOnline || channel.UnconfirmedTimestamp != 300 {
+		t.Errorf("unexpected unconfirmed status: %+v", channel)
 	}
-	if model.PrevUnconfirmedStatus != cmdlib.StatusOffline || model.PrevUnconfirmedTimestamp != 200 {
-		t.Errorf("unexpected prev unconfirmed status: %+v", model)
+	if channel.PrevUnconfirmedStatus != cmdlib.StatusOffline || channel.PrevUnconfirmedTimestamp != 200 {
+		t.Errorf("unexpected prev unconfirmed status: %+v", channel)
 	}
 }
 
@@ -613,21 +613,21 @@ func checkInv(w *worker, t *testing.T) {
 	a := map[string]db.StatusChange{}
 	var recStatus db.StatusChange
 	w.db.MustQuery(`
-		select model_id, status, timestamp
+		select channel_id, status, timestamp
 		from (
-			select *, row_number() over (partition by model_id order by timestamp desc) as row
+			select *, row_number() over (partition by channel_id order by timestamp desc) as row
 			from status_changes
 		)
 		where row = 1`,
 		nil,
-		db.ScanTo{&recStatus.ModelID, &recStatus.Status, &recStatus.Timestamp},
-		func() { a[recStatus.ModelID] = recStatus })
+		db.ScanTo{&recStatus.ChannelID, &recStatus.Status, &recStatus.Timestamp},
+		func() { a[recStatus.ChannelID] = recStatus })
 
 	if !reflect.DeepEqual(a, queryLastStatusChanges(&w.db)) {
 		t.Errorf("unexpected inv check result, statuses: %v, site statuses: %v", a, queryLastStatusChanges(&w.db))
 		t.Log(string(debug.Stack()))
 	}
-	// Check unconfirmed status consistency — models table must match last two status_changes
+	// Check unconfirmed status consistency — channels table must match last two status_changes
 	type lastTwo struct {
 		unconfirmed, prev db.StatusChange
 	}
@@ -635,74 +635,74 @@ func checkInv(w *worker, t *testing.T) {
 	var sc db.StatusChange
 	var row int
 	w.db.MustQuery(`
-		select model_id, status, timestamp, row
+		select channel_id, status, timestamp, row
 		from (
-			select *, row_number() over (partition by model_id order by timestamp desc) as row
+			select *, row_number() over (partition by channel_id order by timestamp desc) as row
 			from status_changes
 		)
 		where row <= 2
-		order by model_id, row`,
+		order by channel_id, row`,
 		nil,
-		db.ScanTo{&sc.ModelID, &sc.Status, &sc.Timestamp, &row},
+		db.ScanTo{&sc.ChannelID, &sc.Status, &sc.Timestamp, &row},
 		func() {
-			entry := fromStatusChanges[sc.ModelID]
+			entry := fromStatusChanges[sc.ChannelID]
 			if row == 1 {
 				entry.unconfirmed = sc
 			} else {
 				entry.prev = sc
 			}
-			fromStatusChanges[sc.ModelID] = entry
+			fromStatusChanges[sc.ChannelID] = entry
 		})
 
-	var model db.Model
+	var channel db.Channel
 	w.db.MustQuery(`
-		select model_id, unconfirmed_status, unconfirmed_timestamp, prev_unconfirmed_status, prev_unconfirmed_timestamp
-		from models
+		select channel_id, unconfirmed_status, unconfirmed_timestamp, prev_unconfirmed_status, prev_unconfirmed_timestamp
+		from channels
 		where unconfirmed_timestamp > 0`,
 		nil,
-		db.ScanTo{&model.ModelID, &model.UnconfirmedStatus, &model.UnconfirmedTimestamp, &model.PrevUnconfirmedStatus, &model.PrevUnconfirmedTimestamp},
+		db.ScanTo{&channel.ChannelID, &channel.UnconfirmedStatus, &channel.UnconfirmedTimestamp, &channel.PrevUnconfirmedStatus, &channel.PrevUnconfirmedTimestamp},
 		func() {
-			expected := fromStatusChanges[model.ModelID]
-			if model.UnconfirmedStatus != expected.unconfirmed.Status ||
-				model.UnconfirmedTimestamp != expected.unconfirmed.Timestamp {
-				t.Errorf("unconfirmed status mismatch for %s: model=%+v, expected=%+v", model.ModelID, model, expected)
+			expected := fromStatusChanges[channel.ChannelID]
+			if channel.UnconfirmedStatus != expected.unconfirmed.Status ||
+				channel.UnconfirmedTimestamp != expected.unconfirmed.Timestamp {
+				t.Errorf("unconfirmed status mismatch for %s: channel=%+v, expected=%+v", channel.ChannelID, channel, expected)
 				t.Log(string(debug.Stack()))
 			}
-			if model.PrevUnconfirmedStatus != expected.prev.Status ||
-				model.PrevUnconfirmedTimestamp != expected.prev.Timestamp {
-				t.Errorf("prev unconfirmed status mismatch for %s: model=%+v, expected=%+v", model.ModelID, model, expected)
+			if channel.PrevUnconfirmedStatus != expected.prev.Status ||
+				channel.PrevUnconfirmedTimestamp != expected.prev.Timestamp {
+				t.Errorf("prev unconfirmed status mismatch for %s: channel=%+v, expected=%+v", channel.ChannelID, channel, expected)
 				t.Log(string(debug.Stack()))
 			}
 		})
 }
 
-func TestAddModel(t *testing.T) {
+func TestAddChannel(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
 	w.db.AddUser(1, 3)
 
-	// Add model that doesn't exist — should insert with confirmed=0 and return false
-	if w.addModel("test", 1, "newmodel", 100) {
-		t.Error("expected addModel to return false for new model")
+	// Add channel that doesn't exist — should insert with confirmed=0 and return false
+	if w.addChannel("test", 1, "newmodel", 100) {
+		t.Error("expected addChannel to return false for new channel")
 	}
-	if w.db.MustInt("select confirmed from signals where model_id = $1", "newmodel") != 0 {
-		t.Error("expected confirmed=0 for new model")
+	if w.db.MustInt("select confirmed from signals where channel_id = $1", "newmodel") != 0 {
+		t.Error("expected confirmed=0 for new channel")
 	}
-	// Drain the "checking model" message
+	// Drain the "checking channel" message
 	<-w.highPriorityMsg
 
-	// Add model that exists with online status — should return true
+	// Add channel that exists with online status — should return true
 	w.db.MustExec(
-		"insert into models (model_id, confirmed_status) values ($1, $2)",
+		"insert into channels (channel_id, confirmed_status) values ($1, $2)",
 		"onlinemodel",
 		cmdlib.StatusOnline,
 	)
-	if !w.addModel("test", 1, "onlinemodel", 100) {
-		t.Error("expected addModel to return true for existing model")
+	if !w.addChannel("test", 1, "onlinemodel", 100) {
+		t.Error("expected addChannel to return true for existing channel")
 	}
-	if w.db.MustInt("select confirmed from signals where model_id = $1", "onlinemodel") != 1 {
-		t.Error("expected confirmed=1 for existing model")
+	if w.db.MustInt("select confirmed from signals where channel_id = $1", "onlinemodel") != 1 {
+		t.Error("expected confirmed=1 for existing channel")
 	}
 	// Drain messages
 	<-w.highPriorityMsg
@@ -711,14 +711,14 @@ func TestAddModel(t *testing.T) {
 		t.Errorf("expected online notification, got %+v", nots)
 	}
 
-	// Add model that exists with offline status — should return true
+	// Add channel that exists with offline status — should return true
 	w.db.MustExec(
-		"insert into models (model_id, confirmed_status) values ($1, $2)",
+		"insert into channels (channel_id, confirmed_status) values ($1, $2)",
 		"offlinemodel",
 		cmdlib.StatusOffline,
 	)
-	if !w.addModel("test", 1, "offlinemodel", 100) {
-		t.Error("expected addModel to return true for existing offline model")
+	if !w.addChannel("test", 1, "offlinemodel", 100) {
+		t.Error("expected addChannel to return true for existing offline channel")
 	}
 	nots = w.db.NewNotifications()
 	if len(nots) != 1 || nots[0].Status != cmdlib.StatusOffline {
@@ -733,21 +733,21 @@ func TestConfirmSub(t *testing.T) {
 
 	// Insert unconfirmed subscription
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
-		"test", 1, "model_a", 0,
+		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"test", 1, "a", 0,
 	)
 
 	// Confirm the subscription
-	w.db.ConfirmSub(db.Subscription{Endpoint: "test", ChatID: 1, ModelID: "model_a"})
+	w.db.ConfirmSub(db.Subscription{Endpoint: "test", ChatID: 1, ChannelID: "a"})
 
 	// Check signal is confirmed
-	if w.db.MustInt("select confirmed from signals where model_id = $1", "model_a") != 1 {
+	if w.db.MustInt("select confirmed from signals where channel_id = $1", "a") != 1 {
 		t.Error("expected confirmed=1 after ConfirmSub")
 	}
 
-	// Check model was created
-	if w.db.MaybeModel("model_a") == nil {
-		t.Error("expected model to exist after ConfirmSub")
+	// Check channel was created
+	if w.db.MaybeChannel("a") == nil {
+		t.Error("expected channel to exist after ConfirmSub")
 	}
 }
 
@@ -758,15 +758,15 @@ func TestDenySub(t *testing.T) {
 
 	// Insert unconfirmed subscription
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
-		"test", 1, "model_b", 0,
+		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"test", 1, "b", 0,
 	)
 
 	// Deny the subscription
-	w.db.DenySub(db.Subscription{Endpoint: "test", ChatID: 1, ModelID: "model_b"})
+	w.db.DenySub(db.Subscription{Endpoint: "test", ChatID: 1, ChannelID: "b"})
 
 	// Check signal is deleted
-	if w.db.MustInt("select count(*) from signals where model_id = $1", "model_b") != 0 {
+	if w.db.MustInt("select count(*) from signals where channel_id = $1", "b") != 0 {
 		t.Error("expected signal to be deleted after DenySub")
 	}
 }
@@ -778,31 +778,31 @@ func TestProcessSubsConfirmations(t *testing.T) {
 
 	// Insert subscriptions waiting for confirmation (confirmed=2)
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 1, "online_model", 2,
 	)
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 2, "offline_model", 2,
 	)
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 3, "notfound_model", 2,
 	)
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 4, "denied_model", 2,
 	)
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 5, "notfound_denied_model", 2,
 	)
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 6, "online_offline_model", 2,
 	)
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 7, "unknown_model", 2,
 	)
 
@@ -820,37 +820,37 @@ func TestProcessSubsConfirmations(t *testing.T) {
 	})
 
 	// Online model should be confirmed
-	if w.db.MustInt("select confirmed from signals where model_id = $1", "online_model") != 1 {
+	if w.db.MustInt("select confirmed from signals where channel_id = $1", "online_model") != 1 {
 		t.Error("expected online_model to be confirmed")
 	}
 
 	// Offline model should be confirmed
-	if w.db.MustInt("select confirmed from signals where model_id = $1", "offline_model") != 1 {
+	if w.db.MustInt("select confirmed from signals where channel_id = $1", "offline_model") != 1 {
 		t.Error("expected offline_model to be confirmed")
 	}
 
 	// NotFound model should be denied (deleted)
-	if w.db.MustInt("select count(*) from signals where model_id = $1", "notfound_model") != 0 {
+	if w.db.MustInt("select count(*) from signals where channel_id = $1", "notfound_model") != 0 {
 		t.Error("expected notfound_model to be deleted")
 	}
 
 	// Denied model should be confirmed (StatusDenied is a valid status)
-	if w.db.MustInt("select confirmed from signals where model_id = $1", "denied_model") != 1 {
+	if w.db.MustInt("select confirmed from signals where channel_id = $1", "denied_model") != 1 {
 		t.Error("expected denied_model to be confirmed")
 	}
 
 	// NotFound|Denied model should be confirmed (StatusDenied bit is set)
-	if w.db.MustInt("select confirmed from signals where model_id = $1", "notfound_denied_model") != 1 {
+	if w.db.MustInt("select confirmed from signals where channel_id = $1", "notfound_denied_model") != 1 {
 		t.Error("expected notfound_denied_model to be confirmed")
 	}
 
 	// Online|Offline model should be confirmed (found but status uncertain)
-	if w.db.MustInt("select confirmed from signals where model_id = $1", "online_offline_model") != 1 {
+	if w.db.MustInt("select confirmed from signals where channel_id = $1", "online_offline_model") != 1 {
 		t.Error("expected online_offline_model to be confirmed")
 	}
 
 	// Unknown model should be denied (deleted)
-	if w.db.MustInt("select count(*) from signals where model_id = $1", "unknown_model") != 0 {
+	if w.db.MustInt("select count(*) from signals where channel_id = $1", "unknown_model") != 0 {
 		t.Error("expected unknown_model to be deleted")
 	}
 }
@@ -864,43 +864,43 @@ func TestConfirmStatusChanges(t *testing.T) {
 
 	// Case 1: confirmed=offline, unconfirmed=online → confirm immediately (onlineSeconds=0)
 	w.db.MustExec(
-		"insert into models (model_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
+		"insert into channels (channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
 		"offline_to_online", cmdlib.StatusOffline, cmdlib.StatusOnline, 100,
 	)
 
 	// Case 2: confirmed=online, unconfirmed=offline, timing met → confirm offline
 	w.db.MustExec(
-		"insert into models (model_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
+		"insert into channels (channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
 		"online_to_offline_met", cmdlib.StatusOnline, cmdlib.StatusOffline, 100,
 	)
 
 	// Case 3: confirmed=online, unconfirmed=offline, timing NOT met → no change
 	w.db.MustExec(
-		"insert into models (model_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
+		"insert into channels (channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
 		"online_to_offline_not_met", cmdlib.StatusOnline, cmdlib.StatusOffline, 103,
 	)
 
 	// Case 4: confirmed=online, unconfirmed=unknown → confirm offline immediately
 	w.db.MustExec(
-		"insert into models (model_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
+		"insert into channels (channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
 		"online_to_unknown", cmdlib.StatusOnline, cmdlib.StatusUnknown, 100,
 	)
 
 	// Case 5: confirmed=offline, unconfirmed=unknown → NO change (XOR fails)
 	w.db.MustExec(
-		"insert into models (model_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
+		"insert into channels (channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
 		"offline_to_unknown", cmdlib.StatusOffline, cmdlib.StatusUnknown, 100,
 	)
 
 	// Case 6: same status (online=online) → NO change (XOR fails)
 	w.db.MustExec(
-		"insert into models (model_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
+		"insert into channels (channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
 		"online_to_online", cmdlib.StatusOnline, cmdlib.StatusOnline, 100,
 	)
 
 	// Case 7: same status (offline=offline) → NO change (XOR fails)
 	w.db.MustExec(
-		"insert into models (model_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
+		"insert into channels (channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
 		"offline_to_offline", cmdlib.StatusOffline, cmdlib.StatusOffline, 100,
 	)
 
@@ -909,7 +909,7 @@ func TestConfirmStatusChanges(t *testing.T) {
 
 	changesMap := map[string]cmdlib.StatusKind{}
 	for _, c := range changes {
-		changesMap[c.ModelID] = c.Status
+		changesMap[c.ChannelID] = c.Status
 	}
 
 	// Case 1: should confirm online
@@ -948,16 +948,16 @@ func TestConfirmStatusChanges(t *testing.T) {
 	}
 
 	// Verify DB state after confirmation
-	if w.db.MustInt("select confirmed_status from models where model_id = $1", "offline_to_online") != int(cmdlib.StatusOnline) {
+	if w.db.MustInt("select confirmed_status from channels where channel_id = $1", "offline_to_online") != int(cmdlib.StatusOnline) {
 		t.Error("expected offline_to_online confirmed_status to be online in DB")
 	}
-	if w.db.MustInt("select confirmed_status from models where model_id = $1", "online_to_offline_met") != int(cmdlib.StatusOffline) {
+	if w.db.MustInt("select confirmed_status from channels where channel_id = $1", "online_to_offline_met") != int(cmdlib.StatusOffline) {
 		t.Error("expected online_to_offline_met confirmed_status to be offline in DB")
 	}
-	if w.db.MustInt("select confirmed_status from models where model_id = $1", "online_to_offline_not_met") != int(cmdlib.StatusOnline) {
+	if w.db.MustInt("select confirmed_status from channels where channel_id = $1", "online_to_offline_not_met") != int(cmdlib.StatusOnline) {
 		t.Error("expected online_to_offline_not_met confirmed_status to remain online in DB")
 	}
-	if w.db.MustInt("select confirmed_status from models where model_id = $1", "online_to_unknown") != int(cmdlib.StatusOffline) {
+	if w.db.MustInt("select confirmed_status from channels where channel_id = $1", "online_to_unknown") != int(cmdlib.StatusOffline) {
 		t.Error("expected online_to_unknown confirmed_status to be offline in DB")
 	}
 }
@@ -969,17 +969,17 @@ func TestQueryLastSubscriptionStatuses(t *testing.T) {
 
 	// Insert confirmed subscriptions
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 1, "model_with_status", 1,
 	)
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 2, "model_without_status", 1,
 	)
 
 	// Insert model with unconfirmed_status for one model only
 	w.db.MustExec(
-		"insert into models (model_id, confirmed_status, unconfirmed_status) values ($1, $2, $3)",
+		"insert into channels (channel_id, confirmed_status, unconfirmed_status) values ($1, $2, $3)",
 		"model_with_status", cmdlib.StatusOnline, cmdlib.StatusOnline,
 	)
 
@@ -1008,26 +1008,26 @@ func TestHandleStatusUpdates(t *testing.T) {
 
 	// Insert a subscription
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, model_id, confirmed) values ($1, $2, $3, $4)",
-		"test", 1, "model_a", 1,
+		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"test", 1, "a", 1,
 	)
 
-	// Test with Models == nil (uses onlineListUpdater)
-	request := cmdlib.StatusRequest{Models: nil}
+	// Test with Channels == nil (uses onlineListUpdater)
+	request := cmdlib.StatusRequest{Channels: nil}
 	result := cmdlib.StatusResults{
 		Request:  &request,
-		Statuses: map[string]cmdlib.StatusKind{"model_a": cmdlib.StatusOnline},
+		Statuses: map[string]cmdlib.StatusKind{"a": cmdlib.StatusOnline},
 	}
 	changes, _, _, _ := w.handleStatusUpdates(result, 100)
 	if changes != 1 {
 		t.Errorf("expected 1 change with onlineListUpdater, got %d", changes)
 	}
 
-	// Test with Models != nil (uses fixedListUpdater)
-	request2 := cmdlib.StatusRequest{Models: map[string]bool{"model_a": true}}
+	// Test with Channels != nil (uses fixedListUpdater)
+	request2 := cmdlib.StatusRequest{Channels: map[string]bool{"a": true}}
 	result2 := cmdlib.StatusResults{
 		Request:  &request2,
-		Statuses: map[string]cmdlib.StatusKind{"model_a": cmdlib.StatusOffline},
+		Statuses: map[string]cmdlib.StatusKind{"a": cmdlib.StatusOffline},
 	}
 	changes, _, _, _ = w.handleStatusUpdates(result2, 101)
 	if changes != 1 {
@@ -1035,7 +1035,7 @@ func TestHandleStatusUpdates(t *testing.T) {
 	}
 
 	// Test error case (should return early with zero values)
-	request3 := cmdlib.StatusRequest{Models: nil}
+	request3 := cmdlib.StatusRequest{Channels: nil}
 	result3 := cmdlib.StatusResults{
 		Request: &request3,
 		Error:   true,
@@ -1047,8 +1047,8 @@ func TestHandleStatusUpdates(t *testing.T) {
 			changes, confirmedChanges, len(nots), elapsed)
 	}
 
-	// Test error case with fixedListUpdater (Models != nil)
-	request4 := cmdlib.StatusRequest{Models: map[string]bool{"model_a": true}}
+	// Test error case with fixedListUpdater (Channels != nil)
+	request4 := cmdlib.StatusRequest{Channels: map[string]bool{"a": true}}
 	result4 := cmdlib.StatusResults{
 		Request: &request4,
 		Error:   true,

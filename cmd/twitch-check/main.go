@@ -1,4 +1,4 @@
-// This program checks if a specific Twitch stream is online
+// This program checks if a specific Twitch channel is online
 package main
 
 import (
@@ -19,7 +19,7 @@ var secret = flag.String("secret", "", "your client secret")
 
 func main() {
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: %s [options] <model ID>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "usage: %s [options] <channel ID>\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -28,7 +28,7 @@ func main() {
 		return
 	}
 	channel := flag.Arg(0)
-	if !cmdlib.ModelIDRegexp.MatchString(channel) {
+	if !cmdlib.CommonChannelIDRegexp.MatchString(channel) {
 		fmt.Println("invalid channel name")
 		return
 	}

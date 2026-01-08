@@ -12,7 +12,7 @@ import (
 
 var testConfig = botconfig.Config{
 	CheckGID:           true,
-	MaxModels:          3,
+	MaxChannels:        3,
 	AdminID:            1,
 	HeavyUserRemainder: 1,
 	ErrorDenominator:   10,
@@ -31,9 +31,9 @@ var testTranslations = cmdlib.Translations{
 	InvalidSymbols:         &cmdlib.Translation{Key: "invalid_symbols", Str: "InvalidSymbols", Parse: cmdlib.ParseRaw},
 	AlreadyAdded:           &cmdlib.Translation{Key: "already_added", Str: "AlreadyAdded %s", Parse: cmdlib.ParseRaw},
 	AddError:               &cmdlib.Translation{Key: "add_error", Str: "AddError %s", Parse: cmdlib.ParseRaw},
-	ModelAdded:             &cmdlib.Translation{Key: "model_added", Str: "ModelAdded %s", Parse: cmdlib.ParseRaw},
-	ModelNotInList:         &cmdlib.Translation{Key: "model_not_in_list", Str: "ModelNotInList %s", Parse: cmdlib.ParseRaw},
-	ModelRemoved:           &cmdlib.Translation{Key: "model_removed", Str: "ModelRemoved %s", Parse: cmdlib.ParseRaw},
+	ChannelAdded:           &cmdlib.Translation{Key: "channel_added", Str: "ChannelAdded %s", Parse: cmdlib.ParseRaw},
+	ChannelNotInList:       &cmdlib.Translation{Key: "channel_not_in_list", Str: "ChannelNotInList %s", Parse: cmdlib.ParseRaw},
+	ChannelRemoved:         &cmdlib.Translation{Key: "channel_removed", Str: "ChannelRemoved %s", Parse: cmdlib.ParseRaw},
 	Feedback:               &cmdlib.Translation{Key: "feedback", Str: "Feedback", Parse: cmdlib.ParseRaw},
 	Social:                 &cmdlib.Translation{Key: "social", Str: "Social", Parse: cmdlib.ParseRaw},
 	UnknownCommand:         &cmdlib.Translation{Key: "unknown_command", Str: "UnknownCommand", Parse: cmdlib.ParseRaw},
@@ -41,7 +41,7 @@ var testTranslations = cmdlib.Translations{
 	Version:                &cmdlib.Translation{Key: "version", Str: "Version %s", Parse: cmdlib.ParseRaw},
 	ProfileRemoved:         &cmdlib.Translation{Key: "profile_removed", Str: "ProfileRemoved %s", Parse: cmdlib.ParseRaw},
 	WeekRetrieving:         &cmdlib.Translation{Key: "week_retrieving", Str: "WeekRetrieving", Parse: cmdlib.ParseRaw},
-	CheckingModel:          &cmdlib.Translation{Key: "checking_model", Str: "CheckingModel", Parse: cmdlib.ParseRaw},
+	CheckingChannel:        &cmdlib.Translation{Key: "checking_channel", Str: "CheckingChannel", Parse: cmdlib.ParseRaw},
 	NotEnoughSubscriptions: &cmdlib.Translation{Key: "not_enough_subscriptions", Str: "NotEnoughSubscriptions", Parse: cmdlib.ParseRaw},
 	SubscriptionUsage:      &cmdlib.Translation{Key: "subscription_usage", Str: "SubscriptionUsage", Parse: cmdlib.ParseRaw},
 	SubscriptionUsageAd:    &cmdlib.Translation{Key: "subscription_usage_ad", Str: "SubscriptionUsageAd", Parse: cmdlib.ParseRaw},
@@ -68,8 +68,8 @@ func newTestWorker() *testWorker {
 	checkErr(err)
 
 	tpl := template.New("")
-	template.Must(tpl.New("checking_model").Parse("CheckingModel"))
-	template.Must(tpl.New("model_added").Parse("ModelAdded"))
+	template.Must(tpl.New("checking_channel").Parse("CheckingChannel"))
+	template.Must(tpl.New("channel_added").Parse("ChannelAdded"))
 	template.Must(tpl.New("online").Parse("Online"))
 	template.Must(tpl.New("offline").Parse("Offline"))
 	template.Must(tpl.New("subscription_usage").Parse("SubscriptionUsage"))
@@ -78,17 +78,17 @@ func newTestWorker() *testWorker {
 
 	w := &testWorker{
 		worker: worker{
-			bots:                 nil,
-			db:                   db.NewDatabase(connStr, true),
-			cfg:                  &testConfig,
-			clients:              nil,
-			tr:                   map[string]*cmdlib.Translations{"test": &testTranslations},
-			tpl:                  map[string]*template.Template{"test": tpl},
-			lowPriorityMsg:       make(chan outgoingPacket, 10000),
-			highPriorityMsg:      make(chan outgoingPacket, 10000),
-			unsuccessfulRequests: make([]bool, testConfig.ErrorDenominator),
-			modelIDPreprocessing: cmdlib.CanonicalModelID,
-			modelIDRegexp:        cmdlib.ModelIDRegexp,
+			bots:                   nil,
+			db:                     db.NewDatabase(connStr, true),
+			cfg:                    &testConfig,
+			clients:                nil,
+			tr:                     map[string]*cmdlib.Translations{"test": &testTranslations},
+			tpl:                    map[string]*template.Template{"test": tpl},
+			lowPriorityMsg:         make(chan outgoingPacket, 10000),
+			highPriorityMsg:        make(chan outgoingPacket, 10000),
+			unsuccessfulRequests:   make([]bool, testConfig.ErrorDenominator),
+			channelIDPreprocessing: cmdlib.CanonicalChannelID,
+			channelIDRegexp:        cmdlib.CommonChannelIDRegexp,
 		},
 	}
 	w.terminate = func() {
@@ -98,12 +98,12 @@ func newTestWorker() *testWorker {
 	return w
 }
 
-func (w *testWorker) chatsForModel(modelID string) (chats []int64, endpoints []string) {
+func (w *testWorker) chatsForChannel(channelID string) (chats []int64, endpoints []string) {
 	var chatID int64
 	var endpoint string
 	w.db.MustQuery(
-		`select chat_id, endpoint from signals where model_id = $1 order by chat_id`,
-		db.QueryParams{modelID},
+		`select chat_id, endpoint from signals where channel_id = $1 order by chat_id`,
+		db.QueryParams{channelID},
 		db.ScanTo{&chatID, &endpoint},
 		func() {
 			chats = append(chats, chatID)

@@ -1,4 +1,4 @@
-// This program prints out all Twitch streams that are currently online
+// This program prints out all Twitch channels that are currently online
 package main
 
 import (
@@ -33,12 +33,12 @@ func main() {
 			"client_id":     *clientID,
 			"client_secret": *secret,
 		}})
-	models, images, err := checker.CheckStatusesMany(cmdlib.AllModels, cmdlib.CheckOnline)
+	channels, images, err := checker.CheckStatusesMany(cmdlib.AllChannels, cmdlib.CheckOnline)
 	if err != nil {
 		fmt.Printf("error occurred: %v\n", err)
 		return
 	}
-	for model := range models {
-		fmt.Printf("%s %s\n", model, images[model])
+	for channel := range channels {
+		fmt.Printf("%s %s\n", channel, images[channel])
 	}
 }

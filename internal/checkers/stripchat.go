@@ -154,7 +154,7 @@ func (c *StripchatChecker) CheckOnlyOnline(endpoint string) (
 		return nil, fmt.Errorf("cannot parse response, %v", err)
 	}
 	if c.Dbg {
-		cmdlib.Ldbg("streams count in the response: %d", len(parsed.Models))
+		cmdlib.Ldbg("models count in the response: %d", len(parsed.Models))
 	}
 	for _, m := range parsed.Models {
 		if m.Username != "" {
@@ -216,7 +216,7 @@ func (c *StripchatChecker) CheckEndpoint(endpoint string) (
 			return nil, nil, fmt.Errorf("cannot parse response, %v", err)
 		}
 		if c.Dbg {
-			cmdlib.Ldbg("streams count in the response: %d", len(parsed.Models))
+			cmdlib.Ldbg("models count in the response: %d", len(parsed.Models))
 		}
 		for _, m := range parsed.Models {
 			if m.Username != "" {
@@ -230,7 +230,7 @@ func (c *StripchatChecker) CheckEndpoint(endpoint string) (
 }
 
 // CheckStatusesMany returns Stripchat online models
-func (c *StripchatChecker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.CheckMode) (
+func (c *StripchatChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (
 	onlineModels map[string]cmdlib.StatusKind,
 	images map[string]string,
 	err error,

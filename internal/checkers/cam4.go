@@ -19,11 +19,11 @@ var _ cmdlib.Checker = &Cam4Checker{}
 // Cam4ModelIDRegexp is a regular expression to check model IDs
 var Cam4ModelIDRegexp = regexp.MustCompile(`^[a-z0-9_]+$`)
 
-var cam4ModelRegex = regexp.MustCompile(`^(?:https?://)?cam4\.com/([A-Za-z0-9_]+)(?:[/?].*)?$`)
+var cam4ModelOrLinkRegexp = regexp.MustCompile(`^(?:https?://)?cam4\.com/([A-Za-z0-9_]+)(?:[/?].*)?$`)
 
 // Cam4CanonicalModelID preprocesses model ID string to canonical for CAM4 form
 func Cam4CanonicalModelID(name string) string {
-	m := cam4ModelRegex.FindStringSubmatch(name)
+	m := cam4ModelOrLinkRegexp.FindStringSubmatch(name)
 	if len(m) == 2 {
 		name = m[1]
 	}
@@ -111,7 +111,7 @@ func (c *Cam4Checker) CheckEndpoint(endpoint string) (onlineModels map[string]cm
 }
 
 // CheckStatusesMany returns CAM4 online models
-func (c *Cam4Checker) CheckStatusesMany(cmdlib.QueryModelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+func (c *Cam4Checker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
 	return cmdlib.CheckEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 

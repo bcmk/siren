@@ -25,21 +25,21 @@ ok:
 add_error:
   parse: html
   str: |-
-    Не получилось добавить модель {{ .model }}
+    Не получилось добавить модель {{ .channel }}
     Проверьте ник модели или попробуйте позже
     Формат команды: /add <code>МОДЕЛЬ</code>
-checking_model:
+checking_channel:
   parse: raw
   str: Одну секунду. Мы проверяем эту модель
-all_models_removed:
+all_channels_removed:
   parse: raw
   str: Все ваши подписки удалены
 already_added:
   parse: raw
-  str: 'Модель {{ .model }} уже в вашем списке'
+  str: 'Модель {{ .channel }} уже в вашем списке'
 denied:
   parse: raw
-  str: '{{ .model }} заблокировала доступ из региона этого бота'
+  str: '{{ .channel }} заблокировала доступ из региона этого бота'
 feedback:
   parse: raw
   str: Спасибо за отклик!
@@ -82,19 +82,19 @@ invalid_referral_link:
 invalid_symbols:
   parse: raw
   disable_preview: true
-  str: 'Идентификатор модели {{ .model }} содержит неподдерживаемые символы'
-model_added:
+  str: 'Идентификатор модели {{ .channel }} содержит неподдерживаемые символы'
+channel_added:
   parse: raw
   str: |-
-    Модель {{ .model }} добавлена
+    Модель {{ .channel }} добавлена
     Бот сообщит, когда она входит в сеть или выходит
-model_not_in_list:
+channel_not_in_list:
   parse: raw
-  str: 'Модель {{ .model }} не в вашем списке'
-model_removed:
+  str: 'Модель {{ .channel }} не в вашем списке'
+channel_removed:
   parse: raw
-  str: 'Модель {{ .model }} удалена'
-no_online_models:
+  str: 'Модель {{ .channel }} удалена'
+no_online_channels:
   parse: raw
   str: Не найдено моделей в сети, на которые вы подписаны
 not_enough_subscriptions:
@@ -106,7 +106,7 @@ online:
   str: |-
     🟢
     {{- print " " -}}
-    {{- template "affiliate_link" .model -}}
+    {{- template "affiliate_link" .channel -}}
     {{- print " " -}}
     <i>в сети {{- if .time_diff }} {{ template "duration" .time_diff -}} {{- end -}}</i>
 offline:
@@ -115,7 +115,7 @@ offline:
   str: |-
     🔴
     {{- print " " -}}
-    {{ template "affiliate_link" .model }}
+    {{ template "affiliate_link" .channel }}
     {{- print " " -}}
     <i>не в сети {{- if .time_diff -}}, была {{ template "duration" .time_diff }} назад {{- end -}}</i>
 zero_subscriptions:
@@ -137,7 +137,7 @@ list:
       <code>В СЕТИ</code>
       {{- print "\n" -}}
       {{- range .online -}}
-        {{- template "affiliate_link" .Model -}}
+        {{- template "affiliate_link" .Channel -}}
         {{- if .TimeDiff }}  <i>{{ template "duration" .TimeDiff }}</i> {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
@@ -153,7 +153,7 @@ list:
       <code>НЕ В СЕТИ</code>
       {{- print "\n" -}}
       {{- range .offline -}}
-        {{- template "affiliate_link" .Model -}}
+        {{- template "affiliate_link" .Channel -}}
         {{- if .TimeDiff }}  <i>была {{ template "duration" .TimeDiff }} назад</i> {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
@@ -167,7 +167,7 @@ own_referral_link_hit:
   str: Вы только что кликнули по собственной реферальной ссылке
 profile_removed:
   parse: raw
-  str: 'Модель {{ .model }} вероятно удалила свой профиль'
+  str: 'Модель {{ .channel }} вероятно удалила свой профиль'
 referral_applied:
   parse: raw
   str: Поздравляем! Вы только что получили дополнительные подписки по реферальной ссылке!
@@ -287,7 +287,7 @@ week:
   parse: html
   disable_preview: true
   str: |-
-    Неделя {{ template "affiliate_link" .model }} (UTC):
+    Неделя {{ template "affiliate_link" .channel }} (UTC):
     {{- print "\n\n" -}}
     <code>
     {{- printf "    00     06     12     18\n" -}}
