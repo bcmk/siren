@@ -174,8 +174,8 @@ func (c *StreamateChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 	return cmdlib.StatusUnknown
 }
 
-// CheckStatusesMany returns Streamate online models
-func (c *StreamateChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+// QueryOnlineChannels returns Streamate online models
+func (c *StreamateChecker) QueryOnlineChannels(cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
 	client := c.ClientsLoop.NextClient()
 	onlineModels = map[string]cmdlib.StatusKind{}
 	images = map[string]string{}
@@ -240,6 +240,11 @@ func (c *StreamateChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.Che
 		}
 	}
 	return
+}
+
+// QueryChannelListStatuses is not implemented for online list checkers
+func (c *StreamateChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.StatusKind, map[string]string, error) {
+	return nil, nil, cmdlib.ErrNotImplemented
 }
 
 // UsesFixedList returns false for online list checkers

@@ -108,8 +108,8 @@ func (c *LiveJasminChecker) CheckEndpoint(endpoint string) (onlineModels map[str
 	return
 }
 
-// CheckStatusesMany returns LiveJasmin online models
-func (c *LiveJasminChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+// QueryOnlineChannels returns LiveJasmin online models
+func (c *LiveJasminChecker) QueryOnlineChannels(cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
 	onlineModels = map[string]cmdlib.StatusKind{}
 	images = map[string]string{}
 	for _, endpoint := range c.UsersOnlineEndpoints {
@@ -129,6 +129,11 @@ func (c *LiveJasminChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.Ch
 		}
 	}
 	return
+}
+
+// QueryChannelListStatuses is not implemented for online list checkers
+func (c *LiveJasminChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.StatusKind, map[string]string, error) {
+	return nil, nil, cmdlib.ErrNotImplemented
 }
 
 // UsesFixedList returns false for online list checkers

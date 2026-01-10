@@ -103,8 +103,8 @@ func chaturbateRoomStatus(roomStatus string) cmdlib.StatusKind {
 	return cmdlib.StatusUnknown
 }
 
-// CheckStatusesMany returns Chaturbate online models
-func (c *ChaturbateChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+// QueryOnlineChannels returns Chaturbate online models
+func (c *ChaturbateChecker) QueryOnlineChannels(cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
 	client := c.ClientsLoop.NextClient()
 	onlineModels = map[string]cmdlib.StatusKind{}
 	images = map[string]string{}
@@ -130,6 +130,11 @@ func (c *ChaturbateChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.Ch
 		images[modelID] = m.ImageURL
 	}
 	return
+}
+
+// QueryChannelListStatuses is not implemented for online list checkers
+func (c *ChaturbateChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.StatusKind, map[string]string, error) {
+	return nil, nil, cmdlib.ErrNotImplemented
 }
 
 // UsesFixedList returns false for online list checkers

@@ -43,10 +43,8 @@ type CheckerConfig struct {
 // Checker is the interface for a checker for specific site
 type Checker interface {
 	CheckStatusSingle(channelID string) StatusKind
-	CheckStatusesMany(
-		specific QueryChannelList,
-		checkMode CheckMode,
-	) (statuses map[string]StatusKind, images map[string]string, err error)
+	QueryOnlineChannels(checkMode CheckMode) (statuses map[string]StatusKind, images map[string]string, err error)
+	QueryChannelListStatuses(channels []string, checkMode CheckMode) (statuses map[string]StatusKind, images map[string]string, err error)
 	Init(config CheckerConfig)
 	PushStatusRequest(request StatusRequest) error
 	UsesFixedList() bool
@@ -62,20 +60,11 @@ type CheckerCommon struct {
 	statusRequests chan StatusRequest
 }
 
-// QueryChannelList represents a channel list to query
-type QueryChannelList struct {
-	All  bool
-	List []string
-}
-
 // ErrFullQueue emerges whenever we unable to add a request because the queue is full
 var ErrFullQueue = errors.New("queue is full")
 
-// AllChannels should be used to query all statuses
-var AllChannels = QueryChannelList{All: true}
-
-// NewQueryChannelList returns a query list for specific channels
-func NewQueryChannelList(list []string) QueryChannelList { return QueryChannelList{List: list} }
+// ErrNotImplemented emerges when a method is not implemented
+var ErrNotImplemented = errors.New("not implemented")
 
 // PushStatusRequest adds a status request to the queue
 func (c *CheckerCommon) PushStatusRequest(request StatusRequest) error {
@@ -116,28 +105,35 @@ func StartCheckerDaemon(checker Checker) {
 	requests:
 		for request := range checker.StatusRequestsQueue() {
 			start := time.Now()
-			var queryList QueryChannelList
+			var statuses map[string]StatusKind
+			var images map[string]string
+			var err error
 			if request.Channels == nil {
-				queryList = AllChannels
+				statuses, images, err = checker.QueryOnlineChannels(request.CheckMode)
 			} else {
-				queryList = NewQueryChannelList(setToSlice(request.Channels))
+				statuses, images, err = checker.QueryChannelListStatuses(
+					setToSlice(request.Channels),
+					request.CheckMode,
+				)
+				if errors.Is(err, ErrNotImplemented) {
+					statuses, images, err = checker.QueryOnlineChannels(request.CheckMode)
+				}
+				if err == nil {
+					filtered := make(map[string]StatusKind, len(request.Channels))
+					for channelID := range request.Channels {
+						if status, ok := statuses[channelID]; ok {
+							filtered[channelID] = status
+						} else {
+							filtered[channelID] = StatusUnknown
+						}
+					}
+					statuses = filtered
+				}
 			}
-			statuses, images, err := checker.CheckStatusesMany(queryList, request.CheckMode)
 			if err != nil {
 				Lerr("%v", err)
 				request.Callback(StatusResults{Request: &request, Error: true})
 				continue requests
-			}
-			if request.Channels != nil {
-				filtered := make(map[string]StatusKind, len(request.Channels))
-				for channelID := range request.Channels {
-					if status, ok := statuses[channelID]; ok {
-						filtered[channelID] = status
-					} else {
-						filtered[channelID] = StatusUnknown
-					}
-				}
-				statuses = filtered
 			}
 			time.Sleep(checker.RequestInterval())
 			elapsed := time.Since(start)

@@ -25,7 +25,7 @@ func main() {
 	client := cmdlib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
 	checker := &checkers.Flirt4FreeChecker{}
 	checker.Init(cmdlib.CheckerConfig{UsersOnlineEndpoints: []string{*endpoint}, Clients: []*cmdlib.Client{client}, Dbg: *verbose})
-	models, images, err := checker.CheckStatusesMany(cmdlib.AllChannels, cmdlib.CheckOnline)
+	models, images, err := checker.QueryOnlineChannels(cmdlib.CheckOnline)
 	if err != nil {
 		fmt.Printf("error occurred: %v\n", err)
 		return

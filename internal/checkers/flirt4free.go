@@ -93,8 +93,8 @@ func Flirt4FreeCanonicalModelID(name string) string {
 	return strings.ToLower(name)
 }
 
-// CheckStatusesMany returns Flirt4Free online models
-func (c *Flirt4FreeChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+// QueryOnlineChannels returns Flirt4Free online models
+func (c *Flirt4FreeChecker) QueryOnlineChannels(cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
 	client := c.ClientsLoop.NextClient()
 	onlineModels = map[string]cmdlib.StatusKind{}
 	images = map[string]string{}
@@ -136,6 +136,11 @@ func (c *Flirt4FreeChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.Ch
 		images[modelID] = m.ScreencapImage
 	}
 	return
+}
+
+// QueryChannelListStatuses is not implemented for online list checkers
+func (c *Flirt4FreeChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.StatusKind, map[string]string, error) {
+	return nil, nil, cmdlib.ErrNotImplemented
 }
 
 // UsesFixedList returns false for online list checkers

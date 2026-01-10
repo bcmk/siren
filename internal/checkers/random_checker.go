@@ -28,8 +28,8 @@ func randString(n int) string {
 	return string(b)
 }
 
-// CheckStatusesMany returns Random online channels
-func (c *RandomChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineChannels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+// QueryOnlineChannels returns Random online channels
+func (c *RandomChecker) QueryOnlineChannels(cmdlib.CheckMode) (onlineChannels map[string]cmdlib.StatusKind, images map[string]string, err error) {
 	now := time.Now()
 	seconds := now.Sub(now.Truncate(time.Minute))
 	onlineChannels = map[string]cmdlib.StatusKind{}
@@ -45,6 +45,11 @@ func (c *RandomChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckM
 		images[channelID] = ""
 	}
 	return
+}
+
+// QueryChannelListStatuses is not implemented for online list checkers
+func (c *RandomChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.StatusKind, map[string]string, error) {
+	return nil, nil, cmdlib.ErrNotImplemented
 }
 
 // UsesFixedList returns false for online list checkers

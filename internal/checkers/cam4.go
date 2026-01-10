@@ -81,8 +81,8 @@ func cam4RoomStatus(roomStatus string) cmdlib.StatusKind {
 	return cmdlib.StatusUnknown
 }
 
-// CheckStatusesMany returns CAM4 online models
-func (c *Cam4Checker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+// QueryOnlineChannels returns CAM4 online models
+func (c *Cam4Checker) QueryOnlineChannels(cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
 	client := c.ClientsLoop.NextClient()
 	onlineModels = map[string]cmdlib.StatusKind{}
 	images = map[string]string{}
@@ -108,6 +108,11 @@ func (c *Cam4Checker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMod
 		images[modelID] = m.ThumbBig
 	}
 	return
+}
+
+// QueryChannelListStatuses is not implemented for online list checkers
+func (c *Cam4Checker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.StatusKind, map[string]string, error) {
+	return nil, nil, cmdlib.ErrNotImplemented
 }
 
 // UsesFixedList returns false for online list checkers

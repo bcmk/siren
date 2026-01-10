@@ -24,14 +24,20 @@ func (c *TestChecker) CheckStatusSingle(string) StatusKind {
 	return c.status
 }
 
-func (c *testOnlineListChecker) CheckStatusesMany(
-	QueryChannelList,
+func (c *testOnlineListChecker) QueryOnlineChannels(
 	CheckMode,
 ) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	if c.err != nil {
 		return nil, nil, c.err
 	}
 	return onlineStatuses(c.online), c.images, nil
+}
+
+func (c *testOnlineListChecker) QueryChannelListStatuses(
+	[]string,
+	CheckMode,
+) (map[string]StatusKind, map[string]string, error) {
+	return nil, nil, ErrNotImplemented
 }
 
 // UsesFixedList returns false for online list checkers

@@ -75,8 +75,8 @@ func (c *TwitchChecker) CheckStatusSingle(channelID string) cmdlib.StatusKind {
 	return cmdlib.StatusNotFound
 }
 
-// CheckStatusesMany checks Twitch channel status
-func (c *TwitchChecker) CheckStatusesMany(channels cmdlib.QueryChannelList, checkMode cmdlib.CheckMode) (results map[string]cmdlib.StatusKind, images map[string]string, err error) {
+// QueryOnlineChannels returns all online Twitch channels
+func (c *TwitchChecker) QueryOnlineChannels(cmdlib.CheckMode) (onlineChannels map[string]cmdlib.StatusKind, images map[string]string, err error) {
 	client := c.ClientsLoop.NextClient()
 	helixClient, err := helix.NewClient(&helix.Options{
 		ClientID:     c.SpecificConfig["client_id"],
@@ -93,13 +93,35 @@ func (c *TwitchChecker) CheckStatusesMany(channels cmdlib.QueryChannelList, chec
 
 	helixClient.SetAppAccessToken(accessResponse.Data.AccessToken)
 
-	if checkMode == cmdlib.CheckOnline && channels.All {
-		return c.checkAllOnline(helixClient)
-	} else if checkMode == cmdlib.CheckOnline {
-		return c.checkOnlineMany(helixClient, channels.List)
+	return c.checkAllOnline(helixClient)
+}
+
+// QueryChannelListStatuses returns statuses for specific Twitch channels
+func (c *TwitchChecker) QueryChannelListStatuses(
+	channels []string,
+	checkMode cmdlib.CheckMode,
+) (results map[string]cmdlib.StatusKind, images map[string]string, err error) {
+	client := c.ClientsLoop.NextClient()
+	helixClient, err := helix.NewClient(&helix.Options{
+		ClientID:     c.SpecificConfig["client_id"],
+		ClientSecret: c.SpecificConfig["client_secret"],
+		HTTPClient:   client.Client,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	accessResponse, err := requestAppAccessToken(helixClient)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	return c.checkExistingMany(helixClient, channels.List)
+	helixClient.SetAppAccessToken(accessResponse.Data.AccessToken)
+
+	if checkMode == cmdlib.CheckOnline {
+		return c.checkOnlineMany(helixClient, channels)
+	}
+
+	return c.checkExistingMany(helixClient, channels)
 }
 
 func thumbnail(s string) string {
