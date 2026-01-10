@@ -34,9 +34,6 @@ func (c *testOnlineListChecker) CheckStatusesMany(
 	return onlineStatuses(c.online), c.images, nil
 }
 
-// Start starts a daemon
-func (c *testOnlineListChecker) Start() { c.StartCheckerDaemon(c) }
-
 // UsesFixedList returns false for online list checkers
 func (c *testOnlineListChecker) UsesFixedList() bool { return false }
 
@@ -45,7 +42,7 @@ func TestOnlineListCheckerHandlesFixedList(t *testing.T) {
 	checker.Init(CheckerConfig{UsersOnlineEndpoints: []string{""}, QueueSize: queueSize})
 	resultsCh := make(chan StatusResults)
 	callback := func(res StatusResults) { resultsCh <- res }
-	checker.Start()
+	StartCheckerDaemon(checker)
 
 	checker.online = toSet("a", "b")
 	if err := checker.PushStatusRequest(StatusRequest{
@@ -77,7 +74,7 @@ func TestOnlineListCheckerError(t *testing.T) {
 	checker.Init(CheckerConfig{UsersOnlineEndpoints: []string{""}, QueueSize: queueSize})
 	resultsCh := make(chan StatusResults)
 	callback := func(res StatusResults) { resultsCh <- res }
-	checker.Start()
+	StartCheckerDaemon(checker)
 
 	checker.err = errors.New("error")
 	if err := checker.PushStatusRequest(StatusRequest{Callback: callback}); err != nil {

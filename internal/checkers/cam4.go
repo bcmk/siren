@@ -110,8 +110,5 @@ func (c *Cam4Checker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMod
 	return
 }
 
-// Start starts a daemon
-func (c *Cam4Checker) Start() { c.StartCheckerDaemon(c) }
-
 // UsesFixedList returns false for online list checkers
 func (c *Cam4Checker) UsesFixedList() bool { return false }

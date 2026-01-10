@@ -47,10 +47,12 @@ type Checker interface {
 		specific QueryChannelList,
 		checkMode CheckMode,
 	) (statuses map[string]StatusKind, images map[string]string, err error)
-	Start()
 	Init(config CheckerConfig)
 	PushStatusRequest(request StatusRequest) error
 	UsesFixedList() bool
+	StatusRequestsQueue() chan StatusRequest
+	RequestInterval() time.Duration
+	Debug() bool
 }
 
 // CheckerCommon contains common fields for all the checkers
@@ -97,11 +99,22 @@ func (c *CheckerCommon) Init(config CheckerConfig) {
 	c.statusRequests = make(chan StatusRequest, config.QueueSize)
 }
 
+// StatusRequestsQueue returns the channel for status requests
+func (c *CheckerCommon) StatusRequestsQueue() chan StatusRequest { return c.statusRequests }
+
+// RequestInterval returns the interval between requests
+func (c *CheckerCommon) RequestInterval() time.Duration {
+	return time.Duration(c.IntervalMs) * time.Millisecond
+}
+
+// Debug returns whether debug mode is enabled
+func (c *CheckerCommon) Debug() bool { return c.Dbg }
+
 // StartCheckerDaemon starts a checker daemon
-func (c *CheckerCommon) StartCheckerDaemon(checker Checker) {
+func StartCheckerDaemon(checker Checker) {
 	go func() {
 	requests:
-		for request := range c.statusRequests {
+		for request := range checker.StatusRequestsQueue() {
 			start := time.Now()
 			var queryList QueryChannelList
 			if request.Channels == nil {
@@ -125,10 +138,10 @@ func (c *CheckerCommon) StartCheckerDaemon(checker Checker) {
 					}
 				}
 				statuses = filtered
-				time.Sleep(time.Duration(c.IntervalMs) * time.Millisecond)
 			}
+			time.Sleep(checker.RequestInterval())
 			elapsed := time.Since(start)
-			if c.Dbg {
+			if checker.Debug() {
 				Ldbg("got statuses: %d", len(statuses))
 			}
 			request.Callback(StatusResults{

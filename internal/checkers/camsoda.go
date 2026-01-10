@@ -69,8 +69,5 @@ func (c *CamSodaChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.Check
 	return
 }
 
-// Start starts a daemon
-func (c *CamSodaChecker) Start() { c.StartCheckerDaemon(c) }
-
 // UsesFixedList returns false for online list checkers
 func (c *CamSodaChecker) UsesFixedList() bool { return false }

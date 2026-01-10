@@ -1923,7 +1923,7 @@ func main() {
 		QueueSize:            5,
 		IntervalMs:           w.cfg.IntervalMs,
 	})
-	w.checker.Start()
+	cmdlib.StartCheckerDaemon(w.checker)
 	signals := make(chan os.Signal, 16)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT, syscall.SIGTSTP, syscall.SIGCONT)
 	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, "bot is up", db.MessagePacket)

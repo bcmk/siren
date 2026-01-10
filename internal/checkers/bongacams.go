@@ -72,8 +72,5 @@ func (c *BongaCamsChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.Che
 	return
 }
 
-// Start starts a daemon
-func (c *BongaCamsChecker) Start() { c.StartCheckerDaemon(c) }
-
 // UsesFixedList returns false for online list checkers
 func (c *BongaCamsChecker) UsesFixedList() bool { return false }

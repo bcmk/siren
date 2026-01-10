@@ -223,8 +223,5 @@ func (c *StripchatChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.Che
 	return
 }
 
-// Start starts a daemon
-func (c *StripchatChecker) Start() { c.StartCheckerDaemon(c) }
-
 // UsesFixedList returns false for online list checkers
 func (c *StripchatChecker) UsesFixedList() bool { return false }

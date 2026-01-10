@@ -242,8 +242,5 @@ func (c *StreamateChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.Che
 	return
 }
 
-// Start starts a daemon
-func (c *StreamateChecker) Start() { c.StartCheckerDaemon(c) }
-
 // UsesFixedList returns false for online list checkers
 func (c *StreamateChecker) UsesFixedList() bool { return false }
