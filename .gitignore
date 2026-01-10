@@ -12,6 +12,7 @@ cmd/chaturbate-check/chaturbate-check
 cmd/checktr/checktr
 cmd/livejasmin-online-models/livejasmin-online-models
 cmd/migrator/migrator
+cmd/schema-dump/schema-dump
 cmd/streamate-check/streamate-check
 cmd/streamate-online-models/streamate-online-models
 cmd/stripchat-online-models/stripchat-online-models
