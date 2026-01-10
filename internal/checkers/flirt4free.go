@@ -139,7 +139,7 @@ func (c *Flirt4FreeChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.Ch
 }
 
 // Start starts a daemon
-func (c *Flirt4FreeChecker) Start() { c.StartOnlineListCheckerDaemon(c) }
+func (c *Flirt4FreeChecker) Start() { c.StartCheckerDaemon(c) }
 
 // UsesFixedList returns false for online list checkers
 func (c *Flirt4FreeChecker) UsesFixedList() bool { return false }

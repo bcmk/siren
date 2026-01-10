@@ -48,7 +48,7 @@ func (c *RandomChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckM
 }
 
 // Start starts a daemon
-func (c *RandomChecker) Start() { c.StartOnlineListCheckerDaemon(c) }
+func (c *RandomChecker) Start() { c.StartCheckerDaemon(c) }
 
 // UsesFixedList returns false for online list checkers
 func (c *RandomChecker) UsesFixedList() bool { return false }

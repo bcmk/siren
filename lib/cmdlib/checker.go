@@ -97,8 +97,8 @@ func (c *CheckerCommon) Init(config CheckerConfig) {
 	c.statusRequests = make(chan StatusRequest, config.QueueSize)
 }
 
-// StartOnlineListCheckerDaemon starts a checker for all channels
-func (c *CheckerCommon) StartOnlineListCheckerDaemon(checker Checker) {
+// StartCheckerDaemon starts a checker daemon
+func (c *CheckerCommon) StartCheckerDaemon(checker Checker) {
 	go func() {
 	requests:
 		for request := range c.statusRequests {
@@ -130,36 +130,6 @@ func (c *CheckerCommon) StartOnlineListCheckerDaemon(checker Checker) {
 			elapsed := time.Since(start)
 			if c.Dbg {
 				Ldbg("got statuses: %d", len(statuses))
-			}
-			request.Callback(StatusResults{
-				Request:  &request,
-				Statuses: statuses,
-				Images:   images,
-				Elapsed:  elapsed,
-			})
-		}
-	}()
-}
-
-// StartFixedListCheckerDaemon starts a checker for a fixed list of channels
-func (c *CheckerCommon) StartFixedListCheckerDaemon(checker Checker) {
-	go func() {
-	requests:
-		for request := range c.statusRequests {
-			start := time.Now()
-			statuses, images, err := checker.CheckStatusesMany(
-				NewQueryChannelList(setToSlice(request.Channels)),
-				request.CheckMode,
-			)
-			if err != nil {
-				Lerr("%v", err)
-				request.Callback(StatusResults{Request: &request, Error: true})
-				continue requests
-			}
-			time.Sleep(time.Duration(c.IntervalMs) * time.Millisecond)
-			elapsed := time.Since(start)
-			if c.Dbg {
-				Ldbg("online channels: %d", len(statuses))
 			}
 			request.Callback(StatusResults{
 				Request:  &request,

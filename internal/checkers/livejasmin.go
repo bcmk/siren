@@ -132,7 +132,7 @@ func (c *LiveJasminChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.Ch
 }
 
 // Start starts a daemon
-func (c *LiveJasminChecker) Start() { c.StartOnlineListCheckerDaemon(c) }
+func (c *LiveJasminChecker) Start() { c.StartCheckerDaemon(c) }
 
 // UsesFixedList returns false for online list checkers
 func (c *LiveJasminChecker) UsesFixedList() bool { return false }

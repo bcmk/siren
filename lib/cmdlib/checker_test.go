@@ -35,7 +35,7 @@ func (c *testOnlineListChecker) CheckStatusesMany(
 }
 
 // Start starts a daemon
-func (c *testOnlineListChecker) Start() { c.StartOnlineListCheckerDaemon(c) }
+func (c *testOnlineListChecker) Start() { c.StartCheckerDaemon(c) }
 
 // UsesFixedList returns false for online list checkers
 func (c *testOnlineListChecker) UsesFixedList() bool { return false }
