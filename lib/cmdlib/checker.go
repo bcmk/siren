@@ -85,10 +85,6 @@ func (c *CheckerCommon) PushStatusRequest(request StatusRequest) error {
 	}
 }
 
-type endpointChecker interface {
-	CheckEndpoint(endpoint string) (onlineChannels map[string]StatusKind, images map[string]string, err error)
-}
-
 // Init initializes checker common fields
 func (c *CheckerCommon) Init(config CheckerConfig) {
 	c.UsersOnlineEndpoints = config.UsersOnlineEndpoints
@@ -99,33 +95,6 @@ func (c *CheckerCommon) Init(config CheckerConfig) {
 	c.IntervalMs = config.IntervalMs
 	c.ClientsLoop = clientsLoop{clients: config.Clients}
 	c.statusRequests = make(chan StatusRequest, config.QueueSize)
-}
-
-// CheckEndpoints performs queries to all available endpoints
-func CheckEndpoints(
-	c endpointChecker,
-	endpoints []string,
-	dbg bool,
-) (map[string]StatusKind, map[string]string, error) {
-	allStatuses := map[string]StatusKind{}
-	allImages := map[string]string{}
-	for _, endpoint := range endpoints {
-		statuses, images, err := c.CheckEndpoint(endpoint)
-		if err != nil {
-			return nil, nil, err
-		}
-		if dbg {
-			Ldbg("got statuses for endpoint: %d", len(statuses))
-			Ldbg("got images for endpoint: %d", len(images))
-		}
-		for channel, status := range statuses {
-			allStatuses[channel] = status
-		}
-		for channel, image := range images {
-			allImages[channel] = image
-		}
-	}
-	return allStatuses, allImages, nil
 }
 
 // StartOnlineListCheckerDaemon starts a checker for all channels

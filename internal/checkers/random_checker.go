@@ -17,8 +17,19 @@ func (c *RandomChecker) CheckStatusSingle(_ string) cmdlib.StatusKind {
 	return cmdlib.StatusOnline
 }
 
-// CheckEndpoint returns random online channels
-func (c *RandomChecker) CheckEndpoint(_ string) (onlineChannels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+//goland:noinspection SpellCheckingInspection
+var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+func randString(n int) string {
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letterRunes[rand.Intn(len(letterRunes))]
+	}
+	return string(b)
+}
+
+// CheckStatusesMany returns Random online channels
+func (c *RandomChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineChannels map[string]cmdlib.StatusKind, images map[string]string, err error) {
 	now := time.Now()
 	seconds := now.Sub(now.Truncate(time.Minute))
 	onlineChannels = map[string]cmdlib.StatusKind{}
@@ -34,22 +45,6 @@ func (c *RandomChecker) CheckEndpoint(_ string) (onlineChannels map[string]cmdli
 		images[channelID] = ""
 	}
 	return
-}
-
-//goland:noinspection SpellCheckingInspection
-var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-
-func randString(n int) string {
-	b := make([]rune, n)
-	for i := range b {
-		b[i] = letterRunes[rand.Intn(len(letterRunes))]
-	}
-	return string(b)
-}
-
-// CheckStatusesMany returns Random online channels
-func (c *RandomChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineChannels map[string]cmdlib.StatusKind, images map[string]string, err error) {
-	return cmdlib.CheckEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 
 // Start starts a daemon

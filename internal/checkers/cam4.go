@@ -81,12 +81,12 @@ func cam4RoomStatus(roomStatus string) cmdlib.StatusKind {
 	return cmdlib.StatusUnknown
 }
 
-// CheckEndpoint returns CAM4 online models on the endpoint
-func (c *Cam4Checker) CheckEndpoint(endpoint string) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+// CheckStatusesMany returns CAM4 online models
+func (c *Cam4Checker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
 	client := c.ClientsLoop.NextClient()
 	onlineModels = map[string]cmdlib.StatusKind{}
 	images = map[string]string{}
-	resp, buf, err := cmdlib.OnlineQuery(endpoint, client, c.Headers)
+	resp, buf, err := cmdlib.OnlineQuery(c.UsersOnlineEndpoints[0], client, c.Headers)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot send a query, %v", err)
 	}
@@ -108,11 +108,6 @@ func (c *Cam4Checker) CheckEndpoint(endpoint string) (onlineModels map[string]cm
 		images[modelID] = m.ThumbBig
 	}
 	return
-}
-
-// CheckStatusesMany returns CAM4 online models
-func (c *Cam4Checker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
-	return cmdlib.CheckEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 
 // Start starts a daemon

@@ -93,12 +93,12 @@ func Flirt4FreeCanonicalModelID(name string) string {
 	return strings.ToLower(name)
 }
 
-// CheckEndpoint returns Flirt4Free online models
-func (c *Flirt4FreeChecker) CheckEndpoint(endpoint string) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+// CheckStatusesMany returns Flirt4Free online models
+func (c *Flirt4FreeChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
 	client := c.ClientsLoop.NextClient()
 	onlineModels = map[string]cmdlib.StatusKind{}
 	images = map[string]string{}
-	resp, buf, err := cmdlib.OnlineQuery(endpoint, client, c.Headers)
+	resp, buf, err := cmdlib.OnlineQuery(c.UsersOnlineEndpoints[0], client, c.Headers)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot send a query, %v", err)
 	}
@@ -136,11 +136,6 @@ func (c *Flirt4FreeChecker) CheckEndpoint(endpoint string) (onlineModels map[str
 		images[modelID] = m.ScreencapImage
 	}
 	return
-}
-
-// CheckStatusesMany returns Flirt4Free online models
-func (c *Flirt4FreeChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
-	return cmdlib.CheckEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 
 // Start starts a daemon

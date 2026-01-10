@@ -110,7 +110,25 @@ func (c *LiveJasminChecker) CheckEndpoint(endpoint string) (onlineModels map[str
 
 // CheckStatusesMany returns LiveJasmin online models
 func (c *LiveJasminChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
-	return cmdlib.CheckEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
+	onlineModels = map[string]cmdlib.StatusKind{}
+	images = map[string]string{}
+	for _, endpoint := range c.UsersOnlineEndpoints {
+		statuses, imgs, err := c.CheckEndpoint(endpoint)
+		if err != nil {
+			return nil, nil, err
+		}
+		if c.Dbg {
+			cmdlib.Ldbg("got statuses for endpoint: %d", len(statuses))
+			cmdlib.Ldbg("got images for endpoint: %d", len(imgs))
+		}
+		for channel, status := range statuses {
+			onlineModels[channel] = status
+		}
+		for channel, image := range imgs {
+			images[channel] = image
+		}
+	}
+	return
 }
 
 // Start starts a daemon

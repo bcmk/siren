@@ -174,11 +174,12 @@ func (c *StreamateChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 	return cmdlib.StatusUnknown
 }
 
-// CheckEndpoint returns Streamate online models
-func (c *StreamateChecker) CheckEndpoint(endpoint string) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+// CheckStatusesMany returns Streamate online models
+func (c *StreamateChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
 	client := c.ClientsLoop.NextClient()
 	onlineModels = map[string]cmdlib.StatusKind{}
 	images = map[string]string{}
+	endpoint := c.UsersOnlineEndpoints[0]
 	// Somehow 500 doesn't work well
 	queriedPageSize := 400
 	pages := 1
@@ -239,11 +240,6 @@ func (c *StreamateChecker) CheckEndpoint(endpoint string) (onlineModels map[stri
 		}
 	}
 	return
-}
-
-// CheckStatusesMany returns Streamate online models
-func (c *StreamateChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
-	return cmdlib.CheckEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 
 // Start starts a daemon

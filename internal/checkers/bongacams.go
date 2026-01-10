@@ -37,13 +37,13 @@ func (c *BongaCamsChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 	return cmdlib.StatusUnknown
 }
 
-// CheckEndpoint returns BongaCams online models on the endpoint
-func (c *BongaCamsChecker) CheckEndpoint(endpoint string) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+// CheckStatusesMany returns BongaCams online models
+func (c *BongaCamsChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
 	client := c.ClientsLoop.NextClient()
 	onlineModels = map[string]cmdlib.StatusKind{}
 	images = map[string]string{}
 
-	resp, buf, err := cmdlib.OnlineQuery(endpoint, client, c.Headers)
+	resp, buf, err := cmdlib.OnlineQuery(c.UsersOnlineEndpoints[0], client, c.Headers)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot send a query, %v", err)
 	}
@@ -70,11 +70,6 @@ func (c *BongaCamsChecker) CheckEndpoint(endpoint string) (onlineModels map[stri
 		images[modelID] = "https:" + m.ProfileImages.ThumbnailImageMediumLive
 	}
 	return
-}
-
-// CheckStatusesMany returns BongaCams online models
-func (c *BongaCamsChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
-	return cmdlib.CheckEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 
 // Start starts a daemon

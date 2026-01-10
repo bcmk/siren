@@ -37,12 +37,12 @@ func (c *CamSodaChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 	return cmdlib.StatusUnknown
 }
 
-// CheckEndpoint returns CamSoda online models on the endpoint
-func (c *CamSodaChecker) CheckEndpoint(endpoint string) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+// CheckStatusesMany returns CamSoda online models
+func (c *CamSodaChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
 	client := c.ClientsLoop.NextClient()
 	onlineModels = map[string]cmdlib.StatusKind{}
 	images = map[string]string{}
-	resp, buf, err := cmdlib.OnlineQuery(endpoint, client, c.Headers)
+	resp, buf, err := cmdlib.OnlineQuery(c.UsersOnlineEndpoints[0], client, c.Headers)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot send a query, %v", err)
 	}
@@ -67,11 +67,6 @@ func (c *CamSodaChecker) CheckEndpoint(endpoint string) (onlineModels map[string
 		images[modelID] = m.Thumb
 	}
 	return
-}
-
-// CheckStatusesMany returns CamSoda online models
-func (c *CamSodaChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
-	return cmdlib.CheckEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 
 // Start starts a daemon

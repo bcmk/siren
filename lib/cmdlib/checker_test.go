@@ -24,20 +24,14 @@ func (c *TestChecker) CheckStatusSingle(string) StatusKind {
 	return c.status
 }
 
-func (c *testOnlineListChecker) CheckEndpoint(
-	_ string,
+func (c *testOnlineListChecker) CheckStatusesMany(
+	QueryChannelList,
+	CheckMode,
 ) (onlineModels map[string]StatusKind, images map[string]string, err error) {
 	if c.err != nil {
 		return nil, nil, c.err
 	}
 	return onlineStatuses(c.online), c.images, nil
-}
-
-func (c *testOnlineListChecker) CheckStatusesMany(
-	QueryChannelList,
-	CheckMode,
-) (onlineModels map[string]StatusKind, images map[string]string, err error) {
-	return CheckEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 
 // Start starts a daemon

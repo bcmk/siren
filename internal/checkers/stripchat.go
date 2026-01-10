@@ -117,11 +117,8 @@ func (c *StripchatChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 	return cmdlib.StatusUnknown
 }
 
-// CheckOnlyOnline returns only Stripchat online models without images
-func (c *StripchatChecker) CheckOnlyOnline(endpoint string) (
-	onlineModels map[string]cmdlib.StatusKind,
-	err error,
-) {
+func (c *StripchatChecker) checkOnlyOnline() (onlineModels map[string]cmdlib.StatusKind, err error) {
+	endpoint := c.UsersOnlineEndpoints[0]
 	userID := c.SpecificConfig["user_id"]
 	onlineModels = map[string]cmdlib.StatusKind{}
 
@@ -164,16 +161,13 @@ func (c *StripchatChecker) CheckOnlyOnline(endpoint string) (
 			}
 		}
 	}
-	return
+	return onlineModels, nil
 }
 
-// CheckEndpoint returns Stripchat online models
-func (c *StripchatChecker) CheckEndpoint(endpoint string) (
-	onlineModels map[string]cmdlib.StatusKind,
-	images map[string]string,
-	err error,
-) {
-	onlineModels, err = c.CheckOnlyOnline(endpoint)
+// CheckStatusesMany returns Stripchat online models
+func (c *StripchatChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+	endpoint := c.UsersOnlineEndpoints[0]
+	onlineModels, err = c.checkOnlyOnline()
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot check online models, %v", err)
 	}
@@ -227,15 +221,6 @@ func (c *StripchatChecker) CheckEndpoint(endpoint string) (
 		}
 	}
 	return
-}
-
-// CheckStatusesMany returns Stripchat online models
-func (c *StripchatChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (
-	onlineModels map[string]cmdlib.StatusKind,
-	images map[string]string,
-	err error,
-) {
-	return cmdlib.CheckEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 
 // Start starts a daemon

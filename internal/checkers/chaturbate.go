@@ -103,12 +103,12 @@ func chaturbateRoomStatus(roomStatus string) cmdlib.StatusKind {
 	return cmdlib.StatusUnknown
 }
 
-// CheckEndpoint returns Chaturbate online models on the endpoint
-func (c *ChaturbateChecker) CheckEndpoint(endpoint string) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+// CheckStatusesMany returns Chaturbate online models
+func (c *ChaturbateChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
 	client := c.ClientsLoop.NextClient()
 	onlineModels = map[string]cmdlib.StatusKind{}
 	images = map[string]string{}
-	resp, buf, err := cmdlib.OnlineQuery(endpoint, client, c.Headers)
+	resp, buf, err := cmdlib.OnlineQuery(c.UsersOnlineEndpoints[0], client, c.Headers)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot send a query, %v", err)
 	}
@@ -130,11 +130,6 @@ func (c *ChaturbateChecker) CheckEndpoint(endpoint string) (onlineModels map[str
 		images[modelID] = m.ImageURL
 	}
 	return
-}
-
-// CheckStatusesMany returns Chaturbate online models
-func (c *ChaturbateChecker) CheckStatusesMany(cmdlib.QueryChannelList, cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
-	return cmdlib.CheckEndpoints(c, c.UsersOnlineEndpoints, c.Dbg)
 }
 
 // Start starts a daemon
