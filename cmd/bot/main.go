@@ -1414,8 +1414,8 @@ func (w *worker) pushOnlineRequest() {
 		channels = w.db.SubscribedChannels()
 	}
 	err := w.checker.PushStatusRequest(cmdlib.StatusRequest{
-		Callback: func(res cmdlib.StatusResults) { w.onlineChannelsChan <- res },
-		Channels: channels,
+		ResultsCh: w.onlineChannelsChan,
+		Channels:  channels,
 	})
 	if err != nil {
 		lerr("%v", err)
@@ -1424,7 +1424,7 @@ func (w *worker) pushOnlineRequest() {
 
 func (w *worker) pushFixedListRequest(resultsCh chan cmdlib.StatusResults, channels map[string]bool) error {
 	err := w.checker.PushStatusRequest(cmdlib.StatusRequest{
-		Callback:  func(res cmdlib.StatusResults) { resultsCh <- res },
+		ResultsCh: resultsCh,
 		Channels:  channels,
 		CheckMode: cmdlib.CheckStatuses,
 	})

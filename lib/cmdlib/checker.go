@@ -11,7 +11,7 @@ import (
 type StatusRequest struct {
 	Channels  map[string]bool // nil for all online channels, non-nil for specific channels
 	CheckMode CheckMode
-	Callback  func(StatusResults)
+	ResultsCh chan<- StatusResults
 }
 
 // StatusResults contains results from querying channels
@@ -132,7 +132,7 @@ func StartCheckerDaemon(checker Checker) {
 			}
 			if err != nil {
 				Lerr("%v", err)
-				request.Callback(StatusResults{Request: &request, Error: true})
+				request.ResultsCh <- StatusResults{Request: &request, Error: true}
 				continue requests
 			}
 			time.Sleep(checker.RequestInterval())
@@ -140,12 +140,12 @@ func StartCheckerDaemon(checker Checker) {
 			if checker.Debug() {
 				Ldbg("got statuses: %d", len(statuses))
 			}
-			request.Callback(StatusResults{
+			request.ResultsCh <- StatusResults{
 				Request:  &request,
 				Statuses: statuses,
 				Images:   images,
 				Elapsed:  elapsed,
-			})
+			}
 		}
 	}()
 }

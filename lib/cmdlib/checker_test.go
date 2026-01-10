@@ -47,13 +47,12 @@ func TestOnlineListCheckerHandlesFixedList(t *testing.T) {
 	checker := &testOnlineListChecker{}
 	checker.Init(CheckerConfig{UsersOnlineEndpoints: []string{""}, QueueSize: queueSize})
 	resultsCh := make(chan StatusResults)
-	callback := func(res StatusResults) { resultsCh <- res }
 	StartCheckerDaemon(checker)
 
 	checker.online = toSet("a", "b")
 	if err := checker.PushStatusRequest(StatusRequest{
-		Callback: callback,
-		Channels: toSet("a", "c"),
+		ResultsCh: resultsCh,
+		Channels:  toSet("a", "c"),
 	}); err != nil {
 		t.Errorf("cannot query updates, %v", err)
 		return
@@ -79,11 +78,10 @@ func TestOnlineListCheckerError(t *testing.T) {
 	checker := &testOnlineListChecker{}
 	checker.Init(CheckerConfig{UsersOnlineEndpoints: []string{""}, QueueSize: queueSize})
 	resultsCh := make(chan StatusResults)
-	callback := func(res StatusResults) { resultsCh <- res }
 	StartCheckerDaemon(checker)
 
 	checker.err = errors.New("error")
-	if err := checker.PushStatusRequest(StatusRequest{Callback: callback}); err != nil {
+	if err := checker.PushStatusRequest(StatusRequest{ResultsCh: resultsCh}); err != nil {
 		t.Errorf("cannot query updates, %v", err)
 		return
 	}
