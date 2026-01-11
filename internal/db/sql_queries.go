@@ -62,7 +62,6 @@ func (d *Database) StoreNotifications(nots []Notification) {
 		)
 	}
 	d.SendBatch(batch)
-
 }
 
 // UsersForChannels returns users subscribed to a particular channel

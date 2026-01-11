@@ -78,6 +78,7 @@ type Config struct {
 	SubsConfirmationPeriodSeconds   int                       `mapstructure:"subs_confirmation_period_seconds"`   // subscriptions confirmation period
 	NotificationsReadyPeriodSeconds int                       `mapstructure:"notifications_ready_period_seconds"` // notifications ready check period
 	ShowImages                      bool                      `mapstructure:"show_images"`                        // images support
+	WhitelistChats                  []int64                   `mapstructure:"whitelist_chats"`                    // if set, only these chats are processed
 
 	ErrorThreshold   int
 	ErrorDenominator int
@@ -367,4 +368,18 @@ func checkConfig(cfg *Config) error {
 	}
 
 	return nil
+}
+
+// ChatWhitelisted returns true if the chat is whitelisted or if no whitelist
+// is configured.
+func (c *Config) ChatWhitelisted(chatID int64) bool {
+	if len(c.WhitelistChats) == 0 {
+		return true
+	}
+	for _, id := range c.WhitelistChats {
+		if id == chatID {
+			return true
+		}
+	}
+	return false
 }

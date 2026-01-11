@@ -1166,3 +1166,25 @@ func TestUnsubscribeBeforeRestart(t *testing.T) {
 		t.Errorf("expected 'a' to have StatusUnknown, got %v", channelA.UnconfirmedStatus)
 	}
 }
+
+func TestNotifyOfStatuses(t *testing.T) {
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase(make(chan bool, 1))
+
+	nots := []db.Notification{
+		{ChatID: 100, Endpoint: "test", ChannelID: "a", Status: cmdlib.StatusOnline, Priority: 0},
+		{ChatID: 101, Endpoint: "test", ChannelID: "b", Status: cmdlib.StatusOnline, Priority: 1},
+		{ChatID: 200, Endpoint: "test", ChannelID: "c", Status: cmdlib.StatusOnline, Priority: 0},
+		{ChatID: 201, Endpoint: "test", ChannelID: "d", Status: cmdlib.StatusOnline, Priority: 1},
+	}
+
+	w.notifyOfStatuses(w.highPriorityMsg, w.lowPriorityMsg, nots)
+
+	if len(w.lowPriorityMsg) != 2 {
+		t.Errorf("expected 2 low priority messages, got %d", len(w.lowPriorityMsg))
+	}
+	if len(w.highPriorityMsg) != 2 {
+		t.Errorf("expected 2 high priority messages, got %d", len(w.highPriorityMsg))
+	}
+}

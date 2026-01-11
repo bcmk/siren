@@ -128,6 +128,7 @@ const (
 	messageTimeout             = -3
 	messageMigrate             = -4
 	messageChatNotFound        = -5
+	messageSkipped             = -6
 )
 
 type msgSendResult struct {
@@ -426,6 +427,9 @@ func (w *worker) sender(queue chan outgoingPacket, priority int) {
 
 func (w *worker) sendMessageInternal(endpoint string, msg baseChattable) int {
 	chatID := msg.baseChat().ChatID
+	if !w.cfg.ChatWhitelisted(chatID) {
+		return messageSkipped
+	}
 	if _, err := w.bots[endpoint].Send(msg); err != nil {
 		switch err := err.(type) {
 		case tg.Error:
@@ -1566,6 +1570,9 @@ func (w *worker) processTGUpdate(p incomingPacket) bool {
 	u := p.message
 	mention := "@" + w.botNames[p.endpoint]
 	chatID, command, args := getCommandAndArgs(u, mention, w.ourIDs)
+	if !w.cfg.ChatWhitelisted(chatID) {
+		return false
+	}
 	if command != "" {
 		var loggedCommand *string
 		if loggedCommands[command] {
