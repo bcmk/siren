@@ -23,4 +23,5 @@
 - Keep lines no longer than 120 characters
 - Run `go fmt ./...` after changes
 - Run `golangci-lint run ./...` before committing
+- Run `go test ./...` to ensure changes work
 - GNU sed is installed as `sed` (no empty string needed for `-i`)

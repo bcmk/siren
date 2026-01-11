@@ -287,6 +287,25 @@ var migrations = []func(d *Database){
 		// Rename users.max_models to users.max_channels
 		d.MustExec(`alter table users rename column max_models to max_channels;`)
 	},
+	// 19
+	func(d *Database) {
+		d.MustExec(`drop index ix_channels_channel_id_is_online`)
+		d.MustExec(`
+			create index ix_signals_channel_id_confirmed
+			on signals (channel_id)
+			where confirmed = 1;
+		`)
+		d.MustExec(`
+			create index ix_channels_status_mismatch
+			on channels (channel_id)
+			include (unconfirmed_status, unconfirmed_timestamp)
+			where confirmed_status != unconfirmed_status;
+		`)
+		d.MustExec(`alter table channels drop constraint chk_channels_confirmed_status`)
+		d.MustExec(`alter table channels add constraint chk_channels_confirmed_status check (confirmed_status in (0, 1, 2))`)
+		d.MustExec(`alter table channels alter column confirmed_status set default 0`)
+		d.MustExec(`update channels set confirmed_status = 0 where unconfirmed_status = 0`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database

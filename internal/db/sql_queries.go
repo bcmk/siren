@@ -327,6 +327,28 @@ func (d *Database) QueryLastOnlineChannels() map[string]bool {
 	return onlineChannels
 }
 
+// SetKnownUnsubscribedToUnknown sets known unsubscribed channels to unknown status
+// and returns the affected channel IDs.
+func (d *Database) SetKnownUnsubscribedToUnknown(now int) []string {
+	var channels []string
+	var channelID string
+	d.MustQuery(
+		`
+			update channels set
+				prev_unconfirmed_status = unconfirmed_status,
+				prev_unconfirmed_timestamp = unconfirmed_timestamp,
+				unconfirmed_status = 0,
+				unconfirmed_timestamp = $1
+			where unconfirmed_status != 0
+			and channel_id not in (select distinct channel_id from signals where confirmed = 1)
+			returning channel_id
+		`,
+		QueryParams{now},
+		ScanTo{&channelID},
+		func() { channels = append(channels, channelID) })
+	return channels
+}
+
 // ReferralID returns referral identifier
 func (d *Database) ReferralID(chatID int64) *string {
 	var referralID string
@@ -406,29 +428,25 @@ func (d *Database) InsertStatusChanges(changedStatuses []StatusChange) {
 	checkErr(tx.Commit(context.Background()))
 }
 
-// ConfirmStatusChanges finds channels needing confirmation and updates them in one query.
+// ConfirmStatusChanges finds channels needing confirmation and updates them.
 // Returns the confirmed status changes.
 func (d *Database) ConfirmStatusChanges(now int, onlineSeconds int, offlineSeconds int) []StatusChange {
+	// We use two queries instead of one because
+	// PostgreSQL uses ix_channels_status_mismatch partial index for select but not for update.
 	done := d.Measure("db: confirm status changes")
 	defer done()
 	var result []StatusChange
 	var change StatusChange
-	// Note: use explicit OR form for XOR-ing, not boolean comparison like
-	//     (confirmed_status = 2) != (unconfirmed_status = 2),
-	// because explicit OR is sargable.
 	d.MustQuery(
 		`
-			update channels
-			set confirmed_status = case when unconfirmed_status = 2 then 2 else 1 end
-			where (
-				((confirmed_status = 2) and (unconfirmed_status != 2))
-				or ((confirmed_status != 2) and (unconfirmed_status = 2))
-			) and (
+			select channel_id, unconfirmed_status
+			from channels
+			where confirmed_status != unconfirmed_status
+			and (
 				(unconfirmed_status = 2 and $1 - unconfirmed_timestamp >= $2)
 				or (unconfirmed_status = 1 and $1 - unconfirmed_timestamp >= $3)
 				or unconfirmed_status = 0
 			)
-			returning channel_id, unconfirmed_status
 		`,
 		QueryParams{now, onlineSeconds, offlineSeconds},
 		ScanTo{&change.ChannelID, &change.Status},
@@ -436,5 +454,22 @@ func (d *Database) ConfirmStatusChanges(now int, onlineSeconds int, offlineSecon
 			change.Timestamp = now
 			result = append(result, change)
 		})
+	if len(result) > 0 {
+		channelIDs := make([]string, len(result))
+		statuses := make([]int, len(result))
+		for i, c := range result {
+			channelIDs[i] = c.ChannelID
+			statuses[i] = int(c.Status)
+		}
+		d.MustExec(
+			`
+				update channels c
+				set confirmed_status = v.status
+				from unnest($1::text[], $2::int[]) as v(channel_id, status)
+				where c.channel_id = v.channel_id
+			`,
+			channelIDs,
+			statuses)
+	}
 	return result
 }

@@ -23,13 +23,12 @@ and update the denormalized fields in `channels`.
 
 ## Constraints
 
-The `status_changes.status` column is constrained to (0, 1, 2) — unknown,
-offline, online.
+Both `status_changes.status` and `channels.confirmed_status` are constrained
+to (0, 1, 2) — unknown, offline, online.
 
-The `channels.confirmed_status` column is constrained to (1, 2) — offline, online.
-We use fast partial indexes for online statuses.
-Since confirmed statuses are only used for notifications,
-we sacrifice some correctness for performance (both speed and disk space).
-We treat unknown unconfirmed status as offline for confirmation.
-This allows simple XOR-ing in online/not-online space
-when finding channels that need confirmation.
+## Confirmation
+
+Confirmation adds a delay before notifying users of status changes.
+This prevents notification spam when channels flicker online/offline.
+A status is confirmed only after it remains stable for a configured duration.
+Unknown status confirmations are immediate since they don't generate notifications.

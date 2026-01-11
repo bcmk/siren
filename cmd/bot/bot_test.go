@@ -306,14 +306,14 @@ func TestUpdateStatus(t *testing.T) {
 	if isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{}, 79); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{}, 79); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusUnknown}}, 80); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusUnknown}}, 80); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
@@ -903,13 +903,13 @@ func TestConfirmStatusChanges(t *testing.T) {
 		"online_to_offline_not_met", cmdlib.StatusOnline, cmdlib.StatusOffline, 103,
 	)
 
-	// Case 4: confirmed=online, unconfirmed=unknown → confirm offline immediately
+	// Case 4: confirmed=online, unconfirmed=unknown → confirm unknown immediately
 	w.db.MustExec(
 		"insert into channels (channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
 		"online_to_unknown", cmdlib.StatusOnline, cmdlib.StatusUnknown, 100,
 	)
 
-	// Case 5: confirmed=offline, unconfirmed=unknown → NO change (XOR fails)
+	// Case 5: confirmed=offline, unconfirmed=unknown → confirm unknown immediately
 	w.db.MustExec(
 		"insert into channels (channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
 		"offline_to_unknown", cmdlib.StatusOffline, cmdlib.StatusUnknown, 100,
@@ -950,14 +950,14 @@ func TestConfirmStatusChanges(t *testing.T) {
 		t.Error("expected online_to_offline_not_met to NOT be confirmed")
 	}
 
-	// Case 4: should confirm (unknown → confirmed as offline)
+	// Case 4: should confirm unknown
 	if status, ok := changesMap["online_to_unknown"]; !ok || status != cmdlib.StatusUnknown {
 		t.Errorf("expected online_to_unknown to be confirmed with unknown status, got %v, ok=%v", status, ok)
 	}
 
-	// Case 5: should NOT be confirmed (XOR fails: both != 2)
-	if _, ok := changesMap["offline_to_unknown"]; ok {
-		t.Error("expected offline_to_unknown to NOT be confirmed")
+	// Case 5: should confirm unknown
+	if status, ok := changesMap["offline_to_unknown"]; !ok || status != cmdlib.StatusUnknown {
+		t.Errorf("expected offline_to_unknown to be confirmed with unknown status, got %v, ok=%v", status, ok)
 	}
 
 	// Case 6: should NOT be confirmed (XOR fails: both = 2)
@@ -980,8 +980,8 @@ func TestConfirmStatusChanges(t *testing.T) {
 	if w.db.MustInt("select confirmed_status from channels where channel_id = $1", "online_to_offline_not_met") != int(cmdlib.StatusOnline) {
 		t.Error("expected online_to_offline_not_met confirmed_status to remain online in DB")
 	}
-	if w.db.MustInt("select confirmed_status from channels where channel_id = $1", "online_to_unknown") != int(cmdlib.StatusOffline) {
-		t.Error("expected online_to_unknown confirmed_status to be offline in DB")
+	if w.db.MustInt("select confirmed_status from channels where channel_id = $1", "online_to_unknown") != int(cmdlib.StatusUnknown) {
+		t.Error("expected online_to_unknown confirmed_status to be unknown in DB")
 	}
 }
 
@@ -1024,9 +1024,6 @@ func TestHandleStatusUpdates(t *testing.T) {
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
 	w.initCache()
-
-	// Initialize updaters
-	w.fixedListUpdater.init(w.db.QueryLastSubscriptionStatuses())
 
 	// Insert a subscription
 	w.db.MustExec(
@@ -1107,5 +1104,64 @@ func TestHandleStatusUpdates(t *testing.T) {
 		t.Errorf(
 			"expected zero values on error with fixedListUpdater, got changes=%d, confirmedChanges=%d, nots=%d, elapsed=%d",
 			changes, confirmedChanges, len(nots), elapsed)
+	}
+}
+
+func TestUnsubscribeBeforeRestart(t *testing.T) {
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase(make(chan bool, 1))
+	w.initCache()
+
+	// Subscribe to "a" and "b"
+	w.db.MustExec(
+		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"test", 1, "a", 1)
+	w.db.MustExec(
+		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"test", 1, "b", 1)
+
+	// Both channels come online
+	request := cmdlib.StatusRequest{Channels: map[string]bool{"a": true, "b": true}}
+	result := cmdlib.StatusResults{
+		Request: &request,
+		Channels: map[string]cmdlib.ChannelInfo{
+			"a": {Status: cmdlib.StatusOnline},
+			"b": {Status: cmdlib.StatusOnline},
+		},
+	}
+	w.handleStatusUpdates(result, 100)
+
+	// Verify both are online in DB
+	if w.db.MaybeChannel("a").UnconfirmedStatus != cmdlib.StatusOnline {
+		t.Error("expected 'a' to be online")
+	}
+	if w.db.MaybeChannel("b").UnconfirmedStatus != cmdlib.StatusOnline {
+		t.Error("expected 'b' to be online")
+	}
+
+	// Unsubscribe from "a"
+	w.db.MustExec("delete from signals where channel_id = $1", "a")
+
+	// Simulate restart: reinitialize cache as would happen on restart
+	w.unconfirmedOnlineChannels = map[string]cmdlib.ChannelInfo{}
+	for channelID := range w.db.QueryLastOnlineChannels() {
+		w.unconfirmedOnlineChannels[channelID] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline}
+	}
+
+	// First query after restart — only "b" is subscribed
+	request2 := cmdlib.StatusRequest{Channels: map[string]bool{"b": true}}
+	result2 := cmdlib.StatusResults{
+		Request: &request2,
+		Channels: map[string]cmdlib.ChannelInfo{
+			"b": {Status: cmdlib.StatusOnline},
+		},
+	}
+	w.handleStatusUpdates(result2, 101)
+
+	// "a" should now have StatusUnknown in DB
+	channelA := w.db.MaybeChannel("a")
+	if channelA.UnconfirmedStatus != cmdlib.StatusUnknown {
+		t.Errorf("expected 'a' to have StatusUnknown, got %v", channelA.UnconfirmedStatus)
 	}
 }

@@ -1444,7 +1444,15 @@ func (w *worker) handleStatusUpdates(result cmdlib.StatusResults, now int) (
 	w.httpQueriesDuration = result.Elapsed
 	w.unconfirmedOnlineChannels = filterOnline(result.Channels)
 
-	return w.applyStatusUpdates(updates, now)
+	changesCount, confirmedChangesCount, notifications, elapsed = w.applyStatusUpdates(updates, now)
+
+	// For fixed list checkers, mark known unsubscribed channels as unknown
+	if result.Request.Channels != nil {
+		for _, channelID := range w.db.SetKnownUnsubscribedToUnknown(now) {
+			delete(w.unconfirmedOnlineChannels, channelID)
+		}
+	}
+	return
 }
 
 func (w *worker) applyStatusUpdates(updates map[string]cmdlib.ChannelInfo, now int) (
@@ -1899,11 +1907,6 @@ func main() {
 	var subsConfirmTimer = time.NewTicker(time.Duration(w.cfg.SubsConfirmationPeriodSeconds) * time.Second)
 	var notificationSenderTimer = time.NewTicker(time.Duration(w.cfg.NotificationsReadyPeriodSeconds) * time.Second)
 
-	var subscriptionStatuses map[string]cmdlib.StatusKind
-	if w.checker.UsesFixedList() {
-		subscriptionStatuses = w.db.QueryLastSubscriptionStatuses()
-	}
-	w.fixedListUpdater.init(subscriptionStatuses)
 	w.checker.Init(cmdlib.CheckerConfig{
 		UsersOnlineEndpoints: w.cfg.UsersOnlineEndpoint,
 		Clients:              w.clients,

@@ -12,29 +12,14 @@ func (u *onlineListUpdater) processResults(
 	return getUpdates(lastOnline, candidateOnline)
 }
 
-type fixedListUpdater struct {
-	subscriptionSet map[string]bool
-}
-
-func (u *fixedListUpdater) init(subscriptionStatuses map[string]cmdlib.StatusKind) {
-	u.subscriptionSet = filterKnown(subscriptionStatuses)
-}
+type fixedListUpdater struct{}
 
 func (u *fixedListUpdater) processResults(
 	result cmdlib.StatusResults,
 	lastOnline map[string]cmdlib.ChannelInfo,
 ) map[string]cmdlib.ChannelInfo {
 	candidateOnline := filterOnline(result.Channels)
-	updates := getUpdates(lastOnline, candidateOnline)
-
-	// Add StatusUnknown for unsubscribed channels
-	for k := range u.subscriptionSet {
-		if !result.Request.Channels[k] {
-			updates[k] = cmdlib.ChannelInfo{Status: cmdlib.StatusUnknown}
-		}
-	}
-	u.subscriptionSet = result.Request.Channels
-	return updates
+	return getUpdates(lastOnline, candidateOnline)
 }
 
 func filterOnline(channels map[string]cmdlib.ChannelInfo) map[string]cmdlib.ChannelInfo {
@@ -60,16 +45,6 @@ func getUpdates(
 	for k, info := range candidateOnline {
 		if _, ok := lastOnline[k]; !ok {
 			result[k] = info
-		}
-	}
-	return result
-}
-
-func filterKnown(xs map[string]cmdlib.StatusKind) map[string]bool {
-	result := map[string]bool{}
-	for k, v := range xs {
-		if v != cmdlib.StatusUnknown {
-			result[k] = true
 		}
 	}
 	return result
