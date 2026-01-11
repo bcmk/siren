@@ -548,18 +548,10 @@ func (w *worker) initCache() {
 	linf("cache initialized in %d ms", elapsed.Milliseconds())
 }
 
-func (w *worker) changedStatuses(updates map[string]cmdlib.ChannelInfo, now int) []db.StatusChange {
-	var channelIDs []string
-	for channelID := range updates {
-		channelIDs = append(channelIDs, channelID)
-	}
-	result := []db.StatusChange{}
-	unconfirmedStatuses := w.db.QueryLastStatusChangesForChannels(channelIDs)
+func (w *worker) toStatusChanges(updates map[string]cmdlib.ChannelInfo, now int) []db.StatusChange {
+	result := make([]db.StatusChange, 0, len(updates))
 	for channelID, info := range updates {
-		prev := unconfirmedStatuses[channelID]
-		if info.Status != prev.Status {
-			result = append(result, db.StatusChange{ChannelID: channelID, Status: info.Status, Timestamp: now})
-		}
+		result = append(result, db.StatusChange{ChannelID: channelID, Status: info.Status, Timestamp: now})
 	}
 	return result
 }
@@ -1464,8 +1456,8 @@ func (w *worker) applyStatusUpdates(updates map[string]cmdlib.ChannelInfo, now i
 	start := time.Now()
 	changesCount = len(updates)
 
-	changedStatuses := w.changedStatuses(updates, now)
-	w.db.InsertStatusChanges(changedStatuses)
+	statusChanges := w.toStatusChanges(updates, now)
+	w.db.InsertStatusChanges(statusChanges)
 
 	confirmedStatusChanges := w.db.ConfirmStatusChanges(
 		now,

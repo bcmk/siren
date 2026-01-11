@@ -354,7 +354,8 @@ func TestUpdateNotifications(t *testing.T) {
 	if _, _, nots, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOffline}}, 3); len(nots) != 0 {
 		t.Error("unexpected notification number")
 	}
-	if _, _, nots, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOffline}}, 8); len(nots) != 2 {
+	// Trigger confirmation check at t=8 without passing duplicate status
+	if _, _, nots, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{}, 8); len(nots) != 2 {
 		t.Error("unexpected notification number")
 	}
 	if _, _, nots, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"d": {Status: cmdlib.StatusOnline}}, 2); len(nots) != 2 {
