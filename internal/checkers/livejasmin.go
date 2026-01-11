@@ -74,16 +74,15 @@ func liveJasminStatus(roomStatus string) cmdlib.StatusKind {
 }
 
 // CheckEndpoint returns LiveJasmin online models
-func (c *LiveJasminChecker) CheckEndpoint(endpoint string) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+func (c *LiveJasminChecker) CheckEndpoint(endpoint string) (map[string]cmdlib.ChannelInfo, error) {
 	client := c.ClientsLoop.NextClient()
-	onlineModels = map[string]cmdlib.StatusKind{}
-	images = map[string]string{}
+	channels := map[string]cmdlib.ChannelInfo{}
 	resp, buf, err := cmdlib.OnlineQuery(endpoint, client, c.Headers)
 	if err != nil {
-		return nil, nil, fmt.Errorf("cannot send a query, %v", err)
+		return nil, fmt.Errorf("cannot send a query, %v", err)
 	}
 	if resp.StatusCode != 200 {
-		return nil, nil, fmt.Errorf("query status, %d", resp.StatusCode)
+		return nil, fmt.Errorf("query status, %d", resp.StatusCode)
 	}
 	decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	var parsed liveJasminResponse
@@ -92,48 +91,45 @@ func (c *LiveJasminChecker) CheckEndpoint(endpoint string) (onlineModels map[str
 		if c.Dbg {
 			cmdlib.Ldbg("response: %s", buf.String())
 		}
-		return nil, nil, fmt.Errorf("cannot parse response, %v", err)
+		return nil, fmt.Errorf("cannot parse response, %v", err)
 	}
 	if parsed.Status != "OK" {
 		if c.Dbg {
 			cmdlib.Ldbg("response: %s", buf.String())
 		}
-		return nil, nil, fmt.Errorf("cannot query a list of models, %d", parsed.ErrorCode)
+		return nil, fmt.Errorf("cannot query a list of models, %d", parsed.ErrorCode)
 	}
 	for _, m := range parsed.Data.Models {
 		modelID := strings.ToLower(m.PerformerID)
-		onlineModels[modelID] = cmdlib.StatusOnline
-		images[modelID] = m.ProfilePictureURL.Size896x504
+		channels[modelID] = cmdlib.ChannelInfo{
+			Status:   cmdlib.StatusOnline,
+			ImageURL: m.ProfilePictureURL.Size896x504,
+		}
 	}
-	return
+	return channels, nil
 }
 
 // QueryOnlineChannels returns LiveJasmin online models
-func (c *LiveJasminChecker) QueryOnlineChannels(cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
-	onlineModels = map[string]cmdlib.StatusKind{}
-	images = map[string]string{}
+func (c *LiveJasminChecker) QueryOnlineChannels(cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+	channels := map[string]cmdlib.ChannelInfo{}
 	for _, endpoint := range c.UsersOnlineEndpoints {
-		statuses, imgs, err := c.CheckEndpoint(endpoint)
+		endpointChannels, err := c.CheckEndpoint(endpoint)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		if c.Dbg {
-			cmdlib.Ldbg("got statuses for endpoint: %d", len(statuses))
-			cmdlib.Ldbg("got images for endpoint: %d", len(imgs))
+			cmdlib.Ldbg("got channels for endpoint: %d", len(endpointChannels))
 		}
-		for channel, status := range statuses {
-			onlineModels[channel] = status
-		}
-		for channel, image := range imgs {
-			images[channel] = image
+		for channelID, info := range endpointChannels {
+			channels[channelID] = info
 		}
 	}
-	return
+	return channels, nil
 }
 
 // QueryChannelListStatuses is not implemented for online list checkers
-func (c *LiveJasminChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.StatusKind, map[string]string, error) {
-	return nil, nil, cmdlib.ErrNotImplemented
+func (c *LiveJasminChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+	return nil, cmdlib.ErrNotImplemented
 }
 
 // UsesFixedList returns false for online list checkers

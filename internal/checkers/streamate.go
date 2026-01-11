@@ -175,10 +175,9 @@ func (c *StreamateChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 }
 
 // QueryOnlineChannels returns Streamate online models
-func (c *StreamateChecker) QueryOnlineChannels(cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+func (c *StreamateChecker) QueryOnlineChannels(cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
 	client := c.ClientsLoop.NextClient()
-	onlineModels = map[string]cmdlib.StatusKind{}
-	images = map[string]string{}
+	channels := map[string]cmdlib.ChannelInfo{}
 	endpoint := c.UsersOnlineEndpoints[0]
 	// Somehow 500 doesn't work well
 	queriedPageSize := 400
@@ -212,7 +211,7 @@ func (c *StreamateChecker) QueryOnlineChannels(cmdlib.CheckMode) (onlineModels m
 		req.Header.Set("Content-Type", "text/xml")
 		_, buf, err := cmdlib.OnlineRequest(req, client)
 		if err != nil {
-			return nil, nil, fmt.Errorf("cannot send a query, %v", err)
+			return nil, fmt.Errorf("cannot send a query, %v", err)
 		}
 		decoder := xml.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 		parsed := &streamateResponse{}
@@ -221,7 +220,7 @@ func (c *StreamateChecker) QueryOnlineChannels(cmdlib.CheckMode) (onlineModels m
 			cmdlib.Ldbg("response: %s", buf.String())
 		}
 		if err != nil {
-			return nil, nil, fmt.Errorf("[%v] cannot parse response %v", client.Addr, err)
+			return nil, fmt.Errorf("[%v] cannot parse response %v", client.Addr, err)
 		}
 		for _, m := range parsed.AvailablePerformers.Performers {
 			image := ""
@@ -229,8 +228,7 @@ func (c *StreamateChecker) QueryOnlineChannels(cmdlib.CheckMode) (onlineModels m
 				image = "https:" + m.Media.Pic.Full.Src
 			}
 			modelID := strings.ToLower(m.Name)
-			onlineModels[modelID] = cmdlib.StatusOnline
-			images[modelID] = image
+			channels[modelID] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline, ImageURL: image}
 		}
 		if i == 1 {
 			pages = (parsed.AvailablePerformers.TotalResultCount + queriedPageSize - 1) / queriedPageSize
@@ -239,12 +237,12 @@ func (c *StreamateChecker) QueryOnlineChannels(cmdlib.CheckMode) (onlineModels m
 			}
 		}
 	}
-	return
+	return channels, nil
 }
 
 // QueryChannelListStatuses is not implemented for online list checkers
-func (c *StreamateChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.StatusKind, map[string]string, error) {
-	return nil, nil, cmdlib.ErrNotImplemented
+func (c *StreamateChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+	return nil, cmdlib.ErrNotImplemented
 }
 
 // UsesFixedList returns false for online list checkers

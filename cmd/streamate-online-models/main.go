@@ -27,13 +27,12 @@ func main() {
 		UsersOnlineEndpoints: []string{"http://affiliate.streamate.com/SMLive/SMLResult.xml"},
 		Clients:              []*cmdlib.Client{client},
 		Dbg:                  *verbose})
-	models, images, err := checker.QueryOnlineChannels(cmdlib.CheckOnline)
-
+	channels, err := checker.QueryOnlineChannels(cmdlib.CheckOnline)
 	if err != nil {
 		fmt.Printf("error occurred: %v\n", err)
 		return
 	}
-	for model := range models {
-		fmt.Printf("%s %s\n", model, images[model])
+	for model, info := range channels {
+		fmt.Printf("%s %s\n", model, info.ImageURL)
 	}
 }

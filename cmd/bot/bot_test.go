@@ -21,6 +21,29 @@ func confirmedOnlineCount(w *testWorker) int {
 	return w.db.MustInt("select count(*) from channels where confirmed_status = $1", cmdlib.StatusOnline)
 }
 
+func checkUnconfirmedOnlineChannels(w *testWorker, t *testing.T) {
+	dbOnline := map[string]bool{}
+	var channelID string
+	w.db.MustQuery(
+		"select channel_id from channels where unconfirmed_status = $1",
+		[]interface{}{cmdlib.StatusOnline},
+		db.ScanTo{&channelID},
+		func() { dbOnline[channelID] = true })
+	if len(w.unconfirmedOnlineChannels) != len(dbOnline) {
+		t.Errorf("unconfirmedOnlineChannels size %d != DB size %d", len(w.unconfirmedOnlineChannels), len(dbOnline))
+	}
+	for ch := range dbOnline {
+		if _, ok := w.unconfirmedOnlineChannels[ch]; !ok {
+			t.Errorf("channel %s in DB but not in unconfirmedOnlineChannels", ch)
+		}
+	}
+	for ch := range w.unconfirmedOnlineChannels {
+		if !dbOnline[ch] {
+			t.Errorf("channel %s in unconfirmedOnlineChannels but not in DB", ch)
+		}
+	}
+}
+
 func TestSql(t *testing.T) {
 	cmdlib.Verbosity = cmdlib.SilentVerbosity
 	w := newTestWorker()
@@ -121,31 +144,19 @@ func TestUpdateStatus(t *testing.T) {
 	w.createDatabase(make(chan bool, 1))
 	w.initCache()
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOnline}}, 18); n == 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOnline}}, 18); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOffline}}, 19); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOffline}}, 19); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 20); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{}, 20); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOnline}}, 21); n != 0 {
-		t.Error("unexpected status update")
-	}
-	checkInv(&w.worker, t)
-	if confirmedOnlineCount(w) != 1 {
-		t.Error("wrong online channels count")
-	}
-	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 22); n != 0 {
-		t.Error("unexpected status update")
-	}
-	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOffline}}, 23); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOnline}}, 21); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
@@ -153,7 +164,19 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("wrong online channels count")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 24); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{}, 22); n != 0 {
+		t.Error("unexpected status update")
+	}
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOffline}}, 23); n != 0 {
+		t.Error("unexpected status update")
+	}
+	checkInv(&w.worker, t)
+	if confirmedOnlineCount(w) != 1 {
+		t.Error("wrong online channels count")
+	}
+	checkInv(&w.worker, t)
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{}, 24); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
@@ -161,7 +184,7 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("wrong active status")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 29); n == 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{}, 29); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
@@ -169,61 +192,61 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("wrong active status")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOnline}}, 31); n == 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOnline}}, 31); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOffline}}, 32); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOffline}}, 32); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 33); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{}, 33); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 34)
+	w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{}, 34)
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 35); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{}, 35); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOnline}}, 36); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOnline}}, 36); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 37); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{}, 37); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 41); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{}, 41); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOffline}}, 42); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOffline}}, 42); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOnline}}, 48); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOnline}}, 48); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 49)
+	w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{}, 49)
 	checkInv(&w.worker, t)
-	w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 50)
+	w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{}, 50)
 	checkInv(&w.worker, t)
-	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOnline}}, 50)
+	w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOnline}}, 50)
 	checkInv(&w.worker, t)
-	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOffline}}, 52)
+	w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOffline}}, 52)
 	checkInv(&w.worker, t)
-	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "b", Status: cmdlib.StatusOnline}}, 53)
+	w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"b": {Status: cmdlib.StatusOnline}}, 53)
 	checkInv(&w.worker, t)
-	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "b", Status: cmdlib.StatusOffline}}, 54)
+	w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"b": {Status: cmdlib.StatusOffline}}, 54)
 	checkInv(&w.worker, t)
 	if !isConfirmedOnline(w, "b") {
 		t.Error("wrong active status")
 	}
 	checkInv(&w.worker, t)
-	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOnline}, {ChannelID: "b", Status: cmdlib.StatusOnline}}, 55)
+	w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOnline}, "b": {Status: cmdlib.StatusOnline}}, 55)
 	checkInv(&w.worker, t)
 	if !isConfirmedOnline(w, "b") {
 		t.Error("wrong active status")
@@ -233,68 +256,68 @@ func TestUpdateStatus(t *testing.T) {
 		t.Error("wrong online channels count")
 	}
 	checkInv(&w.worker, t)
-	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "b", Status: cmdlib.StatusOffline}}, 56)
+	w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"b": {Status: cmdlib.StatusOffline}}, 56)
 	if count := confirmedOnlineCount(w); count != 2 {
 		t.Errorf("wrong online channels count: %d", count)
 	}
 	w.cfg.OfflineNotifications = true
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOffline}}, 57); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOffline}}, 57); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if !isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 68); n == 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{}, 68); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOnline}}, 69); n == 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOnline}}, 69); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if !isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusUnknown}}, 70); n == 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusUnknown}}, 70); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOnline}}, 71); n == 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOnline}}, 71); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if !isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
-	w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusUnknown}}, 72)
+	w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusUnknown}}, 72)
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOffline}}, 73); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOffline}}, 73); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{}, 79); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{}, 79); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
 	if isConfirmedOnline(w, "a") {
 		t.Error("wrong active status")
 	}
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusUnknown}}, 80); n != 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusUnknown}}, 80); n != 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
-	if _, n, _, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOnline}}, 81); n == 0 {
+	if _, n, _, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOnline}}, 81); n == 0 {
 		t.Error("unexpected status update")
 	}
 	checkInv(&w.worker, t)
@@ -322,19 +345,19 @@ func TestUpdateNotifications(t *testing.T) {
 	w.db.MustExec("insert into users (chat_id) values ($1)", 3)
 	w.db.MustExec("insert into users (chat_id) values ($1)", 4)
 
-	if _, _, nots, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "x", Status: cmdlib.StatusOnline}}, 1); len(nots) != 0 {
+	if _, _, nots, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"x": {Status: cmdlib.StatusOnline}}, 1); len(nots) != 0 {
 		t.Error("unexpected notification number")
 	}
-	if _, _, nots, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOnline}}, 2); len(nots) != 2 {
+	if _, _, nots, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOnline}}, 2); len(nots) != 2 {
 		t.Error("unexpected notification number")
 	}
-	if _, _, nots, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOffline}}, 3); len(nots) != 0 {
+	if _, _, nots, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOffline}}, 3); len(nots) != 0 {
 		t.Error("unexpected notification number")
 	}
-	if _, _, nots, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "a", Status: cmdlib.StatusOffline}}, 8); len(nots) != 2 {
+	if _, _, nots, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOffline}}, 8); len(nots) != 2 {
 		t.Error("unexpected notification number")
 	}
-	if _, _, nots, _ := w.applyStatusUpdates([]cmdlib.StatusUpdate{{ChannelID: "d", Status: cmdlib.StatusOnline}}, 2); len(nots) != 2 {
+	if _, _, nots, _ := w.applyStatusUpdates(map[string]cmdlib.ChannelInfo{"d": {Status: cmdlib.StatusOnline}}, 2); len(nots) != 2 {
 		t.Error("unexpected notification number")
 	}
 	_ = w.db.Close()
@@ -808,14 +831,14 @@ func TestProcessSubsConfirmations(t *testing.T) {
 
 	// Process confirmations with checker results
 	w.processSubsConfirmations(cmdlib.StatusResults{
-		Statuses: map[string]cmdlib.StatusKind{
-			"online_model":          cmdlib.StatusOnline,
-			"offline_model":         cmdlib.StatusOffline,
-			"notfound_model":        cmdlib.StatusNotFound,
-			"denied_model":          cmdlib.StatusDenied,
-			"notfound_denied_model": cmdlib.StatusNotFound | cmdlib.StatusDenied,
-			"online_offline_model":  cmdlib.StatusOnline | cmdlib.StatusOffline,
-			"unknown_model":         cmdlib.StatusUnknown,
+		Channels: map[string]cmdlib.ChannelInfo{
+			"online_model":          {Status: cmdlib.StatusOnline},
+			"offline_model":         {Status: cmdlib.StatusOffline},
+			"notfound_model":        {Status: cmdlib.StatusNotFound},
+			"denied_model":          {Status: cmdlib.StatusDenied},
+			"notfound_denied_model": {Status: cmdlib.StatusNotFound | cmdlib.StatusDenied},
+			"online_offline_model":  {Status: cmdlib.StatusOnline | cmdlib.StatusOffline},
+			"unknown_model":         {Status: cmdlib.StatusUnknown},
 		},
 	})
 
@@ -1003,8 +1026,7 @@ func TestHandleStatusUpdates(t *testing.T) {
 	w.initCache()
 
 	// Initialize updaters
-	w.onlineListUpdater.init(w.unconfirmedOnline)
-	w.fixedListUpdater.init(w.unconfirmedOnline, w.db.QueryLastSubscriptionStatuses())
+	w.fixedListUpdater.init(w.db.QueryLastSubscriptionStatuses())
 
 	// Insert a subscription
 	w.db.MustExec(
@@ -1016,23 +1038,50 @@ func TestHandleStatusUpdates(t *testing.T) {
 	request := cmdlib.StatusRequest{Channels: nil}
 	result := cmdlib.StatusResults{
 		Request:  &request,
-		Statuses: map[string]cmdlib.StatusKind{"a": cmdlib.StatusOnline},
+		Channels: map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOnline, ImageURL: "http://a.jpg"}},
 	}
 	changes, _, _, _ := w.handleStatusUpdates(result, 100)
 	if changes != 1 {
 		t.Errorf("expected 1 change with onlineListUpdater, got %d", changes)
 	}
+	if w.unconfirmedOnlineChannels["a"].ImageURL != "http://a.jpg" {
+		t.Errorf("expected ImageURL to be set, got %s", w.unconfirmedOnlineChannels["a"].ImageURL)
+	}
+	checkUnconfirmedOnlineChannels(w, t)
+
+	// Test ImageURL update for channel that remains online
+	result.Channels["a"] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline, ImageURL: "http://a2.jpg"}
+	w.handleStatusUpdates(result, 101)
+	if w.unconfirmedOnlineChannels["a"].ImageURL != "http://a2.jpg" {
+		t.Errorf("expected ImageURL to be updated, got %s", w.unconfirmedOnlineChannels["a"].ImageURL)
+	}
+	checkUnconfirmedOnlineChannels(w, t)
 
 	// Test with Channels != nil (uses fixedListUpdater)
 	request2 := cmdlib.StatusRequest{Channels: map[string]bool{"a": true}}
 	result2 := cmdlib.StatusResults{
 		Request:  &request2,
-		Statuses: map[string]cmdlib.StatusKind{"a": cmdlib.StatusOffline},
+		Channels: map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOffline}},
 	}
-	changes, _, _, _ = w.handleStatusUpdates(result2, 101)
+	changes, _, _, _ = w.handleStatusUpdates(result2, 102)
 	if changes != 1 {
 		t.Errorf("expected 1 change with fixedListUpdater, got %d", changes)
 	}
+	if _, ok := w.unconfirmedOnlineChannels["a"]; ok {
+		t.Error("expected offline channel to be removed from unconfirmedOnlineChannels")
+	}
+	checkUnconfirmedOnlineChannels(w, t)
+
+	// Test unknown status also removes from unconfirmedOnlineChannels
+	result2.Channels["a"] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline, ImageURL: "http://a3.jpg"}
+	w.handleStatusUpdates(result2, 103)
+	checkUnconfirmedOnlineChannels(w, t)
+	result2.Channels["a"] = cmdlib.ChannelInfo{Status: cmdlib.StatusUnknown}
+	w.handleStatusUpdates(result2, 104)
+	if _, ok := w.unconfirmedOnlineChannels["a"]; ok {
+		t.Error("expected unknown channel to be removed from unconfirmedOnlineChannels")
+	}
+	checkUnconfirmedOnlineChannels(w, t)
 
 	// Test error case (should return early with zero values)
 	request3 := cmdlib.StatusRequest{Channels: nil}
@@ -1040,7 +1089,7 @@ func TestHandleStatusUpdates(t *testing.T) {
 		Request: &request3,
 		Error:   true,
 	}
-	changes, confirmedChanges, nots, elapsed := w.handleStatusUpdates(result3, 102)
+	changes, confirmedChanges, nots, elapsed := w.handleStatusUpdates(result3, 105)
 	if changes != 0 || confirmedChanges != 0 || len(nots) != 0 || elapsed != 0 {
 		t.Errorf(
 			"expected zero values on error, got changes=%d, confirmedChanges=%d, nots=%d, elapsed=%d",
@@ -1053,7 +1102,7 @@ func TestHandleStatusUpdates(t *testing.T) {
 		Request: &request4,
 		Error:   true,
 	}
-	changes, confirmedChanges, nots, elapsed = w.handleStatusUpdates(result4, 103)
+	changes, confirmedChanges, nots, elapsed = w.handleStatusUpdates(result4, 106)
 	if changes != 0 || confirmedChanges != 0 || len(nots) != 0 || elapsed != 0 {
 		t.Errorf(
 			"expected zero values on error with fixedListUpdater, got changes=%d, confirmedChanges=%d, nots=%d, elapsed=%d",

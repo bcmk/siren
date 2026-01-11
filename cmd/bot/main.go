@@ -63,40 +63,39 @@ type statRequest struct {
 }
 
 type worker struct {
-	db                       db.Database
-	clients                  []*cmdlib.Client
-	bots                     map[string]*tg.BotAPI
-	cfg                      *botconfig.Config
-	httpQueriesDuration      time.Duration
-	updatesDuration          time.Duration
-	changesInPeriod          int
-	confirmedChangesInPeriod int
-	unconfirmedOnline        map[string]bool
-	tr                       map[string]*cmdlib.Translations
-	tpl                      map[string]*template.Template
-	trAds                    map[string]map[string]*cmdlib.Translation
-	tplAds                   map[string]*template.Template
-	channelIDPreprocessing   func(string) string
-	checker                  cmdlib.Checker
-	onlineListUpdater        onlineListUpdater
-	fixedListUpdater         fixedListUpdater
-	unsuccessfulRequests     []bool
-	unsuccessfulRequestsPos  int
-	downloadResults          chan bool
-	downloadErrors           []bool
-	downloadResultsPos       int
-	nextErrorReport          time.Time
-	images                   map[string]string
-	botNames                 map[string]string
-	lowPriorityMsg           chan outgoingPacket
-	highPriorityMsg          chan outgoingPacket
-	outgoingMsgResults       chan msgSendResult
-	unconfirmedSubsResults   chan cmdlib.StatusResults
-	onlineChannelsChan       chan cmdlib.StatusResults
-	sendingNotifications     chan []db.Notification
-	sentNotifications        chan []db.Notification
-	ourIDs                   []int64
-	channelIDRegexp          *regexp.Regexp
+	db                        db.Database
+	clients                   []*cmdlib.Client
+	bots                      map[string]*tg.BotAPI
+	cfg                       *botconfig.Config
+	httpQueriesDuration       time.Duration
+	updatesDuration           time.Duration
+	changesInPeriod           int
+	confirmedChangesInPeriod  int
+	tr                        map[string]*cmdlib.Translations
+	tpl                       map[string]*template.Template
+	trAds                     map[string]map[string]*cmdlib.Translation
+	tplAds                    map[string]*template.Template
+	channelIDPreprocessing    func(string) string
+	checker                   cmdlib.Checker
+	onlineListUpdater         onlineListUpdater
+	fixedListUpdater          fixedListUpdater
+	unsuccessfulRequests      []bool
+	unsuccessfulRequestsPos   int
+	downloadResults           chan bool
+	downloadErrors            []bool
+	downloadResultsPos        int
+	nextErrorReport           time.Time
+	unconfirmedOnlineChannels map[string]cmdlib.ChannelInfo
+	botNames                  map[string]string
+	lowPriorityMsg            chan outgoingPacket
+	highPriorityMsg           chan outgoingPacket
+	outgoingMsgResults        chan msgSendResult
+	unconfirmedSubsResults    chan cmdlib.StatusResults
+	onlineChannelsChan        chan cmdlib.StatusResults
+	sendingNotifications      chan []db.Notification
+	sentNotifications         chan []db.Notification
+	ourIDs                    []int64
+	channelIDRegexp           *regexp.Regexp
 }
 
 type incomingPacket struct {
@@ -169,27 +168,27 @@ func newWorker(cfg *botconfig.Config) *worker {
 		template.Must(t.New("affiliate_link").Parse(cfg.AffiliateLink))
 	}
 	w := &worker{
-		bots:                   bots,
-		db:                     db.NewDatabase(cfg.DBPath, cfg.CheckGID),
-		cfg:                    cfg,
-		clients:                clients,
-		tr:                     tr,
-		tpl:                    tpl,
-		trAds:                  trAds,
-		tplAds:                 tplAds,
-		unsuccessfulRequests:   make([]bool, cfg.ErrorDenominator),
-		downloadErrors:         make([]bool, cfg.ErrorDenominator),
-		downloadResults:        make(chan bool),
-		images:                 map[string]string{},
-		botNames:               map[string]string{},
-		lowPriorityMsg:         make(chan outgoingPacket, 10000),
-		highPriorityMsg:        make(chan outgoingPacket, 10000),
-		outgoingMsgResults:     make(chan msgSendResult),
-		unconfirmedSubsResults: make(chan cmdlib.StatusResults),
-		onlineChannelsChan:     make(chan cmdlib.StatusResults),
-		sendingNotifications:   make(chan []db.Notification, 1000),
-		sentNotifications:      make(chan []db.Notification),
-		ourIDs:                 getOurIDs(cfg),
+		bots:                      bots,
+		db:                        db.NewDatabase(cfg.DBPath, cfg.CheckGID),
+		cfg:                       cfg,
+		clients:                   clients,
+		tr:                        tr,
+		tpl:                       tpl,
+		trAds:                     trAds,
+		tplAds:                    tplAds,
+		unsuccessfulRequests:      make([]bool, cfg.ErrorDenominator),
+		downloadErrors:            make([]bool, cfg.ErrorDenominator),
+		downloadResults:           make(chan bool),
+		unconfirmedOnlineChannels: map[string]cmdlib.ChannelInfo{},
+		botNames:                  map[string]string{},
+		lowPriorityMsg:            make(chan outgoingPacket, 10000),
+		highPriorityMsg:           make(chan outgoingPacket, 10000),
+		outgoingMsgResults:        make(chan msgSendResult),
+		unconfirmedSubsResults:    make(chan cmdlib.StatusResults),
+		onlineChannelsChan:        make(chan cmdlib.StatusResults),
+		sendingNotifications:      make(chan []db.Notification, 1000),
+		sentNotifications:         make(chan []db.Notification),
+		ourIDs:                    getOurIDs(cfg),
 	}
 	for endpoint, a := range tr {
 		for _, b := range a.ToMap() {
@@ -542,35 +541,27 @@ func (w *worker) createDatabase(done chan bool) {
 
 func (w *worker) initCache() {
 	start := time.Now()
-	w.unconfirmedOnline = w.db.QueryLastOnlineChannels()
+	for channelID := range w.db.QueryLastOnlineChannels() {
+		w.unconfirmedOnlineChannels[channelID] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline}
+	}
 	elapsed := time.Since(start)
 	linf("cache initialized in %d ms", elapsed.Milliseconds())
 }
 
-func (w *worker) changedStatuses(newStatuses []cmdlib.StatusUpdate, now int) []db.StatusChange {
+func (w *worker) changedStatuses(updates map[string]cmdlib.ChannelInfo, now int) []db.StatusChange {
 	var channelIDs []string
-	for _, next := range newStatuses {
-		channelIDs = append(channelIDs, next.ChannelID)
+	for channelID := range updates {
+		channelIDs = append(channelIDs, channelID)
 	}
 	result := []db.StatusChange{}
 	unconfirmedStatuses := w.db.QueryLastStatusChangesForChannels(channelIDs)
-	for _, next := range newStatuses {
-		prev := unconfirmedStatuses[next.ChannelID]
-		if next.Status != prev.Status {
-			result = append(result, db.StatusChange{ChannelID: next.ChannelID, Status: next.Status, Timestamp: now})
+	for channelID, info := range updates {
+		prev := unconfirmedStatuses[channelID]
+		if info.Status != prev.Status {
+			result = append(result, db.StatusChange{ChannelID: channelID, Status: info.Status, Timestamp: now})
 		}
 	}
 	return result
-}
-
-func (w *worker) updateCachedStatus(changedStatuses []db.StatusChange) {
-	for _, statusChange := range changedStatuses {
-		if statusChange.Status == cmdlib.StatusOnline {
-			w.unconfirmedOnline[statusChange.ChannelID] = true
-		} else {
-			delete(w.unconfirmedOnline, statusChange.ChannelID)
-		}
-	}
 }
 
 func (w *worker) notifyOfAddResults(queue chan outgoingPacket, notifications []db.Notification) {
@@ -986,7 +977,7 @@ func (w *worker) listOnlineChannels(endpoint string, chatID int64, now int) {
 			ChatID:    chatID,
 			ChannelID: s.ChannelID,
 			Status:    cmdlib.StatusOnline,
-			ImageURL:  w.images[s.ChannelID],
+			ImageURL:  w.unconfirmedOnlineChannels[s.ChannelID].ImageURL,
 			TimeDiff:  w.channelDuration(s, now),
 			Kind:      db.ReplyPacket,
 		}
@@ -1440,22 +1431,23 @@ func (w *worker) handleStatusUpdates(result cmdlib.StatusResults, now int) (
 	notifications []db.Notification,
 	elapsed time.Duration,
 ) {
-	var updateResults statusUpdateResults
-	if result.Request.Channels == nil {
-		updateResults = w.onlineListUpdater.processResults(result)
-	} else {
-		updateResults = w.fixedListUpdater.processResults(result)
-	}
-	w.logQueryResult(updateResults.err)
-	if updateResults.err {
+	w.logQueryResult(result.Error)
+	if result.Error {
 		return
 	}
-	w.httpQueriesDuration = updateResults.elapsed
-	w.images = updateResults.images
-	return w.applyStatusUpdates(updateResults.updates, now)
+	var updates map[string]cmdlib.ChannelInfo
+	if result.Request.Channels == nil {
+		updates = w.onlineListUpdater.processResults(result, w.unconfirmedOnlineChannels)
+	} else {
+		updates = w.fixedListUpdater.processResults(result, w.unconfirmedOnlineChannels)
+	}
+	w.httpQueriesDuration = result.Elapsed
+	w.unconfirmedOnlineChannels = filterOnline(result.Channels)
+
+	return w.applyStatusUpdates(updates, now)
 }
 
-func (w *worker) applyStatusUpdates(updates []cmdlib.StatusUpdate, now int) (
+func (w *worker) applyStatusUpdates(updates map[string]cmdlib.ChannelInfo, now int) (
 	changesCount int,
 	confirmedChangesCount int,
 	notifications []db.Notification,
@@ -1466,7 +1458,6 @@ func (w *worker) applyStatusUpdates(updates []cmdlib.StatusUpdate, now int) (
 
 	changedStatuses := w.changedStatuses(updates, now)
 	w.db.InsertStatusChanges(changedStatuses)
-	w.updateCachedStatus(changedStatuses)
 
 	confirmedStatusChanges := w.db.ConfirmStatusChanges(
 		now,
@@ -1494,7 +1485,7 @@ func (w *worker) applyStatusUpdates(updates []cmdlib.StatusUpdate, now int) (
 					Sound:     c.Status == cmdlib.StatusOnline,
 					Kind:      db.NotificationPacket}
 				if user.ShowImages {
-					n.ImageURL = w.images[c.ChannelID]
+					n.ImageURL = w.unconfirmedOnlineChannels[c.ChannelID].ImageURL
 				}
 				notifications = append(notifications, n)
 			}
@@ -1764,8 +1755,8 @@ func (w *worker) queryUnconfirmedSubs() {
 }
 
 func (w *worker) processSubsConfirmations(res cmdlib.StatusResults) {
-	statusesNumber := len(res.Statuses)
-	ldbg("processing subscription confirmations for %d channels", statusesNumber)
+	channelsNumber := len(res.Channels)
+	ldbg("processing subscription confirmations for %d channels", channelsNumber)
 	confirmationsInWork := map[string][]db.Subscription{}
 	var iter db.Subscription
 	w.db.MustQuery(
@@ -1775,9 +1766,9 @@ func (w *worker) processSubsConfirmations(res cmdlib.StatusResults) {
 		func() { confirmationsInWork[iter.ChannelID] = append(confirmationsInWork[iter.ChannelID], iter) })
 	var nots []db.Notification
 	if !res.Error {
-		for channelID, status := range res.Statuses {
+		for channelID, info := range res.Channels {
 			for _, sub := range confirmationsInWork[channelID] {
-				if status&(cmdlib.StatusOnline|cmdlib.StatusOffline|cmdlib.StatusDenied) != 0 {
+				if info.Status&(cmdlib.StatusOnline|cmdlib.StatusOffline|cmdlib.StatusDenied) != 0 {
 					w.db.ConfirmSub(sub)
 				} else {
 					w.db.DenySub(sub)
@@ -1786,7 +1777,7 @@ func (w *worker) processSubsConfirmations(res cmdlib.StatusResults) {
 					Endpoint:  sub.Endpoint,
 					ChatID:    sub.ChatID,
 					ChannelID: channelID,
-					Status:    status,
+					Status:    info.Status,
 					Social:    false,
 					Priority:  1,
 					Kind:      db.ReplyPacket,
@@ -1908,12 +1899,11 @@ func main() {
 	var subsConfirmTimer = time.NewTicker(time.Duration(w.cfg.SubsConfirmationPeriodSeconds) * time.Second)
 	var notificationSenderTimer = time.NewTicker(time.Duration(w.cfg.NotificationsReadyPeriodSeconds) * time.Second)
 
-	w.onlineListUpdater.init(w.unconfirmedOnline)
 	var subscriptionStatuses map[string]cmdlib.StatusKind
 	if w.checker.UsesFixedList() {
 		subscriptionStatuses = w.db.QueryLastSubscriptionStatuses()
 	}
-	w.fixedListUpdater.init(w.unconfirmedOnline, subscriptionStatuses)
+	w.fixedListUpdater.init(subscriptionStatuses)
 	w.checker.Init(cmdlib.CheckerConfig{
 		UsersOnlineEndpoints: w.cfg.UsersOnlineEndpoint,
 		Clients:              w.clients,

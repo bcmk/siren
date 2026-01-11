@@ -14,11 +14,16 @@ type StatusRequest struct {
 	ResultsCh chan<- StatusResults
 }
 
+// ChannelInfo contains status and image URL for a channel
+type ChannelInfo struct {
+	Status   StatusKind
+	ImageURL string
+}
+
 // StatusResults contains results from querying channels
 type StatusResults struct {
 	Request  *StatusRequest
-	Statuses map[string]StatusKind
-	Images   map[string]string
+	Channels map[string]ChannelInfo
 	Elapsed  time.Duration
 	Error    bool
 }
@@ -43,8 +48,8 @@ type CheckerConfig struct {
 // Checker is the interface for a checker for specific site
 type Checker interface {
 	CheckStatusSingle(channelID string) StatusKind
-	QueryOnlineChannels(checkMode CheckMode) (statuses map[string]StatusKind, images map[string]string, err error)
-	QueryChannelListStatuses(channels []string, checkMode CheckMode) (statuses map[string]StatusKind, images map[string]string, err error)
+	QueryOnlineChannels(checkMode CheckMode) (map[string]ChannelInfo, error)
+	QueryChannelListStatuses(channels []string, checkMode CheckMode) (map[string]ChannelInfo, error)
 	Init(config CheckerConfig)
 	PushStatusRequest(request StatusRequest) error
 	UsesFixedList() bool
@@ -105,29 +110,28 @@ func StartCheckerDaemon(checker Checker) {
 	requests:
 		for request := range checker.StatusRequestsQueue() {
 			start := time.Now()
-			var statuses map[string]StatusKind
-			var images map[string]string
+			var channels map[string]ChannelInfo
 			var err error
 			if request.Channels == nil {
-				statuses, images, err = checker.QueryOnlineChannels(request.CheckMode)
+				channels, err = checker.QueryOnlineChannels(request.CheckMode)
 			} else {
-				statuses, images, err = checker.QueryChannelListStatuses(
+				channels, err = checker.QueryChannelListStatuses(
 					setToSlice(request.Channels),
 					request.CheckMode,
 				)
 				if errors.Is(err, ErrNotImplemented) {
-					statuses, images, err = checker.QueryOnlineChannels(request.CheckMode)
+					channels, err = checker.QueryOnlineChannels(request.CheckMode)
 				}
 				if err == nil {
-					filtered := make(map[string]StatusKind, len(request.Channels))
+					filtered := make(map[string]ChannelInfo, len(request.Channels))
 					for channelID := range request.Channels {
-						if status, ok := statuses[channelID]; ok {
-							filtered[channelID] = status
+						if info, ok := channels[channelID]; ok {
+							filtered[channelID] = info
 						} else {
-							filtered[channelID] = StatusUnknown
+							filtered[channelID] = ChannelInfo{Status: StatusUnknown}
 						}
 					}
-					statuses = filtered
+					channels = filtered
 				}
 			}
 			if err != nil {
@@ -138,12 +142,11 @@ func StartCheckerDaemon(checker Checker) {
 			time.Sleep(checker.RequestInterval())
 			elapsed := time.Since(start)
 			if checker.Debug() {
-				Ldbg("got statuses: %d", len(statuses))
+				Ldbg("got statuses: %d", len(channels))
 			}
 			request.ResultsCh <- StatusResults{
 				Request:  &request,
-				Statuses: statuses,
-				Images:   images,
+				Channels: channels,
 				Elapsed:  elapsed,
 			}
 		}
@@ -190,14 +193,4 @@ func setToSlice(xs map[string]bool) []string {
 		i++
 	}
 	return result
-}
-
-func onlineStatuses(ss map[string]bool) map[string]StatusKind {
-	statusMap := map[string]StatusKind{}
-	for k, s := range ss {
-		if s {
-			statusMap[k] = StatusOnline
-		}
-	}
-	return statusMap
 }

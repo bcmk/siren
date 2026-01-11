@@ -38,16 +38,15 @@ func (c *CamSodaChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 }
 
 // QueryOnlineChannels returns CamSoda online models
-func (c *CamSodaChecker) QueryOnlineChannels(cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+func (c *CamSodaChecker) QueryOnlineChannels(cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
 	client := c.ClientsLoop.NextClient()
-	onlineModels = map[string]cmdlib.StatusKind{}
-	images = map[string]string{}
+	channels := map[string]cmdlib.ChannelInfo{}
 	resp, buf, err := cmdlib.OnlineQuery(c.UsersOnlineEndpoints[0], client, c.Headers)
 	if err != nil {
-		return nil, nil, fmt.Errorf("cannot send a query, %v", err)
+		return nil, fmt.Errorf("cannot send a query, %v", err)
 	}
 	if resp.StatusCode != 200 {
-		return nil, nil, fmt.Errorf("query status, %d", resp.StatusCode)
+		return nil, fmt.Errorf("query status, %d", resp.StatusCode)
 	}
 	decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	var parsed camSodaOnlineResponse
@@ -56,22 +55,21 @@ func (c *CamSodaChecker) QueryOnlineChannels(cmdlib.CheckMode) (onlineModels map
 		if c.Dbg {
 			cmdlib.Ldbg("response: %s", buf.String())
 		}
-		return nil, nil, fmt.Errorf("cannot parse response, %v", err)
+		return nil, fmt.Errorf("cannot parse response, %v", err)
 	}
 	if !parsed.Status {
-		return nil, nil, fmt.Errorf("API error, %s", parsed.Error)
+		return nil, fmt.Errorf("API error, %s", parsed.Error)
 	}
 	for _, m := range parsed.Results {
 		modelID := strings.ToLower(m.Username)
-		onlineModels[modelID] = cmdlib.StatusOnline
-		images[modelID] = m.Thumb
+		channels[modelID] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline, ImageURL: m.Thumb}
 	}
-	return
+	return channels, nil
 }
 
 // QueryChannelListStatuses is not implemented for online list checkers
-func (c *CamSodaChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.StatusKind, map[string]string, error) {
-	return nil, nil, cmdlib.ErrNotImplemented
+func (c *CamSodaChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+	return nil, cmdlib.ErrNotImplemented
 }
 
 // UsesFixedList returns false for online list checkers

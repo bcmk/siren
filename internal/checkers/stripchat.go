@@ -117,10 +117,10 @@ func (c *StripchatChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 	return cmdlib.StatusUnknown
 }
 
-func (c *StripchatChecker) checkOnlyOnline() (onlineModels map[string]cmdlib.StatusKind, err error) {
+func (c *StripchatChecker) checkOnlyOnline() (map[string]cmdlib.ChannelInfo, error) {
 	endpoint := c.UsersOnlineEndpoints[0]
 	userID := c.SpecificConfig["user_id"]
-	onlineModels = map[string]cmdlib.StatusKind{}
+	channels := map[string]cmdlib.ChannelInfo{}
 
 	client := c.ClientsLoop.NextClient()
 
@@ -156,33 +156,32 @@ func (c *StripchatChecker) checkOnlyOnline() (onlineModels map[string]cmdlib.Sta
 	for _, m := range parsed.Models {
 		if m.Username != "" {
 			modelID := strings.ToLower(m.Username)
-			if _, ok := onlineModels[modelID]; !ok {
-				onlineModels[modelID] = cmdlib.StatusOnline
+			if _, ok := channels[modelID]; !ok {
+				channels[modelID] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline}
 			}
 		}
 	}
-	return onlineModels, nil
+	return channels, nil
 }
 
 // QueryOnlineChannels returns Stripchat online models
-func (c *StripchatChecker) QueryOnlineChannels(cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+func (c *StripchatChecker) QueryOnlineChannels(cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
 	endpoint := c.UsersOnlineEndpoints[0]
-	onlineModels, err = c.checkOnlyOnline()
+	channels, err := c.checkOnlyOnline()
 	if err != nil {
-		return nil, nil, fmt.Errorf("cannot check online models, %v", err)
+		return nil, fmt.Errorf("cannot check online models, %v", err)
 	}
 	// This is the actual limit, although the documentation states 1000
 	limitK := 500
-	chunks := slices.Chunk(slices.Collect(maps.Keys(onlineModels)), limitK)
+	chunkIter := slices.Chunk(slices.Collect(maps.Keys(channels)), limitK)
 	userID := c.SpecificConfig["user_id"]
-	images = map[string]string{}
-	for chunk := range chunks {
+	for chunk := range chunkIter {
 		modelIDs := strings.Join(chunk, ",")
 		client := c.ClientsLoop.NextClient()
 
 		request, err := url.Parse(endpoint)
 		if err != nil {
-			return nil, nil, fmt.Errorf("cannot parse endpoint %q", endpoint)
+			return nil, fmt.Errorf("cannot parse endpoint %q", endpoint)
 		}
 
 		q := request.Query()
@@ -195,10 +194,10 @@ func (c *StripchatChecker) QueryOnlineChannels(cmdlib.CheckMode) (onlineModels m
 
 		resp, buf, err := cmdlib.OnlineQuery(request.String(), client, c.Headers)
 		if err != nil {
-			return nil, nil, fmt.Errorf("cannot send a query, %v", err)
+			return nil, fmt.Errorf("cannot send a query, %v", err)
 		}
 		if resp.StatusCode != 200 {
-			return nil, nil, fmt.Errorf("query status %d", resp.StatusCode)
+			return nil, fmt.Errorf("query status %d", resp.StatusCode)
 		}
 		decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 		parsed := &stripchatResponse{}
@@ -207,7 +206,7 @@ func (c *StripchatChecker) QueryOnlineChannels(cmdlib.CheckMode) (onlineModels m
 			if c.Dbg {
 				cmdlib.Ldbg("response: %s", buf.String())
 			}
-			return nil, nil, fmt.Errorf("cannot parse response, %v", err)
+			return nil, fmt.Errorf("cannot parse response, %v", err)
 		}
 		if c.Dbg {
 			cmdlib.Ldbg("models count in the response: %d", len(parsed.Models))
@@ -215,17 +214,19 @@ func (c *StripchatChecker) QueryOnlineChannels(cmdlib.CheckMode) (onlineModels m
 		for _, m := range parsed.Models {
 			if m.Username != "" {
 				modelID := strings.ToLower(m.Username)
-				onlineModels[modelID] = cmdlib.StatusOnline
-				images[modelID] = m.SnapshotURL
+				channels[modelID] = cmdlib.ChannelInfo{
+					Status:   cmdlib.StatusOnline,
+					ImageURL: m.SnapshotURL,
+				}
 			}
 		}
 	}
-	return
+	return channels, nil
 }
 
 // QueryChannelListStatuses is not implemented for online list checkers
-func (c *StripchatChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.StatusKind, map[string]string, error) {
-	return nil, nil, cmdlib.ErrNotImplemented
+func (c *StripchatChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+	return nil, cmdlib.ErrNotImplemented
 }
 
 // UsesFixedList returns false for online list checkers

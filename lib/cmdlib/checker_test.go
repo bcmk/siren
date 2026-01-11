@@ -9,9 +9,8 @@ import (
 type TestChecker struct {
 	CheckerCommon
 	status StatusKind
-	online map[string]bool   //nolint:structcheck
-	images map[string]string //nolint:structcheck
-	err    error             //nolint:structcheck
+	online map[string]bool //nolint:structcheck
+	err    error           //nolint:structcheck
 }
 
 type testOnlineListChecker struct {
@@ -24,20 +23,19 @@ func (c *TestChecker) CheckStatusSingle(string) StatusKind {
 	return c.status
 }
 
-func (c *testOnlineListChecker) QueryOnlineChannels(
-	CheckMode,
-) (onlineModels map[string]StatusKind, images map[string]string, err error) {
+func (c *testOnlineListChecker) QueryOnlineChannels(CheckMode) (map[string]ChannelInfo, error) {
 	if c.err != nil {
-		return nil, nil, c.err
+		return nil, c.err
 	}
-	return onlineStatuses(c.online), c.images, nil
+	channels := map[string]ChannelInfo{}
+	for k := range c.online {
+		channels[k] = ChannelInfo{Status: StatusOnline}
+	}
+	return channels, nil
 }
 
-func (c *testOnlineListChecker) QueryChannelListStatuses(
-	[]string,
-	CheckMode,
-) (map[string]StatusKind, map[string]string, error) {
-	return nil, nil, ErrNotImplemented
+func (c *testOnlineListChecker) QueryChannelListStatuses([]string, CheckMode) (map[string]ChannelInfo, error) {
+	return nil, ErrNotImplemented
 }
 
 // UsesFixedList returns false for online list checkers
@@ -61,16 +59,16 @@ func TestOnlineListCheckerHandlesFixedList(t *testing.T) {
 	if result.Error {
 		t.Error("unexpected error")
 	}
-	if result.Statuses["a"] != StatusOnline {
-		t.Errorf("expected a to be online, got %v", result.Statuses["a"])
+	if result.Channels["a"].Status != StatusOnline {
+		t.Errorf("expected a to be online, got %v", result.Channels["a"].Status)
 	}
 	// c was queried but not returned by checker, should be reported as unknown
-	if result.Statuses["c"] != StatusUnknown {
-		t.Errorf("expected c to be unknown, got %v", result.Statuses["c"])
+	if result.Channels["c"].Status != StatusUnknown {
+		t.Errorf("expected c to be unknown, got %v", result.Channels["c"].Status)
 	}
 	// b was online but not queried, should not be in the results
-	if _, ok := result.Statuses["b"]; ok {
-		t.Errorf("expected b to not be in statuses, got %v", result.Statuses["b"])
+	if _, ok := result.Channels["b"]; ok {
+		t.Errorf("expected b to not be in channels, got %v", result.Channels["b"])
 	}
 }
 

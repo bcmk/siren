@@ -94,16 +94,15 @@ func Flirt4FreeCanonicalModelID(name string) string {
 }
 
 // QueryOnlineChannels returns Flirt4Free online models
-func (c *Flirt4FreeChecker) QueryOnlineChannels(cmdlib.CheckMode) (onlineModels map[string]cmdlib.StatusKind, images map[string]string, err error) {
+func (c *Flirt4FreeChecker) QueryOnlineChannels(cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
 	client := c.ClientsLoop.NextClient()
-	onlineModels = map[string]cmdlib.StatusKind{}
-	images = map[string]string{}
+	channels := map[string]cmdlib.ChannelInfo{}
 	resp, buf, err := cmdlib.OnlineQuery(c.UsersOnlineEndpoints[0], client, c.Headers)
 	if err != nil {
-		return nil, nil, fmt.Errorf("cannot send a query, %v", err)
+		return nil, fmt.Errorf("cannot send a query, %v", err)
 	}
 	if resp.StatusCode != 200 {
-		return nil, nil, fmt.Errorf("query status, %d", resp.StatusCode)
+		return nil, fmt.Errorf("query status, %d", resp.StatusCode)
 	}
 	decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	var parsed flirt4FreeOnlineResponse
@@ -112,35 +111,32 @@ func (c *Flirt4FreeChecker) QueryOnlineChannels(cmdlib.CheckMode) (onlineModels 
 		if c.Dbg {
 			cmdlib.Ldbg("response: %s", buf.String())
 		}
-		return nil, nil, fmt.Errorf("cannot parse response, %v", err)
+		return nil, fmt.Errorf("cannot parse response, %v", err)
 	}
 	if parsed.Error != nil {
-		return nil, nil, fmt.Errorf("API error, code: %s, description: %s", parsed.Error.Code, parsed.Error.Description)
+		return nil, fmt.Errorf("API error, code: %s, description: %s", parsed.Error.Code, parsed.Error.Description)
 	}
 	if len(parsed.Girls) == 0 || len(parsed.Guys) == 0 || len(parsed.Trans) == 0 {
-		return nil, nil, errors.New("zero online models reported")
+		return nil, errors.New("zero online models reported")
 	}
 	for _, m := range parsed.Girls {
 		modelID := flirt4FreeCanonicalAPIModelID(m.Name)
-		onlineModels[modelID] = cmdlib.StatusOnline
-		images[modelID] = m.ScreencapImage
+		channels[modelID] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline, ImageURL: m.ScreencapImage}
 	}
 	for _, m := range parsed.Guys {
 		modelID := flirt4FreeCanonicalAPIModelID(m.Name)
-		onlineModels[modelID] = cmdlib.StatusOnline
-		images[modelID] = m.ScreencapImage
+		channels[modelID] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline, ImageURL: m.ScreencapImage}
 	}
 	for _, m := range parsed.Trans {
 		modelID := flirt4FreeCanonicalAPIModelID(m.Name)
-		onlineModels[modelID] = cmdlib.StatusOnline
-		images[modelID] = m.ScreencapImage
+		channels[modelID] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline, ImageURL: m.ScreencapImage}
 	}
-	return
+	return channels, nil
 }
 
 // QueryChannelListStatuses is not implemented for online list checkers
-func (c *Flirt4FreeChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.StatusKind, map[string]string, error) {
-	return nil, nil, cmdlib.ErrNotImplemented
+func (c *Flirt4FreeChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+	return nil, cmdlib.ErrNotImplemented
 }
 
 // UsesFixedList returns false for online list checkers
