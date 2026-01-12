@@ -178,7 +178,7 @@ func stringToSliceHookFunc(sep string) mapstructure.DecodeHookFunc {
 		if f.Kind() != reflect.String {
 			return data, nil
 		}
-		if t != reflect.SliceOf(f) {
+		if t.Kind() != reflect.Slice {
 			return data, nil
 		}
 
