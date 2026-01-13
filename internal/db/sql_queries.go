@@ -552,14 +552,19 @@ func (d *Database) IncrementReports(chatID int64) {
 // ConfirmStatusChanges finds channels needing confirmation and updates them.
 // Returns the confirmed status changes.
 func (d *Database) ConfirmStatusChanges(now int, onlineSeconds int, offlineSeconds int) []StatusChange {
-	// We use two queries instead of one because
-	// PostgreSQL uses ix_channels_status_mismatch partial index for select but not for update.
+	// PostgreSQL uses ix_channels_status_mismatch partial index for select but
+	// not for update — we use a temp table to work around this.
 	done := d.Measure("db: confirm status changes")
 	defer done()
-	var result []StatusChange
-	var change StatusChange
-	d.MustQuery(
+
+	tx, err := d.Begin()
+	checkErr(err)
+	defer func() { _ = tx.Rollback(context.Background()) }()
+
+	_, err = tx.Exec(
+		context.Background(),
 		`
+			create temp table to_confirm on commit drop as
 			select channel_id, unconfirmed_status
 			from channels
 			where confirmed_status != unconfirmed_status
@@ -569,28 +574,32 @@ func (d *Database) ConfirmStatusChanges(now int, onlineSeconds int, offlineSecon
 				or unconfirmed_status = 0
 			)
 		`,
-		QueryParams{now, onlineSeconds, offlineSeconds},
-		ScanTo{&change.ChannelID, &change.Status},
-		func() {
-			change.Timestamp = now
-			result = append(result, change)
-		})
-	if len(result) > 0 {
-		channelIDs := make([]string, len(result))
-		statuses := make([]int, len(result))
-		for i, c := range result {
-			channelIDs[i] = c.ChannelID
-			statuses[i] = int(c.Status)
-		}
-		d.MustExec(
-			`
-				update channels c
-				set confirmed_status = v.status
-				from unnest($1::text[], $2::int[]) as v(channel_id, status)
-				where c.channel_id = v.channel_id
-			`,
-			channelIDs,
-			statuses)
+		now, onlineSeconds, offlineSeconds)
+	checkErr(err)
+
+	_, err = tx.Exec(
+		context.Background(),
+		`
+			update channels c
+			set confirmed_status = tc.unconfirmed_status
+			from to_confirm tc
+			where c.channel_id = tc.channel_id
+		`)
+	checkErr(err)
+
+	rows, err := tx.Query(context.Background(), `select channel_id, unconfirmed_status from to_confirm`)
+	checkErr(err)
+	defer rows.Close()
+
+	var result []StatusChange
+	for rows.Next() {
+		var change StatusChange
+		checkErr(rows.Scan(&change.ChannelID, &change.Status))
+		change.Timestamp = now
+		result = append(result, change)
 	}
+	checkErr(rows.Err())
+
+	checkErr(tx.Commit(context.Background()))
 	return result
 }

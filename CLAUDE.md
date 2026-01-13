@@ -27,5 +27,6 @@
 - GNU sed is installed as `sed` (no empty string needed for `-i`)
 
 ## Database Migrations
+- Migrations are in `internal/db/migrations.go`
 - When renaming a table, also rename its primary key constraint.
   PostgreSQL auto-creates it as `tablename_pkey`.
