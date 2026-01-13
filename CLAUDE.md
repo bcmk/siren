@@ -25,3 +25,7 @@
 - Run `golangci-lint run ./...` before committing
 - Run `go test ./...` to ensure changes work
 - GNU sed is installed as `sed` (no empty string needed for `-i`)
+
+## Database Migrations
+- When renaming a table, also rename its primary key constraint.
+  PostgreSQL auto-creates it as `tablename_pkey`.
