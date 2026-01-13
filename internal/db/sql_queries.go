@@ -74,10 +74,10 @@ func (d *Database) UsersForChannels(channelIDs []string) (users map[string][]Use
 	var offlineNotifications bool
 	var showImages bool
 	d.MustQuery(`
-		select signals.channel_id, signals.chat_id, signals.endpoint, users.offline_notifications, users.show_images
-		from signals
-		join users on users.chat_id = signals.chat_id
-		where signals.channel_id = any($1)`,
+		select subscriptions.channel_id, subscriptions.chat_id, subscriptions.endpoint, users.offline_notifications, users.show_images
+		from subscriptions
+		join users on users.chat_id = subscriptions.chat_id
+		where subscriptions.channel_id = any($1)`,
 		QueryParams{channelIDs},
 		ScanTo{&channelID, &chatID, &endpoint, &offlineNotifications, &showImages},
 		func() {
@@ -91,7 +91,7 @@ func (d *Database) UsersForChannels(channelIDs []string) (users map[string][]Use
 func (d *Database) BroadcastChats(endpoint string) (chats []int64) {
 	var chatID int64
 	d.MustQuery(
-		`select distinct chat_id from signals where endpoint = $1 order by chat_id`,
+		`select distinct chat_id from subscriptions where endpoint = $1 order by chat_id`,
 		QueryParams{endpoint},
 		ScanTo{&chatID},
 		func() { chats = append(chats, chatID) })
@@ -102,7 +102,7 @@ func (d *Database) BroadcastChats(endpoint string) (chats []int64) {
 func (d *Database) ChannelsForChat(endpoint string, chatID int64) (channels []string) {
 	var channelID string
 	d.MustQuery(
-		`select channel_id from signals where chat_id = $1 and endpoint = $2 order by channel_id`,
+		`select channel_id from subscriptions where chat_id = $1 and endpoint = $2 order by channel_id`,
 		QueryParams{chatID, endpoint},
 		ScanTo{&channelID},
 		func() { channels = append(channels, channelID) })
@@ -115,8 +115,8 @@ func (d *Database) ConfirmedStatusesForChat(endpoint string, chatID int64) (stat
 	d.MustQuery(`
 		select channels.channel_id, channels.confirmed_status
 		from channels
-		join signals on signals.channel_id = channels.channel_id
-		where signals.chat_id = $1 and signals.endpoint = $2
+		join subscriptions on subscriptions.channel_id = channels.channel_id
+		where subscriptions.chat_id = $1 and subscriptions.endpoint = $2
 		order by channels.channel_id`,
 		QueryParams{chatID, endpoint},
 		ScanTo{&iter.ChannelID, &iter.ConfirmedStatus},
@@ -134,7 +134,7 @@ func (d *Database) UnconfirmedStatusesForChat(endpoint string, chatID int64) (st
 			coalesce(m.unconfirmed_timestamp, 0),
 			coalesce(m.prev_unconfirmed_status, 0),
 			coalesce(m.prev_unconfirmed_timestamp, 0)
-		from signals s
+		from subscriptions s
 		left join channels m on m.channel_id = s.channel_id
 		where s.chat_id = $1 and s.endpoint = $2
 		order by s.channel_id`,
@@ -152,13 +152,13 @@ func (d *Database) UnconfirmedStatusesForChat(endpoint string, chatID int64) (st
 
 // SubscriptionExists checks if subscription exists
 func (d *Database) SubscriptionExists(endpoint string, chatID int64, channelID string) bool {
-	count := d.MustInt("select count(*) from signals where chat_id = $1 and channel_id = $2 and endpoint = $3", chatID, channelID, endpoint)
+	count := d.MustInt("select count(*) from subscriptions where chat_id = $1 and channel_id = $2 and endpoint = $3", chatID, channelID, endpoint)
 	return count != 0
 }
 
 // SubscriptionsNumber return the number of subscriptions of a particular chat
 func (d *Database) SubscriptionsNumber(endpoint string, chatID int64) int {
-	return d.MustInt("select count(*) from signals where chat_id = $1 and endpoint = $2", chatID, endpoint)
+	return d.MustInt("select count(*) from subscriptions where chat_id = $1 and endpoint = $2", chatID, endpoint)
 }
 
 // User queries a user with particular ID
@@ -261,12 +261,12 @@ func (d *Database) ConfirmSub(sub Subscription) {
 		values ($1)
 		on conflict(channel_id) do nothing`,
 		sub.ChannelID)
-	d.MustExec("update signals set confirmed=1 where endpoint = $1 and chat_id = $2 and channel_id = $3", sub.Endpoint, sub.ChatID, sub.ChannelID)
+	d.MustExec("update subscriptions set confirmed=1 where endpoint = $1 and chat_id = $2 and channel_id = $3", sub.Endpoint, sub.ChatID, sub.ChannelID)
 }
 
 // DenySub denies subscription
 func (d *Database) DenySub(sub Subscription) {
-	d.MustExec("delete from signals where endpoint = $1 and chat_id = $2 and channel_id = $3", sub.Endpoint, sub.ChatID, sub.ChannelID)
+	d.MustExec("delete from subscriptions where endpoint = $1 and chat_id = $2 and channel_id = $3", sub.Endpoint, sub.ChatID, sub.ChannelID)
 }
 
 // SubscribedChannels returns all confirmed subscribed channels
@@ -274,7 +274,7 @@ func (d *Database) SubscribedChannels() map[string]bool {
 	channels := map[string]bool{}
 	var channelID string
 	d.MustQuery(
-		`select distinct channel_id from signals where confirmed = 1`,
+		`select distinct channel_id from subscriptions where confirmed = 1`,
 		nil,
 		ScanTo{&channelID},
 		func() { channels[channelID] = true })
@@ -289,7 +289,7 @@ func (d *Database) QueryLastSubscriptionStatuses() map[string]cmdlib.StatusKind 
 	d.MustQuery(
 		`
 			select s.channel_id, coalesce(m.unconfirmed_status, $1) as status
-			from (select distinct channel_id from signals where confirmed = 1) s
+			from (select distinct channel_id from subscriptions where confirmed = 1) s
 			left join channels m on m.channel_id = s.channel_id
 		`,
 		QueryParams{cmdlib.StatusUnknown},
@@ -323,7 +323,7 @@ func (d *Database) SetKnownUnsubscribedToUnknown(now int) []string {
 				unconfirmed_status = 0,
 				unconfirmed_timestamp = $1
 			where unconfirmed_status != 0
-			and channel_id not in (select distinct channel_id from signals where confirmed = 1)
+			and channel_id not in (select distinct channel_id from subscriptions where confirmed = 1)
 			returning channel_id
 		`,
 		QueryParams{now},

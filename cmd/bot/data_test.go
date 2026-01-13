@@ -102,7 +102,7 @@ func (w *testWorker) chatsForChannel(channelID string) (chats []int64, endpoints
 	var chatID int64
 	var endpoint string
 	w.db.MustQuery(
-		`select chat_id, endpoint from signals where channel_id = $1 order by chat_id`,
+		`select chat_id, endpoint from subscriptions where channel_id = $1 order by chat_id`,
 		db.QueryParams{channelID},
 		db.ScanTo{&chatID, &endpoint},
 		func() {

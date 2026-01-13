@@ -710,7 +710,7 @@ func (w *worker) addChannel(endpoint string, chatID int64, channelID string, now
 	}
 	channel := w.db.MaybeChannel(channelID)
 	if channel == nil {
-		w.db.MustExec("insert into signals (chat_id, channel_id, endpoint, confirmed) values ($1, $2, $3, $4)", chatID, channelID, endpoint, 0)
+		w.db.MustExec("insert into subscriptions (chat_id, channel_id, endpoint, confirmed) values ($1, $2, $3, $4)", chatID, channelID, endpoint, 0)
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].CheckingChannel, nil, db.ReplyPacket)
 		return false
 	}
@@ -718,7 +718,7 @@ func (w *worker) addChannel(endpoint string, chatID int64, channelID string, now
 	if confirmedStatus != cmdlib.StatusOnline {
 		confirmedStatus = cmdlib.StatusOffline
 	}
-	w.db.MustExec("insert into signals (chat_id, channel_id, endpoint, confirmed) values ($1, $2, $3, $4)", chatID, channelID, endpoint, 1)
+	w.db.MustExec("insert into subscriptions (chat_id, channel_id, endpoint, confirmed) values ($1, $2, $3, $4)", chatID, channelID, endpoint, 1)
 	subscriptionsNumber++
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ChannelAdded, tplData{"channel": channelID}, db.ReplyPacket)
 	nots := []db.Notification{{
@@ -792,12 +792,12 @@ func (w *worker) removeChannel(endpoint string, chatID int64, channelID string) 
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ChannelNotInList, tplData{"channel": channelID}, db.ReplyPacket)
 		return
 	}
-	w.db.MustExec("delete from signals where chat_id = $1 and channel_id = $2 and endpoint = $3", chatID, channelID, endpoint)
+	w.db.MustExec("delete from subscriptions where chat_id = $1 and channel_id = $2 and endpoint = $3", chatID, channelID, endpoint)
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ChannelRemoved, tplData{"channel": channelID}, db.ReplyPacket)
 }
 
 func (w *worker) sureRemoveAll(endpoint string, chatID int64) {
-	w.db.MustExec("delete from signals where chat_id = $1 and endpoint = $2", chatID, endpoint)
+	w.db.MustExec("delete from subscriptions where chat_id = $1 and endpoint = $2", chatID, endpoint)
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].AllChannelsRemoved, nil, db.ReplyPacket)
 }
 
@@ -1750,12 +1750,12 @@ func (w *worker) sendNotificationsDaemon() {
 func (w *worker) queryUnconfirmedSubs() {
 	unconfirmed := map[string]bool{}
 	var channelID string
-	w.db.MustQuery("select channel_id from signals where confirmed = 0", nil, db.ScanTo{&channelID}, func() { unconfirmed[channelID] = true })
+	w.db.MustQuery("select channel_id from subscriptions where confirmed = 0", nil, db.ScanTo{&channelID}, func() { unconfirmed[channelID] = true })
 	if len(unconfirmed) > 0 {
-		w.db.MustExec("update signals set confirmed = 2 where confirmed = 0")
+		w.db.MustExec("update subscriptions set confirmed = 2 where confirmed = 0")
 		ldbg("queueing unconfirmed subscriptions check for %d channels", len(unconfirmed))
 		if w.pushFixedListRequest(w.unconfirmedSubsResults, unconfirmed) != nil {
-			w.db.MustExec("update signals set confirmed = 0 where confirmed = 2")
+			w.db.MustExec("update subscriptions set confirmed = 0 where confirmed = 2")
 		}
 	}
 }
@@ -1766,7 +1766,7 @@ func (w *worker) processSubsConfirmations(res cmdlib.StatusResults) {
 	confirmationsInWork := map[string][]db.Subscription{}
 	var iter db.Subscription
 	w.db.MustQuery(
-		"select endpoint, channel_id, chat_id from signals where confirmed = 2",
+		"select endpoint, channel_id, chat_id from subscriptions where confirmed = 2",
 		nil,
 		db.ScanTo{&iter.Endpoint, &iter.ChannelID, &iter.ChatID},
 		func() { confirmationsInWork[iter.ChannelID] = append(confirmationsInWork[iter.ChannelID], iter) })
@@ -1892,7 +1892,7 @@ func main() {
 	w.createDatabase(databaseDone)
 	w.initCache()
 	w.db.MustExec("update notification_queue set sending=0")
-	w.db.MustExec("update signals set confirmed = 0 where confirmed = 2")
+	w.db.MustExec("update subscriptions set confirmed = 0 where confirmed = 2")
 
 	statRequests := make(chan statRequest)
 	w.handleStatEndpoints(statRequests)

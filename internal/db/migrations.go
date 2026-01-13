@@ -309,6 +309,13 @@ var migrations = []func(d *Database){
 	func(d *Database) {
 		d.MustExec(`alter table channels rename constraint models_pkey to channels_pkey`)
 	},
+	func(d *Database) {
+		d.MustExec(`alter table signals rename to subscriptions`)
+		d.MustExec(`alter table subscriptions rename constraint signals_pkey to subscriptions_pkey`)
+		d.MustExec(`alter index ix_signals_confirmed rename to ix_subscriptions_confirmed`)
+		d.MustExec(`alter index ix_signals_channel_id rename to ix_subscriptions_channel_id`)
+		d.MustExec(`alter index ix_signals_channel_id_confirmed rename to ix_subscriptions_channel_id_confirmed`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database

@@ -50,18 +50,18 @@ func TestSql(t *testing.T) {
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
 	w.initCache()
-	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 1, "a")
-	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 2, "b")
-	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 3, "c")
-	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 3, "c2")
-	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 3, "c3")
-	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 4, "d")
-	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 5, "d")
-	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 6, "e")
-	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 7, "f")
-	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep2", 6, "e")
-	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep2", 7, "f")
-	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep2", 8, "g")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 1, "a")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 2, "b")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 3, "c")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 3, "c2")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 3, "c3")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 4, "d")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 5, "d")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 6, "e")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 7, "f")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep2", 6, "e")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep2", 7, "f")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep2", 8, "g")
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 2, 0)
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 3, w.cfg.BlockThreshold)
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 4, w.cfg.BlockThreshold-1)
@@ -333,12 +333,12 @@ func TestUpdateNotifications(t *testing.T) {
 	w.createDatabase(make(chan bool, 1))
 	w.initCache()
 
-	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 1, "a")
-	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 2, "b")
-	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 3, "a")
-	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 3, "c")
-	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 4, "d")
-	w.db.MustExec("insert into signals (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep2", 4, "d")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 1, "a")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 2, "b")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 3, "a")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 3, "c")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 4, "d")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep2", 4, "d")
 
 	w.db.MustExec("insert into users (chat_id) values ($1)", 1)
 	w.db.MustExec("insert into users (chat_id) values ($1)", 2)
@@ -710,7 +710,7 @@ func TestAddChannel(t *testing.T) {
 	if w.addChannel("test", 1, "newmodel", 100) {
 		t.Error("expected addChannel to return false for new channel")
 	}
-	if w.db.MustInt("select confirmed from signals where channel_id = $1", "newmodel") != 0 {
+	if w.db.MustInt("select confirmed from subscriptions where channel_id = $1", "newmodel") != 0 {
 		t.Error("expected confirmed=0 for new channel")
 	}
 	// Drain the "checking channel" message
@@ -725,7 +725,7 @@ func TestAddChannel(t *testing.T) {
 	if !w.addChannel("test", 1, "onlinemodel", 100) {
 		t.Error("expected addChannel to return true for existing channel")
 	}
-	if w.db.MustInt("select confirmed from signals where channel_id = $1", "onlinemodel") != 1 {
+	if w.db.MustInt("select confirmed from subscriptions where channel_id = $1", "onlinemodel") != 1 {
 		t.Error("expected confirmed=1 for existing channel")
 	}
 	// Drain messages
@@ -757,15 +757,15 @@ func TestConfirmSub(t *testing.T) {
 
 	// Insert unconfirmed subscription
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 1, "a", 0,
 	)
 
 	// Confirm the subscription
 	w.db.ConfirmSub(db.Subscription{Endpoint: "test", ChatID: 1, ChannelID: "a"})
 
-	// Check signal is confirmed
-	if w.db.MustInt("select confirmed from signals where channel_id = $1", "a") != 1 {
+	// Check subscription is confirmed
+	if w.db.MustInt("select confirmed from subscriptions where channel_id = $1", "a") != 1 {
 		t.Error("expected confirmed=1 after ConfirmSub")
 	}
 
@@ -782,16 +782,16 @@ func TestDenySub(t *testing.T) {
 
 	// Insert unconfirmed subscription
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 1, "b", 0,
 	)
 
 	// Deny the subscription
 	w.db.DenySub(db.Subscription{Endpoint: "test", ChatID: 1, ChannelID: "b"})
 
-	// Check signal is deleted
-	if w.db.MustInt("select count(*) from signals where channel_id = $1", "b") != 0 {
-		t.Error("expected signal to be deleted after DenySub")
+	// Check subscription is deleted
+	if w.db.MustInt("select count(*) from subscriptions where channel_id = $1", "b") != 0 {
+		t.Error("expected subscription to be deleted after DenySub")
 	}
 }
 
@@ -802,31 +802,31 @@ func TestProcessSubsConfirmations(t *testing.T) {
 
 	// Insert subscriptions waiting for confirmation (confirmed=2)
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 1, "online_model", 2,
 	)
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 2, "offline_model", 2,
 	)
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 3, "notfound_model", 2,
 	)
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 4, "denied_model", 2,
 	)
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 5, "notfound_denied_model", 2,
 	)
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 6, "online_offline_model", 2,
 	)
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 7, "unknown_model", 2,
 	)
 
@@ -844,37 +844,37 @@ func TestProcessSubsConfirmations(t *testing.T) {
 	})
 
 	// Online model should be confirmed
-	if w.db.MustInt("select confirmed from signals where channel_id = $1", "online_model") != 1 {
+	if w.db.MustInt("select confirmed from subscriptions where channel_id = $1", "online_model") != 1 {
 		t.Error("expected online_model to be confirmed")
 	}
 
 	// Offline model should be confirmed
-	if w.db.MustInt("select confirmed from signals where channel_id = $1", "offline_model") != 1 {
+	if w.db.MustInt("select confirmed from subscriptions where channel_id = $1", "offline_model") != 1 {
 		t.Error("expected offline_model to be confirmed")
 	}
 
 	// NotFound model should be denied (deleted)
-	if w.db.MustInt("select count(*) from signals where channel_id = $1", "notfound_model") != 0 {
+	if w.db.MustInt("select count(*) from subscriptions where channel_id = $1", "notfound_model") != 0 {
 		t.Error("expected notfound_model to be deleted")
 	}
 
 	// Denied model should be confirmed (StatusDenied is a valid status)
-	if w.db.MustInt("select confirmed from signals where channel_id = $1", "denied_model") != 1 {
+	if w.db.MustInt("select confirmed from subscriptions where channel_id = $1", "denied_model") != 1 {
 		t.Error("expected denied_model to be confirmed")
 	}
 
 	// NotFound|Denied model should be confirmed (StatusDenied bit is set)
-	if w.db.MustInt("select confirmed from signals where channel_id = $1", "notfound_denied_model") != 1 {
+	if w.db.MustInt("select confirmed from subscriptions where channel_id = $1", "notfound_denied_model") != 1 {
 		t.Error("expected notfound_denied_model to be confirmed")
 	}
 
 	// Online|Offline model should be confirmed (found but status uncertain)
-	if w.db.MustInt("select confirmed from signals where channel_id = $1", "online_offline_model") != 1 {
+	if w.db.MustInt("select confirmed from subscriptions where channel_id = $1", "online_offline_model") != 1 {
 		t.Error("expected online_offline_model to be confirmed")
 	}
 
 	// Unknown model should be denied (deleted)
-	if w.db.MustInt("select count(*) from signals where channel_id = $1", "unknown_model") != 0 {
+	if w.db.MustInt("select count(*) from subscriptions where channel_id = $1", "unknown_model") != 0 {
 		t.Error("expected unknown_model to be deleted")
 	}
 }
@@ -993,11 +993,11 @@ func TestQueryLastSubscriptionStatuses(t *testing.T) {
 
 	// Insert confirmed subscriptions
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 1, "model_with_status", 1,
 	)
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 2, "model_without_status", 1,
 	)
 
@@ -1028,7 +1028,7 @@ func TestHandleStatusUpdates(t *testing.T) {
 
 	// Insert a subscription
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 1, "a", 1,
 	)
 
@@ -1116,10 +1116,10 @@ func TestUnsubscribeBeforeRestart(t *testing.T) {
 
 	// Subscribe to "a" and "b"
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 1, "a", 1)
 	w.db.MustExec(
-		"insert into signals (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 1, "b", 1)
 
 	// Both channels come online
@@ -1142,7 +1142,7 @@ func TestUnsubscribeBeforeRestart(t *testing.T) {
 	}
 
 	// Unsubscribe from "a"
-	w.db.MustExec("delete from signals where channel_id = $1", "a")
+	w.db.MustExec("delete from subscriptions where channel_id = $1", "a")
 
 	// Simulate restart: reinitialize cache as would happen on restart
 	w.unconfirmedOnlineChannels = map[string]cmdlib.ChannelInfo{}
