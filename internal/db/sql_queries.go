@@ -411,6 +411,144 @@ func (d *Database) InsertStatusChanges(changedStatuses []StatusChange) {
 	checkErr(tx.Commit(context.Background()))
 }
 
+// AddSubscription inserts a subscription with the given confirmed status
+func (d *Database) AddSubscription(chatID int64, channelID string, endpoint string, confirmed int) {
+	d.MustExec(
+		"insert into subscriptions (chat_id, channel_id, endpoint, confirmed) values ($1, $2, $3, $4)",
+		chatID,
+		channelID,
+		endpoint,
+		confirmed)
+}
+
+// SetShowImages updates the show_images setting for a user
+func (d *Database) SetShowImages(chatID int64, showImages bool) {
+	d.MustExec("update users set show_images = $1 where chat_id = $2", showImages, chatID)
+}
+
+// SetOfflineNotifications updates the offline_notifications setting for a user
+func (d *Database) SetOfflineNotifications(chatID int64, offlineNotifications bool) {
+	d.MustExec("update users set offline_notifications = $1 where chat_id = $2", offlineNotifications, chatID)
+}
+
+// RemoveSubscription deletes a specific subscription
+func (d *Database) RemoveSubscription(chatID int64, channelID string, endpoint string) {
+	d.MustExec(
+		"delete from subscriptions where chat_id = $1 and channel_id = $2 and endpoint = $3",
+		chatID,
+		channelID,
+		endpoint)
+}
+
+// RemoveAllSubscriptions deletes all subscriptions for a chat and endpoint
+func (d *Database) RemoveAllSubscriptions(chatID int64, endpoint string) {
+	d.MustExec("delete from subscriptions where chat_id = $1 and endpoint = $2", chatID, endpoint)
+}
+
+// AddFeedback stores user feedback
+func (d *Database) AddFeedback(endpoint string, chatID int64, text string, timestamp int) {
+	d.MustExec(
+		"insert into feedback (endpoint, chat_id, text, timestamp) values ($1, $2, $3, $4)",
+		endpoint,
+		chatID,
+		text,
+		timestamp)
+}
+
+// BlacklistUser sets the blacklist flag for a user
+func (d *Database) BlacklistUser(chatID int64) {
+	d.MustExec("update users set blacklist=1 where chat_id = $1", chatID)
+}
+
+// AddUserWithBonus inserts a user with a specific max_channels value
+func (d *Database) AddUserWithBonus(chatID int64, maxChannels int) {
+	d.MustExec("insert into users (chat_id, max_channels) values ($1, $2)", chatID, maxChannels)
+}
+
+// AddOrUpdateReferrer inserts or updates a referrer's max_channels
+func (d *Database) AddOrUpdateReferrer(chatID int64, maxChannels int, bonus int) {
+	d.MustExec(`
+		insert into users as included (chat_id, max_channels) values ($1, $2)
+		on conflict(chat_id) do update set max_channels=included.max_channels + $3`,
+		chatID,
+		maxChannels,
+		bonus)
+}
+
+// IncrementReferredUsers increments the referred_users count for a referral
+func (d *Database) IncrementReferredUsers(chatID int64) {
+	d.MustExec("update referrals set referred_users=referred_users+1 where chat_id = $1", chatID)
+}
+
+// AddReferralEvent adds a referral event
+func (d *Database) AddReferralEvent(timestamp int, referrerChatID *int64, followerChatID int64, channelID *string) {
+	d.MustExec(
+		"insert into referral_events (timestamp, referrer_chat_id, follower_chat_id, channel_id) values ($1, $2, $3, $4)",
+		timestamp,
+		referrerChatID,
+		followerChatID,
+		channelID)
+}
+
+// AddReferral adds a new referral record
+func (d *Database) AddReferral(chatID int64, referralID string) {
+	d.MustExec("insert into referrals (chat_id, referral_id) values ($1, $2)", chatID, referralID)
+}
+
+// LogReceivedMessage logs a received message
+func (d *Database) LogReceivedMessage(timestamp int, endpoint string, chatID int64, command *string) {
+	d.MustExec(
+		"insert into received_message_log (timestamp, endpoint, chat_id, command) values ($1, $2, $3, $4)",
+		timestamp,
+		endpoint,
+		chatID,
+		command)
+}
+
+// MaintainBrinIndexes summarizes new values for BRIN indexes
+func (d *Database) MaintainBrinIndexes() {
+	d.MustExec("select brin_summarize_new_values('ix_sent_message_log_timestamp')")
+	d.MustExec("select brin_summarize_new_values('ix_received_message_log_timestamp')")
+}
+
+// MarkUnconfirmedAsChecking marks unconfirmed subscriptions as checking (0 -> 2)
+func (d *Database) MarkUnconfirmedAsChecking() {
+	d.MustExec("update subscriptions set confirmed = 2 where confirmed = 0")
+}
+
+// ResetCheckingToUnconfirmed resets checking subscriptions back to unconfirmed (2 -> 0)
+func (d *Database) ResetCheckingToUnconfirmed() {
+	d.MustExec("update subscriptions set confirmed = 0 where confirmed = 2")
+}
+
+// ResetNotificationSending resets all sending notifications to not sending
+func (d *Database) ResetNotificationSending() {
+	d.MustExec("update notification_queue set sending=0")
+}
+
+// LogSentMessage logs a sent message
+func (d *Database) LogSentMessage(timestamp int, chatID int64, result int, endpoint string, priority int, delay int, kind PacketKind) {
+	d.MustExec(
+		"insert into sent_message_log (timestamp, chat_id, result, endpoint, priority, delay, kind) values ($1, $2, $3, $4, $5, $6, $7)",
+		timestamp,
+		chatID,
+		result,
+		endpoint,
+		priority,
+		delay,
+		kind)
+}
+
+// DeleteNotification deletes a notification by ID
+func (d *Database) DeleteNotification(id int) {
+	d.MustExec("delete from notification_queue where id = $1", id)
+}
+
+// IncrementReports increments the reports count for a user
+func (d *Database) IncrementReports(chatID int64) {
+	d.MustExec("update users set reports=reports+1 where chat_id = $1", chatID)
+}
+
 // ConfirmStatusChanges finds channels needing confirmation and updates them.
 // Returns the confirmed status changes.
 func (d *Database) ConfirmStatusChanges(now int, onlineSeconds int, offlineSeconds int) []StatusChange {

@@ -710,7 +710,7 @@ func (w *worker) addChannel(endpoint string, chatID int64, channelID string, now
 	}
 	channel := w.db.MaybeChannel(channelID)
 	if channel == nil {
-		w.db.MustExec("insert into subscriptions (chat_id, channel_id, endpoint, confirmed) values ($1, $2, $3, $4)", chatID, channelID, endpoint, 0)
+		w.db.AddSubscription(chatID, channelID, endpoint, 0)
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].CheckingChannel, nil, db.ReplyPacket)
 		return false
 	}
@@ -718,7 +718,7 @@ func (w *worker) addChannel(endpoint string, chatID int64, channelID string, now
 	if confirmedStatus != cmdlib.StatusOnline {
 		confirmedStatus = cmdlib.StatusOffline
 	}
-	w.db.MustExec("insert into subscriptions (chat_id, channel_id, endpoint, confirmed) values ($1, $2, $3, $4)", chatID, channelID, endpoint, 1)
+	w.db.AddSubscription(chatID, channelID, endpoint, 1)
 	subscriptionsNumber++
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ChannelAdded, tplData{"channel": channelID}, db.ReplyPacket)
 	nots := []db.Notification{{
@@ -769,12 +769,12 @@ func (w *worker) settings(endpoint string, chatID int64) {
 }
 
 func (w *worker) enableImages(endpoint string, chatID int64, showImages bool) {
-	w.db.MustExec("update users set show_images = $1 where chat_id = $2", showImages, chatID)
+	w.db.SetShowImages(chatID, showImages)
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].OK, nil, db.ReplyPacket)
 }
 
 func (w *worker) enableOfflineNotifications(endpoint string, chatID int64, offlineNotifications bool) {
-	w.db.MustExec("update users set offline_notifications = $1 where chat_id = $2", offlineNotifications, chatID)
+	w.db.SetOfflineNotifications(chatID, offlineNotifications)
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].OK, nil, db.ReplyPacket)
 }
 
@@ -792,12 +792,12 @@ func (w *worker) removeChannel(endpoint string, chatID int64, channelID string) 
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ChannelNotInList, tplData{"channel": channelID}, db.ReplyPacket)
 		return
 	}
-	w.db.MustExec("delete from subscriptions where chat_id = $1 and channel_id = $2 and endpoint = $3", chatID, channelID, endpoint)
+	w.db.RemoveSubscription(chatID, channelID, endpoint)
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ChannelRemoved, tplData{"channel": channelID}, db.ReplyPacket)
 }
 
 func (w *worker) sureRemoveAll(endpoint string, chatID int64) {
-	w.db.MustExec("delete from subscriptions where chat_id = $1 and endpoint = $2", chatID, endpoint)
+	w.db.RemoveAllSubscriptions(chatID, endpoint)
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].AllChannelsRemoved, nil, db.ReplyPacket)
 }
 
@@ -1018,7 +1018,7 @@ func (w *worker) feedback(endpoint string, chatID int64, text string, now int) {
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].SyntaxFeedback, nil, db.ReplyPacket)
 		return
 	}
-	w.db.MustExec("insert into feedback (endpoint, chat_id, text, timestamp) values ($1, $2, $3, $4)", endpoint, chatID, text, now)
+	w.db.AddFeedback(endpoint, chatID, text, now)
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Feedback, nil, db.ReplyPacket)
 	user := w.mustUser(chatID)
 	if !user.Blacklist {
@@ -1131,7 +1131,7 @@ func (w *worker) blacklist(endpoint string, arguments string) {
 		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "first argument is invalid", db.ReplyPacket)
 		return
 	}
-	w.db.MustExec("update users set blacklist=1 where chat_id = $1", whom)
+	w.db.BlacklistUser(whom)
 	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
 }
 
@@ -1220,15 +1220,10 @@ func (w *worker) refer(followerChatID int64, referrer string, now int) (applied 
 	if _, exists := w.db.User(followerChatID); exists {
 		return followerExists
 	}
-	w.db.MustExec("insert into users (chat_id, max_channels) values ($1, $2)", followerChatID, w.cfg.MaxChannels+w.cfg.FollowerBonus)
-	w.db.MustExec(`
-		insert into users as included (chat_id, max_channels) values ($1, $2)
-		on conflict(chat_id) do update set max_channels=included.max_channels + $3`,
-		*referrerChatID,
-		w.cfg.MaxChannels+w.cfg.ReferralBonus,
-		w.cfg.ReferralBonus)
-	w.db.MustExec("update referrals set referred_users=referred_users+1 where chat_id = $1", referrerChatID)
-	w.db.MustExec("insert into referral_events (timestamp, referrer_chat_id, follower_chat_id) values ($1, $2, $3)", now, referrerChatID, followerChatID)
+	w.db.AddUserWithBonus(followerChatID, w.cfg.MaxChannels+w.cfg.FollowerBonus)
+	w.db.AddOrUpdateReferrer(*referrerChatID, w.cfg.MaxChannels+w.cfg.ReferralBonus, w.cfg.ReferralBonus)
+	w.db.IncrementReferredUsers(*referrerChatID)
+	w.db.AddReferralEvent(now, referrerChatID, followerChatID, nil)
 	return referralApplied
 }
 
@@ -1237,7 +1232,7 @@ func (w *worker) showReferral(endpoint string, chatID int64) {
 	if referralID == nil {
 		temp := w.newRandReferralID()
 		referralID = &temp
-		w.db.MustExec("insert into referrals (chat_id, referral_id) values ($1, $2)", chatID, *referralID)
+		w.db.AddReferral(chatID, *referralID)
 	}
 	referralLink := fmt.Sprintf("https://t.me/%s?start=%s", w.botNames[endpoint], *referralID)
 	subscriptionsNumber := w.db.SubscriptionsNumber(endpoint, chatID)
@@ -1282,7 +1277,7 @@ func (w *worker) start(endpoint string, chatID int64, referrer string, now int) 
 	w.db.AddUser(chatID, w.cfg.MaxChannels)
 	if channelID != "" {
 		if w.addChannel(endpoint, chatID, channelID, now) {
-			w.db.MustExec("insert into referral_events (timestamp, channel_id, follower_chat_id) values ($1, $2, $3)", now, channelID, chatID)
+			w.db.AddReferralEvent(now, nil, chatID, &channelID)
 		}
 	}
 }
@@ -1577,12 +1572,7 @@ func (w *worker) processTGUpdate(p incomingPacket) bool {
 		if loggedCommands[command] {
 			loggedCommand = &command
 		}
-		w.db.MustExec(
-			"insert into received_message_log (timestamp, endpoint, chat_id, command) values ($1, $2, $3, $4)",
-			now,
-			p.endpoint,
-			chatID,
-			loggedCommand)
+		w.db.LogReceivedMessage(now, p.endpoint, chatID, loggedCommand)
 		return w.processIncomingCommand(p.endpoint, chatID, command, args, now)
 	}
 	return false
@@ -1703,8 +1693,7 @@ func (w *worker) logSingleQueryResult(success bool) {
 }
 
 func (w *worker) maintainDB() {
-	w.db.MustExec("select brin_summarize_new_values('ix_sent_message_log_timestamp')")
-	w.db.MustExec("select brin_summarize_new_values('ix_received_message_log_timestamp')")
+	w.db.MaintainBrinIndexes()
 }
 
 func (w *worker) adminSQL(query string) time.Duration {
@@ -1752,10 +1741,10 @@ func (w *worker) queryUnconfirmedSubs() {
 	var channelID string
 	w.db.MustQuery("select channel_id from subscriptions where confirmed = 0", nil, db.ScanTo{&channelID}, func() { unconfirmed[channelID] = true })
 	if len(unconfirmed) > 0 {
-		w.db.MustExec("update subscriptions set confirmed = 2 where confirmed = 0")
+		w.db.MarkUnconfirmedAsChecking()
 		ldbg("queueing unconfirmed subscriptions check for %d channels", len(unconfirmed))
 		if w.pushFixedListRequest(w.unconfirmedSubsResults, unconfirmed) != nil {
-			w.db.MustExec("update subscriptions set confirmed = 0 where confirmed = 2")
+			w.db.ResetCheckingToUnconfirmed()
 		}
 	}
 }
@@ -1891,8 +1880,8 @@ func main() {
 	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, "bot started", db.MessagePacket)
 	w.createDatabase(databaseDone)
 	w.initCache()
-	w.db.MustExec("update notification_queue set sending=0")
-	w.db.MustExec("update subscriptions set confirmed = 0 where confirmed = 2")
+	w.db.ResetNotificationSending()
+	w.db.ResetCheckingToUnconfirmed()
 
 	statRequests := make(chan statRequest)
 	w.handleStatEndpoints(statRequests)
@@ -1966,14 +1955,13 @@ func main() {
 			case messageSent:
 				w.db.ResetBlock(r.endpoint, r.chatID)
 			}
-			query := "insert into sent_message_log (timestamp, chat_id, result, endpoint, priority, delay, kind) values ($1, $2, $3, $4, $5, $6, $7)"
-			w.db.MustExec(query, r.timestamp, r.chatID, r.result, r.endpoint, r.priority, r.delay, r.kind)
+			w.db.LogSentMessage(r.timestamp, r.chatID, r.result, r.endpoint, r.priority, r.delay, r.kind)
 		case r := <-w.unconfirmedSubsResults:
 			w.processSubsConfirmations(r)
 		case nots := <-w.sentNotifications:
 			for _, n := range nots {
-				w.db.MustExec("delete from notification_queue where id = $1", n.ID)
-				w.db.MustExec("update users set reports=reports+1 where chat_id = $1", n.ChatID)
+				w.db.DeleteNotification(n.ID)
+				w.db.IncrementReports(n.ChatID)
 			}
 		case r := <-w.downloadResults:
 			w.downloadErrors[w.downloadResultsPos] = !r
