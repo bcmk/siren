@@ -719,7 +719,6 @@ func (w *worker) addChannel(endpoint string, chatID int64, channelID string, now
 		confirmedStatus = cmdlib.StatusOffline
 	}
 	w.db.MustExec("insert into signals (chat_id, channel_id, endpoint, confirmed) values ($1, $2, $3, $4)", chatID, channelID, endpoint, 1)
-	w.db.MustExec("insert into channels (channel_id, confirmed_status) values ($1, $2) on conflict(channel_id) do nothing", channelID, confirmedStatus)
 	subscriptionsNumber++
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ChannelAdded, tplData{"channel": channelID}, db.ReplyPacket)
 	nots := []db.Notification{{
