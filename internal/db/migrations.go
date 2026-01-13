@@ -306,6 +306,9 @@ var migrations = []func(d *Database){
 		d.MustExec(`alter table channels alter column confirmed_status set default 0`)
 		d.MustExec(`update channels set confirmed_status = 0 where unconfirmed_status = 0`)
 	},
+	func(d *Database) {
+		d.MustExec(`alter table channels rename constraint models_pkey to channels_pkey`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database
