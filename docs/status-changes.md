@@ -1,8 +1,15 @@
 ## Status values
 
 Checkers can return OR'd statuses (e.g., `StatusNotFound | StatusDenied`).
-Before storing in the database, these are transformed into one of three values:
+Before storing in the database, these are normalized to one of three values:
 unknown (0), offline (1), or online (2).
+
+## Storing status changes
+
+1. Normalize statuses
+2. For fixed list checkers, mark known channels without subscriptions as unknown
+3. Store online to offline transitions
+4. Store checker statuses that differ from DB
 
 ## Denormalization
 

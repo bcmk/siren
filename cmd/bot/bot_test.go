@@ -1167,6 +1167,218 @@ func TestUnsubscribeBeforeRestart(t *testing.T) {
 	}
 }
 
+func TestUnknownChannelFirstOfflineSaved(t *testing.T) {
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase(make(chan bool, 1))
+	w.initCache()
+
+	// Add a user
+	w.db.AddUser(1, 3)
+
+	// 1. User subscribes to a channel we don't know yet — creates unconfirmed subscription
+	// This simulates subscribing to a Twitch channel or a new unknown model
+	if w.addChannel("test", 1, "unknown_model", 100) {
+		t.Error("expected addChannel to return false for unknown channel")
+	}
+	// Drain the "checking channel" message
+	<-w.highPriorityMsg
+
+	// Verify subscription is unconfirmed
+	if w.db.MustInt("select confirmed from subscriptions where channel_id = $1", "unknown_model") != 0 {
+		t.Error("expected confirmed=0 for new channel")
+	}
+
+	// 2. Subscription is confirmed — checker returns offline status (Twitch returns Online|Offline)
+	// First, set subscription to "checking" state (confirmed=2) as queryUnconfirmedSubs would do
+	w.db.MustExec("update subscriptions set confirmed = 2 where channel_id = $1", "unknown_model")
+	w.processSubsConfirmations(cmdlib.StatusResults{
+		Channels: map[string]cmdlib.ChannelInfo{
+			// Twitch returns Online|Offline when channel exists but is offline
+			"unknown_model": {Status: cmdlib.StatusOnline | cmdlib.StatusOffline},
+		},
+	})
+
+	// Verify subscription is now confirmed
+	if w.db.MustInt("select confirmed from subscriptions where channel_id = $1", "unknown_model") != 1 {
+		t.Error("expected confirmed=1 after confirmation")
+	}
+
+	// 3. First status update: offline
+	// Offline status SHOULD be saved so we can calculate online duration later
+	request := cmdlib.StatusRequest{Channels: map[string]bool{"unknown_model": true}}
+	result := cmdlib.StatusResults{
+		Request:  &request,
+		Channels: map[string]cmdlib.ChannelInfo{"unknown_model": {Status: cmdlib.StatusOffline}},
+	}
+	changes, _, _, _ := w.handleStatusUpdates(result, 101)
+
+	// 4. Offline status should be recorded for proper online time calculation
+	if changes != 1 {
+		t.Errorf("expected 1 change for first offline status, got %d", changes)
+	}
+
+	// Verify status_change was recorded
+	count := w.db.MustInt("select count(*) from status_changes where channel_id = $1", "unknown_model")
+	if count != 1 {
+		t.Errorf("expected 1 status_change for first offline, got %d", count)
+	}
+
+	// Verify channel has offline status
+	channel := w.db.MaybeChannel("unknown_model")
+	if channel == nil {
+		t.Fatal("expected channel to exist")
+	}
+	if channel.UnconfirmedStatus != cmdlib.StatusOffline {
+		t.Errorf("expected unconfirmed status to be offline, got %v", channel.UnconfirmedStatus)
+	}
+
+	// 5. Subsequent status update with same offline status should NOT record a new change
+	changes, _, _, _ = w.handleStatusUpdates(result, 102)
+	if changes != 0 {
+		t.Errorf("expected 0 changes for same offline status, got %d", changes)
+	}
+
+	// Still only 1 status_change
+	count = w.db.MustInt("select count(*) from status_changes where channel_id = $1", "unknown_model")
+	if count != 1 {
+		t.Errorf("expected still 1 status_change, got %d", count)
+	}
+}
+
+func TestMissingFromOnlineListGoesOffline(t *testing.T) {
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase(make(chan bool, 1))
+	w.initCache()
+
+	request := cmdlib.StatusRequest{Channels: nil}
+	result := cmdlib.StatusResults{
+		Request:  &request,
+		Channels: map[string]cmdlib.ChannelInfo{"ch": {Status: cmdlib.StatusOnline}},
+	}
+	w.handleStatusUpdates(result, 100)
+
+	// Channel missing from result should go offline
+	result.Channels = map[string]cmdlib.ChannelInfo{}
+	w.handleStatusUpdates(result, 101)
+
+	ch := w.db.MaybeChannel("ch")
+	if ch == nil || ch.UnconfirmedStatus != cmdlib.StatusOffline {
+		t.Errorf("expected channel missing from online list to go offline, got %v", ch)
+	}
+}
+
+func TestSetKnownUnsubscribedToUnknownOnlyForFixedList(t *testing.T) {
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase(make(chan bool, 1))
+	w.initCache()
+
+	// No subscription for "ch" - for fixed list this would trigger SetKnownUnsubscribedToUnknown
+
+	// Online list checker (Channels == nil) - should NOT mark as unknown
+	request := cmdlib.StatusRequest{Channels: nil}
+	result := cmdlib.StatusResults{
+		Request:  &request,
+		Channels: map[string]cmdlib.ChannelInfo{"ch": {Status: cmdlib.StatusOnline}},
+	}
+	w.handleStatusUpdates(result, 100)
+
+	ch := w.db.MaybeChannel("ch")
+	if ch == nil || ch.UnconfirmedStatus != cmdlib.StatusOnline {
+		t.Errorf("online list checker should not mark unsubscribed channel as unknown, got %v", ch)
+	}
+
+	// Fixed list checker (Channels != nil) - SHOULD mark as unknown
+	request2 := cmdlib.StatusRequest{Channels: map[string]bool{"ch2": true}}
+	result2 := cmdlib.StatusResults{
+		Request:  &request2,
+		Channels: map[string]cmdlib.ChannelInfo{"ch2": {Status: cmdlib.StatusOnline}},
+	}
+	w.handleStatusUpdates(result2, 101)
+
+	ch2 := w.db.MaybeChannel("ch2")
+	if ch2 == nil || ch2.UnconfirmedStatus != cmdlib.StatusUnknown {
+		t.Errorf("fixed list checker should mark unsubscribed channel as unknown, got %v", ch2)
+	}
+}
+
+func TestAllStatusTransitions(t *testing.T) {
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase(make(chan bool, 1))
+	w.initCache()
+
+	// Add subscription so channel doesn't get marked as unknown by SetKnownUnsubscribedToUnknown
+	w.db.AddSubscription(1, "ch", "test", 1)
+
+	request := cmdlib.StatusRequest{Channels: map[string]bool{"ch": true}}
+
+	// Unknown → Online
+	result := cmdlib.StatusResults{
+		Request:  &request,
+		Channels: map[string]cmdlib.ChannelInfo{"ch": {Status: cmdlib.StatusOnline}},
+	}
+	changes, _, _, _ := w.handleStatusUpdates(result, 100)
+	if changes != 1 {
+		t.Errorf("unknown→online: expected 1 change, got %d", changes)
+	}
+	if w.db.MaybeChannel("ch").UnconfirmedStatus != cmdlib.StatusOnline {
+		t.Error("unknown→online: expected online status")
+	}
+
+	// Online → Offline
+	result.Channels["ch"] = cmdlib.ChannelInfo{Status: cmdlib.StatusOffline}
+	changes, _, _, _ = w.handleStatusUpdates(result, 101)
+	if changes != 1 {
+		t.Errorf("online→offline: expected 1 change, got %d", changes)
+	}
+	if w.db.MaybeChannel("ch").UnconfirmedStatus != cmdlib.StatusOffline {
+		t.Error("online→offline: expected offline status")
+	}
+
+	// Offline → Online
+	result.Channels["ch"] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline}
+	changes, _, _, _ = w.handleStatusUpdates(result, 102)
+	if changes != 1 {
+		t.Errorf("offline→online: expected 1 change, got %d", changes)
+	}
+	if w.db.MaybeChannel("ch").UnconfirmedStatus != cmdlib.StatusOnline {
+		t.Error("offline→online: expected online status")
+	}
+
+	// Online → Unknown
+	result.Channels["ch"] = cmdlib.ChannelInfo{Status: cmdlib.StatusUnknown}
+	changes, _, _, _ = w.handleStatusUpdates(result, 103)
+	if changes != 1 {
+		t.Errorf("online→unknown: expected 1 change, got %d", changes)
+	}
+	if w.db.MaybeChannel("ch").UnconfirmedStatus != cmdlib.StatusUnknown {
+		t.Error("online→unknown: expected unknown status")
+	}
+
+	// Unknown → Offline
+	result.Channels["ch"] = cmdlib.ChannelInfo{Status: cmdlib.StatusOffline}
+	changes, _, _, _ = w.handleStatusUpdates(result, 104)
+	if changes != 1 {
+		t.Errorf("unknown→offline: expected 1 change, got %d", changes)
+	}
+	if w.db.MaybeChannel("ch").UnconfirmedStatus != cmdlib.StatusOffline {
+		t.Error("unknown→offline: expected offline status")
+	}
+
+	// Offline → Unknown
+	result.Channels["ch"] = cmdlib.ChannelInfo{Status: cmdlib.StatusUnknown}
+	changes, _, _, _ = w.handleStatusUpdates(result, 105)
+	if changes != 1 {
+		t.Errorf("offline→unknown: expected 1 change, got %d", changes)
+	}
+	if w.db.MaybeChannel("ch").UnconfirmedStatus != cmdlib.StatusUnknown {
+		t.Error("offline→unknown: expected unknown status")
+	}
+}
+
 func TestNotifyOfStatuses(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()

@@ -269,6 +269,22 @@ func (d *Database) DenySub(sub Subscription) {
 	d.MustExec("delete from subscriptions where endpoint = $1 and chat_id = $2 and channel_id = $3", sub.Endpoint, sub.ChatID, sub.ChannelID)
 }
 
+// UnconfirmedStatusesForChannels returns unconfirmed statuses for specific channels
+func (d *Database) UnconfirmedStatusesForChannels(channelIDs []string) map[string]StatusChange {
+	statusChanges := map[string]StatusChange{}
+	var statusChange StatusChange
+	d.MustQuery(
+		`
+			select channel_id, unconfirmed_status, unconfirmed_timestamp
+			from channels
+			where channel_id = any($1) and unconfirmed_timestamp > 0
+		`,
+		QueryParams{channelIDs},
+		ScanTo{&statusChange.ChannelID, &statusChange.Status, &statusChange.Timestamp},
+		func() { statusChanges[statusChange.ChannelID] = statusChange })
+	return statusChanges
+}
+
 // SubscribedChannels returns all confirmed subscribed channels
 func (d *Database) SubscribedChannels() map[string]bool {
 	channels := map[string]bool{}

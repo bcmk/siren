@@ -77,8 +77,6 @@ type worker struct {
 	tplAds                    map[string]*template.Template
 	channelIDPreprocessing    func(string) string
 	checker                   cmdlib.Checker
-	onlineListUpdater         onlineListUpdater
-	fixedListUpdater          fixedListUpdater
 	unsuccessfulRequests      []bool
 	unsuccessfulRequestsPos   int
 	downloadResults           chan bool
@@ -558,6 +556,20 @@ func (w *worker) toStatusChanges(updates map[string]cmdlib.ChannelInfo, now int)
 		result = append(result, db.StatusChange{ChannelID: channelID, Status: info.Status, Timestamp: now})
 	}
 	return result
+}
+
+// addChangedStatusesFromDB compares statuses against the database and returns only those that changed.
+func (w *worker) addChangedStatusesFromDB(updates map[string]cmdlib.ChannelInfo, resultChannels map[string]cmdlib.ChannelInfo) {
+	var channelIDs []string
+	for channelID := range resultChannels {
+		channelIDs = append(channelIDs, channelID)
+	}
+	dbStatuses := w.db.UnconfirmedStatusesForChannels(channelIDs)
+	for channelID, info := range resultChannels {
+		if dbStatuses[channelID].Status != info.Status {
+			updates[channelID] = info
+		}
+	}
 }
 
 func (w *worker) notifyOfAddResults(queue chan outgoingPacket, notifications []db.Notification) {
@@ -1425,12 +1437,15 @@ func (w *worker) handleStatusUpdates(result cmdlib.StatusResults, now int) (
 	if result.Error {
 		return
 	}
-	var updates map[string]cmdlib.ChannelInfo
+	updates := map[string]cmdlib.ChannelInfo{}
 	if result.Request.Channels == nil {
-		updates = w.onlineListUpdater.processResults(result, w.unconfirmedOnlineChannels)
-	} else {
-		updates = w.fixedListUpdater.processResults(result, w.unconfirmedOnlineChannels)
+		for channelID := range w.unconfirmedOnlineChannels {
+			if _, inResult := result.Channels[channelID]; !inResult {
+				updates[channelID] = cmdlib.ChannelInfo{Status: cmdlib.StatusOffline}
+			}
+		}
 	}
+	w.addChangedStatusesFromDB(updates, result.Channels)
 	w.httpQueriesDuration = result.Elapsed
 	w.unconfirmedOnlineChannels = filterOnline(result.Channels)
 
