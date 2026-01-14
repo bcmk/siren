@@ -952,6 +952,32 @@ func TestStatusConfirmations(t *testing.T) {
 			defer w.terminate()
 			w.createDatabase(make(chan bool, 1))
 
+			// Set up background channels that should remain unchanged
+			w.db.MustExec(
+				`
+					insert into channels
+					(channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp)
+					values ($1, $2, $3, $4)
+				`,
+				"always_online", cmdlib.StatusOnline, cmdlib.StatusOnline, 100,
+			)
+			w.db.MustExec(
+				`
+					insert into channels
+					(channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp)
+					values ($1, $2, $3, $4)
+				`,
+				"always_offline", cmdlib.StatusOffline, cmdlib.StatusOffline, 100,
+			)
+			w.db.MustExec(
+				`
+					insert into channels
+					(channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp)
+					values ($1, $2, $3, $4)
+				`,
+				"always_unknown", cmdlib.StatusUnknown, cmdlib.StatusUnknown, 100,
+			)
+
 			w.db.MustExec(
 				`
 					insert into channels
@@ -975,6 +1001,17 @@ func TestStatusConfirmations(t *testing.T) {
 				if len(changes) != 1 || changes[0].Status != *tt.expect {
 					t.Errorf("expected %v confirmation, got %v", *tt.expect, changes)
 				}
+			}
+
+			// Verify background channels were not affected
+			if s := w.db.MustInt("select confirmed_status from channels where channel_id = $1", "always_online"); s != int(cmdlib.StatusOnline) {
+				t.Errorf("always_online confirmed_status was affected, got %v", s)
+			}
+			if s := w.db.MustInt("select confirmed_status from channels where channel_id = $1", "always_offline"); s != int(cmdlib.StatusOffline) {
+				t.Errorf("always_offline confirmed_status was affected, got %v", s)
+			}
+			if s := w.db.MustInt("select confirmed_status from channels where channel_id = $1", "always_unknown"); s != int(cmdlib.StatusUnknown) {
+				t.Errorf("always_unknown confirmed_status was affected, got %v", s)
 			}
 		})
 	}
@@ -1347,6 +1384,23 @@ func TestStatusTransitions(t *testing.T) {
 			w.createDatabase(make(chan bool, 1))
 			w.initCache()
 
+			// Set up background channels that should remain unchanged
+			w.db.AddSubscription(1, "always_online", "ep", 1)
+			w.db.AddSubscription(1, "always_offline", "ep", 1)
+			w.db.AddSubscription(1, "always_unknown", "ep", 1)
+			w.db.MustExec(
+				"insert into channels (channel_id, unconfirmed_status) values ($1, $2)",
+				"always_online", cmdlib.StatusOnline,
+			)
+			w.db.MustExec(
+				"insert into channels (channel_id, unconfirmed_status) values ($1, $2)",
+				"always_offline", cmdlib.StatusOffline,
+			)
+			w.db.MustExec(
+				"insert into channels (channel_id, unconfirmed_status) values ($1, $2)",
+				"always_unknown", cmdlib.StatusUnknown,
+			)
+
 			if tt.subscribed {
 				w.db.AddSubscription(1, "ch", "ep", 1)
 			}
@@ -1385,6 +1439,17 @@ func TestStatusTransitions(t *testing.T) {
 				} else if channel.UnconfirmedStatus != *tt.dbAfter {
 					t.Errorf("expected status %v, got %v", *tt.dbAfter, channel.UnconfirmedStatus)
 				}
+			}
+
+			// Verify background channels were not affected
+			if ch := w.db.MaybeChannel("always_online"); ch == nil || ch.UnconfirmedStatus != cmdlib.StatusOnline {
+				t.Errorf("always_online was affected, got %v", ch)
+			}
+			if ch := w.db.MaybeChannel("always_offline"); ch == nil || ch.UnconfirmedStatus != cmdlib.StatusOffline {
+				t.Errorf("always_offline was affected, got %v", ch)
+			}
+			if ch := w.db.MaybeChannel("always_unknown"); ch == nil || ch.UnconfirmedStatus != cmdlib.StatusUnknown {
+				t.Errorf("always_unknown was affected, got %v", ch)
 			}
 		})
 	}
