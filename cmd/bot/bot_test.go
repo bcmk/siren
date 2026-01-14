@@ -879,110 +879,104 @@ func TestProcessSubsConfirmations(t *testing.T) {
 	}
 }
 
-func TestConfirmStatusChanges(t *testing.T) {
-	w := newTestWorker()
-	defer w.terminate()
-	w.createDatabase(make(chan bool, 1))
-
-	// Test config: onlineSeconds=0, offlineSeconds=5
-
-	// Case 1: confirmed=offline, unconfirmed=online → confirm immediately (onlineSeconds=0)
-	w.db.MustExec(
-		"insert into channels (channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
-		"offline_to_online", cmdlib.StatusOffline, cmdlib.StatusOnline, 100,
-	)
-
-	// Case 2: confirmed=online, unconfirmed=offline, timing met → confirm offline
-	w.db.MustExec(
-		"insert into channels (channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
-		"online_to_offline_met", cmdlib.StatusOnline, cmdlib.StatusOffline, 100,
-	)
-
-	// Case 3: confirmed=online, unconfirmed=offline, timing NOT met → no change
-	w.db.MustExec(
-		"insert into channels (channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
-		"online_to_offline_not_met", cmdlib.StatusOnline, cmdlib.StatusOffline, 103,
-	)
-
-	// Case 4: confirmed=online, unconfirmed=unknown → confirm unknown immediately
-	w.db.MustExec(
-		"insert into channels (channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
-		"online_to_unknown", cmdlib.StatusOnline, cmdlib.StatusUnknown, 100,
-	)
-
-	// Case 5: confirmed=offline, unconfirmed=unknown → confirm unknown immediately
-	w.db.MustExec(
-		"insert into channels (channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
-		"offline_to_unknown", cmdlib.StatusOffline, cmdlib.StatusUnknown, 100,
-	)
-
-	// Case 6: same status (online=online) → NO change (XOR fails)
-	w.db.MustExec(
-		"insert into channels (channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
-		"online_to_online", cmdlib.StatusOnline, cmdlib.StatusOnline, 100,
-	)
-
-	// Case 7: same status (offline=offline) → NO change (XOR fails)
-	w.db.MustExec(
-		"insert into channels (channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3, $4)",
-		"offline_to_offline", cmdlib.StatusOffline, cmdlib.StatusOffline, 100,
-	)
-
-	// Run confirmation at now=105 (5 seconds after timestamp 100)
-	changes := w.db.ConfirmStatusChanges(105, w.cfg.StatusConfirmationSeconds.Online, w.cfg.StatusConfirmationSeconds.Offline)
-
-	changesMap := map[string]cmdlib.StatusKind{}
-	for _, c := range changes {
-		changesMap[c.ChannelID] = c.Status
+func TestStatusConfirmations(t *testing.T) {
+	tests := []struct {
+		name        string
+		confirmed   cmdlib.StatusKind
+		unconfirmed cmdlib.StatusKind
+		timestamp   int
+		now         int
+		expect      *cmdlib.StatusKind // nil means no confirmation expected
+	}{
+		{
+			name:        "offline to online confirms immediately",
+			confirmed:   cmdlib.StatusOffline,
+			unconfirmed: cmdlib.StatusOnline,
+			timestamp:   100,
+			now:         100,
+			expect:      ptr(cmdlib.StatusOnline),
+		},
+		{
+			name:        "online to offline confirms when timing met",
+			confirmed:   cmdlib.StatusOnline,
+			unconfirmed: cmdlib.StatusOffline,
+			timestamp:   100,
+			now:         105,
+			expect:      ptr(cmdlib.StatusOffline),
+		},
+		{
+			name:        "online to offline not confirmed when timing not met",
+			confirmed:   cmdlib.StatusOnline,
+			unconfirmed: cmdlib.StatusOffline,
+			timestamp:   103,
+			now:         105,
+			expect:      nil,
+		},
+		{
+			name:        "online to unknown confirms immediately",
+			confirmed:   cmdlib.StatusOnline,
+			unconfirmed: cmdlib.StatusUnknown,
+			timestamp:   100,
+			now:         100,
+			expect:      ptr(cmdlib.StatusUnknown),
+		},
+		{
+			name:        "offline to unknown confirms immediately",
+			confirmed:   cmdlib.StatusOffline,
+			unconfirmed: cmdlib.StatusUnknown,
+			timestamp:   100,
+			now:         100,
+			expect:      ptr(cmdlib.StatusUnknown),
+		},
+		{
+			name:        "same status online no change",
+			confirmed:   cmdlib.StatusOnline,
+			unconfirmed: cmdlib.StatusOnline,
+			timestamp:   100,
+			now:         105,
+			expect:      nil,
+		},
+		{
+			name:        "same status offline no change",
+			confirmed:   cmdlib.StatusOffline,
+			unconfirmed: cmdlib.StatusOffline,
+			timestamp:   100,
+			now:         105,
+			expect:      nil,
+		},
 	}
 
-	// Case 1: should confirm online
-	if status, ok := changesMap["offline_to_online"]; !ok || status != cmdlib.StatusOnline {
-		t.Errorf("expected offline_to_online to be confirmed online, got %v, ok=%v", status, ok)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := newTestWorker()
+			defer w.terminate()
+			w.createDatabase(make(chan bool, 1))
 
-	// Case 2: should confirm offline (timing met: 105-100=5 >= 5)
-	if status, ok := changesMap["online_to_offline_met"]; !ok || status != cmdlib.StatusOffline {
-		t.Errorf("expected online_to_offline_met to be confirmed offline, got %v, ok=%v", status, ok)
-	}
+			w.db.MustExec(
+				`
+					insert into channels
+					(channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp)
+					values ($1, $2, $3, $4)
+				`,
+				"ch", tt.confirmed, tt.unconfirmed, tt.timestamp,
+			)
 
-	// Case 3: should NOT be confirmed (timing not met: 105-103=2 < 5)
-	if _, ok := changesMap["online_to_offline_not_met"]; ok {
-		t.Error("expected online_to_offline_not_met to NOT be confirmed")
-	}
+			changes := w.db.ConfirmStatusChanges(
+				tt.now,
+				w.cfg.StatusConfirmationSeconds.Online,
+				w.cfg.StatusConfirmationSeconds.Offline,
+			)
 
-	// Case 4: should confirm unknown
-	if status, ok := changesMap["online_to_unknown"]; !ok || status != cmdlib.StatusUnknown {
-		t.Errorf("expected online_to_unknown to be confirmed with unknown status, got %v, ok=%v", status, ok)
-	}
-
-	// Case 5: should confirm unknown
-	if status, ok := changesMap["offline_to_unknown"]; !ok || status != cmdlib.StatusUnknown {
-		t.Errorf("expected offline_to_unknown to be confirmed with unknown status, got %v, ok=%v", status, ok)
-	}
-
-	// Case 6: should NOT be confirmed (XOR fails: both = 2)
-	if _, ok := changesMap["online_to_online"]; ok {
-		t.Error("expected online_to_online to NOT be confirmed")
-	}
-
-	// Case 7: should NOT be confirmed (XOR fails: both != 2)
-	if _, ok := changesMap["offline_to_offline"]; ok {
-		t.Error("expected offline_to_offline to NOT be confirmed")
-	}
-
-	// Verify DB state after confirmation
-	if w.db.MustInt("select confirmed_status from channels where channel_id = $1", "offline_to_online") != int(cmdlib.StatusOnline) {
-		t.Error("expected offline_to_online confirmed_status to be online in DB")
-	}
-	if w.db.MustInt("select confirmed_status from channels where channel_id = $1", "online_to_offline_met") != int(cmdlib.StatusOffline) {
-		t.Error("expected online_to_offline_met confirmed_status to be offline in DB")
-	}
-	if w.db.MustInt("select confirmed_status from channels where channel_id = $1", "online_to_offline_not_met") != int(cmdlib.StatusOnline) {
-		t.Error("expected online_to_offline_not_met confirmed_status to remain online in DB")
-	}
-	if w.db.MustInt("select confirmed_status from channels where channel_id = $1", "online_to_unknown") != int(cmdlib.StatusUnknown) {
-		t.Error("expected online_to_unknown confirmed_status to be unknown in DB")
+			if tt.expect == nil {
+				if len(changes) != 0 {
+					t.Errorf("expected no confirmation, got %v", changes)
+				}
+			} else {
+				if len(changes) != 1 || changes[0].Status != *tt.expect {
+					t.Errorf("expected %v confirmation, got %v", *tt.expect, changes)
+				}
+			}
+		})
 	}
 }
 
@@ -1246,138 +1240,159 @@ func TestUnknownChannelFirstOfflineSaved(t *testing.T) {
 	}
 }
 
-func TestMissingFromOnlineListGoesOffline(t *testing.T) {
-	w := newTestWorker()
-	defer w.terminate()
-	w.createDatabase(make(chan bool, 1))
-	w.initCache()
-
-	request := cmdlib.StatusRequest{Channels: nil}
-	result := cmdlib.StatusResults{
-		Request:  &request,
-		Channels: map[string]cmdlib.ChannelInfo{"ch": {Status: cmdlib.StatusOnline}},
+func TestStatusTransitions(t *testing.T) {
+	tests := []struct {
+		name          string
+		subscribed    bool
+		dbBefore      *cmdlib.StatusKind // nil means channel doesn't exist in DB
+		fixedList     bool
+		checkerStatus *cmdlib.StatusKind // nil means channel not in checker result
+		dbAfter       *cmdlib.StatusKind // nil means channel shouldn't exist or no change
+	}{
+		// Fixed list checker tests
+		{
+			name:          "fixed list: unknown to online",
+			subscribed:    true,
+			dbBefore:      nil,
+			fixedList:     true,
+			checkerStatus: ptr(cmdlib.StatusOnline),
+			dbAfter:       ptr(cmdlib.StatusOnline),
+		},
+		{
+			name:          "fixed list: online to offline",
+			subscribed:    true,
+			dbBefore:      ptr(cmdlib.StatusOnline),
+			fixedList:     true,
+			checkerStatus: ptr(cmdlib.StatusOffline),
+			dbAfter:       ptr(cmdlib.StatusOffline),
+		},
+		{
+			name:          "fixed list: offline to online",
+			subscribed:    true,
+			dbBefore:      ptr(cmdlib.StatusOffline),
+			fixedList:     true,
+			checkerStatus: ptr(cmdlib.StatusOnline),
+			dbAfter:       ptr(cmdlib.StatusOnline),
+		},
+		{
+			name:          "fixed list: online to unknown",
+			subscribed:    true,
+			dbBefore:      ptr(cmdlib.StatusOnline),
+			fixedList:     true,
+			checkerStatus: ptr(cmdlib.StatusUnknown),
+			dbAfter:       ptr(cmdlib.StatusUnknown),
+		},
+		{
+			name:          "fixed list: unknown to offline",
+			subscribed:    true,
+			dbBefore:      nil,
+			fixedList:     true,
+			checkerStatus: ptr(cmdlib.StatusOffline),
+			dbAfter:       ptr(cmdlib.StatusOffline),
+		},
+		{
+			name:          "fixed list: offline to unknown",
+			subscribed:    true,
+			dbBefore:      ptr(cmdlib.StatusOffline),
+			fixedList:     true,
+			checkerStatus: ptr(cmdlib.StatusUnknown),
+			dbAfter:       ptr(cmdlib.StatusUnknown),
+		},
+		// Online list checker tests
+		{
+			name:          "online list: unknown to online",
+			subscribed:    true,
+			dbBefore:      nil,
+			fixedList:     false,
+			checkerStatus: ptr(cmdlib.StatusOnline),
+			dbAfter:       ptr(cmdlib.StatusOnline),
+		},
+		{
+			name:          "online list: online to offline (missing from result)",
+			subscribed:    true,
+			dbBefore:      ptr(cmdlib.StatusOnline),
+			fixedList:     false,
+			checkerStatus: nil,
+			dbAfter:       ptr(cmdlib.StatusOffline),
+		},
+		{
+			name:          "online list: offline to online",
+			subscribed:    true,
+			dbBefore:      ptr(cmdlib.StatusOffline),
+			fixedList:     false,
+			checkerStatus: ptr(cmdlib.StatusOnline),
+			dbAfter:       ptr(cmdlib.StatusOnline),
+		},
+		// Unsubscribed channel tests
+		{
+			name:          "online list: unsubscribed channel stays online",
+			subscribed:    false,
+			dbBefore:      nil,
+			fixedList:     false,
+			checkerStatus: ptr(cmdlib.StatusOnline),
+			dbAfter:       ptr(cmdlib.StatusOnline),
+		},
+		{
+			name:          "fixed list: unsubscribed channel marked unknown",
+			subscribed:    false,
+			dbBefore:      nil,
+			fixedList:     true,
+			checkerStatus: ptr(cmdlib.StatusOnline),
+			dbAfter:       ptr(cmdlib.StatusUnknown),
+		},
 	}
-	w.handleStatusUpdates(result, 100)
 
-	// Channel missing from result should go offline
-	result.Channels = map[string]cmdlib.ChannelInfo{}
-	w.handleStatusUpdates(result, 101)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := newTestWorker()
+			defer w.terminate()
+			w.createDatabase(make(chan bool, 1))
+			w.initCache()
 
-	ch := w.db.MaybeChannel("ch")
-	if ch == nil || ch.UnconfirmedStatus != cmdlib.StatusOffline {
-		t.Errorf("expected channel missing from online list to go offline, got %v", ch)
+			if tt.subscribed {
+				w.db.AddSubscription(1, "ch", "ep", 1)
+			}
+
+			var request cmdlib.StatusRequest
+			if tt.fixedList {
+				request = cmdlib.StatusRequest{Channels: map[string]bool{"ch": true}}
+			}
+
+			if tt.dbBefore != nil {
+				setupResult := cmdlib.StatusResults{
+					Request:  &request,
+					Channels: map[string]cmdlib.ChannelInfo{"ch": {Status: *tt.dbBefore}},
+				}
+				w.handleStatusUpdates(setupResult, 100)
+			}
+
+			result := cmdlib.StatusResults{
+				Request:  &request,
+				Channels: map[string]cmdlib.ChannelInfo{},
+			}
+			if tt.checkerStatus != nil {
+				result.Channels["ch"] = cmdlib.ChannelInfo{Status: *tt.checkerStatus}
+			}
+
+			w.handleStatusUpdates(result, 101)
+
+			channel := w.db.MaybeChannel("ch")
+			if tt.dbAfter == nil {
+				if channel != nil {
+					t.Errorf("expected no channel in DB, got %v", channel)
+				}
+			} else {
+				if channel == nil {
+					t.Errorf("expected channel in DB with status %v, got nil", *tt.dbAfter)
+				} else if channel.UnconfirmedStatus != *tt.dbAfter {
+					t.Errorf("expected status %v, got %v", *tt.dbAfter, channel.UnconfirmedStatus)
+				}
+			}
+		})
 	}
 }
 
-func TestSetKnownUnsubscribedToUnknownOnlyForFixedList(t *testing.T) {
-	w := newTestWorker()
-	defer w.terminate()
-	w.createDatabase(make(chan bool, 1))
-	w.initCache()
-
-	// No subscription for "ch" - for fixed list this would trigger SetKnownUnsubscribedToUnknown
-
-	// Online list checker (Channels == nil) - should NOT mark as unknown
-	request := cmdlib.StatusRequest{Channels: nil}
-	result := cmdlib.StatusResults{
-		Request:  &request,
-		Channels: map[string]cmdlib.ChannelInfo{"ch": {Status: cmdlib.StatusOnline}},
-	}
-	w.handleStatusUpdates(result, 100)
-
-	ch := w.db.MaybeChannel("ch")
-	if ch == nil || ch.UnconfirmedStatus != cmdlib.StatusOnline {
-		t.Errorf("online list checker should not mark unsubscribed channel as unknown, got %v", ch)
-	}
-
-	// Fixed list checker (Channels != nil) - SHOULD mark as unknown
-	request2 := cmdlib.StatusRequest{Channels: map[string]bool{"ch2": true}}
-	result2 := cmdlib.StatusResults{
-		Request:  &request2,
-		Channels: map[string]cmdlib.ChannelInfo{"ch2": {Status: cmdlib.StatusOnline}},
-	}
-	w.handleStatusUpdates(result2, 101)
-
-	ch2 := w.db.MaybeChannel("ch2")
-	if ch2 == nil || ch2.UnconfirmedStatus != cmdlib.StatusUnknown {
-		t.Errorf("fixed list checker should mark unsubscribed channel as unknown, got %v", ch2)
-	}
-}
-
-func TestAllStatusTransitions(t *testing.T) {
-	w := newTestWorker()
-	defer w.terminate()
-	w.createDatabase(make(chan bool, 1))
-	w.initCache()
-
-	// Add subscription so channel doesn't get marked as unknown by SetKnownUnsubscribedToUnknown
-	w.db.AddSubscription(1, "ch", "test", 1)
-
-	request := cmdlib.StatusRequest{Channels: map[string]bool{"ch": true}}
-
-	// Unknown → Online
-	result := cmdlib.StatusResults{
-		Request:  &request,
-		Channels: map[string]cmdlib.ChannelInfo{"ch": {Status: cmdlib.StatusOnline}},
-	}
-	changes, _, _, _ := w.handleStatusUpdates(result, 100)
-	if changes != 1 {
-		t.Errorf("unknown→online: expected 1 change, got %d", changes)
-	}
-	if w.db.MaybeChannel("ch").UnconfirmedStatus != cmdlib.StatusOnline {
-		t.Error("unknown→online: expected online status")
-	}
-
-	// Online → Offline
-	result.Channels["ch"] = cmdlib.ChannelInfo{Status: cmdlib.StatusOffline}
-	changes, _, _, _ = w.handleStatusUpdates(result, 101)
-	if changes != 1 {
-		t.Errorf("online→offline: expected 1 change, got %d", changes)
-	}
-	if w.db.MaybeChannel("ch").UnconfirmedStatus != cmdlib.StatusOffline {
-		t.Error("online→offline: expected offline status")
-	}
-
-	// Offline → Online
-	result.Channels["ch"] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline}
-	changes, _, _, _ = w.handleStatusUpdates(result, 102)
-	if changes != 1 {
-		t.Errorf("offline→online: expected 1 change, got %d", changes)
-	}
-	if w.db.MaybeChannel("ch").UnconfirmedStatus != cmdlib.StatusOnline {
-		t.Error("offline→online: expected online status")
-	}
-
-	// Online → Unknown
-	result.Channels["ch"] = cmdlib.ChannelInfo{Status: cmdlib.StatusUnknown}
-	changes, _, _, _ = w.handleStatusUpdates(result, 103)
-	if changes != 1 {
-		t.Errorf("online→unknown: expected 1 change, got %d", changes)
-	}
-	if w.db.MaybeChannel("ch").UnconfirmedStatus != cmdlib.StatusUnknown {
-		t.Error("online→unknown: expected unknown status")
-	}
-
-	// Unknown → Offline
-	result.Channels["ch"] = cmdlib.ChannelInfo{Status: cmdlib.StatusOffline}
-	changes, _, _, _ = w.handleStatusUpdates(result, 104)
-	if changes != 1 {
-		t.Errorf("unknown→offline: expected 1 change, got %d", changes)
-	}
-	if w.db.MaybeChannel("ch").UnconfirmedStatus != cmdlib.StatusOffline {
-		t.Error("unknown→offline: expected offline status")
-	}
-
-	// Offline → Unknown
-	result.Channels["ch"] = cmdlib.ChannelInfo{Status: cmdlib.StatusUnknown}
-	changes, _, _, _ = w.handleStatusUpdates(result, 105)
-	if changes != 1 {
-		t.Errorf("offline→unknown: expected 1 change, got %d", changes)
-	}
-	if w.db.MaybeChannel("ch").UnconfirmedStatus != cmdlib.StatusUnknown {
-		t.Error("offline→unknown: expected unknown status")
-	}
-}
+func ptr[T any](v T) *T { return &v }
 
 func TestNotifyOfStatuses(t *testing.T) {
 	w := newTestWorker()
