@@ -1140,9 +1140,7 @@ func TestUnsubscribeBeforeRestart(t *testing.T) {
 
 	// Simulate restart: reinitialize cache as would happen on restart
 	w.unconfirmedOnlineChannels = map[string]cmdlib.ChannelInfo{}
-	for channelID := range w.db.QueryLastOnlineChannels() {
-		w.unconfirmedOnlineChannels[channelID] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline}
-	}
+	w.initCache()
 
 	// First query after restart — only "b" is subscribed
 	request2 := cmdlib.StatusRequest{Channels: map[string]bool{"b": true}}
