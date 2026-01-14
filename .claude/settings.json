@@ -4,6 +4,26 @@
       "Read(./**/*.ignore)",
       "Read(./**/*.ignore.*)",
       "Read(./.idea/**)"
+    ],
+    "allow": [
+      "Edit",
+      "Write",
+      "Bash(go build:*)",
+      "Bash(go test:*)",
+      "Bash(go mod graph:*)",
+      "Bash(go mod tidy:*)",
+      "Bash(go list:*)",
+      "Bash(go fmt:*)",
+      "Bash(golangci-lint run:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git status:*)",
+      "Bash(cat:*)",
+      "Bash(sed:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(printf:*)"
     ]
   }
 }
