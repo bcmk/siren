@@ -173,7 +173,6 @@ func StartCheckerDaemon(checker Checker) {
 					req.ResultsCh <- OnlineListResults{Error: true}
 					continue
 				}
-				time.Sleep(checker.RequestInterval())
 				elapsed := time.Since(start)
 				if checker.Debug() {
 					Ldbg("got statuses: %d", len(onlineChannels))
@@ -186,7 +185,6 @@ func StartCheckerDaemon(checker Checker) {
 					req.ResultsCh <- FixedListResults{Error: true}
 					continue
 				}
-				time.Sleep(checker.RequestInterval())
 				elapsed := time.Since(start)
 				if checker.Debug() {
 					Ldbg("got statuses: %d", len(channels))
@@ -203,13 +201,13 @@ func StartCheckerDaemon(checker Checker) {
 					req.ResultsCh <- ExistenceListResults{Error: true}
 					continue
 				}
-				time.Sleep(checker.RequestInterval())
 				elapsed := time.Since(start)
 				if checker.Debug() {
 					Ldbg("got statuses: %d", len(channels))
 				}
 				req.ResultsCh <- ExistenceListResults{Channels: channels, Elapsed: elapsed}
 			}
+			time.Sleep(checker.RequestInterval())
 		}
 	}()
 }
