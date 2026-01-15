@@ -88,8 +88,8 @@ type worker struct {
 	lowPriorityMsg            chan outgoingPacket
 	highPriorityMsg           chan outgoingPacket
 	outgoingMsgResults        chan msgSendResult
-	unconfirmedSubsResults    chan cmdlib.StatusResults
-	onlineChannelsChan        chan cmdlib.StatusResults
+	existenceListResults      chan cmdlib.ExistenceListResults
+	checkerResults            chan cmdlib.CheckerResults
 	sendingNotifications      chan []db.Notification
 	sentNotifications         chan []db.Notification
 	ourIDs                    []int64
@@ -183,8 +183,8 @@ func newWorker(cfg *botconfig.Config) *worker {
 		lowPriorityMsg:            make(chan outgoingPacket, 10000),
 		highPriorityMsg:           make(chan outgoingPacket, 10000),
 		outgoingMsgResults:        make(chan msgSendResult),
-		unconfirmedSubsResults:    make(chan cmdlib.StatusResults),
-		onlineChannelsChan:        make(chan cmdlib.StatusResults),
+		existenceListResults:      make(chan cmdlib.ExistenceListResults),
+		checkerResults:            make(chan cmdlib.CheckerResults),
 		sendingNotifications:      make(chan []db.Notification, 1000),
 		sentNotifications:         make(chan []db.Notification),
 		ourIDs:                    getOurIDs(cfg),
@@ -543,33 +543,33 @@ func (w *worker) createDatabase(done chan bool) {
 
 func (w *worker) initCache() {
 	start := time.Now()
+	w.unconfirmedOnlineChannels = map[string]cmdlib.ChannelInfo{}
 	for channelID := range w.db.QueryLastOnlineChannels() {
-		w.unconfirmedOnlineChannels[channelID] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline}
+		w.unconfirmedOnlineChannels[channelID] = cmdlib.ChannelInfo{}
 	}
 	elapsed := time.Since(start)
 	linf("cache initialized in %d ms", elapsed.Milliseconds())
 }
 
-func (w *worker) toStatusChanges(updates map[string]cmdlib.ChannelInfo, now int) []db.StatusChange {
-	result := make([]db.StatusChange, 0, len(updates))
-	for channelID, info := range updates {
-		result = append(result, db.StatusChange{ChannelID: channelID, Status: info.Status, Timestamp: now})
-	}
-	return result
-}
-
-// addChangedStatusesFromDB compares statuses against the database and returns only those that changed.
-func (w *worker) addChangedStatusesFromDB(updates map[string]cmdlib.ChannelInfo, resultChannels map[string]cmdlib.ChannelInfo) {
+// changedStatusesFromDB compares statuses against the database and returns only those that changed.
+func (w *worker) changedStatusesFromDB(
+	resultChannels map[string]cmdlib.ChannelInfoWithStatus,
+) []db.StatusChange {
 	var channelIDs []string
 	for channelID := range resultChannels {
 		channelIDs = append(channelIDs, channelID)
 	}
 	dbStatuses := w.db.UnconfirmedStatusesForChannels(channelIDs)
+	var updates []db.StatusChange
 	for channelID, info := range resultChannels {
 		if dbStatuses[channelID].Status != info.Status {
-			updates[channelID] = info
+			updates = append(updates, db.StatusChange{
+				ChannelID: channelID,
+				Status:    info.Status,
+			})
 		}
 	}
+	return updates
 }
 
 func (w *worker) notifyOfAddResults(queue chan outgoingPacket, notifications []db.Notification) {
@@ -1402,24 +1402,26 @@ func (w *worker) periodic() {
 }
 
 func (w *worker) pushOnlineRequest() {
-	var channels map[string]bool
+	var request cmdlib.StatusRequest
 	if w.checker.UsesFixedList() {
-		channels = w.db.SubscribedChannels()
+		request = &cmdlib.FixedListRequest{
+			ResultsCh: w.checkerResults,
+			Channels:  w.db.SubscribedChannels(),
+		}
+	} else {
+		request = &cmdlib.OnlineListRequest{
+			ResultsCh: w.checkerResults,
+		}
 	}
-	err := w.checker.PushStatusRequest(cmdlib.StatusRequest{
-		ResultsCh: w.onlineChannelsChan,
-		Channels:  channels,
-	})
-	if err != nil {
+	if err := w.checker.PushStatusRequest(request); err != nil {
 		lerr("%v", err)
 	}
 }
 
-func (w *worker) pushFixedListRequest(resultsCh chan cmdlib.StatusResults, channels map[string]bool) error {
-	err := w.checker.PushStatusRequest(cmdlib.StatusRequest{
-		ResultsCh: resultsCh,
+func (w *worker) pushExistenceRequest(channels map[string]bool) error {
+	err := w.checker.PushStatusRequest(&cmdlib.ExistenceListRequest{
+		ResultsCh: w.existenceListResults,
 		Channels:  channels,
-		CheckMode: cmdlib.CheckStatuses,
 	})
 	if err != nil {
 		lerr("%v", err)
@@ -1427,66 +1429,85 @@ func (w *worker) pushFixedListRequest(resultsCh chan cmdlib.StatusResults, chann
 	return err
 }
 
-func (w *worker) handleStatusUpdates(result cmdlib.StatusResults, now int) (
+func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) (
 	changesCount int,
 	confirmedChangesCount int,
 	notifications []db.Notification,
 	elapsed time.Duration,
 ) {
-	w.logQueryResult(result.Error)
-	if result.Error {
+	start := time.Now()
+	w.logQueryResult(result.ResultError())
+	if result.ResultError() {
 		return
 	}
-	updates := map[string]cmdlib.ChannelInfo{}
-	if result.Request.Channels == nil {
+
+	var updates []db.StatusChange
+
+	switch r := result.(type) {
+	case cmdlib.OnlineListResults:
+		w.httpQueriesDuration = r.Elapsed
+		// Went offline: was online but not in result
 		for channelID := range w.unconfirmedOnlineChannels {
-			if _, inResult := result.Channels[channelID]; !inResult {
-				updates[channelID] = cmdlib.ChannelInfo{Status: cmdlib.StatusOffline}
+			if _, inResult := r.Channels[channelID]; !inResult {
+				updates = append(updates, db.StatusChange{
+					ChannelID: channelID,
+					Status:    cmdlib.StatusOffline,
+				})
 			}
 		}
-	}
-	w.addChangedStatusesFromDB(updates, result.Channels)
-	w.httpQueriesDuration = result.Elapsed
-	w.unconfirmedOnlineChannels = filterOnline(result.Channels)
+		// Went online: in result but wasn't online
+		for channelID := range r.Channels {
+			if _, wasOnline := w.unconfirmedOnlineChannels[channelID]; !wasOnline {
+				updates = append(updates, db.StatusChange{
+					ChannelID: channelID,
+					Status:    cmdlib.StatusOnline,
+				})
+			}
+		}
+		w.unconfirmedOnlineChannels = r.Channels
 
-	start := time.Now()
-	changesCount = len(updates)
-	fixedList := result.Request.Channels != nil
+	case cmdlib.FixedListResults:
+		w.httpQueriesDuration = r.Elapsed
+		w.unconfirmedOnlineChannels = filterOnline(r.Channels)
+		updates = w.changedStatusesFromDB(r.Channels)
 
-	// For fixed list checkers, set unsubscribed channels to unknown status before inserting.
-	// This avoids timestamp ties when SetKnownUnsubscribedToUnknown runs later.
-	if fixedList {
-		subscribedChannels := w.db.SubscribedChannels()
-		for channelID, info := range updates {
-			if !subscribedChannels[channelID] && info.Status != cmdlib.StatusUnknown {
+		// Set known channels that are not in the request to unknown.
+		for channelID := range w.db.KnownChannels() {
+			if !r.RequestedChannels[channelID] {
 				delete(w.unconfirmedOnlineChannels, channelID)
-				updates[channelID] = cmdlib.ChannelInfo{Status: cmdlib.StatusUnknown}
+				updates = append(updates, db.StatusChange{
+					ChannelID: channelID,
+					Status:    cmdlib.StatusUnknown,
+				})
 			}
 		}
 	}
 
-	statusChanges := w.toStatusChanges(updates, now)
-	w.db.InsertStatusChanges(statusChanges)
+	w.db.InsertStatusChanges(updates, now)
 
-	// For fixed list checkers, mark known unsubscribed channels as unknown.
-	// This handles channels that were already in the DB with non-unknown status.
-	if fixedList {
-		for _, channelID := range w.db.SetKnownUnsubscribedToUnknown(now) {
-			delete(w.unconfirmedOnlineChannels, channelID)
-		}
-	}
+	confirmedStatusChanges := w.confirmStatusChanges(now)
+	confirmedChangesCount = len(confirmedStatusChanges)
+	notifications = w.buildNotifications(confirmedStatusChanges)
+	elapsed = time.Since(start)
+	changesCount = len(updates)
+	return
+}
 
-	confirmedStatusChanges := w.db.ConfirmStatusChanges(
+func (w *worker) confirmStatusChanges(now int) []db.StatusChange {
+	return w.db.ConfirmStatusChanges(
 		now,
 		w.cfg.StatusConfirmationSeconds.Online,
 		w.cfg.StatusConfirmationSeconds.Offline,
 	)
+}
 
+func (w *worker) buildNotifications(confirmedStatusChanges []db.StatusChange) []db.Notification {
 	confirmedChannelIDs := []string{}
 	for _, c := range confirmedStatusChanges {
 		confirmedChannelIDs = append(confirmedChannelIDs, c.ChannelID)
 	}
 
+	var notifications []db.Notification
 	usersForChannels, endpointsForChannels := w.db.UsersForChannels(confirmedChannelIDs)
 	for _, c := range confirmedStatusChanges {
 		users := usersForChannels[c.ChannelID]
@@ -1509,9 +1530,7 @@ func (w *worker) handleStatusUpdates(result cmdlib.StatusResults, now int) (
 		}
 	}
 
-	confirmedChangesCount = len(confirmedStatusChanges)
-	elapsed = time.Since(start)
-	return
+	return notifications
 }
 
 func getCommandAndArgs(update tg.Update, mention string, ourIDs []int64) (int64, string, string) {
@@ -1761,13 +1780,13 @@ func (w *worker) queryUnconfirmedSubs() {
 	if len(unconfirmed) > 0 {
 		w.db.MarkUnconfirmedAsChecking()
 		ldbg("queueing unconfirmed subscriptions check for %d channels", len(unconfirmed))
-		if w.pushFixedListRequest(w.unconfirmedSubsResults, unconfirmed) != nil {
+		if w.pushExistenceRequest(unconfirmed) != nil {
 			w.db.ResetCheckingToUnconfirmed()
 		}
 	}
 }
 
-func (w *worker) processSubsConfirmations(res cmdlib.StatusResults) {
+func (w *worker) processSubsConfirmations(res cmdlib.ExistenceListResults) {
 	channelsNumber := len(res.Channels)
 	ldbg("processing subscription confirmations for %d channels", channelsNumber)
 	confirmationsInWork := map[string][]db.Subscription{}
@@ -1937,9 +1956,9 @@ func main() {
 			w.queryUnconfirmedSubs()
 		case <-notificationSenderTimer.C:
 			w.sendReadyNotifications()
-		case result := <-w.onlineChannelsChan:
+		case result := <-w.checkerResults:
 			now := int(time.Now().Unix())
-			changesInPeriod, confirmedChangesInPeriod, notifications, elapsed := w.handleStatusUpdates(result, now)
+			changesInPeriod, confirmedChangesInPeriod, notifications, elapsed := w.handleCheckerResults(result, now)
 			w.updatesDuration = elapsed
 			w.changesInPeriod = changesInPeriod
 			w.confirmedChangesInPeriod = confirmedChangesInPeriod
@@ -1974,7 +1993,7 @@ func main() {
 				w.db.ResetBlock(r.endpoint, r.chatID)
 			}
 			w.db.LogSentMessage(r.timestamp, r.chatID, r.result, r.endpoint, r.priority, r.delay, r.kind)
-		case r := <-w.unconfirmedSubsResults:
+		case r := <-w.existenceListResults:
 			w.processSubsConfirmations(r)
 		case nots := <-w.sentNotifications:
 			for _, n := range nots {

@@ -23,18 +23,18 @@ func (c *TestChecker) CheckStatusSingle(string) StatusKind {
 	return c.status
 }
 
-func (c *testOnlineListChecker) QueryOnlineChannels(CheckMode) (map[string]ChannelInfo, error) {
+func (c *testOnlineListChecker) QueryOnlineChannels() (map[string]ChannelInfo, error) {
 	if c.err != nil {
 		return nil, c.err
 	}
 	channels := map[string]ChannelInfo{}
 	for k := range c.online {
-		channels[k] = ChannelInfo{Status: StatusOnline}
+		channels[k] = ChannelInfo{}
 	}
 	return channels, nil
 }
 
-func (c *testOnlineListChecker) QueryChannelListStatuses([]string, CheckMode) (map[string]ChannelInfo, error) {
+func (c *testOnlineListChecker) QueryChannelListStatuses([]string, CheckMode) (map[string]ChannelInfoWithStatus, error) {
 	return nil, ErrNotImplemented
 }
 
@@ -44,18 +44,18 @@ func (c *testOnlineListChecker) UsesFixedList() bool { return false }
 func TestOnlineListCheckerHandlesFixedList(t *testing.T) {
 	checker := &testOnlineListChecker{}
 	checker.Init(CheckerConfig{UsersOnlineEndpoints: []string{""}, QueueSize: queueSize})
-	resultsCh := make(chan StatusResults)
+	resultsCh := make(chan CheckerResults)
 	StartCheckerDaemon(checker)
 
 	checker.online = toSet("a", "b")
-	if err := checker.PushStatusRequest(StatusRequest{
+	if err := checker.PushStatusRequest(&FixedListRequest{
 		ResultsCh: resultsCh,
 		Channels:  toSet("a", "c"),
 	}); err != nil {
 		t.Errorf("cannot query updates, %v", err)
 		return
 	}
-	result := <-resultsCh
+	result := (<-resultsCh).(FixedListResults)
 	if result.Error {
 		t.Error("unexpected error")
 	}
@@ -75,16 +75,16 @@ func TestOnlineListCheckerHandlesFixedList(t *testing.T) {
 func TestOnlineListCheckerError(t *testing.T) {
 	checker := &testOnlineListChecker{}
 	checker.Init(CheckerConfig{UsersOnlineEndpoints: []string{""}, QueueSize: queueSize})
-	resultsCh := make(chan StatusResults)
+	resultsCh := make(chan CheckerResults)
 	StartCheckerDaemon(checker)
 
 	checker.err = errors.New("error")
-	if err := checker.PushStatusRequest(StatusRequest{ResultsCh: resultsCh}); err != nil {
+	if err := checker.PushStatusRequest(&OnlineListRequest{ResultsCh: resultsCh}); err != nil {
 		t.Errorf("cannot query updates, %v", err)
 		return
 	}
 	result := <-resultsCh
-	if !result.Error {
+	if !result.ResultError() {
 		t.Error("expected error")
 	}
 }

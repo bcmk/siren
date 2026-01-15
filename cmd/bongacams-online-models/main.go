@@ -25,7 +25,7 @@ func main() {
 	client := cmdlib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
 	checker := &checkers.BongaCamsChecker{}
 	checker.Init(cmdlib.CheckerConfig{UsersOnlineEndpoints: []string{*endpoint}, Clients: []*cmdlib.Client{client}, Dbg: *verbose})
-	channels, err := checker.QueryOnlineChannels(cmdlib.CheckOnline)
+	channels, err := checker.QueryOnlineChannels()
 	if err != nil {
 		fmt.Printf("error occurred: %v\n", err)
 		return

@@ -29,22 +29,22 @@ func randString(n int) string {
 }
 
 // QueryOnlineChannels returns Random online channels
-func (c *RandomChecker) QueryOnlineChannels(cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+func (c *RandomChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, error) {
 	now := time.Now()
 	seconds := now.Sub(now.Truncate(time.Minute))
 	channels := map[string]cmdlib.ChannelInfo{}
 	if seconds < time.Second*30 {
-		channels["toggle"] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline}
+		channels["toggle"] = cmdlib.ChannelInfo{}
 	}
 	for i := 0; i < 300; i++ {
 		channelID := randString(4)
-		channels[channelID] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline}
+		channels[channelID] = cmdlib.ChannelInfo{}
 	}
 	return channels, nil
 }
 
 // QueryChannelListStatuses is not implemented for online list checkers
-func (c *RandomChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+func (c *RandomChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfoWithStatus, error) {
 	return nil, cmdlib.ErrNotImplemented
 }
 

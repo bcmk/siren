@@ -102,7 +102,6 @@ func (c *LiveJasminChecker) CheckEndpoint(endpoint string) (map[string]cmdlib.Ch
 	for _, m := range parsed.Data.Models {
 		modelID := strings.ToLower(m.PerformerID)
 		channels[modelID] = cmdlib.ChannelInfo{
-			Status:   cmdlib.StatusOnline,
 			ImageURL: m.ProfilePictureURL.Size896x504,
 		}
 	}
@@ -110,7 +109,7 @@ func (c *LiveJasminChecker) CheckEndpoint(endpoint string) (map[string]cmdlib.Ch
 }
 
 // QueryOnlineChannels returns LiveJasmin online models
-func (c *LiveJasminChecker) QueryOnlineChannels(cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+func (c *LiveJasminChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, error) {
 	channels := map[string]cmdlib.ChannelInfo{}
 	for _, endpoint := range c.UsersOnlineEndpoints {
 		endpointChannels, err := c.CheckEndpoint(endpoint)
@@ -128,7 +127,7 @@ func (c *LiveJasminChecker) QueryOnlineChannels(cmdlib.CheckMode) (map[string]cm
 }
 
 // QueryChannelListStatuses is not implemented for online list checkers
-func (c *LiveJasminChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+func (c *LiveJasminChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfoWithStatus, error) {
 	return nil, cmdlib.ErrNotImplemented
 }
 

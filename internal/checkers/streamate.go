@@ -175,7 +175,7 @@ func (c *StreamateChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 }
 
 // QueryOnlineChannels returns Streamate online models
-func (c *StreamateChecker) QueryOnlineChannels(cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+func (c *StreamateChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, error) {
 	client := c.ClientsLoop.NextClient()
 	channels := map[string]cmdlib.ChannelInfo{}
 	endpoint := c.UsersOnlineEndpoints[0]
@@ -228,7 +228,7 @@ func (c *StreamateChecker) QueryOnlineChannels(cmdlib.CheckMode) (map[string]cmd
 				image = "https:" + m.Media.Pic.Full.Src
 			}
 			modelID := strings.ToLower(m.Name)
-			channels[modelID] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline, ImageURL: image}
+			channels[modelID] = cmdlib.ChannelInfo{ImageURL: image}
 		}
 		if i == 1 {
 			pages = (parsed.AvailablePerformers.TotalResultCount + queriedPageSize - 1) / queriedPageSize
@@ -241,7 +241,7 @@ func (c *StreamateChecker) QueryOnlineChannels(cmdlib.CheckMode) (map[string]cmd
 }
 
 // QueryChannelListStatuses is not implemented for online list checkers
-func (c *StreamateChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+func (c *StreamateChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfoWithStatus, error) {
 	return nil, cmdlib.ErrNotImplemented
 }
 

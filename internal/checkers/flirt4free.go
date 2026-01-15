@@ -94,7 +94,7 @@ func Flirt4FreeCanonicalModelID(name string) string {
 }
 
 // QueryOnlineChannels returns Flirt4Free online models
-func (c *Flirt4FreeChecker) QueryOnlineChannels(cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+func (c *Flirt4FreeChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, error) {
 	client := c.ClientsLoop.NextClient()
 	channels := map[string]cmdlib.ChannelInfo{}
 	resp, buf, err := cmdlib.OnlineQuery(c.UsersOnlineEndpoints[0], client, c.Headers)
@@ -121,21 +121,21 @@ func (c *Flirt4FreeChecker) QueryOnlineChannels(cmdlib.CheckMode) (map[string]cm
 	}
 	for _, m := range parsed.Girls {
 		modelID := flirt4FreeCanonicalAPIModelID(m.Name)
-		channels[modelID] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline, ImageURL: m.ScreencapImage}
+		channels[modelID] = cmdlib.ChannelInfo{ImageURL: m.ScreencapImage}
 	}
 	for _, m := range parsed.Guys {
 		modelID := flirt4FreeCanonicalAPIModelID(m.Name)
-		channels[modelID] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline, ImageURL: m.ScreencapImage}
+		channels[modelID] = cmdlib.ChannelInfo{ImageURL: m.ScreencapImage}
 	}
 	for _, m := range parsed.Trans {
 		modelID := flirt4FreeCanonicalAPIModelID(m.Name)
-		channels[modelID] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline, ImageURL: m.ScreencapImage}
+		channels[modelID] = cmdlib.ChannelInfo{ImageURL: m.ScreencapImage}
 	}
 	return channels, nil
 }
 
 // QueryChannelListStatuses is not implemented for online list checkers
-func (c *Flirt4FreeChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+func (c *Flirt4FreeChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfoWithStatus, error) {
 	return nil, cmdlib.ErrNotImplemented
 }
 

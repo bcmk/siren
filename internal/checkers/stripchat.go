@@ -157,7 +157,7 @@ func (c *StripchatChecker) checkOnlyOnline() (map[string]cmdlib.ChannelInfo, err
 		if m.Username != "" {
 			modelID := strings.ToLower(m.Username)
 			if _, ok := channels[modelID]; !ok {
-				channels[modelID] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline}
+				channels[modelID] = cmdlib.ChannelInfo{}
 			}
 		}
 	}
@@ -165,7 +165,7 @@ func (c *StripchatChecker) checkOnlyOnline() (map[string]cmdlib.ChannelInfo, err
 }
 
 // QueryOnlineChannels returns Stripchat online models
-func (c *StripchatChecker) QueryOnlineChannels(cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+func (c *StripchatChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, error) {
 	endpoint := c.UsersOnlineEndpoints[0]
 	channels, err := c.checkOnlyOnline()
 	if err != nil {
@@ -215,7 +215,6 @@ func (c *StripchatChecker) QueryOnlineChannels(cmdlib.CheckMode) (map[string]cmd
 			if m.Username != "" {
 				modelID := strings.ToLower(m.Username)
 				channels[modelID] = cmdlib.ChannelInfo{
-					Status:   cmdlib.StatusOnline,
 					ImageURL: m.SnapshotURL,
 				}
 			}
@@ -225,7 +224,7 @@ func (c *StripchatChecker) QueryOnlineChannels(cmdlib.CheckMode) (map[string]cmd
 }
 
 // QueryChannelListStatuses is not implemented for online list checkers
-func (c *StripchatChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+func (c *StripchatChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfoWithStatus, error) {
 	return nil, cmdlib.ErrNotImplemented
 }
 

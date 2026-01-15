@@ -159,43 +159,40 @@ func TestUpdateNotifications(t *testing.T) {
 	w.db.MustExec("insert into users (chat_id) values ($1)", 3)
 	w.db.MustExec("insert into users (chat_id) values ($1)", 4)
 
+	// All subscribed channels for this test
+	allChannels := map[string]bool{"a": true, "b": true, "c": true, "d": true}
+
 	// Use fixed list checker mode for these tests
-	request := cmdlib.StatusRequest{Channels: map[string]bool{"a": true, "b": true, "c": true, "d": true, "x": true}}
-
-	// Unsubscribed channel "x" — no notifications
-	result := cmdlib.StatusResults{
-		Request:  &request,
-		Channels: map[string]cmdlib.ChannelInfo{"x": {Status: cmdlib.StatusOnline}},
-	}
-	if _, _, nots, _ := w.handleStatusUpdates(result, 1); len(nots) != 0 {
-		t.Errorf("expected 0 notifications for unsubscribed channel, got %d", len(nots))
-	}
-	checkInv(&w.worker, t)
-
 	// Channel "a" goes online — 2 notifications (chat 1 and chat 3)
-	result.Channels = map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOnline}}
-	if _, _, nots, _ := w.handleStatusUpdates(result, 2); len(nots) != 2 {
+	result := cmdlib.FixedListResults{
+		RequestedChannels: allChannels,
+		Channels:          map[string]cmdlib.ChannelInfoWithStatus{"a": {Status: cmdlib.StatusOnline}},
+	}
+	if _, _, nots, _ := w.handleCheckerResults(result, 2); len(nots) != 2 {
 		t.Errorf("expected 2 notifications for channel 'a' online, got %d", len(nots))
 	}
 	checkInv(&w.worker, t)
 
 	// Channel "a" goes offline — no notifications yet (needs 5s confirmation)
-	result.Channels = map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOffline}}
-	if _, _, nots, _ := w.handleStatusUpdates(result, 3); len(nots) != 0 {
+	result.Channels = map[string]cmdlib.ChannelInfoWithStatus{"a": {Status: cmdlib.StatusOffline}}
+	if _, _, nots, _ := w.handleCheckerResults(result, 3); len(nots) != 0 {
 		t.Errorf("expected 0 notifications before offline confirmation, got %d", len(nots))
 	}
 	checkInv(&w.worker, t)
 
 	// Trigger confirmation check at t=8 — offline confirmed, 2 notifications
-	result.Channels = map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOffline}}
-	if _, _, nots, _ := w.handleStatusUpdates(result, 8); len(nots) != 2 {
+	result.Channels = map[string]cmdlib.ChannelInfoWithStatus{"a": {Status: cmdlib.StatusOffline}}
+	if _, _, nots, _ := w.handleCheckerResults(result, 8); len(nots) != 2 {
 		t.Errorf("expected 2 notifications after offline confirmation, got %d", len(nots))
 	}
 	checkInv(&w.worker, t)
 
 	// Channel "d" goes online — 2 notifications (chat 4 on ep1 and ep2)
-	result.Channels = map[string]cmdlib.ChannelInfo{"d": {Status: cmdlib.StatusOnline}}
-	if _, _, nots, _ := w.handleStatusUpdates(result, 9); len(nots) != 2 {
+	result.Channels = map[string]cmdlib.ChannelInfoWithStatus{
+		"a": {Status: cmdlib.StatusOffline},
+		"d": {Status: cmdlib.StatusOnline},
+	}
+	if _, _, nots, _ := w.handleCheckerResults(result, 9); len(nots) != 2 {
 		t.Errorf("expected 2 notifications for channel 'd' online, got %d", len(nots))
 	}
 	checkInv(&w.worker, t)
@@ -429,8 +426,8 @@ func TestUnconfirmedStatusConsistency(t *testing.T) {
 
 	// Insert first status change for channel "a"
 	w.db.InsertStatusChanges([]db.StatusChange{
-		{ChannelID: "a", Status: cmdlib.StatusOnline, Timestamp: 100},
-	})
+		{ChannelID: "a", Status: cmdlib.StatusOnline},
+	}, 100)
 
 	channel := w.db.MaybeChannel("a")
 	if channel == nil {
@@ -445,8 +442,8 @@ func TestUnconfirmedStatusConsistency(t *testing.T) {
 
 	// Insert second status change — prev should be updated
 	w.db.InsertStatusChanges([]db.StatusChange{
-		{ChannelID: "a", Status: cmdlib.StatusOffline, Timestamp: 200},
-	})
+		{ChannelID: "a", Status: cmdlib.StatusOffline},
+	}, 200)
 
 	channel = w.db.MaybeChannel("a")
 	if channel.UnconfirmedStatus != cmdlib.StatusOffline || channel.UnconfirmedTimestamp != 200 {
@@ -458,8 +455,8 @@ func TestUnconfirmedStatusConsistency(t *testing.T) {
 
 	// Insert third status change — prev should shift
 	w.db.InsertStatusChanges([]db.StatusChange{
-		{ChannelID: "a", Status: cmdlib.StatusOnline, Timestamp: 300},
-	})
+		{ChannelID: "a", Status: cmdlib.StatusOnline},
+	}, 300)
 
 	channel = w.db.MaybeChannel("a")
 	if channel.UnconfirmedStatus != cmdlib.StatusOnline || channel.UnconfirmedTimestamp != 300 {
@@ -534,6 +531,29 @@ func checkInv(w *worker, t *testing.T) {
 				t.Errorf("prev unconfirmed status mismatch for %s: channel=%+v, expected=%+v", channel.ChannelID, channel, expected)
 				t.Log(string(debug.Stack()))
 			}
+		})
+
+	// Check for consecutive same statuses — should never happen
+	var badChannelID string
+	var badStatus cmdlib.StatusKind
+	w.db.MustQuery(
+		`
+		with periods as (
+			select
+				channel_id,
+				status,
+				lead(status) over (partition by channel_id order by timestamp) as next_status
+			from status_changes
+		)
+		select channel_id, status
+		from periods
+		where status = next_status
+		`,
+		nil,
+		db.ScanTo{&badChannelID, &badStatus},
+		func() {
+			t.Errorf("consecutive same status found for %s: %v", badChannelID, badStatus)
+			t.Log(string(debug.Stack()))
 		})
 }
 
@@ -668,8 +688,8 @@ func TestProcessSubsConfirmations(t *testing.T) {
 	)
 
 	// Process confirmations with checker results
-	w.processSubsConfirmations(cmdlib.StatusResults{
-		Channels: map[string]cmdlib.ChannelInfo{
+	w.processSubsConfirmations(cmdlib.ExistenceListResults{
+		Channels: map[string]cmdlib.ChannelInfoWithStatus{
 			"online_model":          {Status: cmdlib.StatusOnline},
 			"offline_model":         {Status: cmdlib.StatusOffline},
 			"notfound_model":        {Status: cmdlib.StatusNotFound},
@@ -900,15 +920,13 @@ func TestHandleStatusUpdates(t *testing.T) {
 		"test", 1, "a", 1,
 	)
 
-	// Test with Channels == nil (uses onlineListUpdater)
-	request := cmdlib.StatusRequest{Channels: nil}
-	result := cmdlib.StatusResults{
-		Request:  &request,
-		Channels: map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOnline, ImageURL: "http://a.jpg"}},
+	// Test with OnlineListResults
+	result := cmdlib.OnlineListResults{
+		Channels: map[string]cmdlib.ChannelInfo{"a": {ImageURL: "http://a.jpg"}},
 	}
-	changes, _, _, _ := w.handleStatusUpdates(result, 100)
+	changes, _, _, _ := w.handleCheckerResults(result, 100)
 	if changes != 1 {
-		t.Errorf("expected 1 change with onlineListUpdater, got %d", changes)
+		t.Errorf("expected 1 change with OnlineListResults, got %d", changes)
 	}
 	if w.unconfirmedOnlineChannels["a"].ImageURL != "http://a.jpg" {
 		t.Errorf("expected ImageURL to be set, got %s", w.unconfirmedOnlineChannels["a"].ImageURL)
@@ -917,23 +935,22 @@ func TestHandleStatusUpdates(t *testing.T) {
 	checkInv(&w.worker, t)
 
 	// Test ImageURL update for channel that remains online
-	result.Channels["a"] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline, ImageURL: "http://a2.jpg"}
-	w.handleStatusUpdates(result, 101)
+	result.Channels["a"] = cmdlib.ChannelInfo{ImageURL: "http://a2.jpg"}
+	w.handleCheckerResults(result, 101)
 	if w.unconfirmedOnlineChannels["a"].ImageURL != "http://a2.jpg" {
 		t.Errorf("expected ImageURL to be updated, got %s", w.unconfirmedOnlineChannels["a"].ImageURL)
 	}
 	checkUnconfirmedOnlineChannels(w, t)
 	checkInv(&w.worker, t)
 
-	// Test with Channels != nil (uses fixedListUpdater)
-	request2 := cmdlib.StatusRequest{Channels: map[string]bool{"a": true}}
-	result2 := cmdlib.StatusResults{
-		Request:  &request2,
-		Channels: map[string]cmdlib.ChannelInfo{"a": {Status: cmdlib.StatusOffline}},
+	// Test with FixedListResults
+	result2 := cmdlib.FixedListResults{
+		RequestedChannels: map[string]bool{"a": true},
+		Channels:          map[string]cmdlib.ChannelInfoWithStatus{"a": {Status: cmdlib.StatusOffline}},
 	}
-	changes, _, _, _ = w.handleStatusUpdates(result2, 102)
+	changes, _, _, _ = w.handleCheckerResults(result2, 102)
 	if changes != 1 {
-		t.Errorf("expected 1 change with fixedListUpdater, got %d", changes)
+		t.Errorf("expected 1 change with FixedListResults, got %d", changes)
 	}
 	if _, ok := w.unconfirmedOnlineChannels["a"]; ok {
 		t.Error("expected offline channel to be removed from unconfirmedOnlineChannels")
@@ -942,12 +959,14 @@ func TestHandleStatusUpdates(t *testing.T) {
 	checkInv(&w.worker, t)
 
 	// Test unknown status also removes from unconfirmedOnlineChannels
-	result2.Channels["a"] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline, ImageURL: "http://a3.jpg"}
-	w.handleStatusUpdates(result2, 103)
+	result2.RequestedChannels = map[string]bool{"a": true}
+	result2.Channels["a"] = cmdlib.ChannelInfoWithStatus{Status: cmdlib.StatusOnline, ImageURL: "http://a3.jpg"}
+	w.handleCheckerResults(result2, 103)
 	checkUnconfirmedOnlineChannels(w, t)
 	checkInv(&w.worker, t)
-	result2.Channels["a"] = cmdlib.ChannelInfo{Status: cmdlib.StatusUnknown}
-	w.handleStatusUpdates(result2, 104)
+	result2.RequestedChannels = map[string]bool{"a": true}
+	result2.Channels["a"] = cmdlib.ChannelInfoWithStatus{Status: cmdlib.StatusUnknown}
+	w.handleCheckerResults(result2, 104)
 	if _, ok := w.unconfirmedOnlineChannels["a"]; ok {
 		t.Error("expected unknown channel to be removed from unconfirmedOnlineChannels")
 	}
@@ -955,28 +974,24 @@ func TestHandleStatusUpdates(t *testing.T) {
 	checkInv(&w.worker, t)
 
 	// Test error case (should return early with zero values)
-	request3 := cmdlib.StatusRequest{Channels: nil}
-	result3 := cmdlib.StatusResults{
-		Request: &request3,
-		Error:   true,
+	result3 := cmdlib.OnlineListResults{
+		Error: true,
 	}
-	changes, confirmedChanges, nots, elapsed := w.handleStatusUpdates(result3, 105)
+	changes, confirmedChanges, nots, elapsed := w.handleCheckerResults(result3, 105)
 	if changes != 0 || confirmedChanges != 0 || len(nots) != 0 || elapsed != 0 {
 		t.Errorf(
 			"expected zero values on error, got changes=%d, confirmedChanges=%d, nots=%d, elapsed=%d",
 			changes, confirmedChanges, len(nots), elapsed)
 	}
 
-	// Test error case with fixedListUpdater (Channels != nil)
-	request4 := cmdlib.StatusRequest{Channels: map[string]bool{"a": true}}
-	result4 := cmdlib.StatusResults{
-		Request: &request4,
-		Error:   true,
+	// Test error case with FixedListResults
+	result4 := cmdlib.FixedListResults{
+		Error: true,
 	}
-	changes, confirmedChanges, nots, elapsed = w.handleStatusUpdates(result4, 106)
+	changes, confirmedChanges, nots, elapsed = w.handleCheckerResults(result4, 106)
 	if changes != 0 || confirmedChanges != 0 || len(nots) != 0 || elapsed != 0 {
 		t.Errorf(
-			"expected zero values on error with fixedListUpdater, got changes=%d, confirmedChanges=%d, nots=%d, elapsed=%d",
+			"expected zero values on error with FixedListResults, got changes=%d, confirmedChanges=%d, nots=%d, elapsed=%d",
 			changes, confirmedChanges, len(nots), elapsed)
 	}
 }
@@ -996,15 +1011,14 @@ func TestUnsubscribeBeforeRestart(t *testing.T) {
 		"test", 1, "b", 1)
 
 	// Both channels come online
-	request := cmdlib.StatusRequest{Channels: map[string]bool{"a": true, "b": true}}
-	result := cmdlib.StatusResults{
-		Request: &request,
-		Channels: map[string]cmdlib.ChannelInfo{
+	result := cmdlib.FixedListResults{
+		RequestedChannels: map[string]bool{"a": true, "b": true},
+		Channels: map[string]cmdlib.ChannelInfoWithStatus{
 			"a": {Status: cmdlib.StatusOnline},
 			"b": {Status: cmdlib.StatusOnline},
 		},
 	}
-	w.handleStatusUpdates(result, 100)
+	w.handleCheckerResults(result, 100)
 	checkInv(&w.worker, t)
 
 	// Verify both are online in DB
@@ -1019,21 +1033,21 @@ func TestUnsubscribeBeforeRestart(t *testing.T) {
 	w.db.MustExec("delete from subscriptions where channel_id = $1", "a")
 
 	// Simulate restart: reinitialize cache as would happen on restart
-	w.unconfirmedOnlineChannels = map[string]cmdlib.ChannelInfo{}
 	w.initCache()
 
-	// First query after restart — only "b" is subscribed
-	request2 := cmdlib.StatusRequest{Channels: map[string]bool{"b": true}}
-	result2 := cmdlib.StatusResults{
-		Request: &request2,
-		Channels: map[string]cmdlib.ChannelInfo{
+	// First query after restart — only "b" is subscribed.
+	// "a" is no longer in RequestedChannels since it's unsubscribed.
+	result2 := cmdlib.FixedListResults{
+		RequestedChannels: map[string]bool{"b": true},
+		Channels: map[string]cmdlib.ChannelInfoWithStatus{
 			"b": {Status: cmdlib.StatusOnline},
 		},
 	}
-	w.handleStatusUpdates(result2, 101)
+	w.handleCheckerResults(result2, 101)
 	checkInv(&w.worker, t)
 
-	// "a" should now have StatusUnknown in DB
+	// "a" should now have StatusUnknown in DB because it's a known channel
+	// but not in RequestedChannels (not subscribed anymore).
 	channelA := w.db.MaybeChannel("a")
 	if channelA.UnconfirmedStatus != cmdlib.StatusUnknown {
 		t.Errorf("expected 'a' to have StatusUnknown, got %v", channelA.UnconfirmedStatus)
@@ -1065,8 +1079,8 @@ func TestUnknownChannelFirstOfflineSaved(t *testing.T) {
 	// 2. Subscription is confirmed — checker returns offline status (Twitch returns Online|Offline)
 	// First, set subscription to "checking" state (confirmed=2) as queryUnconfirmedSubs would do
 	w.db.MustExec("update subscriptions set confirmed = 2 where channel_id = $1", "unknown_model")
-	w.processSubsConfirmations(cmdlib.StatusResults{
-		Channels: map[string]cmdlib.ChannelInfo{
+	w.processSubsConfirmations(cmdlib.ExistenceListResults{
+		Channels: map[string]cmdlib.ChannelInfoWithStatus{
 			// Twitch returns Online|Offline when channel exists but is offline
 			"unknown_model": {Status: cmdlib.StatusOnline | cmdlib.StatusOffline},
 		},
@@ -1079,12 +1093,11 @@ func TestUnknownChannelFirstOfflineSaved(t *testing.T) {
 
 	// 3. First status update: offline
 	// Offline status SHOULD be saved so we can calculate online duration later
-	request := cmdlib.StatusRequest{Channels: map[string]bool{"unknown_model": true}}
-	result := cmdlib.StatusResults{
-		Request:  &request,
-		Channels: map[string]cmdlib.ChannelInfo{"unknown_model": {Status: cmdlib.StatusOffline}},
+	result := cmdlib.FixedListResults{
+		RequestedChannels: map[string]bool{"unknown_model": true},
+		Channels:          map[string]cmdlib.ChannelInfoWithStatus{"unknown_model": {Status: cmdlib.StatusOffline}},
 	}
-	changes, _, _, _ := w.handleStatusUpdates(result, 101)
+	changes, _, _, _ := w.handleCheckerResults(result, 101)
 	checkInv(&w.worker, t)
 
 	// 4. Offline status should be recorded for proper online time calculation
@@ -1108,7 +1121,7 @@ func TestUnknownChannelFirstOfflineSaved(t *testing.T) {
 	}
 
 	// 5. Subsequent status update with same offline status should NOT record a new change
-	changes, _, _, _ = w.handleStatusUpdates(result, 102)
+	changes, _, _, _ = w.handleCheckerResults(result, 102)
 	checkInv(&w.worker, t)
 	if changes != 0 {
 		t.Errorf("expected 0 changes for same offline status, got %d", changes)
@@ -1214,12 +1227,12 @@ func TestStatusTransitions(t *testing.T) {
 			dbAfter:       ptr(cmdlib.StatusOnline),
 		},
 		{
-			name:          "fixed list: unsubscribed channel marked unknown",
+			name:          "fixed list: unsubscribed channel stays online",
 			subscribed:    false,
 			dbBefore:      nil,
 			fixedList:     true,
 			checkerStatus: ptr(cmdlib.StatusOnline),
-			dbAfter:       ptr(cmdlib.StatusUnknown),
+			dbAfter:       ptr(cmdlib.StatusOnline),
 		},
 	}
 
@@ -1251,29 +1264,49 @@ func TestStatusTransitions(t *testing.T) {
 				w.db.AddSubscription(1, "ch", "ep", 1)
 			}
 
-			var request cmdlib.StatusRequest
-			if tt.fixedList {
-				request = cmdlib.StatusRequest{Channels: map[string]bool{"ch": true}}
-			}
+			// Include background channels in RequestedChannels to prevent them from being set to unknown
+			bgChannels := map[string]bool{"always_online": true, "always_offline": true}
 
 			if tt.dbBefore != nil {
-				setupResult := cmdlib.StatusResults{
-					Request:  &request,
-					Channels: map[string]cmdlib.ChannelInfo{"ch": {Status: *tt.dbBefore}},
+				if tt.fixedList {
+					setupResult := cmdlib.FixedListResults{
+						RequestedChannels: map[string]bool{"ch": true, "always_online": true, "always_offline": true},
+						Channels:          map[string]cmdlib.ChannelInfoWithStatus{"ch": {Status: *tt.dbBefore}},
+					}
+					w.handleCheckerResults(setupResult, 100)
+				} else {
+					setupResult := cmdlib.OnlineListResults{
+						Channels: map[string]cmdlib.ChannelInfo{},
+					}
+					if *tt.dbBefore == cmdlib.StatusOnline {
+						setupResult.Channels["ch"] = cmdlib.ChannelInfo{}
+					}
+					w.handleCheckerResults(setupResult, 100)
 				}
-				w.handleStatusUpdates(setupResult, 100)
 				checkInv(&w.worker, t)
 			}
 
-			result := cmdlib.StatusResults{
-				Request:  &request,
-				Channels: map[string]cmdlib.ChannelInfo{},
+			if tt.fixedList {
+				result := cmdlib.FixedListResults{
+					RequestedChannels: bgChannels,
+					Channels:          map[string]cmdlib.ChannelInfoWithStatus{},
+				}
+				if tt.subscribed {
+					result.RequestedChannels["ch"] = true
+				}
+				if tt.checkerStatus != nil {
+					result.Channels["ch"] = cmdlib.ChannelInfoWithStatus{Status: *tt.checkerStatus}
+				}
+				w.handleCheckerResults(result, 101)
+			} else {
+				result := cmdlib.OnlineListResults{
+					Channels: map[string]cmdlib.ChannelInfo{},
+				}
+				if tt.checkerStatus != nil && *tt.checkerStatus == cmdlib.StatusOnline {
+					result.Channels["ch"] = cmdlib.ChannelInfo{}
+				}
+				w.handleCheckerResults(result, 101)
 			}
-			if tt.checkerStatus != nil {
-				result.Channels["ch"] = cmdlib.ChannelInfo{Status: *tt.checkerStatus}
-			}
-
-			w.handleStatusUpdates(result, 101)
 			checkInv(&w.worker, t)
 
 			channel := w.db.MaybeChannel("ch")

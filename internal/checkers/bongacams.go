@@ -38,7 +38,7 @@ func (c *BongaCamsChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 }
 
 // QueryOnlineChannels returns BongaCams online models
-func (c *BongaCamsChecker) QueryOnlineChannels(cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+func (c *BongaCamsChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, error) {
 	client := c.ClientsLoop.NextClient()
 	channels := map[string]cmdlib.ChannelInfo{}
 
@@ -66,7 +66,6 @@ func (c *BongaCamsChecker) QueryOnlineChannels(cmdlib.CheckMode) (map[string]cmd
 	for _, m := range parsed {
 		modelID := strings.ToLower(m.Username)
 		channels[modelID] = cmdlib.ChannelInfo{
-			Status:   cmdlib.StatusOnline,
 			ImageURL: "https:" + m.ProfileImages.ThumbnailImageMediumLive,
 		}
 	}
@@ -74,7 +73,7 @@ func (c *BongaCamsChecker) QueryOnlineChannels(cmdlib.CheckMode) (map[string]cmd
 }
 
 // QueryChannelListStatuses is not implemented for online list checkers
-func (c *BongaCamsChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+func (c *BongaCamsChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfoWithStatus, error) {
 	return nil, cmdlib.ErrNotImplemented
 }
 

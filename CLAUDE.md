@@ -21,10 +21,16 @@
 - Wrap documentation and comments at 80 characters max,
   prefer breaking at full stops over commas over natural pauses over spaces
 - Keep lines no longer than 120 characters
+
+## Checks and Tests
 - Run `go fmt ./...` after changes
 - Run `golangci-lint run ./...` before committing
 - Run `go test ./...` to ensure changes work
+- Ask before modifying tests — explain what needs changing and why
+
+## Platform Notes
 - GNU sed is installed as `sed` (no empty string needed for `-i`)
+- Don't use `cat -A` (macOS cat doesn't support it)
 
 ## Database Migrations
 - Migrations are in `internal/db/migrations.go`

@@ -104,7 +104,7 @@ func chaturbateRoomStatus(roomStatus string) cmdlib.StatusKind {
 }
 
 // QueryOnlineChannels returns Chaturbate online models
-func (c *ChaturbateChecker) QueryOnlineChannels(cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+func (c *ChaturbateChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, error) {
 	client := c.ClientsLoop.NextClient()
 	channels := map[string]cmdlib.ChannelInfo{}
 	resp, buf, err := cmdlib.OnlineQuery(c.UsersOnlineEndpoints[0], client, c.Headers)
@@ -125,13 +125,13 @@ func (c *ChaturbateChecker) QueryOnlineChannels(cmdlib.CheckMode) (map[string]cm
 	}
 	for _, m := range parsed {
 		modelID := strings.ToLower(m.Username)
-		channels[modelID] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline, ImageURL: m.ImageURL}
+		channels[modelID] = cmdlib.ChannelInfo{ImageURL: m.ImageURL}
 	}
 	return channels, nil
 }
 
 // QueryChannelListStatuses is not implemented for online list checkers
-func (c *ChaturbateChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+func (c *ChaturbateChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfoWithStatus, error) {
 	return nil, cmdlib.ErrNotImplemented
 }
 

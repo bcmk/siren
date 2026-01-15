@@ -35,7 +35,7 @@ func main() {
 		SpecificConfig:       map[string]string{"user_id": *userID},
 		Dbg:                  *verbose,
 	})
-	channels, err := checker.QueryOnlineChannels(cmdlib.CheckOnline)
+	channels, err := checker.QueryOnlineChannels()
 	if err != nil {
 		fmt.Printf("error occurred: %v\n", err)
 		return

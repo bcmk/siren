@@ -326,32 +326,15 @@ func (d *Database) QueryLastOnlineChannels() map[string]bool {
 	return onlineChannels
 }
 
-// SetKnownUnsubscribedToUnknown sets known unsubscribed channels to unknown status
-// and returns the affected channel IDs.
-func (d *Database) SetKnownUnsubscribedToUnknown(now int) []string {
-	var channels []string
+// KnownChannels returns all channels with known status (not unknown).
+func (d *Database) KnownChannels() map[string]bool {
+	channels := map[string]bool{}
 	var channelID string
 	d.MustQuery(
-		`
-			with updated as (
-				update channels set
-					prev_unconfirmed_status = unconfirmed_status,
-					prev_unconfirmed_timestamp = unconfirmed_timestamp,
-					unconfirmed_status = 0,
-					unconfirmed_timestamp = $1
-				where unconfirmed_status != 0
-				and channel_id not in (
-					select distinct channel_id from subscriptions where confirmed = 1
-				)
-				returning channel_id
-			)
-			insert into status_changes (channel_id, status, timestamp)
-			select channel_id, 0, $1 from updated
-			returning channel_id
-		`,
-		QueryParams{now},
+		`select channel_id from channels where unconfirmed_status != 0`,
+		nil,
 		ScanTo{&channelID},
-		func() { channels = append(channels, channelID) })
+		func() { channels[channelID] = true })
 	return channels
 }
 
@@ -388,7 +371,7 @@ func (d *Database) ResetBlock(endpoint string, chatID int64) {
 }
 
 // InsertStatusChanges inserts status changes using a bulk method
-func (d *Database) InsertStatusChanges(changedStatuses []StatusChange) {
+func (d *Database) InsertStatusChanges(changedStatuses []StatusChange, timestamp int) {
 	statusDone := d.Measure("db: insert unconfirmed status updates")
 	defer statusDone()
 
@@ -403,7 +386,7 @@ func (d *Database) InsertStatusChanges(changedStatuses []StatusChange) {
 	// Use CopyFrom for fast bulk insert into status_changes
 	rows := make([][]interface{}, len(changedStatuses))
 	for i, sc := range changedStatuses {
-		rows[i] = []interface{}{sc.ChannelID, sc.Status, sc.Timestamp}
+		rows[i] = []interface{}{sc.ChannelID, sc.Status, timestamp}
 	}
 	_, err = tx.CopyFrom(
 		context.Background(),
@@ -426,7 +409,7 @@ func (d *Database) InsertStatusChanges(changedStatuses []StatusChange) {
 					unconfirmed_status = excluded.unconfirmed_status,
 					unconfirmed_timestamp = excluded.unconfirmed_timestamp
 			`,
-			sc.ChannelID, sc.Status, sc.Timestamp)
+			sc.ChannelID, sc.Status, timestamp)
 	}
 	br := tx.SendBatch(context.Background(), batch)
 	checkErr(br.Close())

@@ -38,7 +38,7 @@ func (c *CamSodaChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 }
 
 // QueryOnlineChannels returns CamSoda online models
-func (c *CamSodaChecker) QueryOnlineChannels(cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+func (c *CamSodaChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, error) {
 	client := c.ClientsLoop.NextClient()
 	channels := map[string]cmdlib.ChannelInfo{}
 	resp, buf, err := cmdlib.OnlineQuery(c.UsersOnlineEndpoints[0], client, c.Headers)
@@ -62,13 +62,13 @@ func (c *CamSodaChecker) QueryOnlineChannels(cmdlib.CheckMode) (map[string]cmdli
 	}
 	for _, m := range parsed.Results {
 		modelID := strings.ToLower(m.Username)
-		channels[modelID] = cmdlib.ChannelInfo{Status: cmdlib.StatusOnline, ImageURL: m.Thumb}
+		channels[modelID] = cmdlib.ChannelInfo{ImageURL: m.Thumb}
 	}
 	return channels, nil
 }
 
 // QueryChannelListStatuses is not implemented for online list checkers
-func (c *CamSodaChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+func (c *CamSodaChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfoWithStatus, error) {
 	return nil, cmdlib.ErrNotImplemented
 }
 

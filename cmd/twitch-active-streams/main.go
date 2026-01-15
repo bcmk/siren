@@ -33,7 +33,7 @@ func main() {
 			"client_id":     *clientID,
 			"client_secret": *secret,
 		}})
-	channels, err := checker.QueryOnlineChannels(cmdlib.CheckOnline)
+	channels, err := checker.QueryOnlineChannels()
 	if err != nil {
 		fmt.Printf("error occurred: %v\n", err)
 		return
