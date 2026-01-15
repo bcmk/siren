@@ -333,13 +333,20 @@ func (d *Database) SetKnownUnsubscribedToUnknown(now int) []string {
 	var channelID string
 	d.MustQuery(
 		`
-			update channels set
-				prev_unconfirmed_status = unconfirmed_status,
-				prev_unconfirmed_timestamp = unconfirmed_timestamp,
-				unconfirmed_status = 0,
-				unconfirmed_timestamp = $1
-			where unconfirmed_status != 0
-			and channel_id not in (select distinct channel_id from subscriptions where confirmed = 1)
+			with updated as (
+				update channels set
+					prev_unconfirmed_status = unconfirmed_status,
+					prev_unconfirmed_timestamp = unconfirmed_timestamp,
+					unconfirmed_status = 0,
+					unconfirmed_timestamp = $1
+				where unconfirmed_status != 0
+				and channel_id not in (
+					select distinct channel_id from subscriptions where confirmed = 1
+				)
+				returning channel_id
+			)
+			insert into status_changes (channel_id, status, timestamp)
+			select channel_id, 0, $1 from updated
 			returning channel_id
 		`,
 		QueryParams{now},

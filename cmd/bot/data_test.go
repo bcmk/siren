@@ -11,11 +11,12 @@ import (
 )
 
 var testConfig = botconfig.Config{
-	CheckGID:           true,
-	MaxChannels:        3,
-	AdminID:            1,
-	HeavyUserRemainder: 1,
-	ErrorDenominator:   10,
+	CheckGID:             true,
+	MaxChannels:          3,
+	AdminID:              1,
+	HeavyUserRemainder:   1,
+	ErrorDenominator:     10,
+	OfflineNotifications: true,
 	StatusConfirmationSeconds: botconfig.StatusConfirmationSeconds{
 		Offline: 5,
 	},

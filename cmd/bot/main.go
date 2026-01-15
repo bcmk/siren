@@ -1449,28 +1449,32 @@ func (w *worker) handleStatusUpdates(result cmdlib.StatusResults, now int) (
 	w.httpQueriesDuration = result.Elapsed
 	w.unconfirmedOnlineChannels = filterOnline(result.Channels)
 
-	changesCount, confirmedChangesCount, notifications, elapsed = w.applyStatusUpdates(updates, now)
+	start := time.Now()
+	changesCount = len(updates)
+	fixedList := result.Request.Channels != nil
 
-	// For fixed list checkers, mark known unsubscribed channels as unknown
-	if result.Request.Channels != nil {
+	// For fixed list checkers, set unsubscribed channels to unknown status before inserting.
+	// This avoids timestamp ties when SetKnownUnsubscribedToUnknown runs later.
+	if fixedList {
+		subscribedChannels := w.db.SubscribedChannels()
+		for channelID, info := range updates {
+			if !subscribedChannels[channelID] && info.Status != cmdlib.StatusUnknown {
+				delete(w.unconfirmedOnlineChannels, channelID)
+				updates[channelID] = cmdlib.ChannelInfo{Status: cmdlib.StatusUnknown}
+			}
+		}
+	}
+
+	statusChanges := w.toStatusChanges(updates, now)
+	w.db.InsertStatusChanges(statusChanges)
+
+	// For fixed list checkers, mark known unsubscribed channels as unknown.
+	// This handles channels that were already in the DB with non-unknown status.
+	if fixedList {
 		for _, channelID := range w.db.SetKnownUnsubscribedToUnknown(now) {
 			delete(w.unconfirmedOnlineChannels, channelID)
 		}
 	}
-	return
-}
-
-func (w *worker) applyStatusUpdates(updates map[string]cmdlib.ChannelInfo, now int) (
-	changesCount int,
-	confirmedChangesCount int,
-	notifications []db.Notification,
-	elapsed time.Duration,
-) {
-	start := time.Now()
-	changesCount = len(updates)
-
-	statusChanges := w.toStatusChanges(updates, now)
-	w.db.InsertStatusChanges(statusChanges)
 
 	confirmedStatusChanges := w.db.ConfirmStatusChanges(
 		now,
@@ -1506,7 +1510,6 @@ func (w *worker) applyStatusUpdates(updates map[string]cmdlib.ChannelInfo, now i
 	}
 
 	confirmedChangesCount = len(confirmedStatusChanges)
-
 	elapsed = time.Since(start)
 	return
 }
