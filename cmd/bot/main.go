@@ -548,7 +548,7 @@ func (w *worker) initCache() {
 		w.unconfirmedOnlineChannels[channelID] = cmdlib.ChannelInfo{}
 	}
 	elapsed := time.Since(start)
-	linf("cache initialized in %d ms", elapsed.Milliseconds())
+	linf("cache initialized with %d online channels in %d ms", len(w.unconfirmedOnlineChannels), elapsed.Milliseconds())
 }
 
 // changedStatusesFromDB compares statuses against the database and returns only those that changed.
