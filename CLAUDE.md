@@ -36,3 +36,6 @@
 - Migrations are in `internal/db/migrations.go`
 - When renaming a table, also rename its primary key constraint.
   PostgreSQL auto-creates it as `tablename_pkey`.
+
+## Documentation
+- Read `docs/status-changes.md` before modifying status handling code

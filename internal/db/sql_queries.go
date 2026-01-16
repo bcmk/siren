@@ -277,7 +277,7 @@ func (d *Database) UnconfirmedStatusesForChannels(channelIDs []string) map[strin
 		`
 			select channel_id, unconfirmed_status, unconfirmed_timestamp
 			from channels
-			where channel_id = any($1) and unconfirmed_timestamp > 0
+			where channel_id = any($1)
 		`,
 		QueryParams{channelIDs},
 		ScanTo{&statusChange.ChannelID, &statusChange.Status, &statusChange.Timestamp},

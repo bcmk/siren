@@ -96,11 +96,11 @@ func (c *TwitchChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, er
 	return c.checkAllOnline(helixClient)
 }
 
-// QueryChannelListStatuses returns statuses for specific Twitch channels
-func (c *TwitchChecker) QueryChannelListStatuses(
+// QueryFixedListOnlineChannels returns statuses for specific Twitch channels
+func (c *TwitchChecker) QueryFixedListOnlineChannels(
 	channels []string,
-	checkMode cmdlib.CheckMode,
-) (map[string]cmdlib.ChannelInfoWithStatus, error) {
+	_ cmdlib.CheckMode,
+) (map[string]cmdlib.ChannelInfo, error) {
 	client := c.ClientsLoop.NextClient()
 	helixClient, err := helix.NewClient(&helix.Options{
 		ClientID:     c.SpecificConfig["client_id"],
@@ -117,10 +117,26 @@ func (c *TwitchChecker) QueryChannelListStatuses(
 
 	helixClient.SetAppAccessToken(accessResponse.Data.AccessToken)
 
-	if checkMode == cmdlib.CheckOnline {
-		return c.checkOnlineMany(helixClient, channels)
+	return c.checkOnlineMany(helixClient, channels)
+}
+
+// QueryFixedListStatuses checks if specific Twitch channels exist
+func (c *TwitchChecker) QueryFixedListStatuses(channels []string, _ cmdlib.CheckMode) (map[string]cmdlib.ChannelInfoWithStatus, error) {
+	client := c.ClientsLoop.NextClient()
+	helixClient, err := helix.NewClient(&helix.Options{
+		ClientID:     c.SpecificConfig["client_id"],
+		ClientSecret: c.SpecificConfig["client_secret"],
+		HTTPClient:   client.Client,
+	})
+	if err != nil {
+		return nil, err
+	}
+	accessResponse, err := requestAppAccessToken(helixClient)
+	if err != nil {
+		return nil, err
 	}
 
+	helixClient.SetAppAccessToken(accessResponse.Data.AccessToken)
 	return c.checkExistingMany(helixClient, channels)
 }
 
@@ -129,8 +145,8 @@ func thumbnail(s string) string {
 	return strings.Replace(s, "{height}", "720", 1)
 }
 
-func (c *TwitchChecker) checkOnlineMany(client *helix.Client, channels []string) (map[string]cmdlib.ChannelInfoWithStatus, error) {
-	result := map[string]cmdlib.ChannelInfoWithStatus{}
+func (c *TwitchChecker) checkOnlineMany(client *helix.Client, channels []string) (map[string]cmdlib.ChannelInfo, error) {
+	result := map[string]cmdlib.ChannelInfo{}
 	for _, chunk := range chunks(channels, 100) {
 		streamsResponse, err := client.GetStreams(&helix.StreamsParams{
 			First:      100,
@@ -144,8 +160,7 @@ func (c *TwitchChecker) checkOnlineMany(client *helix.Client, channels []string)
 		}
 		for _, s := range streamsResponse.Data.Streams {
 			name := strings.ToLower(s.UserLogin)
-			result[name] = cmdlib.ChannelInfoWithStatus{
-				Status:   cmdlib.StatusOnline,
+			result[name] = cmdlib.ChannelInfo{
 				ImageURL: thumbnail(s.ThumbnailURL),
 			}
 		}

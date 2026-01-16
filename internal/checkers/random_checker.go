@@ -43,8 +43,8 @@ func (c *RandomChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, er
 	return channels, nil
 }
 
-// QueryChannelListStatuses is not implemented for online list checkers
-func (c *RandomChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfoWithStatus, error) {
+// QueryFixedListOnlineChannels is not implemented for online list checkers
+func (c *RandomChecker) QueryFixedListOnlineChannels([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
 	return nil, cmdlib.ErrNotImplemented
 }
 

@@ -19,11 +19,13 @@
       "Bash(git log:*)",
       "Bash(git show:*)",
       "Bash(git status:*)",
+      "Bash(git ls-tree:*)",
       "Bash(cat:*)",
       "Bash(sed:*)",
       "Bash(grep:*)",
       "Bash(find:*)",
-      "Bash(printf:*)"
+      "Bash(printf:*)",
+      "Bash(xxd:*)"
     ]
   }
 }

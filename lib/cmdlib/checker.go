@@ -37,33 +37,33 @@ func (r OnlineListResults) isCheckerResults()            {}
 func (r OnlineListResults) ResultElapsed() time.Duration { return r.Elapsed } //nolint:revive
 func (r OnlineListResults) ResultError() bool            { return r.Error }   //nolint:revive
 
-// FixedListRequest requests statuses for specific channels
-type FixedListRequest struct {
+// FixedListOnlineRequest requests statuses for specific channels
+type FixedListOnlineRequest struct {
 	Channels  map[string]bool
 	ResultsCh chan<- CheckerResults
 }
 
-func (r *FixedListRequest) isStatusRequest() {}
+func (r *FixedListOnlineRequest) isStatusRequest() {}
 
-// FixedListResults contains results for FixedListRequest
-type FixedListResults struct {
+// FixedListOnlineResults contains results for FixedListOnlineRequest
+type FixedListOnlineResults struct {
 	RequestedChannels map[string]bool
-	Channels          map[string]ChannelInfoWithStatus
+	Channels          map[string]ChannelInfo
 	Elapsed           time.Duration
 	Error             bool
 }
 
-func (r FixedListResults) isCheckerResults()            {}
-func (r FixedListResults) ResultElapsed() time.Duration { return r.Elapsed } //nolint:revive
-func (r FixedListResults) ResultError() bool            { return r.Error }   //nolint:revive
+func (r FixedListOnlineResults) isCheckerResults()            {}
+func (r FixedListOnlineResults) ResultElapsed() time.Duration { return r.Elapsed } //nolint:revive
+func (r FixedListOnlineResults) ResultError() bool            { return r.Error }   //nolint:revive
 
-// ExistenceListRequest checks if specific channels exist
-type ExistenceListRequest struct {
+// FixedListStatusRequest checks if specific channels exist
+type FixedListStatusRequest struct {
 	Channels  map[string]bool
 	ResultsCh chan<- ExistenceListResults
 }
 
-func (r *ExistenceListRequest) isStatusRequest() {}
+func (r *FixedListStatusRequest) isStatusRequest() {}
 
 // ExistenceListResults contains results for ExistenceListRequest
 type ExistenceListResults struct {
@@ -104,7 +104,8 @@ type CheckerConfig struct {
 type Checker interface {
 	CheckStatusSingle(channelID string) StatusKind
 	QueryOnlineChannels() (map[string]ChannelInfo, error)
-	QueryChannelListStatuses(channels []string, checkMode CheckMode) (map[string]ChannelInfoWithStatus, error)
+	QueryFixedListOnlineChannels(channels []string, checkMode CheckMode) (map[string]ChannelInfo, error)
+	QueryFixedListStatuses(channels []string, checkMode CheckMode) (map[string]ChannelInfoWithStatus, error)
 	Init(config CheckerConfig)
 	PushStatusRequest(request StatusRequest) error
 	UsesFixedList() bool
@@ -134,6 +135,12 @@ func (c *CheckerCommon) PushStatusRequest(request StatusRequest) error {
 	default:
 		return ErrFullQueue
 	}
+}
+
+// QueryFixedListStatuses returns ErrNotImplemented by default.
+// Checkers that support querying channel existence should override this.
+func (c *CheckerCommon) QueryFixedListStatuses(_ []string, _ CheckMode) (map[string]ChannelInfoWithStatus, error) {
+	return nil, ErrNotImplemented
 }
 
 // Init initializes checker common fields
@@ -178,74 +185,50 @@ func StartCheckerDaemon(checker Checker) {
 					Ldbg("got statuses: %d", len(onlineChannels))
 				}
 				req.ResultsCh <- OnlineListResults{Channels: onlineChannels, Elapsed: elapsed}
-			case *FixedListRequest:
-				channels, err := queryChannelList(checker, req.Channels, CheckOnline)
+			case *FixedListOnlineRequest:
+				channels, err := checker.QueryFixedListOnlineChannels(setToSlice(req.Channels), CheckOnline)
 				if err != nil {
 					Lerr("%v", err)
-					req.ResultsCh <- FixedListResults{Error: true}
+					req.ResultsCh <- FixedListOnlineResults{Error: true}
 					continue
+				}
+				filtered := make(map[string]ChannelInfo, len(req.Channels))
+				for channelID := range req.Channels {
+					if info, ok := channels[channelID]; ok {
+						filtered[channelID] = info
+					}
 				}
 				elapsed := time.Since(start)
 				if checker.Debug() {
 					Ldbg("got statuses: %d", len(channels))
 				}
-				req.ResultsCh <- FixedListResults{
+				req.ResultsCh <- FixedListOnlineResults{
 					RequestedChannels: req.Channels,
-					Channels:          channels,
+					Channels:          filtered,
 					Elapsed:           elapsed,
 				}
-			case *ExistenceListRequest:
-				channels, err := queryChannelList(checker, req.Channels, CheckStatuses)
+			case *FixedListStatusRequest:
+				channels, err := checker.QueryFixedListStatuses(setToSlice(req.Channels), CheckStatuses)
 				if err != nil {
 					Lerr("%v", err)
 					req.ResultsCh <- ExistenceListResults{Error: true}
 					continue
 				}
+				filtered := make(map[string]ChannelInfoWithStatus, len(req.Channels))
+				for channelID := range req.Channels {
+					if info, ok := channels[channelID]; ok {
+						filtered[channelID] = info
+					}
+				}
 				elapsed := time.Since(start)
 				if checker.Debug() {
 					Ldbg("got statuses: %d", len(channels))
 				}
-				req.ResultsCh <- ExistenceListResults{Channels: channels, Elapsed: elapsed}
+				req.ResultsCh <- ExistenceListResults{Channels: filtered, Elapsed: elapsed}
 			}
 			time.Sleep(checker.RequestInterval())
 		}
 	}()
-}
-
-func toChannelInfoWithStatus(channels map[string]ChannelInfo, status StatusKind) map[string]ChannelInfoWithStatus {
-	result := make(map[string]ChannelInfoWithStatus, len(channels))
-	for k, v := range channels {
-		result[k] = ChannelInfoWithStatus{Status: status, ImageURL: v.ImageURL}
-	}
-	return result
-}
-
-func queryChannelList(
-	checker Checker,
-	requestChannels map[string]bool,
-	checkMode CheckMode,
-) (map[string]ChannelInfoWithStatus, error) {
-	channels, err := checker.QueryChannelListStatuses(setToSlice(requestChannels), checkMode)
-	if errors.Is(err, ErrNotImplemented) {
-		onlineChannels, onlineErr := checker.QueryOnlineChannels()
-		if onlineErr != nil {
-			return nil, onlineErr
-		}
-		channels = toChannelInfoWithStatus(onlineChannels, StatusOnline)
-		err = nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	filtered := make(map[string]ChannelInfoWithStatus, len(requestChannels))
-	for channelID := range requestChannels {
-		if info, ok := channels[channelID]; ok {
-			filtered[channelID] = info
-		} else {
-			filtered[channelID] = ChannelInfoWithStatus{Status: StatusUnknown}
-		}
-	}
-	return filtered, nil
 }
 
 // DoGetRequest performs a GET request respecting the configuration

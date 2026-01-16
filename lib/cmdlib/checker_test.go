@@ -34,8 +34,17 @@ func (c *testOnlineListChecker) QueryOnlineChannels() (map[string]ChannelInfo, e
 	return channels, nil
 }
 
-func (c *testOnlineListChecker) QueryChannelListStatuses([]string, CheckMode) (map[string]ChannelInfoWithStatus, error) {
-	return nil, ErrNotImplemented
+func (c *testOnlineListChecker) QueryFixedListOnlineChannels(channels []string, _ CheckMode) (map[string]ChannelInfo, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+	result := map[string]ChannelInfo{}
+	for _, ch := range channels {
+		if c.online[ch] {
+			result[ch] = ChannelInfo{}
+		}
+	}
+	return result, nil
 }
 
 // UsesFixedList returns false for online list checkers
@@ -48,27 +57,27 @@ func TestOnlineListCheckerHandlesFixedList(t *testing.T) {
 	StartCheckerDaemon(checker)
 
 	checker.online = toSet("a", "b")
-	if err := checker.PushStatusRequest(&FixedListRequest{
+	if err := checker.PushStatusRequest(&FixedListOnlineRequest{
 		ResultsCh: resultsCh,
 		Channels:  toSet("a", "c"),
 	}); err != nil {
 		t.Errorf("cannot query updates, %v", err)
 		return
 	}
-	result := (<-resultsCh).(FixedListResults)
+	result := (<-resultsCh).(FixedListOnlineResults)
 	if result.Error {
 		t.Error("unexpected error")
 	}
-	if result.Channels["a"].Status != StatusOnline {
-		t.Errorf("expected a to be online, got %v", result.Channels["a"].Status)
+	if _, ok := result.Channels["a"]; !ok {
+		t.Error("expected a to be in channels (online)")
 	}
-	// c was queried but not returned by checker, should be reported as unknown
-	if result.Channels["c"].Status != StatusUnknown {
-		t.Errorf("expected c to be unknown, got %v", result.Channels["c"].Status)
+	// c was queried but not online, should not be in the results
+	if _, ok := result.Channels["c"]; ok {
+		t.Error("expected c to not be in channels (not online)")
 	}
 	// b was online but not queried, should not be in the results
 	if _, ok := result.Channels["b"]; ok {
-		t.Errorf("expected b to not be in channels, got %v", result.Channels["b"])
+		t.Error("expected b to not be in channels (not queried)")
 	}
 }
 

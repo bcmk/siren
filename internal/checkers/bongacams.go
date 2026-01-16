@@ -72,8 +72,8 @@ func (c *BongaCamsChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo,
 	return channels, nil
 }
 
-// QueryChannelListStatuses is not implemented for online list checkers
-func (c *BongaCamsChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfoWithStatus, error) {
+// QueryFixedListOnlineChannels is not implemented for online list checkers
+func (c *BongaCamsChecker) QueryFixedListOnlineChannels([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
 	return nil, cmdlib.ErrNotImplemented
 }
 

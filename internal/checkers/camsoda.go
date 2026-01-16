@@ -67,8 +67,8 @@ func (c *CamSodaChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, e
 	return channels, nil
 }
 
-// QueryChannelListStatuses is not implemented for online list checkers
-func (c *CamSodaChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfoWithStatus, error) {
+// QueryFixedListOnlineChannels is not implemented for online list checkers
+func (c *CamSodaChecker) QueryFixedListOnlineChannels([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
 	return nil, cmdlib.ErrNotImplemented
 }
 

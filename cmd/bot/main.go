@@ -551,27 +551,6 @@ func (w *worker) initCache() {
 	linf("cache initialized with %d online channels in %d ms", len(w.unconfirmedOnlineChannels), elapsed.Milliseconds())
 }
 
-// changedStatusesFromDB compares statuses against the database and returns only those that changed.
-func (w *worker) changedStatusesFromDB(
-	resultChannels map[string]cmdlib.ChannelInfoWithStatus,
-) []db.StatusChange {
-	var channelIDs []string
-	for channelID := range resultChannels {
-		channelIDs = append(channelIDs, channelID)
-	}
-	dbStatuses := w.db.UnconfirmedStatusesForChannels(channelIDs)
-	var updates []db.StatusChange
-	for channelID, info := range resultChannels {
-		if dbStatuses[channelID].Status != info.Status {
-			updates = append(updates, db.StatusChange{
-				ChannelID: channelID,
-				Status:    info.Status,
-			})
-		}
-	}
-	return updates
-}
-
 func (w *worker) notifyOfAddResults(queue chan outgoingPacket, notifications []db.Notification) {
 	for _, n := range notifications {
 		data := tplData{"channel": n.ChannelID}
@@ -893,15 +872,8 @@ func (w *worker) listChannels(endpoint string, chatID int64, now int) {
 // channelDuration calculates time since last status change for display
 // Returns duration since going offline (if offline) or since going online (if online)
 func (w *worker) channelDuration(c db.Channel, now int) *int {
-	if c.UnconfirmedStatus == cmdlib.StatusOnline {
-		// Channel is online — show duration since going online
+	if c.UnconfirmedStatus == cmdlib.StatusOnline || c.UnconfirmedStatus == cmdlib.StatusOffline {
 		if c.UnconfirmedTimestamp != 0 && c.PrevUnconfirmedStatus != cmdlib.StatusUnknown {
-			dur := now - c.UnconfirmedTimestamp
-			return &dur
-		}
-	} else {
-		// Channel is offline — show duration since going offline
-		if c.UnconfirmedTimestamp != 0 {
 			dur := now - c.UnconfirmedTimestamp
 			return &dur
 		}
@@ -1404,7 +1376,7 @@ func (w *worker) periodic() {
 func (w *worker) pushOnlineRequest() {
 	var request cmdlib.StatusRequest
 	if w.checker.UsesFixedList() {
-		request = &cmdlib.FixedListRequest{
+		request = &cmdlib.FixedListOnlineRequest{
 			ResultsCh: w.checkerResults,
 			Channels:  w.db.SubscribedChannels(),
 		}
@@ -1419,7 +1391,7 @@ func (w *worker) pushOnlineRequest() {
 }
 
 func (w *worker) pushExistenceRequest(channels map[string]bool) error {
-	err := w.checker.PushStatusRequest(&cmdlib.ExistenceListRequest{
+	err := w.checker.PushStatusRequest(&cmdlib.FixedListStatusRequest{
 		ResultsCh: w.existenceListResults,
 		Channels:  channels,
 	})
@@ -1466,12 +1438,56 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) (
 		}
 		w.unconfirmedOnlineChannels = r.Channels
 
-	case cmdlib.FixedListResults:
+	case cmdlib.FixedListOnlineResults:
 		w.httpQueriesDuration = r.Elapsed
-		w.unconfirmedOnlineChannels = filterOnline(r.Channels)
-		updates = w.changedStatusesFromDB(r.Channels)
 
-		// Set known channels that are not in the request to unknown.
+		// Went offline: was online but not in result (and was requested)
+		var maybeFirstOffline []string
+		for channelID := range w.unconfirmedOnlineChannels {
+			if _, inResult := r.Channels[channelID]; !inResult && r.RequestedChannels[channelID] {
+				updates = append(updates, db.StatusChange{
+					ChannelID: channelID,
+					Status:    cmdlib.StatusOffline,
+				})
+			}
+		}
+
+		// Collect channels that might need first offline status:
+		// requested, not in result, and never seen online
+		for channelID := range r.RequestedChannels {
+			_, inResult := r.Channels[channelID]
+			_, inCache := w.unconfirmedOnlineChannels[channelID]
+			if !inResult && !inCache {
+				maybeFirstOffline = append(maybeFirstOffline, channelID)
+			}
+		}
+
+		// First offline: exists in DB but never online, set offline if not already
+		if len(maybeFirstOffline) > 0 {
+			dbStatuses := w.db.UnconfirmedStatusesForChannels(maybeFirstOffline)
+			for _, channelID := range maybeFirstOffline {
+				if status, exists := dbStatuses[channelID]; exists && status.Status != cmdlib.StatusOffline {
+					updates = append(updates, db.StatusChange{
+						ChannelID: channelID,
+						Status:    cmdlib.StatusOffline,
+					})
+				}
+			}
+		}
+
+		// Went online: in result but wasn't online
+		for channelID := range r.Channels {
+			if _, inCache := w.unconfirmedOnlineChannels[channelID]; !inCache {
+				updates = append(updates, db.StatusChange{
+					ChannelID: channelID,
+					Status:    cmdlib.StatusOnline,
+				})
+			}
+		}
+
+		w.unconfirmedOnlineChannels = r.Channels
+
+		// Set known channels not in request to unknown
 		for channelID := range w.db.KnownChannels() {
 			if !r.RequestedChannels[channelID] {
 				delete(w.unconfirmedOnlineChannels, channelID)

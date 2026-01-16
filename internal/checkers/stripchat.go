@@ -223,8 +223,8 @@ func (c *StripchatChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo,
 	return channels, nil
 }
 
-// QueryChannelListStatuses is not implemented for online list checkers
-func (c *StripchatChecker) QueryChannelListStatuses([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfoWithStatus, error) {
+// QueryFixedListOnlineChannels is not implemented for online list checkers
+func (c *StripchatChecker) QueryFixedListOnlineChannels([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
 	return nil, cmdlib.ErrNotImplemented
 }
 

@@ -6,10 +6,20 @@ unknown (0), offline (1), or online (2).
 
 ## Storing status changes
 
-1. Normalize statuses
-2. For fixed list checkers, mark known channels without subscriptions as unknown
-3. Store online to offline transitions
-4. Store checker statuses that differ from DB
+Status changes are detected by comparing the in-memory cache of online channels
+(`unconfirmedOnlineChannels`) against checker results.
+
+### Online list checkers (e.g., Chaturbate)
+
+1. Was in cache but not in result → offline
+2. In result but not in cache → online
+
+### Fixed list checkers (e.g., Twitch)
+
+1. Was in cache, not in result, and was requested → offline
+2. In result but not in cache → online
+3. Not in cache, exists in DB, not in result, not already offline → offline
+4. Not requested known channel → unknown (unsubscribed)
 
 ## Denormalization
 
@@ -32,6 +42,26 @@ and update the denormalized fields in `channels`.
 
 Both `status_changes.status` and `channels.confirmed_status` are constrained
 to (0, 1, 2) — unknown, offline, online.
+
+## Invariant: status_changes and channels must be in sync
+
+The unconfirmed statuses in `channels`
+must always match the latest entries in `status_changes`.
+We use this invariant to ensure correctness.
+This invariant is verified by `checkInv` in tests.
+
+## First offline status
+
+For fixed list checkers (e.g., Twitch),
+the first offline status must be recorded after subscription
+even if the channel was never seen online.
+This is essential for calculating online duration.
+Without the initial offline timestamp,
+we cannot determine how long the channel has been streaming
+when we see it online for the first time.
+If we have only unknown -> online transition,
+the channel could have been online much longer than we detected,
+making duration data unreliable.
 
 ## Confirmation
 
