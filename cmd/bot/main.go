@@ -1501,20 +1501,16 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) (
 
 	w.db.InsertStatusChanges(updates, now)
 
-	confirmedStatusChanges := w.confirmStatusChanges(now)
+	confirmedStatusChanges := w.db.ConfirmStatusChanges(
+		now,
+		w.cfg.StatusConfirmationSeconds.Online,
+		w.cfg.StatusConfirmationSeconds.Offline,
+	)
 	confirmedChangesCount = len(confirmedStatusChanges)
 	notifications = w.buildNotifications(confirmedStatusChanges)
 	elapsed = time.Since(start)
 	changesCount = len(updates)
 	return
-}
-
-func (w *worker) confirmStatusChanges(now int) []db.ConfirmedStatusChange {
-	return w.db.ConfirmStatusChanges(
-		now,
-		w.cfg.StatusConfirmationSeconds.Online,
-		w.cfg.StatusConfirmationSeconds.Offline,
-	)
 }
 
 func (w *worker) buildNotifications(
