@@ -316,6 +316,15 @@ var migrations = []func(d *Database){
 		d.MustExec(`alter index ix_signals_channel_id rename to ix_subscriptions_channel_id`)
 		d.MustExec(`alter index ix_signals_channel_id_confirmed rename to ix_subscriptions_channel_id_confirmed`)
 	},
+	func(d *Database) {
+		d.MustExec(`drop index ix_channels_status_mismatch`)
+		d.MustExec(`
+			create index ix_channels_status_mismatch
+			on channels (channel_id)
+			include (unconfirmed_status, unconfirmed_timestamp, confirmed_status)
+			where confirmed_status != unconfirmed_status;
+		`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database

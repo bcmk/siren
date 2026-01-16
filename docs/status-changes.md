@@ -69,3 +69,10 @@ Confirmation adds a delay before notifying users of status changes.
 This prevents notification spam when channels flicker online/offline.
 A status is confirmed only after it remains stable for a configured duration.
 Unknown status confirmations are immediate since they don't generate notifications.
+
+## Indexes
+
+Status change insertion and confirmation are performance-critical —
+they run on every checker cycle and must complete quickly.
+When modifying these queries, ensure indexes are optimized for query performance
+(e.g., cover all required fields if index-only scans are possible).
