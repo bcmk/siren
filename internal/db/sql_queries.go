@@ -556,8 +556,12 @@ func (d *Database) IncrementReports(chatID int64) {
 }
 
 // ConfirmStatusChanges finds channels needing confirmation and updates them.
-// Returns the confirmed status changes.
-func (d *Database) ConfirmStatusChanges(now int, onlineSeconds int, offlineSeconds int) []StatusChange {
+// Returns the confirmed status changes with previous status.
+func (d *Database) ConfirmStatusChanges(
+	now int,
+	onlineSeconds int,
+	offlineSeconds int,
+) []ConfirmedStatusChange {
 	// PostgreSQL uses ix_channels_status_mismatch partial index for select but
 	// not for update — we use a temp table to work around this.
 	done := d.Measure("db: confirm status changes")
@@ -571,7 +575,7 @@ func (d *Database) ConfirmStatusChanges(now int, onlineSeconds int, offlineSecon
 		context.Background(),
 		`
 			create temp table to_confirm on commit drop as
-			select channel_id, unconfirmed_status
+			select channel_id, unconfirmed_status, confirmed_status
 			from channels
 			where confirmed_status != unconfirmed_status
 			and (
@@ -593,14 +597,17 @@ func (d *Database) ConfirmStatusChanges(now int, onlineSeconds int, offlineSecon
 		`)
 	checkErr(err)
 
-	rows, err := tx.Query(context.Background(), `select channel_id, unconfirmed_status from to_confirm`)
+	rows, err := tx.Query(
+		context.Background(),
+		`select channel_id, unconfirmed_status, confirmed_status from to_confirm`,
+	)
 	checkErr(err)
 	defer rows.Close()
 
-	var result []StatusChange
+	var result []ConfirmedStatusChange
 	for rows.Next() {
-		var change StatusChange
-		checkErr(rows.Scan(&change.ChannelID, &change.Status))
+		var change ConfirmedStatusChange
+		checkErr(rows.Scan(&change.ChannelID, &change.Status, &change.PrevStatus))
 		change.Timestamp = now
 		result = append(result, change)
 	}

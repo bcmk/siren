@@ -61,6 +61,14 @@ type StatusChange struct {
 	Timestamp int
 }
 
+// ConfirmedStatusChange represents a confirmed status change with previous status
+type ConfirmedStatusChange struct {
+	ChannelID  string
+	Status     cmdlib.StatusKind
+	PrevStatus cmdlib.StatusKind
+	Timestamp  int
+}
+
 // Subscription represents a subscription
 type Subscription struct {
 	ChatID    int64

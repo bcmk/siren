@@ -1509,7 +1509,7 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) (
 	return
 }
 
-func (w *worker) confirmStatusChanges(now int) []db.StatusChange {
+func (w *worker) confirmStatusChanges(now int) []db.ConfirmedStatusChange {
 	return w.db.ConfirmStatusChanges(
 		now,
 		w.cfg.StatusConfirmationSeconds.Online,
@@ -1517,7 +1517,9 @@ func (w *worker) confirmStatusChanges(now int) []db.StatusChange {
 	)
 }
 
-func (w *worker) buildNotifications(confirmedStatusChanges []db.StatusChange) []db.Notification {
+func (w *worker) buildNotifications(
+	confirmedStatusChanges []db.ConfirmedStatusChange,
+) []db.Notification {
 	confirmedChannelIDs := []string{}
 	for _, c := range confirmedStatusChanges {
 		confirmedChannelIDs = append(confirmedChannelIDs, c.ChannelID)
@@ -1526,6 +1528,11 @@ func (w *worker) buildNotifications(confirmedStatusChanges []db.StatusChange) []
 	var notifications []db.Notification
 	usersForChannels, endpointsForChannels := w.db.UsersForChannels(confirmedChannelIDs)
 	for _, c := range confirmedStatusChanges {
+		// Skip unknown -> offline transitions
+		// They don't represent meaningful events to users
+		if c.PrevStatus == cmdlib.StatusUnknown && c.Status == cmdlib.StatusOffline {
+			continue
+		}
 		users := usersForChannels[c.ChannelID]
 		endpoints := endpointsForChannels[c.ChannelID]
 		for i, user := range users {
