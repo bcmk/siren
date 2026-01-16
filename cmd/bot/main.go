@@ -1842,6 +1842,7 @@ func (w *worker) processSubsConfirmations(res cmdlib.ExistenceListResults) {
 		}
 	} else {
 		lerr("confirmations query failed")
+		w.db.ResetCheckingToUnconfirmed()
 	}
 	w.notifyOfAddResults(w.highPriorityMsg, nots)
 	w.db.StoreNotifications(nots)

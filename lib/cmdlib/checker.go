@@ -209,7 +209,13 @@ func StartCheckerDaemon(checker Checker) {
 				}
 			case *FixedListStatusRequest:
 				channels, err := checker.QueryFixedListStatuses(setToSlice(req.Channels), CheckStatuses)
-				if err != nil {
+				if errors.Is(err, ErrNotImplemented) {
+					// Checker does not support status queries — deny all as unknown
+					channels = make(map[string]ChannelInfoWithStatus, len(req.Channels))
+					for channelID := range req.Channels {
+						channels[channelID] = ChannelInfoWithStatus{Status: StatusUnknown}
+					}
+				} else if err != nil {
 					Lerr("%v", err)
 					req.ResultsCh <- ExistenceListResults{Error: true}
 					continue
