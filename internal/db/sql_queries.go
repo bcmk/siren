@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/bcmk/siren/lib/cmdlib"
 	"github.com/jackc/pgx/v5"
@@ -511,10 +512,23 @@ func (d *Database) LogReceivedMessage(timestamp int, endpoint string, chatID int
 		command)
 }
 
+// LogPerformance logs performance data for queries and updates
+func (d *Database) LogPerformance(timestamp int, kind PerformanceLogKind, durationMs int, data map[string]any) {
+	jsonData, err := json.Marshal(data)
+	checkErr(err)
+	d.MustExec(
+		"insert into performance_log (timestamp, kind, duration_ms, data) values ($1, $2, $3, $4)",
+		timestamp,
+		kind,
+		durationMs,
+		jsonData)
+}
+
 // MaintainBrinIndexes summarizes new values for BRIN indexes
 func (d *Database) MaintainBrinIndexes() {
 	d.MustExec("select brin_summarize_new_values('ix_sent_message_log_timestamp')")
 	d.MustExec("select brin_summarize_new_values('ix_received_message_log_timestamp')")
+	d.MustExec("select brin_summarize_new_values('ix_performance_log_timestamp')")
 }
 
 // MarkUnconfirmedAsChecking marks unconfirmed subscriptions as checking (0 -> 2)

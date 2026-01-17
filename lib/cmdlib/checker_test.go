@@ -64,8 +64,8 @@ func TestOnlineListCheckerHandlesFixedList(t *testing.T) {
 		t.Errorf("cannot query updates, %v", err)
 		return
 	}
-	result := (<-resultsCh).(FixedListOnlineResults)
-	if result.Error {
+	result := (<-resultsCh).(*FixedListOnlineResults)
+	if result.Failed() {
 		t.Error("unexpected error")
 	}
 	if _, ok := result.Channels["a"]; !ok {
@@ -93,7 +93,7 @@ func TestOnlineListCheckerError(t *testing.T) {
 		return
 	}
 	result := <-resultsCh
-	if !result.ResultError() {
+	if !result.Failed() {
 		t.Error("expected error")
 	}
 }

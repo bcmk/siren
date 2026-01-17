@@ -34,6 +34,23 @@ const (
 	MessagePacket PacketKind = 3
 )
 
+// PerformanceLogKind represents a performance log entry kind
+type PerformanceLogKind int
+
+const (
+	// PerformanceLogUpdateQuery represents a query for channel status updates
+	PerformanceLogUpdateQuery PerformanceLogKind = 0
+
+	// PerformanceLogExistenceQuery represents an existence check query
+	PerformanceLogExistenceQuery PerformanceLogKind = 3
+
+	// PerformanceLogUpdateProcessing represents status update processing
+	PerformanceLogUpdateProcessing PerformanceLogKind = 1
+
+	// PerformanceLogImageDownload represents an image download
+	PerformanceLogImageDownload PerformanceLogKind = 2
+)
+
 // User represents a chat
 type User struct {
 	ChatID               int64

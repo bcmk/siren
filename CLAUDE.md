@@ -28,6 +28,10 @@
 - Run `go test ./...` to ensure changes work
 - Ask before modifying tests — explain what needs changing and why
 
+## Build
+- When building binaries, place them in the command's directory,
+  e.g. `go build -o cmd/bot/ ./cmd/bot`
+
 ## Platform Notes
 - GNU sed is installed as `sed` (no empty string needed for `-i`)
 - Don't use `cat -A` (macOS cat doesn't support it)

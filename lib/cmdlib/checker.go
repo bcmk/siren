@@ -15,8 +15,9 @@ type StatusRequest interface {
 // CheckerResults is the interface for status results
 type CheckerResults interface {
 	isCheckerResults()
-	ResultElapsed() time.Duration
-	ResultError() bool
+	Duration() time.Duration
+	Failed() bool
+	Count() int
 }
 
 // OnlineListRequest requests statuses for all online channels
@@ -29,13 +30,30 @@ func (r *OnlineListRequest) isStatusRequest() {}
 // OnlineListResults contains results for OnlineListRequest
 type OnlineListResults struct {
 	Channels map[string]ChannelInfo
-	Elapsed  time.Duration
-	Error    bool
+	duration time.Duration
+	failed   bool
 }
 
-func (r OnlineListResults) isCheckerResults()            {}
-func (r OnlineListResults) ResultElapsed() time.Duration { return r.Elapsed } //nolint:revive
-func (r OnlineListResults) ResultError() bool            { return r.Error }   //nolint:revive
+func (r *OnlineListResults) isCheckerResults() {}
+
+// Duration returns the elapsed time for the request.
+func (r *OnlineListResults) Duration() time.Duration { return r.duration }
+
+// Failed returns whether the request failed.
+func (r *OnlineListResults) Failed() bool { return r.failed }
+
+// Count returns the number of channels in the result.
+func (r *OnlineListResults) Count() int { return len(r.Channels) }
+
+// NewOnlineListResults creates a successful OnlineListResults.
+func NewOnlineListResults(channels map[string]ChannelInfo, duration time.Duration) *OnlineListResults {
+	return &OnlineListResults{Channels: channels, duration: duration}
+}
+
+// NewOnlineListResultsFailed creates a failed OnlineListResults.
+func NewOnlineListResultsFailed() *OnlineListResults {
+	return &OnlineListResults{failed: true}
+}
 
 // FixedListOnlineRequest requests statuses for specific channels
 type FixedListOnlineRequest struct {
@@ -49,18 +67,43 @@ func (r *FixedListOnlineRequest) isStatusRequest() {}
 type FixedListOnlineResults struct {
 	RequestedChannels map[string]bool
 	Channels          map[string]ChannelInfo
-	Elapsed           time.Duration
-	Error             bool
+	duration          time.Duration
+	failed            bool
 }
 
-func (r FixedListOnlineResults) isCheckerResults()            {}
-func (r FixedListOnlineResults) ResultElapsed() time.Duration { return r.Elapsed } //nolint:revive
-func (r FixedListOnlineResults) ResultError() bool            { return r.Error }   //nolint:revive
+func (r *FixedListOnlineResults) isCheckerResults() {}
+
+// Duration returns the elapsed time for the request.
+func (r *FixedListOnlineResults) Duration() time.Duration { return r.duration }
+
+// Failed returns whether the request failed.
+func (r *FixedListOnlineResults) Failed() bool { return r.failed }
+
+// Count returns the number of channels in the result.
+func (r *FixedListOnlineResults) Count() int { return len(r.Channels) }
+
+// NewFixedListOnlineResults creates a successful FixedListOnlineResults.
+func NewFixedListOnlineResults(
+	requestedChannels map[string]bool,
+	channels map[string]ChannelInfo,
+	duration time.Duration,
+) *FixedListOnlineResults {
+	return &FixedListOnlineResults{
+		RequestedChannels: requestedChannels,
+		Channels:          channels,
+		duration:          duration,
+	}
+}
+
+// NewFixedListOnlineResultsFailed creates a failed FixedListOnlineResults.
+func NewFixedListOnlineResultsFailed() *FixedListOnlineResults {
+	return &FixedListOnlineResults{failed: true}
+}
 
 // FixedListStatusRequest checks if specific channels exist
 type FixedListStatusRequest struct {
 	Channels  map[string]bool
-	ResultsCh chan<- ExistenceListResults
+	ResultsCh chan<- *ExistenceListResults
 }
 
 func (r *FixedListStatusRequest) isStatusRequest() {}
@@ -68,8 +111,32 @@ func (r *FixedListStatusRequest) isStatusRequest() {}
 // ExistenceListResults contains results for ExistenceListRequest
 type ExistenceListResults struct {
 	Channels map[string]ChannelInfoWithStatus
-	Elapsed  time.Duration
-	Error    bool
+	duration time.Duration
+	failed   bool
+}
+
+func (r *ExistenceListResults) isCheckerResults() {}
+
+// Duration returns the elapsed time for the request.
+func (r *ExistenceListResults) Duration() time.Duration { return r.duration }
+
+// Failed returns whether the request failed.
+func (r *ExistenceListResults) Failed() bool { return r.failed }
+
+// Count returns the number of channels in the result.
+func (r *ExistenceListResults) Count() int { return len(r.Channels) }
+
+// NewExistenceListResults creates a successful ExistenceListResults.
+func NewExistenceListResults(
+	channels map[string]ChannelInfoWithStatus,
+	duration time.Duration,
+) *ExistenceListResults {
+	return &ExistenceListResults{Channels: channels, duration: duration}
+}
+
+// NewExistenceListResultsFailed creates a failed ExistenceListResults.
+func NewExistenceListResultsFailed() *ExistenceListResults {
+	return &ExistenceListResults{failed: true}
 }
 
 // ChannelInfo contains image URL for a channel
@@ -177,19 +244,19 @@ func StartCheckerDaemon(checker Checker) {
 				onlineChannels, err := checker.QueryOnlineChannels()
 				if err != nil {
 					Lerr("%v", err)
-					req.ResultsCh <- OnlineListResults{Error: true}
+					req.ResultsCh <- NewOnlineListResultsFailed()
 					continue
 				}
 				elapsed := time.Since(start)
 				if checker.Debug() {
 					Ldbg("got statuses: %d", len(onlineChannels))
 				}
-				req.ResultsCh <- OnlineListResults{Channels: onlineChannels, Elapsed: elapsed}
+				req.ResultsCh <- NewOnlineListResults(onlineChannels, elapsed)
 			case *FixedListOnlineRequest:
 				channels, err := checker.QueryFixedListOnlineChannels(setToSlice(req.Channels), CheckOnline)
 				if err != nil {
 					Lerr("%v", err)
-					req.ResultsCh <- FixedListOnlineResults{Error: true}
+					req.ResultsCh <- NewFixedListOnlineResultsFailed()
 					continue
 				}
 				filtered := make(map[string]ChannelInfo, len(req.Channels))
@@ -202,11 +269,7 @@ func StartCheckerDaemon(checker Checker) {
 				if checker.Debug() {
 					Ldbg("got statuses: %d", len(channels))
 				}
-				req.ResultsCh <- FixedListOnlineResults{
-					RequestedChannels: req.Channels,
-					Channels:          filtered,
-					Elapsed:           elapsed,
-				}
+				req.ResultsCh <- NewFixedListOnlineResults(req.Channels, filtered, elapsed)
 			case *FixedListStatusRequest:
 				channels, err := checker.QueryFixedListStatuses(setToSlice(req.Channels), CheckStatuses)
 				if errors.Is(err, ErrNotImplemented) {
@@ -217,7 +280,7 @@ func StartCheckerDaemon(checker Checker) {
 					}
 				} else if err != nil {
 					Lerr("%v", err)
-					req.ResultsCh <- ExistenceListResults{Error: true}
+					req.ResultsCh <- NewExistenceListResultsFailed()
 					continue
 				}
 				filtered := make(map[string]ChannelInfoWithStatus, len(req.Channels))
@@ -230,7 +293,7 @@ func StartCheckerDaemon(checker Checker) {
 				if checker.Debug() {
 					Ldbg("got statuses: %d", len(channels))
 				}
-				req.ResultsCh <- ExistenceListResults{Channels: filtered, Elapsed: elapsed}
+				req.ResultsCh <- NewExistenceListResults(filtered, elapsed)
 			}
 			time.Sleep(checker.RequestInterval())
 		}

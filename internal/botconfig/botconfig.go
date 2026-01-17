@@ -9,8 +9,6 @@ import (
 	"log"
 	"net"
 	"reflect"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -24,7 +22,6 @@ var checkErr = cmdlib.CheckErr
 
 type endpoint struct {
 	ListenPath          string   `mapstructure:"listen_path"`          // the path excluding domain to listen to, the good choice is "/your-telegram-bot-token"
-	StatPath            string   `mapstructure:"stat_path"`            // the path for statistics
 	WebhookDomain       string   `mapstructure:"webhook_domain"`       // the domain listening to the webhook
 	CertificatePath     string   `mapstructure:"certificate_path"`     // a path to your certificate, it is used to set up a webhook and to set up this HTTP server
 	BotToken            string   `mapstructure:"bot_token"`            // your Telegram bot token
@@ -57,11 +54,8 @@ type Config struct {
 	BlockThreshold                  int                       `mapstructure:"block_threshold"`                    // do not send a message to the user after being blocked by him this number of times
 	IntervalMs                      int                       `mapstructure:"interval_ms"`                        // queries interval per IP address for rate limited access
 	SourceIPAddresses               []string                  `mapstructure:"source_ip_addresses"`                // source IP addresses for rate limited access
-	DangerousErrorRate              string                    `mapstructure:"dangerous_error_rate"`               // dangerous error rate, warn admin if it is reached, format "1000/10000"
 	EnableCookies                   bool                      `mapstructure:"enable_cookies"`                     // enable cookies, it can be useful to mitigate rate limits
 	Headers                         [][2]string               `mapstructure:"headers"`                            // HTTP headers to make queries with
-	StatPassword                    string                    `mapstructure:"stat_password"`                      // password for statistics
-	ErrorReportingPeriodMinutes     int                       `mapstructure:"error_reporting_period_minutes"`     // the period of the error reports
 	Endpoints                       map[string]endpoint       `mapstructure:"endpoints"`                          // the endpoints by simple name, used for the support of the bots in different languages accessing the same database
 	HeavyUserRemainder              int                       `mapstructure:"heavy_user_remainder"`               // the maximum remainder of channels to treat a user as heavy
 	ReferralBonus                   int                       `mapstructure:"referral_bonus"`                     // number of additional subscriptions for a referrer
@@ -79,12 +73,7 @@ type Config struct {
 	NotificationsReadyPeriodSeconds int                       `mapstructure:"notifications_ready_period_seconds"` // notifications ready check period
 	ShowImages                      bool                      `mapstructure:"show_images"`                        // images support
 	WhitelistChats                  []int64                   `mapstructure:"whitelist_chats"`                    // if set, only these chats are processed
-
-	ErrorThreshold   int
-	ErrorDenominator int
 }
-
-var fractionRegexp = regexp.MustCompile(`^(\d+)/(\d+)$`)
 
 type configFile struct {
 	name     string
@@ -315,12 +304,6 @@ func checkConfig(cfg *Config) error {
 			return errors.New("configure specific_config/user_id")
 		}
 	}
-	if cfg.StatPassword == "" {
-		return errors.New("configure stat_password")
-	}
-	if cfg.ErrorReportingPeriodMinutes == 0 {
-		return errors.New("configure error_reporting_period_minutes")
-	}
 	if cfg.HeavyUserRemainder == 0 {
 		return errors.New("configure heavy_user_remainder")
 	}
@@ -344,27 +327,6 @@ func checkConfig(cfg *Config) error {
 	}
 	if cfg.NotificationsReadyPeriodSeconds == 0 {
 		return errors.New("configure notifications_ready_period_seconds")
-	}
-
-	if m := fractionRegexp.FindStringSubmatch(cfg.DangerousErrorRate); len(m) == 3 {
-		errorThreshold, err := strconv.ParseInt(m[1], 10, 0)
-		if err != nil {
-			return err
-		}
-
-		errorDenominator, err := strconv.ParseInt(m[2], 10, 0)
-		if err != nil {
-			return err
-		}
-
-		if errorDenominator == 0 {
-			return errors.New(`configure dangerous_errors_rate as "x/y", where y > 0`)
-		}
-
-		cfg.ErrorThreshold = int(errorThreshold)
-		cfg.ErrorDenominator = int(errorDenominator)
-	} else {
-		return errors.New("configure dangerous_error_rate")
 	}
 
 	return nil

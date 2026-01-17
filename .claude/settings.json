@@ -1,9 +1,9 @@
 {
   "permissions": {
     "deny": [
-      "Read(./**/*.ignore)",
-      "Read(./**/*.ignore.*)",
-      "Read(./.idea/**)"
+      "Read(//**/*.ignore)",
+      "Read(//**/*.ignore.*)",
+      "Read(//**/.idea/**)"
     ],
     "allow": [
       "Edit",

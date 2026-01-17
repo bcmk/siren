@@ -15,7 +15,6 @@ var testConfig = botconfig.Config{
 	MaxChannels:          3,
 	AdminID:              1,
 	HeavyUserRemainder:   1,
-	ErrorDenominator:     10,
 	OfflineNotifications: true,
 	StatusConfirmationSeconds: botconfig.StatusConfirmationSeconds{
 		Offline: 5,
@@ -87,7 +86,6 @@ func newTestWorker() *testWorker {
 			tpl:                    map[string]*template.Template{"test": tpl},
 			lowPriorityMsg:         make(chan outgoingPacket, 10000),
 			highPriorityMsg:        make(chan outgoingPacket, 10000),
-			unsuccessfulRequests:   make([]bool, testConfig.ErrorDenominator),
 			channelIDPreprocessing: cmdlib.CanonicalChannelID,
 			channelIDRegexp:        cmdlib.CommonChannelIDRegexp,
 		},

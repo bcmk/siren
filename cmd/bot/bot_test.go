@@ -164,7 +164,7 @@ func TestUpdateNotifications(t *testing.T) {
 
 	// Use fixed list checker mode for these tests
 	// Channel "a" goes online — 2 notifications (chat 1 and chat 3)
-	result := cmdlib.FixedListOnlineResults{
+	result := &cmdlib.FixedListOnlineResults{
 		RequestedChannels: allChannels,
 		Channels:          map[string]cmdlib.ChannelInfo{"a": {}},
 	}
@@ -687,7 +687,7 @@ func TestProcessSubsConfirmations(t *testing.T) {
 	)
 
 	// Process confirmations with checker results
-	w.processSubsConfirmations(cmdlib.ExistenceListResults{
+	w.processSubsConfirmations(&cmdlib.ExistenceListResults{
 		Channels: map[string]cmdlib.ChannelInfoWithStatus{
 			"online_model":          {Status: cmdlib.StatusOnline},
 			"offline_model":         {Status: cmdlib.StatusOffline},
@@ -920,7 +920,7 @@ func TestHandleStatusUpdates(t *testing.T) {
 	)
 
 	// Test with OnlineListResults
-	result := cmdlib.OnlineListResults{
+	result := &cmdlib.OnlineListResults{
 		Channels: map[string]cmdlib.ChannelInfo{"a": {ImageURL: "http://a.jpg"}},
 	}
 	changes, _, _, _ := w.handleCheckerResults(result, 100)
@@ -943,7 +943,7 @@ func TestHandleStatusUpdates(t *testing.T) {
 	checkInv(&w.worker, t)
 
 	// Test with FixedListOnlineResults — channel goes offline (not in Channels)
-	result2 := cmdlib.FixedListOnlineResults{
+	result2 := &cmdlib.FixedListOnlineResults{
 		RequestedChannels: map[string]bool{"a": true},
 		Channels:          map[string]cmdlib.ChannelInfo{}, // empty = "a" is offline
 	}
@@ -973,9 +973,7 @@ func TestHandleStatusUpdates(t *testing.T) {
 	checkInv(&w.worker, t)
 
 	// Test error case (should return early with zero values)
-	result3 := cmdlib.OnlineListResults{
-		Error: true,
-	}
+	result3 := cmdlib.NewOnlineListResultsFailed()
 	changes, confirmedChanges, nots, elapsed := w.handleCheckerResults(result3, 105)
 	if changes != 0 || confirmedChanges != 0 || len(nots) != 0 || elapsed != 0 {
 		t.Errorf(
@@ -984,9 +982,7 @@ func TestHandleStatusUpdates(t *testing.T) {
 	}
 
 	// Test error case with FixedListResults
-	result4 := cmdlib.FixedListOnlineResults{
-		Error: true,
-	}
+	result4 := cmdlib.NewFixedListOnlineResultsFailed()
 	changes, confirmedChanges, nots, elapsed = w.handleCheckerResults(result4, 106)
 	if changes != 0 || confirmedChanges != 0 || len(nots) != 0 || elapsed != 0 {
 		t.Errorf(
@@ -1010,7 +1006,7 @@ func TestUnsubscribeBeforeRestart(t *testing.T) {
 		"test", 1, "b", 1)
 
 	// Both channels come online
-	result := cmdlib.FixedListOnlineResults{
+	result := &cmdlib.FixedListOnlineResults{
 		RequestedChannels: map[string]bool{"a": true, "b": true},
 		Channels: map[string]cmdlib.ChannelInfo{
 			"a": {},
@@ -1036,7 +1032,7 @@ func TestUnsubscribeBeforeRestart(t *testing.T) {
 
 	// First query after restart — only "b" is subscribed.
 	// "a" is no longer in RequestedChannels since it's unsubscribed.
-	result2 := cmdlib.FixedListOnlineResults{
+	result2 := &cmdlib.FixedListOnlineResults{
 		RequestedChannels: map[string]bool{"b": true},
 		Channels: map[string]cmdlib.ChannelInfo{
 			"b": {},
@@ -1078,7 +1074,7 @@ func TestUnknownChannelFirstOfflineSaved(t *testing.T) {
 	// 2. Subscription is confirmed — checker returns offline status (Twitch returns Online|Offline)
 	// First, set subscription to "checking" state (confirmed=2) as queryUnconfirmedSubs would do
 	w.db.MustExec("update subscriptions set confirmed = 2 where channel_id = $1", "unknown_model")
-	w.processSubsConfirmations(cmdlib.ExistenceListResults{
+	w.processSubsConfirmations(&cmdlib.ExistenceListResults{
 		Channels: map[string]cmdlib.ChannelInfoWithStatus{
 			// Twitch returns Online|Offline when channel exists but is offline
 			"unknown_model": {Status: cmdlib.StatusOnline | cmdlib.StatusOffline},
@@ -1092,7 +1088,7 @@ func TestUnknownChannelFirstOfflineSaved(t *testing.T) {
 
 	// 3. First status update: offline
 	// Offline status SHOULD be saved so we can calculate online duration later
-	result := cmdlib.FixedListOnlineResults{
+	result := &cmdlib.FixedListOnlineResults{
 		RequestedChannels: map[string]bool{"unknown_model": true},
 		Channels:          map[string]cmdlib.ChannelInfo{}, // empty = offline
 	}
@@ -1286,7 +1282,7 @@ func TestStatusTransitions(t *testing.T) {
 
 			if tt.dbBefore != nil {
 				if tt.fixedList {
-					setupResult := cmdlib.FixedListOnlineResults{
+					setupResult := &cmdlib.FixedListOnlineResults{
 						RequestedChannels: map[string]bool{"ch": true, "always_online": true, "always_offline": true},
 						Channels:          map[string]cmdlib.ChannelInfo{"always_online": {}},
 					}
@@ -1295,7 +1291,7 @@ func TestStatusTransitions(t *testing.T) {
 					}
 					w.handleCheckerResults(setupResult, 100)
 				} else {
-					setupResult := cmdlib.OnlineListResults{
+					setupResult := &cmdlib.OnlineListResults{
 						Channels: map[string]cmdlib.ChannelInfo{"always_online": {}},
 					}
 					if *tt.dbBefore == cmdlib.StatusOnline {
@@ -1307,7 +1303,7 @@ func TestStatusTransitions(t *testing.T) {
 			}
 
 			if tt.fixedList {
-				result := cmdlib.FixedListOnlineResults{
+				result := &cmdlib.FixedListOnlineResults{
 					RequestedChannels: bgChannels,
 					Channels:          map[string]cmdlib.ChannelInfo{"always_online": {}},
 				}
@@ -1319,7 +1315,7 @@ func TestStatusTransitions(t *testing.T) {
 				}
 				w.handleCheckerResults(result, 101)
 			} else {
-				result := cmdlib.OnlineListResults{
+				result := &cmdlib.OnlineListResults{
 					Channels: map[string]cmdlib.ChannelInfo{"always_online": {}},
 				}
 				if tt.checkerStatus != nil && *tt.checkerStatus == cmdlib.StatusOnline {

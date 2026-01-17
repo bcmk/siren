@@ -55,40 +55,24 @@ type timeDiff struct {
 	Nanoseconds int
 }
 
-type statRequest struct {
-	endpoint string
-	writer   http.ResponseWriter
-	request  *http.Request
-	done     chan bool
-}
-
 type worker struct {
 	db                        db.Database
 	clients                   []*cmdlib.Client
 	bots                      map[string]*tg.BotAPI
 	cfg                       *botconfig.Config
-	httpQueriesDuration       time.Duration
-	updatesDuration           time.Duration
-	changesInPeriod           int
-	confirmedChangesInPeriod  int
 	tr                        map[string]*cmdlib.Translations
 	tpl                       map[string]*template.Template
 	trAds                     map[string]map[string]*cmdlib.Translation
 	tplAds                    map[string]*template.Template
 	channelIDPreprocessing    func(string) string
 	checker                   cmdlib.Checker
-	unsuccessfulRequests      []bool
-	unsuccessfulRequestsPos   int
-	downloadResults           chan bool
-	downloadErrors            []bool
-	downloadResultsPos        int
-	nextErrorReport           time.Time
+	imageDownloadLogs         chan imageDownloadLog
 	unconfirmedOnlineChannels map[string]cmdlib.ChannelInfo
 	botNames                  map[string]string
 	lowPriorityMsg            chan outgoingPacket
 	highPriorityMsg           chan outgoingPacket
 	outgoingMsgResults        chan msgSendResult
-	existenceListResults      chan cmdlib.ExistenceListResults
+	existenceListResults      chan *cmdlib.ExistenceListResults
 	checkerResults            chan cmdlib.CheckerResults
 	sendingNotifications      chan []db.Notification
 	sentNotifications         chan []db.Notification
@@ -144,6 +128,11 @@ type waitingUser struct {
 	endpoint string
 }
 
+type imageDownloadLog struct {
+	success    bool
+	durationMs int
+}
+
 func newWorker(cfg *botconfig.Config) *worker {
 	var err error
 
@@ -175,15 +164,13 @@ func newWorker(cfg *botconfig.Config) *worker {
 		tpl:                       tpl,
 		trAds:                     trAds,
 		tplAds:                    tplAds,
-		unsuccessfulRequests:      make([]bool, cfg.ErrorDenominator),
-		downloadErrors:            make([]bool, cfg.ErrorDenominator),
-		downloadResults:           make(chan bool),
+		imageDownloadLogs:         make(chan imageDownloadLog),
 		unconfirmedOnlineChannels: map[string]cmdlib.ChannelInfo{},
 		botNames:                  map[string]string{},
 		lowPriorityMsg:            make(chan outgoingPacket, 10000),
 		highPriorityMsg:           make(chan outgoingPacket, 10000),
 		outgoingMsgResults:        make(chan msgSendResult),
-		existenceListResults:      make(chan cmdlib.ExistenceListResults),
+		existenceListResults:      make(chan *cmdlib.ExistenceListResults),
 		checkerResults:            make(chan cmdlib.CheckerResults),
 		sendingNotifications:      make(chan []db.Notification, 1000),
 		sentNotifications:         make(chan []db.Notification),
@@ -898,14 +885,14 @@ func (w *worker) channelTimeDiff(c db.Channel, now int) *timeDiff {
 	return nil
 }
 
-func (w *worker) downloadSuccess(success bool) { w.downloadResults <- success }
-
 func (w *worker) downloadImage(url string) []byte {
+	start := time.Now()
 	imageBytes, err := w.downloadImageInternal(url)
+	elapsed := time.Since(start)
 	if err != nil {
 		lerr("cannot download image, %v", err)
 	}
-	w.downloadSuccess(err == nil)
+	w.imageDownloadLogs <- imageDownloadLog{success: err == nil, durationMs: int(elapsed.Milliseconds())}
 	return imageBytes
 }
 
@@ -1009,26 +996,6 @@ func (w *worker) feedback(endpoint string, chatID int64, text string, now int) {
 		finalText := fmt.Sprintf("Feedback from %d: %s", chatID, text)
 		w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, finalText, db.ReplyPacket)
 	}
-}
-
-func (w *worker) unsuccessfulRequestsCount() int {
-	var count = 0
-	for _, s := range w.unsuccessfulRequests {
-		if s {
-			count++
-		}
-	}
-	return count
-}
-
-func (w *worker) downloadErrorsCount() int {
-	var count = 0
-	for _, s := range w.downloadErrors {
-		if s {
-			count++
-		}
-	}
-	return count
 }
 
 func (w *worker) performanceStat(endpoint string, arguments string) {
@@ -1355,21 +1322,6 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 }
 
 func (w *worker) periodic() {
-	unsuccessfulRequestsCount := w.unsuccessfulRequestsCount()
-	now := time.Now()
-	if w.nextErrorReport.Before(now) && unsuccessfulRequestsCount > w.cfg.ErrorThreshold {
-		text := fmt.Sprintf("Dangerous error rate reached: %d/%d", unsuccessfulRequestsCount, w.cfg.ErrorDenominator)
-		w.sendText(
-			w.highPriorityMsg,
-			w.cfg.AdminEndpoint,
-			w.cfg.AdminID,
-			true,
-			true,
-			cmdlib.ParseRaw,
-			text,
-			db.MessagePacket)
-		w.nextErrorReport = now.Add(time.Minute * time.Duration(w.cfg.ErrorReportingPeriodMinutes))
-	}
 	w.pushOnlineRequest()
 }
 
@@ -1408,16 +1360,14 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) (
 	elapsed time.Duration,
 ) {
 	start := time.Now()
-	w.logQueryResult(result.ResultError())
-	if result.ResultError() {
+	if result.Failed() {
 		return
 	}
 
 	var updates []db.StatusChange
 
 	switch r := result.(type) {
-	case cmdlib.OnlineListResults:
-		w.httpQueriesDuration = r.Elapsed
+	case *cmdlib.OnlineListResults:
 		// Went offline: was online but not in result
 		for channelID := range w.unconfirmedOnlineChannels {
 			if _, inResult := r.Channels[channelID]; !inResult {
@@ -1438,9 +1388,7 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) (
 		}
 		w.unconfirmedOnlineChannels = r.Channels
 
-	case cmdlib.FixedListOnlineResults:
-		w.httpQueriesDuration = r.Elapsed
-
+	case *cmdlib.FixedListOnlineResults:
 		// Went offline: was online but not in result (and was requested)
 		var maybeFirstOffline []string
 		for channelID := range w.unconfirmedOnlineChannels {
@@ -1634,83 +1582,6 @@ func (w *worker) processTGUpdate(p incomingPacket) bool {
 	return false
 }
 
-func getRss() (int64, error) {
-	buf, err := os.ReadFile("/proc/self/statm")
-	if err != nil {
-		return 0, err
-	}
-
-	fields := strings.Split(string(buf), " ")
-	if len(fields) < 2 {
-		return 0, errors.New("cannot parse statm")
-	}
-
-	rss, err := strconv.ParseInt(fields[1], 10, 64)
-	if err != nil {
-		return 0, err
-	}
-
-	return rss * int64(os.Getpagesize()), err
-}
-
-func (w *worker) getStat() statistics {
-	measureDone := w.db.Measure("db: retrieving stats")
-	defer measureDone()
-	rss, _ := getRss()
-
-	return statistics{
-		QueriesDurationMilliseconds: int(w.httpQueriesDuration.Milliseconds()),
-		UpdatesDurationMilliseconds: int(w.updatesDuration.Milliseconds()),
-		ErrorRate:                   [2]int{w.unsuccessfulRequestsCount(), w.cfg.ErrorDenominator},
-		DownloadErrorRate:           [2]int{w.downloadErrorsCount(), w.cfg.ErrorDenominator},
-		Rss:                         rss / 1024,
-		ChangesInPeriod:             w.changesInPeriod,
-		ConfirmedChangesInPeriod:    w.confirmedChangesInPeriod,
-	}
-}
-
-func (w *worker) handleStat(endpoint string, statRequests chan statRequest) func(writer http.ResponseWriter, r *http.Request) {
-	return func(writer http.ResponseWriter, r *http.Request) {
-		command := statRequest{
-			endpoint: endpoint,
-			writer:   writer,
-			request:  r,
-			done:     make(chan bool),
-		}
-		statRequests <- command
-		<-command.done
-	}
-}
-
-func (w *worker) processStatCommand(writer http.ResponseWriter, r *http.Request, done chan bool) {
-	defer func() { done <- true }()
-	passwords, ok := r.URL.Query()["password"]
-	if !ok || len(passwords) < 1 {
-		return
-	}
-	password := passwords[0]
-	if password != w.cfg.StatPassword {
-		return
-	}
-	writer.WriteHeader(http.StatusOK)
-	writer.Header().Set("Content-Type", "application/json")
-
-	statJSON, err := json.MarshalIndent(w.getStat(), "", "    ")
-	checkErr(err)
-	_, err = writer.Write(statJSON)
-	if err != nil {
-		lerr("error on processing stat command, %v", err)
-	}
-}
-
-func (w *worker) handleStatEndpoints(statRequests chan statRequest) {
-	for n, p := range w.cfg.Endpoints {
-		if p.StatPath != "" {
-			http.HandleFunc(p.WebhookDomain+p.StatPath, w.handleStat(n, statRequests))
-		}
-	}
-}
-
 func (w *worker) incoming() chan incomingPacket {
 	result := make(chan incomingPacket)
 	for n, p := range w.cfg.Endpoints {
@@ -1737,15 +1608,6 @@ func getOurIDs(c *botconfig.Config) []int64 {
 		}
 	}
 	return ids
-}
-
-func (w *worker) logQueryResult(err bool) {
-	w.logSingleQueryResult(!err)
-}
-
-func (w *worker) logSingleQueryResult(success bool) {
-	w.unsuccessfulRequests[w.unsuccessfulRequestsPos] = !success
-	w.unsuccessfulRequestsPos = (w.unsuccessfulRequestsPos + 1) % w.cfg.ErrorDenominator
 }
 
 func (w *worker) maintainDB() {
@@ -1805,7 +1667,7 @@ func (w *worker) queryUnconfirmedSubs() {
 	}
 }
 
-func (w *worker) processSubsConfirmations(res cmdlib.ExistenceListResults) {
+func (w *worker) processSubsConfirmations(res *cmdlib.ExistenceListResults) {
 	channelsNumber := len(res.Channels)
 	ldbg("processing subscription confirmations for %d channels", channelsNumber)
 	confirmationsInWork := map[string][]db.Subscription{}
@@ -1816,7 +1678,7 @@ func (w *worker) processSubsConfirmations(res cmdlib.ExistenceListResults) {
 		db.ScanTo{&iter.Endpoint, &iter.ChannelID, &iter.ChatID},
 		func() { confirmationsInWork[iter.ChannelID] = append(confirmationsInWork[iter.ChannelID], iter) })
 	var nots []db.Notification
-	if !res.Error {
+	if !res.Failed() {
 		for channelID, info := range res.Channels {
 			for _, sub := range confirmationsInWork[channelID] {
 				if info.Status&(cmdlib.StatusOnline|cmdlib.StatusOffline|cmdlib.StatusDenied) != 0 {
@@ -1940,9 +1802,6 @@ func main() {
 	w.db.ResetNotificationSending()
 	w.db.ResetCheckingToUnconfirmed()
 
-	statRequests := make(chan statRequest)
-	w.handleStatEndpoints(statRequests)
-
 	var requestTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
 	var maintainDBTimerChannel <-chan time.Time
 	if w.cfg.MaintainDBPeriodSeconds != 0 {
@@ -1979,10 +1838,15 @@ func main() {
 		case result := <-w.checkerResults:
 			now := int(time.Now().Unix())
 			changesInPeriod, confirmedChangesInPeriod, notifications, elapsed := w.handleCheckerResults(result, now)
-			w.updatesDuration = elapsed
-			w.changesInPeriod = changesInPeriod
-			w.confirmedChangesInPeriod = confirmedChangesInPeriod
 			w.db.StoreNotifications(notifications)
+			w.db.LogPerformance(now, db.PerformanceLogUpdateQuery, int(result.Duration().Milliseconds()), map[string]any{
+				"failed": result.Failed(),
+				"count":  result.Count(),
+			})
+			w.db.LogPerformance(now, db.PerformanceLogUpdateProcessing, int(elapsed.Milliseconds()), map[string]any{
+				"unconfirmed_count": changesInPeriod,
+				"confirmed_count":   confirmedChangesInPeriod,
+			})
 			if w.cfg.Debug {
 				ldbg("status updates processed in %v", elapsed)
 			}
@@ -1992,8 +1856,6 @@ func main() {
 					return
 				}
 			}
-		case s := <-statRequests:
-			w.processStatCommand(s.writer, s.request, s.done)
 		case s := <-signals:
 			linf("got signal %v", s)
 			if s == syscall.SIGINT || s == syscall.SIGTERM || s == syscall.SIGABRT {
@@ -2014,15 +1876,22 @@ func main() {
 			}
 			w.db.LogSentMessage(r.timestamp, r.chatID, r.result, r.endpoint, r.priority, r.delay, r.kind)
 		case r := <-w.existenceListResults:
+			now := int(time.Now().Unix())
+			w.db.LogPerformance(now, db.PerformanceLogExistenceQuery, int(r.Duration().Milliseconds()), map[string]any{
+				"failed": r.Failed(),
+				"count":  r.Count(),
+			})
 			w.processSubsConfirmations(r)
 		case nots := <-w.sentNotifications:
 			for _, n := range nots {
 				w.db.DeleteNotification(n.ID)
 				w.db.IncrementReports(n.ChatID)
 			}
-		case r := <-w.downloadResults:
-			w.downloadErrors[w.downloadResultsPos] = !r
-			w.downloadResultsPos = (w.downloadResultsPos + 1) % w.cfg.ErrorDenominator
+		case r := <-w.imageDownloadLogs:
+			now := int(time.Now().Unix())
+			w.db.LogPerformance(now, db.PerformanceLogImageDownload, r.durationMs, map[string]any{
+				"failed": !r.success,
+			})
 		}
 	}
 }
