@@ -603,7 +603,12 @@ func (w *worker) notifyOfStatus(queue chan outgoingPacket, n db.Notification, im
 		temp := calcTimeDiff(*n.TimeDiff)
 		timeDiff = &temp
 	}
-	data := tplData{"channel": n.ChannelID, "time_diff": timeDiff}
+	data := tplData{
+		"channel":   n.ChannelID,
+		"time_diff": timeDiff,
+		"viewers":   n.Viewers,
+		"show_kind": n.ShowKind,
+	}
 	switch n.Status {
 	case cmdlib.StatusOnline:
 		if image == nil {
@@ -937,13 +942,16 @@ func (w *worker) listOnlineChannels(endpoint string, chatID int64, now int) {
 	}
 	var nots []db.Notification
 	for _, s := range online {
+		info := w.unconfirmedOnlineChannels[s.ChannelID]
 		not := db.Notification{
 			Priority:  1,
 			Endpoint:  endpoint,
 			ChatID:    chatID,
 			ChannelID: s.ChannelID,
 			Status:    cmdlib.StatusOnline,
-			ImageURL:  w.unconfirmedOnlineChannels[s.ChannelID].ImageURL,
+			ImageURL:  info.ImageURL,
+			Viewers:   info.Viewers,
+			ShowKind:  info.ShowKind,
 			TimeDiff:  w.channelDuration(s, now),
 			Kind:      db.ReplyPacket,
 		}
@@ -1479,6 +1487,7 @@ func (w *worker) buildNotifications(
 		}
 		users := usersForChannels[c.ChannelID]
 		endpoints := endpointsForChannels[c.ChannelID]
+		info := w.unconfirmedOnlineChannels[c.ChannelID]
 		for i, user := range users {
 			if (w.cfg.OfflineNotifications && user.OfflineNotifications) || c.Status != cmdlib.StatusOffline {
 				n := db.Notification{
@@ -1486,11 +1495,13 @@ func (w *worker) buildNotifications(
 					ChatID:    user.ChatID,
 					ChannelID: c.ChannelID,
 					Status:    c.Status,
+					Viewers:   info.Viewers,
+					ShowKind:  info.ShowKind,
 					Social:    user.ChatID > 0,
 					Sound:     c.Status == cmdlib.StatusOnline,
 					Kind:      db.NotificationPacket}
 				if user.ShowImages {
-					n.ImageURL = w.unconfirmedOnlineChannels[c.ChannelID].ImageURL
+					n.ImageURL = info.ImageURL
 				}
 				notifications = append(notifications, n)
 			}

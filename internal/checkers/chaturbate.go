@@ -28,8 +28,10 @@ func ChaturbateCanonicalModelID(name string) string {
 }
 
 type chaturbateModel struct {
-	Username string `json:"username"`
-	ImageURL string `json:"image_url"`
+	Username    string `json:"username"`
+	ImageURL    string `json:"image_url"`
+	CurrentShow string `json:"current_show"`
+	NumUsers    int    `json:"num_users"`
 }
 
 type chaturbateResponse struct {
@@ -103,6 +105,20 @@ func chaturbateRoomStatus(roomStatus string) cmdlib.StatusKind {
 	return cmdlib.StatusUnknown
 }
 
+func chaturbateShowKind(currentShow string) cmdlib.ShowKind {
+	switch currentShow {
+	case "public":
+		return cmdlib.ShowPublic
+	case "hidden":
+		return cmdlib.ShowHidden
+	case "private":
+		return cmdlib.ShowPrivate
+	case "away":
+		return cmdlib.ShowAway
+	}
+	return cmdlib.ShowUnknown
+}
+
 // QueryOnlineChannels returns Chaturbate online models
 func (c *ChaturbateChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, error) {
 	client := c.ClientsLoop.NextClient()
@@ -125,7 +141,12 @@ func (c *ChaturbateChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo
 	}
 	for _, m := range parsed {
 		modelID := strings.ToLower(m.Username)
-		channels[modelID] = cmdlib.ChannelInfo{ImageURL: m.ImageURL}
+		viewers := m.NumUsers
+		channels[modelID] = cmdlib.ChannelInfo{
+			ImageURL: m.ImageURL,
+			Viewers:  &viewers,
+			ShowKind: chaturbateShowKind(m.CurrentShow),
+		}
 	}
 	return channels, nil
 }

@@ -13,10 +13,14 @@ func (d *Database) NewNotifications() []Notification {
 	var nots []Notification
 	var iter Notification
 	d.MustQuery(
-		`select id, endpoint, chat_id, channel_id, status, time_diff, image_url, social, priority, sound, kind
+		`
+		select
+			id, endpoint, chat_id, channel_id, status, time_diff, image_url,
+			viewers, show_kind, social, priority, sound, kind
 		from notification_queue
 		where sending = 0
-		order by id`,
+		order by id
+		`,
 		nil,
 		ScanTo{
 			&iter.ID,
@@ -26,6 +30,8 @@ func (d *Database) NewNotifications() []Notification {
 			&iter.Status,
 			&iter.TimeDiff,
 			&iter.ImageURL,
+			&iter.Viewers,
+			&iter.ShowKind,
 			&iter.Social,
 			&iter.Priority,
 			&iter.Sound,
@@ -52,14 +58,16 @@ func (d *Database) StoreNotifications(nots []Notification) {
 					status,
 					time_diff,
 					image_url,
+					viewers,
+					show_kind,
 					social,
 					priority,
 					sound,
 					kind
 				)
-				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 			`,
-			n.Endpoint, n.ChatID, n.ChannelID, n.Status, n.TimeDiff, n.ImageURL, n.Social, n.Priority, n.Sound, n.Kind,
+			n.Endpoint, n.ChatID, n.ChannelID, n.Status, n.TimeDiff, n.ImageURL, n.Viewers, n.ShowKind, n.Social, n.Priority, n.Sound, n.Kind,
 		)
 	}
 	d.SendBatch(batch)

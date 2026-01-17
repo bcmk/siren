@@ -336,6 +336,10 @@ var migrations = []func(d *Database){
 		`)
 		d.MustExec(`create index ix_performance_log_timestamp on performance_log using brin ("timestamp") with (pages_per_range = 8)`)
 	},
+	func(d *Database) {
+		d.MustExec(`alter table notification_queue add column viewers integer`)
+		d.MustExec(`alter table notification_queue add column show_kind integer not null default 0`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database

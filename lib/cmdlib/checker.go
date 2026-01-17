@@ -139,9 +139,29 @@ func NewExistenceListResultsFailed() *ExistenceListResults {
 	return &ExistenceListResults{failed: true}
 }
 
+// ShowKind represents the kind of show
+type ShowKind int
+
+const (
+	// ShowUnknown means the show kind is unknown
+	ShowUnknown ShowKind = 0
+	// ShowPublic means the show is public
+	ShowPublic ShowKind = 1
+	// ShowGroup means the show is a group show
+	ShowGroup ShowKind = 2
+	// ShowHidden means the show is hidden
+	ShowHidden ShowKind = 3
+	// ShowPrivate means the show is private
+	ShowPrivate ShowKind = 4
+	// ShowAway means the model is away
+	ShowAway ShowKind = 5
+)
+
 // ChannelInfo contains image URL for a channel
 type ChannelInfo struct {
 	ImageURL string
+	Viewers  *int
+	ShowKind ShowKind
 }
 
 // ChannelInfoWithStatus contains status and image URL for a channel

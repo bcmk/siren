@@ -108,7 +108,19 @@ online:
     {{- print " " -}}
     {{- template "affiliate_link" .channel }}
     {{- print " " -}}
-    <i>online {{- if .time_diff }} for {{ template "duration" .time_diff }} {{- end -}}</i>
+    <i>online
+    {{- if .time_diff }} for {{ template "duration" .time_diff }}{{ end -}}
+    {{- with .show_kind }}, {{ template "show_kind" . }}{{ end -}}
+    {{- if .viewers }}{{ print "\n" }}viewers: {{ .viewers }}{{ end -}}
+    </i>
+show_kind:
+  str: |-
+    {{- if eq . 1 -}}public
+    {{- else if eq . 2 -}}in group
+    {{- else if eq . 3 -}}in hidden show
+    {{- else if eq . 4 -}}in private
+    {{- else if eq . 5 -}}away
+    {{- end -}}
 offline:
   parse: html
   disable_preview: true

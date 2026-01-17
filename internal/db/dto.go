@@ -11,6 +11,8 @@ type Notification struct {
 	Status    cmdlib.StatusKind
 	TimeDiff  *int
 	ImageURL  string
+	Viewers   *int
+	ShowKind  cmdlib.ShowKind
 	Social    bool
 	Sound     bool
 	Priority  int

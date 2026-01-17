@@ -108,7 +108,19 @@ online:
     {{- print " " -}}
     {{- template "affiliate_link" .channel -}}
     {{- print " " -}}
-    <i>в сети {{- if .time_diff }} {{ template "duration" .time_diff -}} {{- end -}}</i>
+    <i>в сети
+    {{- if .time_diff }} {{ template "duration" .time_diff }}{{ end -}}
+    {{- with .show_kind }}, {{ template "show_kind" . }}{{ end -}}
+    {{- if .viewers }}{{ print "\n" }}зрителей: {{ .viewers }}{{ end -}}
+    </i>
+show_kind:
+  str: |-
+    {{- if eq . 1 -}}публичное шоу
+    {{- else if eq . 2 -}}в группе
+    {{- else if eq . 3 -}}в скрытом шоу
+    {{- else if eq . 4 -}}в привате
+    {{- else if eq . 5 -}}нет на месте
+    {{- end -}}
 offline:
   parse: html
   disable_preview: true
