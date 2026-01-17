@@ -1844,8 +1844,9 @@ func main() {
 				"count":  result.Count(),
 			})
 			w.db.LogPerformance(now, db.PerformanceLogUpdateProcessing, int(elapsed.Milliseconds()), map[string]any{
-				"unconfirmed_count": changesInPeriod,
-				"confirmed_count":   confirmedChangesInPeriod,
+				"unconfirmed_count":   changesInPeriod,
+				"confirmed_count":     confirmedChangesInPeriod,
+				"notifications_count": len(notifications),
 			})
 			if w.cfg.Debug {
 				ldbg("status updates processed in %v", elapsed)
