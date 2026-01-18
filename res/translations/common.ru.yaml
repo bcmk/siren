@@ -110,15 +110,15 @@ online:
     {{- print " " -}}
     <i>в сети
     {{- if .time_diff }} {{ template "duration" .time_diff }}{{ end -}}
-    {{- with .show_kind }}, {{ template "show_kind" . }}{{ end -}}
+    {{- with .show_kind }}{{ print "\n" }}{{ template "show_kind" . }}{{ end -}}
     {{- if .viewers }}{{ print "\n" }}зрителей: {{ .viewers }}{{ end -}}
     </i>
 show_kind:
   str: |-
-    {{- if eq . 1 -}}публичное шоу
-    {{- else if eq . 2 -}}в группе
+    {{- if eq . 1 -}}в публичном шоу
+    {{- else if eq . 2 -}}в групповом шоу
     {{- else if eq . 3 -}}в скрытом шоу
-    {{- else if eq . 4 -}}в привате
+    {{- else if eq . 4 -}}в приватном шоу
     {{- else if eq . 5 -}}нет на месте
     {{- end -}}
 offline:
