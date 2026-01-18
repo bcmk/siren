@@ -23,6 +23,7 @@ type flirt4FreeCheckResponse struct {
 type flirt4FreeOnlineModel struct {
 	Name           string `json:"name"`
 	ScreencapImage string `json:"screencap_image"`
+	RoomStatus     string `json:"room_status"`
 }
 
 type flirt4FreeOnlineResponse struct {
@@ -78,6 +79,18 @@ func flirt4FreeStatus(roomStatus string) cmdlib.StatusKind {
 	return cmdlib.StatusUnknown
 }
 
+func flirt4FreeShowKind(roomStatus string) cmdlib.ShowKind {
+	switch roomStatus {
+	case "In Open":
+		return cmdlib.ShowPublic
+	case "In Private":
+		return cmdlib.ShowPrivate
+	case "On Break":
+		return cmdlib.ShowAway
+	}
+	return cmdlib.ShowUnknown
+}
+
 func flirt4FreeCanonicalAPIModelID(name string) string {
 	name = strings.ReplaceAll(name, " ", "_")
 	name = strings.ReplaceAll(name, "-", "_")
@@ -121,15 +134,24 @@ func (c *Flirt4FreeChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo
 	}
 	for _, m := range parsed.Girls {
 		modelID := flirt4FreeCanonicalAPIModelID(m.Name)
-		channels[modelID] = cmdlib.ChannelInfo{ImageURL: m.ScreencapImage}
+		channels[modelID] = cmdlib.ChannelInfo{
+			ImageURL: m.ScreencapImage,
+			ShowKind: flirt4FreeShowKind(m.RoomStatus),
+		}
 	}
 	for _, m := range parsed.Guys {
 		modelID := flirt4FreeCanonicalAPIModelID(m.Name)
-		channels[modelID] = cmdlib.ChannelInfo{ImageURL: m.ScreencapImage}
+		channels[modelID] = cmdlib.ChannelInfo{
+			ImageURL: m.ScreencapImage,
+			ShowKind: flirt4FreeShowKind(m.RoomStatus),
+		}
 	}
 	for _, m := range parsed.Trans {
 		modelID := flirt4FreeCanonicalAPIModelID(m.Name)
-		channels[modelID] = cmdlib.ChannelInfo{ImageURL: m.ScreencapImage}
+		channels[modelID] = cmdlib.ChannelInfo{
+			ImageURL: m.ScreencapImage,
+			ShowKind: flirt4FreeShowKind(m.RoomStatus),
+		}
 	}
 	return channels, nil
 }
