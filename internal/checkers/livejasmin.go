@@ -73,6 +73,16 @@ func liveJasminStatus(roomStatus string) cmdlib.StatusKind {
 	return cmdlib.StatusUnknown
 }
 
+func liveJasminShowKind(status string) cmdlib.ShowKind {
+	switch status {
+	case "free_chat":
+		return cmdlib.ShowPublic
+	case "member_chat", "private_chat", "members_only":
+		return cmdlib.ShowPrivate
+	}
+	return cmdlib.ShowUnknown
+}
+
 // CheckEndpoint returns LiveJasmin online models
 func (c *LiveJasminChecker) CheckEndpoint(endpoint string) (map[string]cmdlib.ChannelInfo, error) {
 	client := c.ClientsLoop.NextClient()
@@ -103,6 +113,7 @@ func (c *LiveJasminChecker) CheckEndpoint(endpoint string) (map[string]cmdlib.Ch
 		modelID := strings.ToLower(m.PerformerID)
 		channels[modelID] = cmdlib.ChannelInfo{
 			ImageURL: m.ProfilePictureURL.Size896x504,
+			ShowKind: liveJasminShowKind(m.Status),
 		}
 	}
 	return channels, nil
