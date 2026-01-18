@@ -1495,8 +1495,6 @@ func (w *worker) buildNotifications(
 					ChatID:    user.ChatID,
 					ChannelID: c.ChannelID,
 					Status:    c.Status,
-					Viewers:   info.Viewers,
-					ShowKind:  info.ShowKind,
 					Social:    user.ChatID > 0,
 					Sound:     c.Status == cmdlib.StatusOnline,
 					Kind:      db.NotificationPacket}
