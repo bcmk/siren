@@ -93,10 +93,13 @@ type mediaResponse struct {
 }
 
 type performerResponse struct {
-	XMLName    xml.Name       `xml:"Performer"`
-	Name       string         `xml:"Name,attr"`
-	StreamType string         `xml:"StreamType,attr"`
-	Media      *mediaResponse `xml:"Media"`
+	XMLName     xml.Name       `xml:"Performer"`
+	Name        string         `xml:"Name,attr"`
+	StreamType  string         `xml:"StreamType,attr"`
+	PartyChat   string         `xml:"PartyChat,attr"`
+	GoldShow    string         `xml:"GoldShow,attr"`
+	PreGoldShow string         `xml:"PreGoldShow,attr"`
+	Media       *mediaResponse `xml:"Media"`
 }
 
 type availablePerformersResponse struct {
@@ -109,6 +112,16 @@ type availablePerformersResponse struct {
 type streamateResponse struct {
 	XMLName             xml.Name `xml:"SMLResult"`
 	AvailablePerformers availablePerformersResponse
+}
+
+func streamateShowKind(m performerResponse) cmdlib.ShowKind {
+	if m.GoldShow == "1" {
+		return cmdlib.ShowTicket
+	}
+	if m.PartyChat == "1" || m.PreGoldShow == "1" {
+		return cmdlib.ShowPublic
+	}
+	return cmdlib.ShowUnknown
 }
 
 // CheckStatusSingle checks Streamate model status
@@ -228,7 +241,10 @@ func (c *StreamateChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo,
 				image = "https:" + m.Media.Pic.Full.Src
 			}
 			modelID := strings.ToLower(m.Name)
-			channels[modelID] = cmdlib.ChannelInfo{ImageURL: image}
+			channels[modelID] = cmdlib.ChannelInfo{
+				ImageURL: image,
+				ShowKind: streamateShowKind(m),
+			}
 		}
 		if i == 1 {
 			pages = (parsed.AvailablePerformers.TotalResultCount + queriedPageSize - 1) / queriedPageSize
