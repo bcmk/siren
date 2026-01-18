@@ -24,8 +24,10 @@ type StripchatChecker struct{ cmdlib.CheckerCommon }
 var _ cmdlib.Checker = &StripchatChecker{}
 
 type stripchatModel struct {
-	Username    string `json:"username"`
-	SnapshotURL string `json:"snapshotUrl"`
+	Username     string `json:"username"`
+	SnapshotURL  string `json:"snapshotUrl"`
+	Status       string `json:"status"`
+	ViewersCount int    `json:"viewersCount"`
 }
 
 type stripchatResponse struct {
@@ -50,6 +52,18 @@ var statusesOnline = map[string]bool{
 	"status-private":   true,
 	"status-groupShow": true,
 	"status-idle":      true,
+}
+
+func stripchatShowKind(status string) cmdlib.ShowKind {
+	switch status {
+	case "public":
+		return cmdlib.ShowPublic
+	case "groupShow":
+		return cmdlib.ShowGroup
+	case "p2p", "private", "virtualPrivate":
+		return cmdlib.ShowPrivate
+	}
+	return cmdlib.ShowUnknown
 }
 
 // CheckStatusSingle checks Stripchat model status
@@ -214,8 +228,11 @@ func (c *StripchatChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo,
 		for _, m := range parsed.Models {
 			if m.Username != "" {
 				modelID := strings.ToLower(m.Username)
+				viewers := m.ViewersCount
 				channels[modelID] = cmdlib.ChannelInfo{
 					ImageURL: m.SnapshotURL,
+					Viewers:  &viewers,
+					ShowKind: stripchatShowKind(m.Status),
 				}
 			}
 		}
