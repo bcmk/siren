@@ -33,6 +33,8 @@ func Cam4CanonicalModelID(name string) string {
 type cam4Model struct {
 	Nickname string `json:"nickname"`
 	ThumbBig string `json:"thumb_big"`
+	Viewers  int    `json:"viewers"`
+	ShowType string `json:"show_type"`
 }
 
 type cam4Response struct {
@@ -81,6 +83,18 @@ func cam4RoomStatus(roomStatus string) cmdlib.StatusKind {
 	return cmdlib.StatusUnknown
 }
 
+func cam4ShowKind(showType string) cmdlib.ShowKind {
+	switch showType {
+	case "NORMAL":
+		return cmdlib.ShowPublic
+	case "GROUP_SHOW_SELLING_TICKETS":
+		return cmdlib.ShowGroup
+	case "PRIVATE_SHOW":
+		return cmdlib.ShowPrivate
+	}
+	return cmdlib.ShowUnknown
+}
+
 // QueryOnlineChannels returns CAM4 online models
 func (c *Cam4Checker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, error) {
 	client := c.ClientsLoop.NextClient()
@@ -103,7 +117,12 @@ func (c *Cam4Checker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, erro
 	}
 	for _, m := range parsed {
 		modelID := strings.ToLower(m.Nickname)
-		channels[modelID] = cmdlib.ChannelInfo{ImageURL: m.ThumbBig}
+		viewers := m.Viewers
+		channels[modelID] = cmdlib.ChannelInfo{
+			ImageURL: m.ThumbBig,
+			Viewers:  &viewers,
+			ShowKind: cam4ShowKind(m.ShowType),
+		}
 	}
 	return channels, nil
 }
