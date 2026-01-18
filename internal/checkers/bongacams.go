@@ -18,6 +18,7 @@ var _ cmdlib.Checker = &BongaCamsChecker{}
 
 type bongacamsModel struct {
 	Username      string `json:"username"`
+	MembersCount  int    `json:"members_count"`
 	ProfileImages struct {
 		ThumbnailImageMediumLive string `json:"thumbnail_image_medium_live"`
 	} `json:"profile_images"`
@@ -65,8 +66,10 @@ func (c *BongaCamsChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo,
 
 	for _, m := range parsed {
 		modelID := strings.ToLower(m.Username)
+		viewers := m.MembersCount
 		channels[modelID] = cmdlib.ChannelInfo{
 			ImageURL: "https:" + m.ProfileImages.ThumbnailImageMediumLive,
+			Viewers:  &viewers,
 		}
 	}
 	return channels, nil
