@@ -117,9 +117,10 @@ show_kind:
   str: |-
     {{- if eq . 1 -}}in a public show
     {{- else if eq . 2 -}}in a group show
-    {{- else if eq . 3 -}}in a hidden show
-    {{- else if eq . 4 -}}in a private show
-    {{- else if eq . 5 -}}away
+    {{- else if eq . 3 -}}in a ticket show
+    {{- else if eq . 4 -}}in a hidden show
+    {{- else if eq . 5 -}}in a private show
+    {{- else if eq . 6 -}}away
     {{- end -}}
 offline:
   parse: html

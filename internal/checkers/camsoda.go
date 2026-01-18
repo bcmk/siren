@@ -22,7 +22,20 @@ type camSodaOnlineResponse struct {
 		Username string
 		Status   string
 		Thumb    string
+		Viewers  int
 	}
+}
+
+func camSodaShowKind(status string) cmdlib.ShowKind {
+	switch status {
+	case "online":
+		return cmdlib.ShowPublic
+	case "limited":
+		return cmdlib.ShowTicket
+	case "private":
+		return cmdlib.ShowPrivate
+	}
+	return cmdlib.ShowUnknown
 }
 
 // CheckStatusSingle checks CamSoda model status
@@ -62,7 +75,12 @@ func (c *CamSodaChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, e
 	}
 	for _, m := range parsed.Results {
 		modelID := strings.ToLower(m.Username)
-		channels[modelID] = cmdlib.ChannelInfo{ImageURL: m.Thumb}
+		viewers := m.Viewers
+		channels[modelID] = cmdlib.ChannelInfo{
+			ImageURL: m.Thumb,
+			Viewers:  &viewers,
+			ShowKind: camSodaShowKind(m.Status),
+		}
 	}
 	return channels, nil
 }

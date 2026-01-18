@@ -149,12 +149,14 @@ const (
 	ShowPublic ShowKind = 1
 	// ShowGroup means the show is a group show
 	ShowGroup ShowKind = 2
+	// ShowTicket means the show is a ticket show
+	ShowTicket ShowKind = 3
 	// ShowHidden means the show is hidden
-	ShowHidden ShowKind = 3
+	ShowHidden ShowKind = 4
 	// ShowPrivate means the show is private
-	ShowPrivate ShowKind = 4
+	ShowPrivate ShowKind = 5
 	// ShowAway means the model is away
-	ShowAway ShowKind = 5
+	ShowAway ShowKind = 6
 )
 
 // ChannelInfo contains image URL for a channel

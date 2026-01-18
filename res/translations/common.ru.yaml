@@ -117,9 +117,10 @@ show_kind:
   str: |-
     {{- if eq . 1 -}}в публичном шоу
     {{- else if eq . 2 -}}в групповом шоу
-    {{- else if eq . 3 -}}в скрытом шоу
-    {{- else if eq . 4 -}}в приватном шоу
-    {{- else if eq . 5 -}}нет на месте
+    {{- else if eq . 3 -}}в тикет-шоу
+    {{- else if eq . 4 -}}в скрытом шоу
+    {{- else if eq . 5 -}}в приватном шоу
+    {{- else if eq . 6 -}}нет на месте
     {{- end -}}
 offline:
   parse: html
