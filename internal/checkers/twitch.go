@@ -160,8 +160,10 @@ func (c *TwitchChecker) checkOnlineMany(client *helix.Client, channels []string)
 		}
 		for _, s := range streamsResponse.Data.Streams {
 			name := strings.ToLower(s.UserLogin)
+			viewers := s.ViewerCount
 			result[name] = cmdlib.ChannelInfo{
 				ImageURL: thumbnail(s.ThumbnailURL),
+				Viewers:  &viewers,
 			}
 		}
 	}
@@ -206,8 +208,10 @@ func (c *TwitchChecker) checkAllOnline(helixClient *helix.Client) (map[string]cm
 		}
 		for _, s := range streamsResponse.Data.Streams {
 			name := strings.ToLower(s.UserLogin)
+			viewers := s.ViewerCount
 			result[name] = cmdlib.ChannelInfo{
 				ImageURL: thumbnail(s.ThumbnailURL),
+				Viewers:  &viewers,
 			}
 		}
 		if len(streamsResponse.Data.Streams) == 0 {
