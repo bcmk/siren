@@ -340,6 +340,13 @@ var migrations = []func(d *Database){
 		d.MustExec(`alter table notification_queue add column viewers integer`)
 		d.MustExec(`alter table notification_queue add column show_kind integer not null default 0`)
 	},
+	func(d *Database) {
+		d.MustExec(`
+			alter table users
+			add column created_at bigint not null default extract(epoch from now())::bigint
+		`)
+		d.MustExec(`create index ix_users_created_at on users (created_at)`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database

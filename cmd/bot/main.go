@@ -1179,7 +1179,7 @@ func (w *worker) refer(followerChatID int64, referrer string, now int) (applied 
 	if _, exists := w.db.User(followerChatID); exists {
 		return followerExists
 	}
-	w.db.AddUserWithBonus(followerChatID, w.cfg.MaxChannels+w.cfg.FollowerBonus)
+	w.db.AddUserWithBonus(followerChatID, w.cfg.MaxChannels+w.cfg.FollowerBonus, now)
 	w.db.AddOrUpdateReferrer(*referrerChatID, w.cfg.MaxChannels+w.cfg.ReferralBonus, w.cfg.ReferralBonus)
 	w.db.IncrementReferredUsers(*referrerChatID)
 	w.db.AddReferralEvent(now, referrerChatID, followerChatID, nil)
@@ -1233,7 +1233,7 @@ func (w *worker) start(endpoint string, chatID int64, referrer string, now int) 
 			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].FollowerExists, nil, db.ReplyPacket)
 		}
 	}
-	w.db.AddUser(chatID, w.cfg.MaxChannels)
+	w.db.AddUser(chatID, w.cfg.MaxChannels, now)
 	if channelID != "" {
 		if w.addChannel(endpoint, chatID, channelID, now) {
 			w.db.AddReferralEvent(now, nil, chatID, &channelID)
@@ -1251,7 +1251,7 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	w.db.ResetBlock(endpoint, chatID)
 	command = strings.ToLower(command)
 	if command != "start" {
-		w.db.AddUser(chatID, w.cfg.MaxChannels)
+		w.db.AddUser(chatID, w.cfg.MaxChannels, now)
 	}
 	linf("chat: %d, command: %s %s", chatID, command, arguments)
 

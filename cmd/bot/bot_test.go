@@ -154,10 +154,10 @@ func TestUpdateNotifications(t *testing.T) {
 		"insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)",
 		"ep2", 4, "d")
 
-	w.db.MustExec("insert into users (chat_id) values ($1)", 1)
-	w.db.MustExec("insert into users (chat_id) values ($1)", 2)
-	w.db.MustExec("insert into users (chat_id) values ($1)", 3)
-	w.db.MustExec("insert into users (chat_id) values ($1)", 4)
+	w.db.MustExec("insert into users (chat_id, created_at) values ($1, 0)", 1)
+	w.db.MustExec("insert into users (chat_id, created_at) values ($1, 0)", 2)
+	w.db.MustExec("insert into users (chat_id, created_at) values ($1, 0)", 3)
+	w.db.MustExec("insert into users (chat_id, created_at) values ($1, 0)", 4)
 
 	// All subscribed channels for this test
 	allChannels := map[string]bool{"a": true, "b": true, "c": true, "d": true}
@@ -560,7 +560,7 @@ func TestAddChannel(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
-	w.db.AddUser(1, 3)
+	w.db.AddUser(1, 3, 0)
 
 	// Add channel that doesn't exist — should insert with confirmed=0 and return false
 	if w.addChannel("test", 1, "newmodel", 100) {
@@ -1056,7 +1056,7 @@ func TestUnknownChannelFirstOfflineSaved(t *testing.T) {
 	w.initCache()
 
 	// Add a user
-	w.db.AddUser(1, 3)
+	w.db.AddUser(1, 3, 0)
 
 	// 1. User subscribes to a channel we don't know yet — creates unconfirmed subscription
 	// This simulates subscribing to a Twitch channel or a new unknown model

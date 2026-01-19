@@ -61,6 +61,7 @@ type User struct {
 	Blacklist            bool
 	ShowImages           bool
 	OfflineNotifications bool
+	CreatedAt            int64
 }
 
 // Channel represents a channel

@@ -172,20 +172,25 @@ func (d *Database) SubscriptionsNumber(endpoint string, chatID int64) int {
 
 // User queries a user with particular ID
 func (d *Database) User(chatID int64) (user User, found bool) {
-	found = d.MaybeRecord("select chat_id, max_channels, reports, blacklist, show_images, offline_notifications from users where chat_id = $1",
+	found = d.MaybeRecord(`
+		select chat_id, max_channels, reports, blacklist, show_images, offline_notifications, created_at
+		from users
+		where chat_id = $1
+	`,
 		QueryParams{chatID},
-		ScanTo{&user.ChatID, &user.MaxChannels, &user.Reports, &user.Blacklist, &user.ShowImages, &user.OfflineNotifications})
+		ScanTo{&user.ChatID, &user.MaxChannels, &user.Reports, &user.Blacklist, &user.ShowImages, &user.OfflineNotifications, &user.CreatedAt})
 	return
 }
 
 // AddUser inserts a user
-func (d *Database) AddUser(chatID int64, maxChannels int) {
+func (d *Database) AddUser(chatID int64, maxChannels int, now int) {
 	d.MustExec(`
-		insert into users (chat_id, max_channels)
-		values ($1, $2)
+		insert into users (chat_id, max_channels, created_at)
+		values ($1, $2, $3)
 		on conflict(chat_id) do nothing`,
 		chatID,
-		maxChannels)
+		maxChannels,
+		now)
 }
 
 // MaybeChannel returns a channel if exists
@@ -476,8 +481,11 @@ func (d *Database) BlacklistUser(chatID int64) {
 }
 
 // AddUserWithBonus inserts a user with a specific max_channels value
-func (d *Database) AddUserWithBonus(chatID int64, maxChannels int) {
-	d.MustExec("insert into users (chat_id, max_channels) values ($1, $2)", chatID, maxChannels)
+func (d *Database) AddUserWithBonus(chatID int64, maxChannels int, now int) {
+	d.MustExec(`
+		insert into users (chat_id, max_channels, created_at)
+		values ($1, $2, $3)
+	`, chatID, maxChannels, now)
 }
 
 // AddOrUpdateReferrer inserts or updates a referrer's max_channels
