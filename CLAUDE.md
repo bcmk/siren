@@ -43,3 +43,10 @@
 
 ## Documentation
 - Read `docs/status-changes.md` before modifying status handling code
+
+## Code Locations
+- Bot main entry point: `cmd/bot/main.go`
+- Site-specific checkers: `internal/checkers/`
+- SQL queries: `internal/db/sql_queries.go`
+- Database migrations: `internal/db/migrations.go`
+- Translations: `res/translations/`
