@@ -1578,6 +1578,7 @@ func (w *worker) processTGUpdate(p incomingPacket) bool {
 	mention := "@" + w.botNames[p.endpoint]
 	chatID, command, args := getCommandAndArgs(u, mention, w.ourIDs)
 	if !w.cfg.ChatWhitelisted(chatID) {
+		linf("message from chat %d ignored, not in whitelist", chatID)
 		return false
 	}
 	if command != "" {
