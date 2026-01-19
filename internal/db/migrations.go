@@ -347,6 +347,10 @@ var migrations = []func(d *Database){
 		`)
 		d.MustExec(`create index ix_users_created_at on users (created_at)`)
 	},
+	func(d *Database) {
+		d.MustExec(`alter index ix_channels_unconfirmed_online rename to ix_channels_channel_id_online`)
+		d.MustExec(`alter index ix_channels_status_mismatch rename to ix_channels_channel_id_status_mismatch`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database
