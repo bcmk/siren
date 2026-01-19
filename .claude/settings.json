@@ -20,6 +20,7 @@
       "Bash(git show:*)",
       "Bash(git status:*)",
       "Bash(git ls-tree:*)",
+      "Bash(ls:*)",
       "Bash(cat:*)",
       "Bash(sed:*)",
       "Bash(grep:*)",
