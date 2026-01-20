@@ -112,6 +112,7 @@ online:
     {{- if .time_diff }} {{ template "duration" .time_diff }}{{ end -}}
     {{- with .show_kind }}{{ print "\n" }}{{ template "show_kind" . }}{{ end -}}
     {{- if .viewers }}{{ print "\n" }}зрителей: {{ .viewers }}{{ end -}}
+    {{- if .subject }}{{ print "\n" }}<blockquote>{{ .subject }}</blockquote>{{ end -}}
     </i>
 show_kind:
   str: |-
@@ -245,6 +246,18 @@ settings:
         Включить: /enable_offline_notifications
       {{- end -}}
     {{- end -}}
+
+    {{- if .subject_supported -}}
+      {{- print "\n" -}}
+      {{- print "\n" -}}
+      Показывать тему комнаты: <b>{{ template "yes_no" .show_subject }}</b>
+      {{- print "\n" -}}
+      {{- if .show_subject -}}
+        Отключить: /disable_subject
+      {{- else -}}
+        Включить: /enable_subject
+      {{- end -}}
+    {{- end -}}
 yes_no:
   parse: raw
   str: '{{- if . -}} да {{- else -}} нет {{- end -}}'
@@ -341,3 +354,6 @@ too_many_subscriptions_for_pics:
   str: Эта команда поддерживает до {{ .max_subs }} подписок в групповом чате
 we_are_up:
   str: Мы снова работаем
+fields_customization_hint:
+  parse: html
+  str: '<i>Совет: Вы можете настроить, что отображать, в /settings</i>'

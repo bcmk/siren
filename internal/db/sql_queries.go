@@ -16,7 +16,7 @@ func (d *Database) NewNotifications() []Notification {
 		`
 		select
 			id, endpoint, chat_id, channel_id, status, time_diff, image_url,
-			viewers, show_kind, social, priority, sound, kind
+			viewers, show_kind, social, priority, sound, kind, subject
 		from notification_queue
 		where sending = 0
 		order by id
@@ -36,6 +36,7 @@ func (d *Database) NewNotifications() []Notification {
 			&iter.Priority,
 			&iter.Sound,
 			&iter.Kind,
+			&iter.Subject,
 		},
 		func() { nots = append(nots, iter) },
 	)
@@ -63,11 +64,12 @@ func (d *Database) StoreNotifications(nots []Notification) {
 					social,
 					priority,
 					sound,
-					kind
+					kind,
+					subject
 				)
-				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 			`,
-			n.Endpoint, n.ChatID, n.ChannelID, n.Status, n.TimeDiff, n.ImageURL, n.Viewers, n.ShowKind, n.Social, n.Priority, n.Sound, n.Kind,
+			n.Endpoint, n.ChatID, n.ChannelID, n.Status, n.TimeDiff, n.ImageURL, n.Viewers, n.ShowKind, n.Social, n.Priority, n.Sound, n.Kind, n.Subject,
 		)
 	}
 	d.SendBatch(batch)
@@ -82,15 +84,27 @@ func (d *Database) UsersForChannels(channelIDs []string) (users map[string][]Use
 	var endpoint string
 	var offlineNotifications bool
 	var showImages bool
+	var showSubject bool
 	d.MustQuery(`
-		select subscriptions.channel_id, subscriptions.chat_id, subscriptions.endpoint, users.offline_notifications, users.show_images
+		select
+			subscriptions.channel_id,
+			subscriptions.chat_id,
+			subscriptions.endpoint,
+			users.offline_notifications,
+			users.show_images,
+			users.show_subject
 		from subscriptions
 		join users on users.chat_id = subscriptions.chat_id
 		where subscriptions.channel_id = any($1)`,
 		QueryParams{channelIDs},
-		ScanTo{&channelID, &chatID, &endpoint, &offlineNotifications, &showImages},
+		ScanTo{&channelID, &chatID, &endpoint, &offlineNotifications, &showImages, &showSubject},
 		func() {
-			users[channelID] = append(users[channelID], User{ChatID: chatID, OfflineNotifications: offlineNotifications, ShowImages: showImages})
+			users[channelID] = append(users[channelID], User{
+				ChatID:               chatID,
+				OfflineNotifications: offlineNotifications,
+				ShowImages:           showImages,
+				ShowSubject:          showSubject,
+			})
 			endpoints[channelID] = append(endpoints[channelID], endpoint)
 		})
 	return
@@ -173,12 +187,29 @@ func (d *Database) SubscriptionsNumber(endpoint string, chatID int64) int {
 // User queries a user with particular ID
 func (d *Database) User(chatID int64) (user User, found bool) {
 	found = d.MaybeRecord(`
-		select chat_id, max_channels, reports, blacklist, show_images, offline_notifications, created_at
+		select
+			chat_id,
+			max_channels,
+			reports,
+			blacklist,
+			show_images,
+			offline_notifications,
+			show_subject,
+			created_at
 		from users
 		where chat_id = $1
 	`,
 		QueryParams{chatID},
-		ScanTo{&user.ChatID, &user.MaxChannels, &user.Reports, &user.Blacklist, &user.ShowImages, &user.OfflineNotifications, &user.CreatedAt})
+		ScanTo{
+			&user.ChatID,
+			&user.MaxChannels,
+			&user.Reports,
+			&user.Blacklist,
+			&user.ShowImages,
+			&user.OfflineNotifications,
+			&user.ShowSubject,
+			&user.CreatedAt,
+		})
 	return
 }
 
@@ -449,6 +480,11 @@ func (d *Database) SetShowImages(chatID int64, showImages bool) {
 // SetOfflineNotifications updates the offline_notifications setting for a user
 func (d *Database) SetOfflineNotifications(chatID int64, offlineNotifications bool) {
 	d.MustExec("update users set offline_notifications = $1 where chat_id = $2", offlineNotifications, chatID)
+}
+
+// SetShowSubject updates the show_subject setting for a user
+func (d *Database) SetShowSubject(chatID int64, showSubject bool) {
+	d.MustExec("update users set show_subject = $1 where chat_id = $2", showSubject, chatID)
 }
 
 // RemoveSubscription deletes a specific subscription

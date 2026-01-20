@@ -112,6 +112,7 @@ online:
     {{- if .time_diff }} for {{ template "duration" .time_diff }}{{ end -}}
     {{- with .show_kind }}{{ print "\n" }}{{ template "show_kind" . }}{{ end -}}
     {{- if .viewers }}{{ print "\n" }}viewers: {{ .viewers }}{{ end -}}
+    {{- if .subject }}{{ print "\n" }}<blockquote>{{ .subject }}</blockquote>{{ end -}}
     </i>
 show_kind:
   str: |-
@@ -245,6 +246,18 @@ settings:
         Enable: /enable_offline_notifications
       {{- end -}}
     {{- end -}}
+
+    {{- if .subject_supported -}}
+      {{- print "\n" -}}
+      {{- print "\n" -}}
+      Show room subject: <b>{{ template "yes_no" .show_subject }}</b>
+      {{- print "\n" -}}
+      {{- if .show_subject -}}
+        Disable: /disable_subject
+      {{- else -}}
+        Enable: /enable_subject
+      {{- end -}}
+    {{- end -}}
 yes_no:
   parse: raw
   str: '{{- if . -}} yes {{- else -}} no {{- end -}}'
@@ -341,3 +354,6 @@ too_many_subscriptions_for_pics:
   str: This command supports up to {{ .max_subs }} subscriptions in a group chat
 we_are_up:
   str: We are up again
+fields_customization_hint:
+  parse: html
+  str: '<i>Tip: You can customize what is shown in /settings</i>'

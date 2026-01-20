@@ -351,6 +351,10 @@ var migrations = []func(d *Database){
 		d.MustExec(`alter index ix_channels_unconfirmed_online rename to ix_channels_channel_id_online`)
 		d.MustExec(`alter index ix_channels_status_mismatch rename to ix_channels_channel_id_status_mismatch`)
 	},
+	func(d *Database) {
+		d.MustExec(`alter table users add column show_subject boolean not null default true`)
+		d.MustExec(`alter table notification_queue add column subject text`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database

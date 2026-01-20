@@ -94,6 +94,7 @@ type Translations struct {
 	OK                          *Translation `yaml:"ok"`
 	TooManySubscriptionsForPics *Translation `yaml:"too_many_subscriptions_for_pics"`
 	WeAreUp                     *Translation `yaml:"we_are_up"`
+	FieldsCustomizationHint     *Translation `yaml:"fields_customization_hint"`
 }
 
 // LoadEndpointTranslations loads translations for a specific endpoint

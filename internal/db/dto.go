@@ -17,6 +17,7 @@ type Notification struct {
 	Sound     bool
 	Priority  int
 	Kind      PacketKind
+	Subject   string
 }
 
 // PacketKind represents a notification kind
@@ -61,6 +62,7 @@ type User struct {
 	Blacklist            bool
 	ShowImages           bool
 	OfflineNotifications bool
+	ShowSubject          bool
 	CreatedAt            int64
 }
 

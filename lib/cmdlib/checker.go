@@ -164,6 +164,7 @@ type ChannelInfo struct {
 	ImageURL string
 	Viewers  *int
 	ShowKind ShowKind
+	Subject  string
 }
 
 // ChannelInfoWithStatus contains status and image URL for a channel
@@ -201,6 +202,7 @@ type Checker interface {
 	StatusRequestsQueue() chan StatusRequest
 	RequestInterval() time.Duration
 	Debug() bool
+	SubjectSupported() bool
 }
 
 // CheckerCommon contains common fields for all the checkers
@@ -254,6 +256,9 @@ func (c *CheckerCommon) RequestInterval() time.Duration {
 
 // Debug returns whether debug mode is enabled
 func (c *CheckerCommon) Debug() bool { return c.Dbg }
+
+// SubjectSupported returns whether the checker supports room subjects
+func (c *CheckerCommon) SubjectSupported() bool { return false }
 
 // StartCheckerDaemon starts a checker daemon
 func StartCheckerDaemon(checker Checker) {

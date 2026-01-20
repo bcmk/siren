@@ -32,6 +32,7 @@ type chaturbateModel struct {
 	ImageURL    string `json:"image_url"`
 	CurrentShow string `json:"current_show"`
 	NumUsers    int    `json:"num_users"`
+	RoomSubject string `json:"room_subject"`
 }
 
 type chaturbateResponse struct {
@@ -146,6 +147,7 @@ func (c *ChaturbateChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo
 			ImageURL: m.ImageURL,
 			Viewers:  &viewers,
 			ShowKind: chaturbateShowKind(m.CurrentShow),
+			Subject:  m.RoomSubject,
 		}
 	}
 	return channels, nil
@@ -158,3 +160,6 @@ func (c *ChaturbateChecker) QueryFixedListOnlineChannels([]string, cmdlib.CheckM
 
 // UsesFixedList returns false for online list checkers
 func (c *ChaturbateChecker) UsesFixedList() bool { return false }
+
+// SubjectSupported returns true for Chaturbate
+func (c *ChaturbateChecker) SubjectSupported() bool { return true }

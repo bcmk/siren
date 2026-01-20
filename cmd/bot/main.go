@@ -608,6 +608,7 @@ func (w *worker) notifyOfStatus(queue chan outgoingPacket, n db.Notification, im
 		"time_diff": timeDiff,
 		"viewers":   n.Viewers,
 		"show_kind": n.ShowKind,
+		"subject":   n.Subject,
 	}
 	switch n.Status {
 	case cmdlib.StatusOnline:
@@ -748,6 +749,8 @@ func (w *worker) settings(endpoint string, chatID int64) {
 		"show_images":                     user.ShowImages,
 		"offline_notifications_supported": w.cfg.OfflineNotifications,
 		"offline_notifications":           user.OfflineNotifications,
+		"subject_supported":               w.checker.SubjectSupported(),
+		"show_subject":                    user.ShowSubject,
 	}, db.ReplyPacket)
 }
 
@@ -758,6 +761,11 @@ func (w *worker) enableImages(endpoint string, chatID int64, showImages bool) {
 
 func (w *worker) enableOfflineNotifications(endpoint string, chatID int64, offlineNotifications bool) {
 	w.db.SetOfflineNotifications(chatID, offlineNotifications)
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].OK, nil, db.ReplyPacket)
+}
+
+func (w *worker) enableSubject(endpoint string, chatID int64, showSubject bool) {
+	w.db.SetShowSubject(chatID, showSubject)
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].OK, nil, db.ReplyPacket)
 }
 
@@ -940,6 +948,7 @@ func (w *worker) listOnlineChannels(endpoint string, chatID int64, now int) {
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].NoOnlineChannels, nil, db.ReplyPacket)
 		return
 	}
+	user := w.mustUser(chatID)
 	var nots []db.Notification
 	for _, s := range online {
 		info := w.unconfirmedOnlineChannels[s.ChannelID]
@@ -955,9 +964,13 @@ func (w *worker) listOnlineChannels(endpoint string, chatID int64, now int) {
 			TimeDiff:  w.channelDuration(s, now),
 			Kind:      db.ReplyPacket,
 		}
+		if user.ShowSubject {
+			not.Subject = info.Subject
+		}
 		nots = append(nots, not)
 	}
 	w.db.StoreNotifications(nots)
+	w.sendTr(w.lowPriorityMsg, endpoint, chatID, false, w.tr[endpoint].FieldsCustomizationHint, nil, db.ReplyPacket)
 }
 
 func (w *worker) week(channelID string) ([]bool, time.Time) {
@@ -1315,6 +1328,10 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		w.enableOfflineNotifications(endpoint, chatID, true)
 	case "disable_offline_notifications":
 		w.enableOfflineNotifications(endpoint, chatID, false)
+	case "enable_subject":
+		w.enableSubject(endpoint, chatID, true)
+	case "disable_subject":
+		w.enableSubject(endpoint, chatID, false)
 	case "referral":
 		w.showReferral(endpoint, chatID)
 	case "week":
@@ -1501,6 +1518,9 @@ func (w *worker) buildNotifications(
 				if user.ShowImages {
 					n.ImageURL = info.ImageURL
 				}
+				if user.ShowSubject {
+					n.Subject = info.Subject
+				}
 				notifications = append(notifications, n)
 			}
 		}
@@ -1551,8 +1571,10 @@ var loggedCommands = map[string]bool{
 	"add":                           true,
 	"disable_images":                true,
 	"disable_offline_notifications": true,
+	"disable_subject":               true,
 	"enable_images":                 true,
 	"enable_offline_notifications":  true,
+	"enable_subject":                true,
 	"faq":                           true,
 	"feedback":                      true,
 	"help":                          true,
