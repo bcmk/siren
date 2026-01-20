@@ -23,6 +23,7 @@ type camSodaOnlineResponse struct {
 		Status   string
 		Thumb    string
 		Viewers  int
+		Subject  string
 	}
 }
 
@@ -80,6 +81,7 @@ func (c *CamSodaChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, e
 			ImageURL: m.Thumb,
 			Viewers:  &viewers,
 			ShowKind: camSodaShowKind(m.Status),
+			Subject:  m.Subject,
 		}
 	}
 	return channels, nil
@@ -92,3 +94,6 @@ func (c *CamSodaChecker) QueryFixedListOnlineChannels([]string, cmdlib.CheckMode
 
 // UsesFixedList returns false for online list checkers
 func (c *CamSodaChecker) UsesFixedList() bool { return false }
+
+// SubjectSupported returns true for CamSoda
+func (c *CamSodaChecker) SubjectSupported() bool { return true }

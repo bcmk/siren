@@ -18,6 +18,7 @@ var _ cmdlib.Checker = &LiveJasminChecker{}
 type liveJasminModel struct {
 	PerformerID       string `json:"performerId"`
 	Status            string `json:"status"`
+	RoomTopic         string `json:"roomTopic"`
 	ProfilePictureURL struct {
 		Size896x504 string `json:"size896x504"`
 	} `json:"profilePictureUrl"`
@@ -114,6 +115,7 @@ func (c *LiveJasminChecker) CheckEndpoint(endpoint string) (map[string]cmdlib.Ch
 		channels[modelID] = cmdlib.ChannelInfo{
 			ImageURL: m.ProfilePictureURL.Size896x504,
 			ShowKind: liveJasminShowKind(m.Status),
+			Subject:  m.RoomTopic,
 		}
 	}
 	return channels, nil
@@ -144,3 +146,6 @@ func (c *LiveJasminChecker) QueryFixedListOnlineChannels([]string, cmdlib.CheckM
 
 // UsesFixedList returns false for online list checkers
 func (c *LiveJasminChecker) UsesFixedList() bool { return false }
+
+// SubjectSupported returns true for LiveJasmin
+func (c *LiveJasminChecker) SubjectSupported() bool { return true }

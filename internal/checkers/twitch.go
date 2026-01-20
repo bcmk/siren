@@ -164,6 +164,7 @@ func (c *TwitchChecker) checkOnlineMany(client *helix.Client, channels []string)
 			result[name] = cmdlib.ChannelInfo{
 				ImageURL: thumbnail(s.ThumbnailURL),
 				Viewers:  &viewers,
+				Subject:  s.Title,
 			}
 		}
 	}
@@ -212,6 +213,7 @@ func (c *TwitchChecker) checkAllOnline(helixClient *helix.Client) (map[string]cm
 			result[name] = cmdlib.ChannelInfo{
 				ImageURL: thumbnail(s.ThumbnailURL),
 				Viewers:  &viewers,
+				Subject:  s.Title,
 			}
 		}
 		if len(streamsResponse.Data.Streams) == 0 {
@@ -235,3 +237,6 @@ func requestAppAccessToken(helixClient *helix.Client) (*helix.AppAccessTokenResp
 
 // UsesFixedList returns true for fixed list checkers
 func (c *TwitchChecker) UsesFixedList() bool { return true }
+
+// SubjectSupported returns true for Twitch
+func (c *TwitchChecker) SubjectSupported() bool { return true }

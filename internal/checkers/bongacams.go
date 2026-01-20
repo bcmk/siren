@@ -17,8 +17,10 @@ type BongaCamsChecker struct{ cmdlib.CheckerCommon }
 var _ cmdlib.Checker = &BongaCamsChecker{}
 
 type bongacamsModel struct {
-	Username      string `json:"username"`
-	MembersCount  int    `json:"members_count"`
+	Username     string `json:"username"`
+	MembersCount int    `json:"members_count"`
+	ChatTopic    string `json:"chat_topic"`
+	// TODO: support chat_topic_ru for Russian users
 	ProfileImages struct {
 		ThumbnailImageMediumLive string `json:"thumbnail_image_medium_live"`
 	} `json:"profile_images"`
@@ -70,6 +72,7 @@ func (c *BongaCamsChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo,
 		channels[modelID] = cmdlib.ChannelInfo{
 			ImageURL: "https:" + m.ProfileImages.ThumbnailImageMediumLive,
 			Viewers:  &viewers,
+			Subject:  m.ChatTopic,
 		}
 	}
 	return channels, nil
@@ -82,3 +85,6 @@ func (c *BongaCamsChecker) QueryFixedListOnlineChannels([]string, cmdlib.CheckMo
 
 // UsesFixedList returns false for online list checkers
 func (c *BongaCamsChecker) UsesFixedList() bool { return false }
+
+// SubjectSupported returns true for BongaCams
+func (c *BongaCamsChecker) SubjectSupported() bool { return true }
