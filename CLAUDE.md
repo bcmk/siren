@@ -3,6 +3,7 @@
 ## Git Commits
 - Use one-line commit messages only
 - Use conventional commit style
+- Use site scope for single-site changes, e.g. `feat(chaturbate): add room subject`
 - Do not include Co-Authored-By or other attribution
 - When stashing, use a descriptive name
 
