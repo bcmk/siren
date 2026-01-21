@@ -1,6 +1,8 @@
 # Claude Code Guidelines
 
-## Git Commits
+## Git
+- Prefer modern git commands, e.g. `switch` over `checkout` for branches
+- Don't use slashes in branch names
 - Use one-line commit messages only
 - Use conventional commit style
 - Use site scope for single-site changes, e.g. `feat(chaturbate): add room subject`
