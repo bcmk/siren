@@ -8,6 +8,7 @@
     "allow": [
       "Edit",
       "Write",
+      "WebSearch",
       "Bash(go build:*)",
       "Bash(go test:*)",
       "Bash(go mod graph:*)",
