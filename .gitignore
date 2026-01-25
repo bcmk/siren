@@ -19,3 +19,4 @@ cmd/stripchat-online-models/stripchat-online-models
 cmd/twitch-active-streams/twitch-active-streams
 cmd/twitch-specific-streams/twitch-specific-streams
 cmd/twitch-check/twitch-check
+respond-examples
