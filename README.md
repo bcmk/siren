@@ -12,8 +12,8 @@ You subscribe to your favorite streamers with __/add__ command.
 We notify you whenever they start broadcasting.
 The bot queries channels statuses every minute.
 
-Installation
-------------
+Open In Telegram
+----------------
 
 * Twitch: [t.me/TwitchSirenBot](https://t.me/TwitchSirenBot)
 * Chaturbate #1: [t.me/ChaturbateAlarmBot](https://t.me/ChaturbateAlarmBot)
