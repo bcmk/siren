@@ -273,11 +273,6 @@ func (w *worker) setWebhook() {
 			continue
 		}
 		params := &bot.SetWebhookParams{URL: path.Join(p.WebhookDomain, p.ListenPath)}
-		if p.CertificatePath != "" {
-			certBytes, err := os.ReadFile(p.CertificatePath)
-			checkErr(err)
-			params.Certificate = &models.InputFileUpload{Filename: "certificate.pem", Data: bytes.NewReader(certBytes)}
-		}
 		_, err := w.bots[n].SetWebhook(ctx, params)
 		checkErr(err)
 		info, err := w.bots[n].GetWebhookInfo(ctx)

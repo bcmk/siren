@@ -23,7 +23,6 @@ var checkErr = cmdlib.CheckErr
 type endpoint struct {
 	ListenPath          string   `mapstructure:"listen_path"`          // the path excluding domain to listen to, the good choice is "/your-telegram-bot-token"
 	WebhookDomain       string   `mapstructure:"webhook_domain"`       // the domain listening to the webhook
-	CertificatePath     string   `mapstructure:"certificate_path"`     // a path to your certificate, it is used to set up a webhook and to set up this HTTP server
 	BotToken            string   `mapstructure:"bot_token"`            // your Telegram bot token
 	Translation         []string `mapstructure:"translation"`          // translation files
 	Ads                 []string `mapstructure:"ads"`                  // ads files
