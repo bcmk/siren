@@ -4,7 +4,7 @@ __[Русский](README-ru.md)__
 ================================================================================================
 Telegram bot for webcast alerts
 
-[![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
+[![CI](https://github.com/bcmk/siren/actions/workflows/ci.yml/badge.svg)](https://github.com/bcmk/siren/actions/workflows/ci.yml)
 [![GoReportCard](https://goreportcard.com/badge/bcmk/siren)](https://goreportcard.com/report/bcmk/siren)
 
 This is the Telegram bot notifying you whenever webcasts are online.

@@ -4,7 +4,7 @@ __[English](README.md)__
 ================================================================================================
 Telegram-бот для оповещений о вебкастах
 
-[![Build Status](https://travis-ci.org/bcmk/siren.png)](https://travis-ci.org/bcmk/siren)
+[![CI](https://github.com/bcmk/siren/actions/workflows/ci.yml/badge.svg)](https://github.com/bcmk/siren/actions/workflows/ci.yml)
 [![GoReportCard](https://goreportcard.com/badge/bcmk/siren)](https://goreportcard.com/report/bcmk/siren)
 
 Это бот в Telegram для оповещений о вебкастах.
