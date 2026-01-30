@@ -64,6 +64,8 @@ type User struct {
 	OfflineNotifications bool
 	ShowSubject          bool
 	CreatedAt            int64
+	ChatType             *string
+	MemberCount          *int
 }
 
 // Channel represents a channel

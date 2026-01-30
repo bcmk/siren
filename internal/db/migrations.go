@@ -355,6 +355,10 @@ var migrations = []func(d *Database){
 		d.MustExec(`alter table users add column show_subject boolean not null default true`)
 		d.MustExec(`alter table notification_queue add column subject text`)
 	},
+	func(d *Database) {
+		d.MustExec(`alter table users add column chat_type text`)
+		d.MustExec(`alter table users add column member_count integer`)
+	},
 }
 
 // ApplyMigrations applies all migrations to the database

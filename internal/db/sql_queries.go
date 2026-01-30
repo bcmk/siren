@@ -195,7 +195,9 @@ func (d *Database) User(chatID int64) (user User, found bool) {
 			show_images,
 			offline_notifications,
 			show_subject,
-			created_at
+			created_at,
+			chat_type,
+			member_count
 		from users
 		where chat_id = $1
 	`,
@@ -209,19 +211,23 @@ func (d *Database) User(chatID int64) (user User, found bool) {
 			&user.OfflineNotifications,
 			&user.ShowSubject,
 			&user.CreatedAt,
+			&user.ChatType,
+			&user.MemberCount,
 		})
 	return
 }
 
 // AddUser inserts a user
-func (d *Database) AddUser(chatID int64, maxChannels int, now int) {
+func (d *Database) AddUser(chatID int64, maxChannels int, now int, chatType string, memberCount *int) {
 	d.MustExec(`
-		insert into users (chat_id, max_channels, created_at)
-		values ($1, $2, $3)
+		insert into users (chat_id, max_channels, created_at, chat_type, member_count)
+		values ($1, $2, $3, $4, $5)
 		on conflict(chat_id) do nothing`,
 		chatID,
 		maxChannels,
-		now)
+		now,
+		chatType,
+		memberCount)
 }
 
 // MaybeChannel returns a channel if exists
@@ -517,11 +523,11 @@ func (d *Database) BlacklistUser(chatID int64) {
 }
 
 // AddUserWithBonus inserts a user with a specific max_channels value
-func (d *Database) AddUserWithBonus(chatID int64, maxChannels int, now int) {
+func (d *Database) AddUserWithBonus(chatID int64, maxChannels int, now int, chatType string, memberCount *int) {
 	d.MustExec(`
-		insert into users (chat_id, max_channels, created_at)
-		values ($1, $2, $3)
-	`, chatID, maxChannels, now)
+		insert into users (chat_id, max_channels, created_at, chat_type, member_count)
+		values ($1, $2, $3, $4, $5)
+	`, chatID, maxChannels, now, chatType, memberCount)
 }
 
 // AddOrUpdateReferrer inserts or updates a referrer's max_channels
