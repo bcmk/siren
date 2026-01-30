@@ -1196,7 +1196,7 @@ func (w *worker) getChatMemberCount(endpoint string, chatID int64) *int {
 	return &count
 }
 
-func (w *worker) refer(followerChatID int64, referrer string, now int, chatType string, memberCount *int) (applied appliedKind) {
+func (w *worker) refer(followerChatID int64, referrer string, now int, chatType string) (applied appliedKind) {
 	referrerChatID := w.db.ChatForReferralID(referrer)
 	if referrerChatID == nil {
 		return invalidReferral
@@ -1204,7 +1204,7 @@ func (w *worker) refer(followerChatID int64, referrer string, now int, chatType 
 	if _, exists := w.db.User(followerChatID); exists {
 		return followerExists
 	}
-	w.db.AddUserWithBonus(followerChatID, w.cfg.MaxChannels+w.cfg.FollowerBonus, now, chatType, memberCount)
+	w.db.AddUserWithBonus(followerChatID, w.cfg.MaxChannels+w.cfg.FollowerBonus, now, chatType)
 	w.db.AddOrUpdateReferrer(*referrerChatID, w.cfg.MaxChannels+w.cfg.ReferralBonus, w.cfg.ReferralBonus)
 	w.db.IncrementReferredUsers(*referrerChatID)
 	w.db.AddReferralEvent(now, referrerChatID, followerChatID, nil)
@@ -1230,7 +1230,7 @@ func (w *worker) showReferral(endpoint string, chatID int64) {
 	}, db.ReplyPacket)
 }
 
-func (w *worker) start(endpoint string, chatID int64, referrer string, now int, chatType string, memberCount *int) {
+func (w *worker) start(endpoint string, chatID int64, referrer string, now int, chatType string) {
 	channelID := ""
 	switch {
 	case strings.HasPrefix(referrer, "m-"):
@@ -1248,7 +1248,7 @@ func (w *worker) start(endpoint string, chatID int64, referrer string, now int, 
 		"website_link": w.cfg.WebsiteLink,
 	}, db.ReplyPacket)
 	if chatID > 0 && referrer != "" {
-		applied := w.refer(chatID, referrer, now, chatType, memberCount)
+		applied := w.refer(chatID, referrer, now, chatType)
 		switch applied {
 		case referralApplied:
 			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ReferralApplied, nil, db.ReplyPacket)
@@ -1258,7 +1258,7 @@ func (w *worker) start(endpoint string, chatID int64, referrer string, now int, 
 			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].FollowerExists, nil, db.ReplyPacket)
 		}
 	}
-	w.db.AddUser(chatID, w.cfg.MaxChannels, now, chatType, memberCount)
+	w.db.AddUser(chatID, w.cfg.MaxChannels, now, chatType)
 	if channelID != "" {
 		if w.addChannel(endpoint, chatID, channelID, now) {
 			w.db.AddReferralEvent(now, nil, chatID, &channelID)
@@ -1272,11 +1272,11 @@ func (w *worker) help(endpoint string, chatID int64) {
 	}, db.ReplyPacket)
 }
 
-func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, arguments string, now int, chatType string, memberCount *int) bool {
+func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, arguments string, now int, chatType string) bool {
 	w.db.ResetBlock(endpoint, chatID)
 	command = strings.ToLower(command)
 	if command != "start" {
-		w.db.AddUser(chatID, w.cfg.MaxChannels, now, chatType, memberCount)
+		w.db.AddUser(chatID, w.cfg.MaxChannels, now, chatType)
 	}
 	linf("chat: %d, command: %s %s", chatID, command, arguments)
 
@@ -1302,7 +1302,7 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	case "pics", "online":
 		w.listOnlineChannels(endpoint, chatID, now)
 	case "start":
-		w.start(endpoint, chatID, arguments, now, chatType, memberCount)
+		w.start(endpoint, chatID, arguments, now, chatType)
 	case "help":
 		w.help(endpoint, chatID)
 	case "ad":
@@ -1627,8 +1627,11 @@ func (w *worker) processTGUpdate(p incomingPacket) bool {
 		} else if u.ChannelPost != nil && u.ChannelPost.Chat != nil {
 			chatType = u.ChannelPost.Chat.Type
 		}
-		memberCount := w.getChatMemberCount(p.endpoint, chatID)
-		return w.processIncomingCommand(p.endpoint, chatID, command, args, now, chatType, memberCount)
+		result := w.processIncomingCommand(p.endpoint, chatID, command, args, now, chatType)
+		if memberCount := w.getChatMemberCount(p.endpoint, chatID); memberCount != nil {
+			w.db.UpdateMemberCount(chatID, memberCount)
+		}
+		return result
 	}
 	return false
 }
@@ -1925,6 +1928,9 @@ func main() {
 				w.db.IncrementBlock(r.endpoint, r.chatID)
 			case messageSent:
 				w.db.ResetBlock(r.endpoint, r.chatID)
+				if memberCount := w.getChatMemberCount(r.endpoint, r.chatID); memberCount != nil {
+					w.db.UpdateMemberCount(r.chatID, memberCount)
+				}
 			}
 			w.db.LogSentMessage(r.timestamp, r.chatID, r.result, r.endpoint, r.priority, r.delay, r.kind)
 		case r := <-w.existenceListResults:

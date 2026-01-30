@@ -560,7 +560,7 @@ func TestAddChannel(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
-	w.db.AddUser(1, 3, 0, "private", nil)
+	w.db.AddUser(1, 3, 0, "private")
 
 	// Add channel that doesn't exist — should insert with confirmed=0 and return false
 	if w.addChannel("test", 1, "newmodel", 100) {
@@ -1056,7 +1056,7 @@ func TestUnknownChannelFirstOfflineSaved(t *testing.T) {
 	w.initCache()
 
 	// Add a user
-	w.db.AddUser(1, 3, 0, "private", nil)
+	w.db.AddUser(1, 3, 0, "private")
 
 	// 1. User subscribes to a channel we don't know yet — creates unconfirmed subscription
 	// This simulates subscribing to a Twitch channel or a new unknown model

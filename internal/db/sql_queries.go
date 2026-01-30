@@ -218,16 +218,15 @@ func (d *Database) User(chatID int64) (user User, found bool) {
 }
 
 // AddUser inserts a user
-func (d *Database) AddUser(chatID int64, maxChannels int, now int, chatType string, memberCount *int) {
+func (d *Database) AddUser(chatID int64, maxChannels int, now int, chatType string) {
 	d.MustExec(`
-		insert into users (chat_id, max_channels, created_at, chat_type, member_count)
-		values ($1, $2, $3, $4, $5)
+		insert into users (chat_id, max_channels, created_at, chat_type)
+		values ($1, $2, $3, $4)
 		on conflict(chat_id) do nothing`,
 		chatID,
 		maxChannels,
 		now,
-		chatType,
-		memberCount)
+		chatType)
 }
 
 // MaybeChannel returns a channel if exists
@@ -493,6 +492,11 @@ func (d *Database) SetShowSubject(chatID int64, showSubject bool) {
 	d.MustExec("update users set show_subject = $1 where chat_id = $2", showSubject, chatID)
 }
 
+// UpdateMemberCount updates the member_count for a user
+func (d *Database) UpdateMemberCount(chatID int64, memberCount *int) {
+	d.MustExec("update users set member_count = $1 where chat_id = $2", memberCount, chatID)
+}
+
 // RemoveSubscription deletes a specific subscription
 func (d *Database) RemoveSubscription(chatID int64, channelID string, endpoint string) {
 	d.MustExec(
@@ -523,11 +527,11 @@ func (d *Database) BlacklistUser(chatID int64) {
 }
 
 // AddUserWithBonus inserts a user with a specific max_channels value
-func (d *Database) AddUserWithBonus(chatID int64, maxChannels int, now int, chatType string, memberCount *int) {
+func (d *Database) AddUserWithBonus(chatID int64, maxChannels int, now int, chatType string) {
 	d.MustExec(`
-		insert into users (chat_id, max_channels, created_at, chat_type, member_count)
-		values ($1, $2, $3, $4, $5)
-	`, chatID, maxChannels, now, chatType, memberCount)
+		insert into users (chat_id, max_channels, created_at, chat_type)
+		values ($1, $2, $3, $4)
+	`, chatID, maxChannels, now, chatType)
 }
 
 // AddOrUpdateReferrer inserts or updates a referrer's max_channels
