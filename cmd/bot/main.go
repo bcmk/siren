@@ -3,6 +3,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,7 +35,8 @@ import (
 	"github.com/bcmk/siren/internal/checkers"
 	"github.com/bcmk/siren/internal/db"
 	"github.com/bcmk/siren/lib/cmdlib"
-	tg "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
 	"github.com/spf13/pflag"
 )
 
@@ -58,7 +60,7 @@ type timeDiff struct {
 type worker struct {
 	db                        db.Database
 	clients                   []*cmdlib.Client
-	bots                      map[string]*tg.BotAPI
+	bots                      map[string]*bot.Bot
 	cfg                       *botconfig.Config
 	tr                        map[string]*cmdlib.Translations
 	tpl                       map[string]*template.Template
@@ -78,15 +80,16 @@ type worker struct {
 	sentNotifications         chan []db.Notification
 	ourIDs                    []int64
 	channelIDRegexp           *regexp.Regexp
+	incomingPackets           chan incomingPacket
 }
 
 type incomingPacket struct {
-	message  tg.Update
+	message  *models.Update
 	endpoint string
 }
 
 type outgoingPacket struct {
-	message   baseChattable
+	message   sendable
 	endpoint  string
 	requested time.Time
 	kind      db.PacketKind
@@ -134,21 +137,22 @@ type imageDownloadLog struct {
 }
 
 func newWorker(cfg *botconfig.Config) *worker {
-	var err error
-
 	var clients []*cmdlib.Client
 	for _, address := range cfg.SourceIPAddresses {
 		clients = append(clients, cmdlib.HTTPClientWithTimeoutAndAddress(cfg.TimeoutSeconds, address, cfg.EnableCookies))
 	}
 
+	incomingPackets := make(chan incomingPacket)
 	telegramClient := cmdlib.HTTPClientWithTimeoutAndAddress(cfg.TelegramTimeoutSeconds, "", false)
-	bots := make(map[string]*tg.BotAPI)
+	bots := make(map[string]*bot.Bot)
 	for n, p := range cfg.Endpoints {
-		//noinspection GoNilness
-		var bot *tg.BotAPI
-		bot, err = tg.NewBotAPIWithClient(p.BotToken, tg.APIEndpoint, telegramClient.Client)
+		endpointName := n
+		handler := func(_ context.Context, _ *bot.Bot, update *models.Update) {
+			incomingPackets <- incomingPacket{message: update, endpoint: endpointName}
+		}
+		b, err := bot.New(p.BotToken, bot.WithHTTPClient(0, telegramClient.Client), bot.WithDefaultHandler(handler))
 		checkErr(err)
-		bots[n] = bot
+		bots[n] = b
 	}
 	tr, tpl := cmdlib.LoadAllTranslations(trsByEndpoint(cfg))
 	trAds, tplAds := cmdlib.LoadAllAds(trsAdsByEndpoint(cfg))
@@ -175,6 +179,7 @@ func newWorker(cfg *botconfig.Config) *worker {
 		sendingNotifications:      make(chan []db.Notification, 1000),
 		sentNotifications:         make(chan []db.Notification),
 		ourIDs:                    getOurIDs(cfg),
+		incomingPackets:           incomingPackets,
 	}
 	for endpoint, a := range tr {
 		for _, b := range a.ToMap() {
@@ -261,26 +266,21 @@ func trsAdsByEndpoint(cfg *botconfig.Config) map[string][]string {
 }
 
 func (w *worker) setWebhook() {
+	ctx := context.Background()
 	for n, p := range w.cfg.Endpoints {
 		linf("setting webhook for endpoint %s...", n)
 		if p.WebhookDomain == "" {
 			continue
 		}
-		var webhookConfig tg.WebhookConfig
-		var err error
-		if p.CertificatePath == "" {
-			webhookConfig, err = tg.NewWebhook(path.Join(p.WebhookDomain, p.ListenPath))
+		params := &bot.SetWebhookParams{URL: path.Join(p.WebhookDomain, p.ListenPath)}
+		if p.CertificatePath != "" {
+			certBytes, err := os.ReadFile(p.CertificatePath)
 			checkErr(err)
-		} else {
-			webhookConfig, err = tg.NewWebhookWithCert(
-				path.Join(p.WebhookDomain, p.ListenPath),
-				tg.FilePath(p.CertificatePath),
-			)
-			checkErr(err)
+			params.Certificate = &models.InputFileUpload{Filename: "certificate.pem", Data: bytes.NewReader(certBytes)}
 		}
-		_, err = w.bots[n].Request(webhookConfig)
+		_, err := w.bots[n].SetWebhook(ctx, params)
 		checkErr(err)
-		info, err := w.bots[n].GetWebhookInfo()
+		info, err := w.bots[n].GetWebhookInfo(ctx)
 		checkErr(err)
 		if info.LastErrorDate != 0 {
 			linf("last webhook error time: %v", time.Unix(int64(info.LastErrorDate), 0))
@@ -293,54 +293,57 @@ func (w *worker) setWebhook() {
 }
 
 func (w *worker) removeWebhook() {
+	ctx := context.Background()
 	for n := range w.cfg.Endpoints {
 		linf("removing webhook for endpoint %s...", n)
-		_, err := w.bots[n].Request(tg.DeleteWebhookConfig{})
+		_, err := w.bots[n].DeleteWebhook(ctx, &bot.DeleteWebhookParams{})
 		checkErr(err)
 		linf("OK")
 	}
 }
 
 func (w *worker) initBotNames() {
+	ctx := context.Background()
 	for n := range w.cfg.Endpoints {
-		user, err := w.bots[n].GetMe()
+		user, err := w.bots[n].GetMe(ctx)
 		checkErr(err)
-		linf("bot name for endpoint %s: %s", n, user.UserName)
-		w.botNames[n] = user.UserName
+		linf("bot name for endpoint %s: %s", n, user.Username)
+		w.botNames[n] = user.Username
 	}
 }
 
 func (w *worker) setCommands() {
+	ctx := context.Background()
 	for n := range w.cfg.Endpoints {
 		text := templateToString(w.tpl[n], w.tr[n].RawCommands.Key, nil)
 		lines := strings.Split(text, "\n")
-		var commands []tg.BotCommand
+		var commands []models.BotCommand
 		for _, l := range lines {
 			pair := strings.SplitN(l, "-", 2)
 			if len(pair) != 2 {
 				checkErr(fmt.Errorf("unexpected command pair %q", l))
 			}
 			pair[0], pair[1] = strings.TrimSpace(pair[0]), strings.TrimSpace(pair[1])
-			commands = append(commands, tg.BotCommand{Command: pair[0], Description: pair[1]})
+			commands = append(commands, models.BotCommand{Command: pair[0], Description: pair[1]})
 			if w.cfg.Debug {
 				ldbg("command %s - %s", pair[0], pair[1])
 			}
 		}
 		linf("setting commands for endpoint %s...", n)
-		_, err := w.bots[n].Request(tg.SetMyCommandsConfig{Commands: commands})
+		_, err := w.bots[n].SetMyCommands(ctx, &bot.SetMyCommandsParams{Commands: commands})
 		checkErr(err)
 		linf("OK")
 	}
 }
 
-// TODO: replace MakeRequest with a proper method when the library supports it
 func (w *worker) setDefaultAdminRights() {
+	ctx := context.Background()
 	for n := range w.cfg.Endpoints {
 		linf("setting default admin rights for channels for endpoint %s...", n)
-		params := tg.Params{}
-		params["rights"] = `{"can_post_messages":true}`
-		params["for_channels"] = "true"
-		_, err := w.bots[n].MakeRequest("setMyDefaultAdministratorRights", params)
+		_, err := w.bots[n].SetMyDefaultAdministratorRights(ctx, &bot.SetMyDefaultAdministratorRightsParams{
+			Rights:      &models.ChatAdministratorRights{CanPostMessages: true},
+			ForChannels: true,
+		})
 		checkErr(err)
 		linf("OK")
 	}
@@ -356,14 +359,22 @@ func (w *worker) sendText(
 	text string,
 	kind db.PacketKind,
 ) {
-	msg := tg.NewMessage(chatID, text)
-	msg.DisableNotification = !notify
-	msg.DisableWebPagePreview = disablePreview
-	switch parse {
-	case cmdlib.ParseHTML, cmdlib.ParseMarkdown:
-		msg.ParseMode = parse.String()
+	params := &bot.SendMessageParams{
+		ChatID:              chatID,
+		Text:                text,
+		DisableNotification: !notify,
 	}
-	w.enqueueMessage(queue, endpoint, &messageConfig{msg}, kind)
+	if disablePreview {
+		disabled := true
+		params.LinkPreviewOptions = &models.LinkPreviewOptions{IsDisabled: &disabled}
+	}
+	switch parse {
+	case cmdlib.ParseHTML:
+		params.ParseMode = models.ParseModeHTML
+	case cmdlib.ParseMarkdown:
+		params.ParseMode = models.ParseModeMarkdown
+	}
+	w.enqueueMessage(queue, endpoint, &messageParams{params}, kind)
 }
 
 func (w *worker) sendImage(
@@ -373,21 +384,25 @@ func (w *worker) sendImage(
 	notify bool,
 	parse cmdlib.ParseKind,
 	text string,
-	image []byte,
+	img []byte,
 	kind db.PacketKind,
 ) {
-	fileBytes := tg.FileBytes{Name: "preview", Bytes: image}
-	msg := tg.NewPhoto(chatID, fileBytes)
-	msg.Caption = text
-	msg.DisableNotification = !notify
-	switch parse {
-	case cmdlib.ParseHTML, cmdlib.ParseMarkdown:
-		msg.ParseMode = parse.String()
+	params := &bot.SendPhotoParams{
+		ChatID:              chatID,
+		Photo:               &models.InputFileUpload{Filename: "preview", Data: bytes.NewReader(img)},
+		Caption:             text,
+		DisableNotification: !notify,
 	}
-	w.enqueueMessage(queue, endpoint, &photoConfig{msg}, kind)
+	switch parse {
+	case cmdlib.ParseHTML:
+		params.ParseMode = models.ParseModeHTML
+	case cmdlib.ParseMarkdown:
+		params.ParseMode = models.ParseModeMarkdown
+	}
+	w.enqueueMessage(queue, endpoint, &photoParams{params}, kind)
 }
 
-func (w *worker) enqueueMessage(queue chan outgoingPacket, endpoint string, msg baseChattable, kind db.PacketKind) {
+func (w *worker) enqueueMessage(queue chan outgoingPacket, endpoint string, msg sendable, kind db.PacketKind) {
 	select {
 	case queue <- outgoingPacket{endpoint: endpoint, message: msg, requested: time.Now(), kind: kind}:
 	default:
@@ -408,7 +423,7 @@ func (w *worker) sender(queue chan outgoingPacket, priority int) {
 				timestamp: now,
 				result:    result,
 				endpoint:  packet.endpoint,
-				chatID:    packet.message.baseChat().ChatID,
+				chatID:    packet.message.chatID(),
 				delay:     delay,
 				kind:      packet.kind,
 			}
@@ -430,46 +445,46 @@ func (w *worker) sender(queue chan outgoingPacket, priority int) {
 	}
 }
 
-func (w *worker) sendMessageInternal(endpoint string, msg baseChattable) int {
-	chatID := msg.baseChat().ChatID
+func (w *worker) sendMessageInternal(endpoint string, msg sendable) int {
+	chatID := msg.chatID()
 	if !w.cfg.ChatWhitelisted(chatID) {
 		return messageSkipped
 	}
-	if _, err := w.bots[endpoint].Send(msg); err != nil {
-		switch err := err.(type) {
-		case tg.Error:
-			switch err.Code {
-			case messageBlocked:
-				if w.cfg.Debug {
-					ldbg("cannot send a message, bot blocked")
-				}
-				return messageBlocked
-			case messageTooManyRequests:
-				if w.cfg.Debug {
-					ldbg("cannot send a message, too many requests")
-				}
-				return messageTooManyRequests
-			case messageBadRequest:
-				if err.MigrateToChatID != 0 {
-					if w.cfg.Debug {
-						ldbg("cannot send a message, group migration")
-					}
-					return messageMigrate
-				}
-				if err.Message == "Bad Request: chat not found" {
-					if w.cfg.Debug {
-						ldbg("cannot send a message, chat not found")
-					}
-					return messageChatNotFound
-				}
-				lerr("cannot send a message, bad request, code: %d, error: %v", err.Code, err)
-				return err.Code
-			default:
-				lerr("cannot send a message, unknown code: %d, error: %v", err.Code, err)
-				return err.Code
+	ctx := context.Background()
+	if _, err := msg.send(ctx, w.bots[endpoint]); err != nil {
+		var migrateErr *bot.MigrateError
+		if errors.As(err, &migrateErr) {
+			if w.cfg.Debug {
+				ldbg("cannot send a message, group migration")
 			}
-		case net.Error:
-			if err.Timeout() {
+			return messageMigrate
+		}
+		var tooManyErr *bot.TooManyRequestsError
+		if errors.As(err, &tooManyErr) {
+			if w.cfg.Debug {
+				ldbg("cannot send a message, too many requests")
+			}
+			return messageTooManyRequests
+		}
+		if errors.Is(err, bot.ErrorForbidden) {
+			if w.cfg.Debug {
+				ldbg("cannot send a message, bot blocked")
+			}
+			return messageBlocked
+		}
+		if errors.Is(err, bot.ErrorBadRequest) {
+			if strings.Contains(err.Error(), "chat not found") {
+				if w.cfg.Debug {
+					ldbg("cannot send a message, chat not found")
+				}
+				return messageChatNotFound
+			}
+			lerr("cannot send a message, bad request, error: %v", err)
+			return messageBadRequest
+		}
+		var netErr net.Error
+		if errors.As(err, &netErr) {
+			if netErr.Timeout() {
 				if w.cfg.Debug {
 					ldbg("cannot send a message, timeout")
 				}
@@ -477,10 +492,9 @@ func (w *worker) sendMessageInternal(endpoint string, msg baseChattable) int {
 			}
 			lerr("cannot send a message, unknown network error")
 			return messageUnknownNetworkError
-		default:
-			lerr("unexpected error type while sending a message to %d, %v", chatID, err)
-			return messageUnknownError
 		}
+		lerr("unexpected error type while sending a message to %d, %v", chatID, err)
+		return messageUnknownError
 	}
 	return messageSent
 }
@@ -1208,8 +1222,8 @@ func (w *worker) getChatMemberCount(endpoint string, chatID int64) *int {
 	if chatID > 0 { // private chats don't have member count
 		return nil
 	}
-	bot := w.bots[endpoint]
-	count, err := bot.GetChatMembersCount(tg.ChatMemberCountConfig{ChatConfig: tg.ChatConfig{ChatID: chatID}})
+	ctx := context.Background()
+	count, err := w.bots[endpoint].GetChatMemberCount(ctx, &bot.GetChatMemberCountParams{ChatID: chatID})
 	if err != nil {
 		return nil // fail silently, non-critical data
 	}
@@ -1561,11 +1575,11 @@ func (w *worker) buildNotifications(
 	return notifications
 }
 
-func getCommandAndArgs(update tg.Update, mention string, ourIDs []int64) (int64, string, string) {
+func getCommandAndArgs(update *models.Update, mention string, ourIDs []int64) (int64, string, string) {
 	var text string
 	var chatID int64
 	var forceMention bool
-	if update.Message != nil && update.Message.Chat != nil {
+	if update.Message != nil {
 		text = update.Message.Text
 		chatID = update.Message.Chat.ID
 		for _, m := range update.Message.NewChatMembers {
@@ -1575,7 +1589,7 @@ func getCommandAndArgs(update tg.Update, mention string, ourIDs []int64) (int64,
 				}
 			}
 		}
-	} else if update.ChannelPost != nil && update.ChannelPost.Chat != nil {
+	} else if update.ChannelPost != nil {
 		text = update.ChannelPost.Text
 		chatID = update.ChannelPost.Chat.ID
 		forceMention = true
@@ -1640,10 +1654,10 @@ func (w *worker) processTGUpdate(p incomingPacket) bool {
 		}
 		w.db.LogReceivedMessage(now, p.endpoint, chatID, loggedCommand)
 		var chatType string
-		if u.Message != nil && u.Message.Chat != nil {
-			chatType = u.Message.Chat.Type
-		} else if u.ChannelPost != nil && u.ChannelPost.Chat != nil {
-			chatType = u.ChannelPost.Chat.Type
+		if u.Message != nil {
+			chatType = string(u.Message.Chat.Type)
+		} else if u.ChannelPost != nil {
+			chatType = string(u.ChannelPost.Chat.Type)
 		}
 		result := w.processIncomingCommand(p.endpoint, chatID, command, args, now, chatType)
 		if memberCount := w.getChatMemberCount(p.endpoint, chatID); memberCount != nil {
@@ -1655,17 +1669,13 @@ func (w *worker) processTGUpdate(p incomingPacket) bool {
 }
 
 func (w *worker) incoming() chan incomingPacket {
-	result := make(chan incomingPacket)
+	ctx := context.Background()
 	for n, p := range w.cfg.Endpoints {
 		linf("listening for a webhook for endpoint %s", n)
-		incoming := w.bots[n].ListenForWebhook(p.WebhookDomain + p.ListenPath)
-		go func(n string, incoming tg.UpdatesChannel) {
-			for i := range incoming {
-				result <- incomingPacket{message: i, endpoint: n}
-			}
-		}(n, incoming)
+		http.Handle(p.ListenPath, w.bots[n].WebhookHandler())
+		go w.bots[n].StartWebhook(ctx)
 	}
-	return result
+	return w.incomingPackets
 }
 
 func getOurIDs(c *botconfig.Config) []int64 {

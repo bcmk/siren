@@ -1,20 +1,37 @@
 package main
 
-import tg "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+import (
+	"context"
 
-type baseChattable interface {
-	tg.Chattable
-	baseChat() *tg.BaseChat
+	"github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
+)
+
+type sendable interface {
+	chatID() int64
+	send(ctx context.Context, b *bot.Bot) (*models.Message, error)
 }
 
-type messageConfig struct{ tg.MessageConfig }
-
-func (m *messageConfig) baseChat() *tg.BaseChat {
-	return &m.BaseChat
+type messageParams struct {
+	*bot.SendMessageParams
 }
 
-type photoConfig struct{ tg.PhotoConfig }
+func (m *messageParams) chatID() int64 {
+	return m.ChatID.(int64)
+}
 
-func (m *photoConfig) baseChat() *tg.BaseChat {
-	return &m.BaseChat
+func (m *messageParams) send(ctx context.Context, b *bot.Bot) (*models.Message, error) {
+	return b.SendMessage(ctx, m.SendMessageParams)
+}
+
+type photoParams struct {
+	*bot.SendPhotoParams
+}
+
+func (p *photoParams) chatID() int64 {
+	return p.ChatID.(int64)
+}
+
+func (p *photoParams) send(ctx context.Context, b *bot.Bot) (*models.Message, error) {
+	return b.SendPhoto(ctx, p.SendPhotoParams)
 }

@@ -3,7 +3,7 @@ module github.com/bcmk/siren
 require (
 	github.com/chromedp/cdproto v0.0.0-20211002082225-0242b9dca9f4
 	github.com/chromedp/chromedp v0.7.4
-	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
+	github.com/go-telegram/bot v1.18.0
 	github.com/go-viper/mapstructure/v2 v2.2.1
 	github.com/jackc/pgx/v5 v5.5.4
 	github.com/nicklaw5/helix v1.25.0

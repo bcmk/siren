@@ -8,7 +8,7 @@ import (
 
 	"github.com/bcmk/siren/internal/db"
 	"github.com/bcmk/siren/lib/cmdlib"
-	tg "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/go-telegram/bot/models"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -343,75 +343,75 @@ func TestCopyFromAndBatchInTransaction(t *testing.T) {
 }
 
 func TestCommandParser(t *testing.T) {
-	chatID, command, args := getCommandAndArgs(tg.Update{}, "", nil)
+	chatID, command, args := getCommandAndArgs(&models.Update{}, "", nil)
 	if chatID != 0 || command != "" || args != "" {
 		t.Error("unexpected result")
 	}
-	chatID, command, args = getCommandAndArgs(tg.Update{Message: &tg.Message{}}, "", nil)
+	chatID, command, args = getCommandAndArgs(&models.Update{Message: &models.Message{}}, "", nil)
 	if chatID != 0 || command != "" || args != "" {
 		t.Error("unexpected result")
 	}
-	chatID, command, args = getCommandAndArgs(tg.Update{Message: &tg.Message{Text: "command", Chat: &tg.Chat{ID: 1}}}, "", nil)
+	chatID, command, args = getCommandAndArgs(&models.Update{Message: &models.Message{Text: "command", Chat: models.Chat{ID: 1}}}, "", nil)
 	if chatID != 1 || command != "command" || args != "" {
 		t.Error("unexpected result")
 	}
-	chatID, command, args = getCommandAndArgs(tg.Update{Message: &tg.Message{Text: "   ", Chat: &tg.Chat{ID: 1}}}, "", nil)
+	chatID, command, args = getCommandAndArgs(&models.Update{Message: &models.Message{Text: "   ", Chat: models.Chat{ID: 1}}}, "", nil)
 	if chatID != 0 || command != "" || args != "" {
 		t.Error("unexpected result")
 	}
-	chatID, command, args = getCommandAndArgs(tg.Update{Message: &tg.Message{Text: "/command", Chat: &tg.Chat{ID: 1}}}, "", nil)
+	chatID, command, args = getCommandAndArgs(&models.Update{Message: &models.Message{Text: "/command", Chat: models.Chat{ID: 1}}}, "", nil)
 	if chatID != 1 || command != "command" || args != "" {
 		t.Error("unexpected result")
 	}
-	chatID, command, args = getCommandAndArgs(tg.Update{Message: &tg.Message{Text: " command", Chat: &tg.Chat{ID: 1}}}, "", nil)
+	chatID, command, args = getCommandAndArgs(&models.Update{Message: &models.Message{Text: " command", Chat: models.Chat{ID: 1}}}, "", nil)
 	if chatID != 1 || command != "command" || args != "" {
 		t.Error("unexpected result")
 	}
-	chatID, command, args = getCommandAndArgs(tg.Update{Message: &tg.Message{Text: " /command", Chat: &tg.Chat{ID: 1}}}, "", nil)
+	chatID, command, args = getCommandAndArgs(&models.Update{Message: &models.Message{Text: " /command", Chat: models.Chat{ID: 1}}}, "", nil)
 	if chatID != 1 || command != "command" || args != "" {
 		t.Error("unexpected result")
 	}
-	chatID, command, args = getCommandAndArgs(tg.Update{Message: &tg.Message{Text: "command args", Chat: &tg.Chat{ID: 1}}}, "", nil)
+	chatID, command, args = getCommandAndArgs(&models.Update{Message: &models.Message{Text: "command args", Chat: models.Chat{ID: 1}}}, "", nil)
 	if chatID != 1 || command != "command" || args != "args" {
 		t.Error("unexpected result")
 	}
-	chatID, command, args = getCommandAndArgs(tg.Update{Message: &tg.Message{Text: "command  args", Chat: &tg.Chat{ID: 1}}}, "", nil)
+	chatID, command, args = getCommandAndArgs(&models.Update{Message: &models.Message{Text: "command  args", Chat: models.Chat{ID: 1}}}, "", nil)
 	if chatID != 1 || command != "command" || args != "args" {
 		t.Error("unexpected result")
 	}
-	chatID, command, args = getCommandAndArgs(tg.Update{Message: &tg.Message{Text: "command arg1 arg2", Chat: &tg.Chat{ID: 1}}}, "", nil)
+	chatID, command, args = getCommandAndArgs(&models.Update{Message: &models.Message{Text: "command arg1 arg2", Chat: models.Chat{ID: 1}}}, "", nil)
 	if chatID != 1 || command != "command" || args != "arg1 arg2" {
 		t.Error("unexpected result")
 	}
-	chatID, command, args = getCommandAndArgs(tg.Update{Message: &tg.Message{Text: "command@bot arg1 arg2", Chat: &tg.Chat{ID: 1}}}, "@bot", nil)
+	chatID, command, args = getCommandAndArgs(&models.Update{Message: &models.Message{Text: "command@bot arg1 arg2", Chat: models.Chat{ID: 1}}}, "@bot", nil)
 	if chatID != 1 || command != "command" || args != "arg1 arg2" {
 		t.Error("unexpected result")
 	}
-	chatID, command, args = getCommandAndArgs(tg.Update{Message: &tg.Message{NewChatMembers: []tg.User{}, Chat: &tg.Chat{ID: 1}}}, "", nil)
+	chatID, command, args = getCommandAndArgs(&models.Update{Message: &models.Message{NewChatMembers: []models.User{}, Chat: models.Chat{ID: 1}}}, "", nil)
 	if chatID != 0 || command != "" || args != "" {
 		t.Error("unexpected result")
 	}
-	chatID, command, args = getCommandAndArgs(tg.Update{Message: &tg.Message{NewChatMembers: []tg.User{{ID: 2}}, Chat: &tg.Chat{ID: 1}}}, "", nil)
+	chatID, command, args = getCommandAndArgs(&models.Update{Message: &models.Message{NewChatMembers: []models.User{{ID: 2}}, Chat: models.Chat{ID: 1}}}, "", nil)
 	if chatID != 0 || command != "" || args != "" {
 		t.Error("unexpected result")
 	}
-	chatID, command, args = getCommandAndArgs(tg.Update{Message: &tg.Message{NewChatMembers: []tg.User{{ID: 2}}, Chat: &tg.Chat{ID: 1}}}, "", []int64{2})
+	chatID, command, args = getCommandAndArgs(&models.Update{Message: &models.Message{NewChatMembers: []models.User{{ID: 2}}, Chat: models.Chat{ID: 1}}}, "", []int64{2})
 	if chatID != 1 || command != "start" || args != "" {
 		t.Error("unexpected result")
 	}
-	chatID, command, args = getCommandAndArgs(tg.Update{ChannelPost: &tg.Message{Text: "command", Chat: &tg.Chat{ID: 1}}}, "@bot", nil)
+	chatID, command, args = getCommandAndArgs(&models.Update{ChannelPost: &models.Message{Text: "command", Chat: models.Chat{ID: 1}}}, "@bot", nil)
 	if chatID != 0 || command != "" || args != "" {
 		t.Error("unexpected result")
 	}
-	chatID, command, args = getCommandAndArgs(tg.Update{ChannelPost: &tg.Message{Text: "command@bot", Chat: &tg.Chat{ID: 1}}}, "@bot", nil)
+	chatID, command, args = getCommandAndArgs(&models.Update{ChannelPost: &models.Message{Text: "command@bot", Chat: models.Chat{ID: 1}}}, "@bot", nil)
 	if chatID != 1 || command != "command" || args != "" {
 		t.Error("unexpected result")
 	}
-	chatID, command, args = getCommandAndArgs(tg.Update{ChannelPost: &tg.Message{Text: "command @bot", Chat: &tg.Chat{ID: 1}}}, "@bot", nil)
+	chatID, command, args = getCommandAndArgs(&models.Update{ChannelPost: &models.Message{Text: "command @bot", Chat: models.Chat{ID: 1}}}, "@bot", nil)
 	if chatID != 0 || command != "" || args != "" {
 		t.Error("unexpected result")
 	}
-	chatID, command, args = getCommandAndArgs(tg.Update{ChannelPost: &tg.Message{Text: " /command@bot", Chat: &tg.Chat{ID: 1}}}, "@bot", nil)
+	chatID, command, args = getCommandAndArgs(&models.Update{ChannelPost: &models.Message{Text: " /command@bot", Chat: models.Chat{ID: 1}}}, "@bot", nil)
 	if chatID != 1 || command != "command" || args != "" {
 		t.Error("unexpected result")
 	}
