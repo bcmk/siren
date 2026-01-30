@@ -4,5 +4,5 @@ set -euo pipefail
 cur="$(dirname "$(readlink -f "$0")")"
 cd "$cur/.."
 
-SIREN_BOT_VERSION="$1"
+SIREN_BOT_VERSION="${1:-$(git describe --tags)}"
 go build -o cmd/bot/bot -ldflags="-s -X 'github.com/bcmk/siren/lib/cmdlib.Version=${SIREN_BOT_VERSION}'" ./cmd/bot
