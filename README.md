@@ -84,7 +84,7 @@ Links
 
 [Site](https://siren.chat)
 
-[Twitter](https://twitter.com/siren_tlg)
+[X](https://x.com/siren_tlg)
 
 [WeCamgirls](https://www.wecamgirls.com/users/sirenbot)
 
