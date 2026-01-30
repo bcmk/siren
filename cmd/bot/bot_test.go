@@ -243,6 +243,11 @@ func TestNotificationsStorage(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
+
+	w.db.AddUser(1, 3, 0, "private")
+	w.db.AddUser(2, 3, 0, "private")
+	w.db.AddUser(3, 3, 0, "private")
+
 	w.db.StoreNotifications(nots)
 	newNots := w.db.NewNotifications()
 	nots[0].ID = 1

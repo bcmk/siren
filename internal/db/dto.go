@@ -4,20 +4,21 @@ import "github.com/bcmk/siren/v2/lib/cmdlib"
 
 // Notification represents a notification
 type Notification struct {
-	ID        int
-	Endpoint  string
-	ChatID    int64
-	ChannelID string
-	Status    cmdlib.StatusKind
-	TimeDiff  *int
-	ImageURL  string
-	Viewers   *int
-	ShowKind  cmdlib.ShowKind
-	Social    bool
-	Sound     bool
-	Priority  int
-	Kind      PacketKind
-	Subject   string
+	ID             int
+	Endpoint       string
+	ChatID         int64
+	ChannelID      string
+	Status         cmdlib.StatusKind
+	TimeDiff       *int
+	ImageURL       string
+	Viewers        *int
+	ShowKind       cmdlib.ShowKind
+	Social         bool
+	Sound          bool
+	Priority       int
+	Kind           PacketKind
+	Subject        string
+	SilentMessages bool
 }
 
 // PacketKind represents a notification kind

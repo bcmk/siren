@@ -638,8 +638,7 @@ func (w *worker) notifyOfStatus(queue chan outgoingPacket, n db.Notification, im
 		"show_kind": n.ShowKind,
 		"subject":   html.EscapeString(n.Subject),
 	}
-	user := w.mustUser(n.ChatID)
-	notify := !user.SilentMessages
+	notify := !n.SilentMessages
 	switch n.Status {
 	case cmdlib.StatusOnline:
 		if image == nil {

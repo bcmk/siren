@@ -15,11 +15,13 @@ func (d *Database) NewNotifications() []Notification {
 	d.MustQuery(
 		`
 		select
-			id, endpoint, chat_id, channel_id, status, time_diff, image_url,
-			viewers, show_kind, social, priority, sound, kind, subject
-		from notification_queue
-		where sending = 0
-		order by id
+			n.id, n.endpoint, n.chat_id, n.channel_id, n.status, n.time_diff, n.image_url,
+			n.viewers, n.show_kind, n.social, n.priority, n.sound, n.kind, n.subject,
+			u.silent_messages
+		from notification_queue n
+		join users u on u.chat_id = n.chat_id
+		where n.sending = 0
+		order by n.id
 		`,
 		nil,
 		ScanTo{
@@ -37,6 +39,7 @@ func (d *Database) NewNotifications() []Notification {
 			&iter.Sound,
 			&iter.Kind,
 			&iter.Subject,
+			&iter.SilentMessages,
 		},
 		func() { nots = append(nots, iter) },
 	)
