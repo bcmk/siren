@@ -7,7 +7,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/bcmk/siren/lib/cmdlib"
+	"github.com/bcmk/siren/v2/lib/cmdlib"
 )
 
 // LiveJasminChecker implements a checker for LiveJasmin

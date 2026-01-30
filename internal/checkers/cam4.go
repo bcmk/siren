@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/bcmk/siren/lib/cmdlib"
+	"github.com/bcmk/siren/v2/lib/cmdlib"
 )
 
 // Cam4Checker implements a checker for CAM4

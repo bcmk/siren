@@ -6,8 +6,8 @@ import (
 	"runtime/debug"
 	"testing"
 
-	"github.com/bcmk/siren/internal/db"
-	"github.com/bcmk/siren/lib/cmdlib"
+	"github.com/bcmk/siren/v2/internal/db"
+	"github.com/bcmk/siren/v2/lib/cmdlib"
 	"github.com/go-telegram/bot/models"
 	"github.com/jackc/pgx/v5"
 )

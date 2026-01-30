@@ -4,7 +4,7 @@ package main
 import (
 	"flag"
 
-	"github.com/bcmk/siren/internal/db"
+	"github.com/bcmk/siren/v2/internal/db"
 )
 
 func main() {

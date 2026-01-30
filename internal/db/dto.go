@@ -1,6 +1,6 @@
 package db
 
-import "github.com/bcmk/siren/lib/cmdlib"
+import "github.com/bcmk/siren/v2/lib/cmdlib"
 
 // Notification represents a notification
 type Notification struct {

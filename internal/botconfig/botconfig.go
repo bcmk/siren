@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bcmk/siren/lib/cmdlib"
+	"github.com/bcmk/siren/v2/lib/cmdlib"
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"

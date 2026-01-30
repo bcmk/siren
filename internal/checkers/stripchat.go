@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bcmk/siren/lib/cmdlib"
+	"github.com/bcmk/siren/v2/lib/cmdlib"
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/chromedp"
 )

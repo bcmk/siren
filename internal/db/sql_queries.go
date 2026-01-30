@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/bcmk/siren/lib/cmdlib"
+	"github.com/bcmk/siren/v2/lib/cmdlib"
 	"github.com/jackc/pgx/v5"
 )
 

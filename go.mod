@@ -1,4 +1,4 @@
-module github.com/bcmk/siren
+module github.com/bcmk/siren/v2
 
 require (
 	github.com/chromedp/cdproto v0.0.0-20211002082225-0242b9dca9f4

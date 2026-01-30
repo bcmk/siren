@@ -31,10 +31,10 @@ import (
 
 	_ "golang.org/x/image/webp"
 
-	"github.com/bcmk/siren/internal/botconfig"
-	"github.com/bcmk/siren/internal/checkers"
-	"github.com/bcmk/siren/internal/db"
-	"github.com/bcmk/siren/lib/cmdlib"
+	"github.com/bcmk/siren/v2/internal/botconfig"
+	"github.com/bcmk/siren/v2/internal/checkers"
+	"github.com/bcmk/siren/v2/internal/db"
+	"github.com/bcmk/siren/v2/lib/cmdlib"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"github.com/spf13/pflag"
