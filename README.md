@@ -5,7 +5,7 @@ __[Русский](README-ru.md)__
 Telegram bot for webcast alerts
 
 [![CI](https://github.com/bcmk/siren/actions/workflows/ci.yml/badge.svg)](https://github.com/bcmk/siren/actions/workflows/ci.yml)
-[![GoReportCard](https://goreportcard.com/badge/bcmk/siren)](https://goreportcard.com/report/bcmk/siren)
+[![GoReportCard](https://goreportcard.com/badge/github.com/bcmk/siren/v2)](https://goreportcard.com/report/github.com/bcmk/siren/v2)
 
 This is the Telegram bot notifying you whenever webcasts are online.
 You subscribe to your favorite streamers with __/add__ command.
