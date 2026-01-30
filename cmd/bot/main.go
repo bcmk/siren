@@ -636,7 +636,7 @@ func (w *worker) notifyOfStatus(queue chan outgoingPacket, n db.Notification, im
 		"time_diff": timeDiff,
 		"viewers":   n.Viewers,
 		"show_kind": n.ShowKind,
-		"subject":   n.Subject,
+		"subject":   html.EscapeString(n.Subject),
 	}
 	switch n.Status {
 	case cmdlib.StatusOnline:
