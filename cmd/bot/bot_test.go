@@ -1359,6 +1359,11 @@ func TestNotifyOfStatuses(t *testing.T) {
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
 
+	w.db.AddUser(100, 3, 0, "private")
+	w.db.AddUser(101, 3, 0, "private")
+	w.db.AddUser(200, 3, 0, "private")
+	w.db.AddUser(201, 3, 0, "private")
+
 	nots := []db.Notification{
 		{ChatID: 100, Endpoint: "test", ChannelID: "a", Status: cmdlib.StatusOnline, Priority: 0},
 		{ChatID: 101, Endpoint: "test", ChannelID: "b", Status: cmdlib.StatusOnline, Priority: 1},

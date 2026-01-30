@@ -258,6 +258,14 @@ settings:
         Enable: /enable_subject
       {{- end -}}
     {{- end -}}
+
+    Silent messages (no sound): <b>{{ template "yes_no" .silent_messages }}</b>
+    {{- print "\n" -}}
+    {{- if .silent_messages -}}
+      Disable: /disable_silent_messages
+    {{- else -}}
+      Enable: /enable_silent_messages
+    {{- end -}}
 yes_no:
   parse: raw
   str: '{{- if . -}} yes {{- else -}} no {{- end -}}'

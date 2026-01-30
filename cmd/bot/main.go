@@ -638,12 +638,14 @@ func (w *worker) notifyOfStatus(queue chan outgoingPacket, n db.Notification, im
 		"show_kind": n.ShowKind,
 		"subject":   html.EscapeString(n.Subject),
 	}
+	user := w.mustUser(n.ChatID)
+	notify := !user.SilentMessages
 	switch n.Status {
 	case cmdlib.StatusOnline:
 		if image == nil {
-			w.sendTr(queue, n.Endpoint, n.ChatID, true, w.tr[n.Endpoint].Online, data, n.Kind)
+			w.sendTr(queue, n.Endpoint, n.ChatID, notify, w.tr[n.Endpoint].Online, data, n.Kind)
 		} else {
-			w.sendTrImage(queue, n.Endpoint, n.ChatID, true, w.tr[n.Endpoint].Online, data, image, n.Kind)
+			w.sendTrImage(queue, n.Endpoint, n.ChatID, notify, w.tr[n.Endpoint].Online, data, image, n.Kind)
 		}
 	case cmdlib.StatusOffline:
 		w.sendTr(queue, n.Endpoint, n.ChatID, false, w.tr[n.Endpoint].Offline, data, n.Kind)
@@ -779,6 +781,7 @@ func (w *worker) settings(endpoint string, chatID int64) {
 		"offline_notifications":           user.OfflineNotifications,
 		"subject_supported":               w.checker.SubjectSupported(),
 		"show_subject":                    user.ShowSubject,
+		"silent_messages":                 user.SilentMessages,
 	}, db.ReplyPacket)
 }
 
@@ -794,6 +797,11 @@ func (w *worker) enableOfflineNotifications(endpoint string, chatID int64, offli
 
 func (w *worker) enableSubject(endpoint string, chatID int64, showSubject bool) {
 	w.db.SetShowSubject(chatID, showSubject)
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].OK, nil, db.ReplyPacket)
+}
+
+func (w *worker) enableSilentMessages(endpoint string, chatID int64, silentMessages bool) {
+	w.db.SetSilentMessages(chatID, silentMessages)
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].OK, nil, db.ReplyPacket)
 }
 
@@ -1372,6 +1380,10 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		w.enableSubject(endpoint, chatID, true)
 	case "disable_subject":
 		w.enableSubject(endpoint, chatID, false)
+	case "enable_silent_messages":
+		w.enableSilentMessages(endpoint, chatID, true)
+	case "disable_silent_messages":
+		w.enableSilentMessages(endpoint, chatID, false)
 	case "referral":
 		w.showReferral(endpoint, chatID)
 	case "week":

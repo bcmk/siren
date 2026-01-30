@@ -63,6 +63,7 @@ type User struct {
 	ShowImages           bool
 	OfflineNotifications bool
 	ShowSubject          bool
+	SilentMessages       bool
 	CreatedAt            int64
 	ChatType             *string
 	MemberCount          *int

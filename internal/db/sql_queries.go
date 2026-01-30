@@ -195,6 +195,7 @@ func (d *Database) User(chatID int64) (user User, found bool) {
 			show_images,
 			offline_notifications,
 			show_subject,
+			silent_messages,
 			created_at,
 			chat_type,
 			member_count
@@ -210,6 +211,7 @@ func (d *Database) User(chatID int64) (user User, found bool) {
 			&user.ShowImages,
 			&user.OfflineNotifications,
 			&user.ShowSubject,
+			&user.SilentMessages,
 			&user.CreatedAt,
 			&user.ChatType,
 			&user.MemberCount,
@@ -490,6 +492,11 @@ func (d *Database) SetOfflineNotifications(chatID int64, offlineNotifications bo
 // SetShowSubject updates the show_subject setting for a user
 func (d *Database) SetShowSubject(chatID int64, showSubject bool) {
 	d.MustExec("update users set show_subject = $1 where chat_id = $2", showSubject, chatID)
+}
+
+// SetSilentMessages updates the silent_messages setting for a user
+func (d *Database) SetSilentMessages(chatID int64, silentMessages bool) {
+	d.MustExec("update users set silent_messages = $1 where chat_id = $2", silentMessages, chatID)
 }
 
 // UpdateMemberCount updates the member_count for a user
