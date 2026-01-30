@@ -19,6 +19,7 @@
       "Bash(go mod tidy:*)",
       "Bash(go list:*)",
       "Bash(go fmt:*)",
+      "Bash(go doc:*)",
       "Bash(golangci-lint run:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
