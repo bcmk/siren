@@ -110,11 +110,11 @@ func (d *Database) UsersForChannels(channelIDs []string) (users map[string][]Use
 	return
 }
 
-// BroadcastChats returns chats having subscriptions
+// BroadcastChats returns private chats having subscriptions
 func (d *Database) BroadcastChats(endpoint string) (chats []int64) {
 	var chatID int64
 	d.MustQuery(
-		`select distinct chat_id from subscriptions where endpoint = $1 order by chat_id`,
+		`select distinct chat_id from subscriptions where endpoint = $1 and chat_id > 0 order by chat_id`,
 		QueryParams{endpoint},
 		ScanTo{&chatID},
 		func() { chats = append(chats, chatID) })
