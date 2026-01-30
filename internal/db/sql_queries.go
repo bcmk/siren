@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// NewNotifications retuns new notifications
+// NewNotifications returns new notifications
 func (d *Database) NewNotifications() []Notification {
 	var nots []Notification
 	var iter Notification
