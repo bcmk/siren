@@ -4,5 +4,3 @@ linters:
     enable:
         - revive
 
-issues:
-    exclude-use-default: false
