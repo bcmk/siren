@@ -39,7 +39,10 @@
 - Don't use `cat -A` (macOS cat doesn't support it)
 
 ## Database Migrations
-- Migrations are in `internal/db/migrations.go`
+- SQL files are in `internal/db/migrations/`, runner is in `internal/db/migrations.go`
+- Filename format: `0001_name.sql` (number for ordering, name stored in DB)
+- Use `0001_no_transaction_name.sql` for statements like VACUUM that cannot
+  run inside a transaction
 - When renaming a table, also rename its primary key constraint.
   PostgreSQL auto-creates it as `tablename_pkey`.
 
@@ -50,5 +53,5 @@
 - Bot main entry point: `cmd/bot/main.go`
 - Site-specific checkers: `internal/checkers/`
 - SQL queries: `internal/db/sql_queries.go`
-- Database migrations: `internal/db/migrations.go`
+- Database migrations: `internal/db/migrations/`
 - Translations: `res/translations/`

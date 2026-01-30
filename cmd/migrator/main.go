@@ -5,10 +5,7 @@ import (
 	"flag"
 
 	"github.com/bcmk/siren/internal/db"
-	"github.com/bcmk/siren/lib/cmdlib"
 )
-
-var linf = cmdlib.Linf
 
 func main() {
 	flag.Parse()
@@ -18,7 +15,5 @@ func main() {
 	}
 
 	db := db.NewDatabase(args[0], false)
-	linf("creating database if needed...")
-	db.MustExec(`create table if not exists schema_version (version integer);`)
 	db.ApplyMigrations()
 }

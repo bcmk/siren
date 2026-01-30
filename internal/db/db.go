@@ -91,6 +91,13 @@ func (d *Database) MustExec(query string, args ...interface{}) {
 	checkErr(err)
 }
 
+// MustExecScript executes a SQL script using simple protocol.
+// Simple protocol allows commands like VACUUM that cannot run inside a transaction.
+func (d *Database) MustExecScript(script string) {
+	_, err := d.db.PgConn().Exec(context.Background(), script).ReadAll()
+	checkErr(err)
+}
+
 // MustInt executes the query and returns single integer
 func (d *Database) MustInt(query string, args ...interface{}) (result int) {
 	defer d.Measure("db: " + query)()

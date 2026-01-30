@@ -552,7 +552,6 @@ func (w *worker) createDatabase(done chan bool) {
 	for _, prelude := range w.cfg.SQLPrelude {
 		w.db.MustExec(prelude)
 	}
-	w.db.MustExec(`create table if not exists schema_version (version integer);`)
 	w.db.ApplyMigrations()
 	done <- true
 }

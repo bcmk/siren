@@ -38,7 +38,6 @@ func main() {
 	database := db.NewDatabase(connStr, false)
 	defer func() { checkErr(database.Close()) }()
 
-	database.MustExec(`create table if not exists schema_version (version integer)`)
 	database.ApplyMigrations()
 
 	linf("dumping schema...\n")
