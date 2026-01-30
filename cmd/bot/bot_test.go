@@ -8,7 +8,7 @@ import (
 
 	"github.com/bcmk/siren/internal/db"
 	"github.com/bcmk/siren/lib/cmdlib"
-	tg "github.com/bcmk/telegram-bot-api"
+	tg "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -387,15 +387,15 @@ func TestCommandParser(t *testing.T) {
 	if chatID != 1 || command != "command" || args != "arg1 arg2" {
 		t.Error("unexpected result")
 	}
-	chatID, command, args = getCommandAndArgs(tg.Update{Message: &tg.Message{NewChatMembers: &([]tg.User{}), Chat: &tg.Chat{ID: 1}}}, "", nil)
+	chatID, command, args = getCommandAndArgs(tg.Update{Message: &tg.Message{NewChatMembers: []tg.User{}, Chat: &tg.Chat{ID: 1}}}, "", nil)
 	if chatID != 0 || command != "" || args != "" {
 		t.Error("unexpected result")
 	}
-	chatID, command, args = getCommandAndArgs(tg.Update{Message: &tg.Message{NewChatMembers: &([]tg.User{{ID: 2}}), Chat: &tg.Chat{ID: 1}}}, "", nil)
+	chatID, command, args = getCommandAndArgs(tg.Update{Message: &tg.Message{NewChatMembers: []tg.User{{ID: 2}}, Chat: &tg.Chat{ID: 1}}}, "", nil)
 	if chatID != 0 || command != "" || args != "" {
 		t.Error("unexpected result")
 	}
-	chatID, command, args = getCommandAndArgs(tg.Update{Message: &tg.Message{NewChatMembers: &([]tg.User{{ID: 2}}), Chat: &tg.Chat{ID: 1}}}, "", []int64{2})
+	chatID, command, args = getCommandAndArgs(tg.Update{Message: &tg.Message{NewChatMembers: []tg.User{{ID: 2}}, Chat: &tg.Chat{ID: 1}}}, "", []int64{2})
 	if chatID != 1 || command != "start" || args != "" {
 		t.Error("unexpected result")
 	}

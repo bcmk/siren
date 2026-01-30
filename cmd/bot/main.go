@@ -34,7 +34,7 @@ import (
 	"github.com/bcmk/siren/internal/checkers"
 	"github.com/bcmk/siren/internal/db"
 	"github.com/bcmk/siren/lib/cmdlib"
-	tg "github.com/bcmk/telegram-bot-api"
+	tg "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/spf13/pflag"
 )
 
@@ -266,13 +266,20 @@ func (w *worker) setWebhook() {
 		if p.WebhookDomain == "" {
 			continue
 		}
+		var webhookConfig tg.WebhookConfig
+		var err error
 		if p.CertificatePath == "" {
-			var _, err = w.bots[n].SetWebhook(tg.NewWebhook(path.Join(p.WebhookDomain, p.ListenPath)))
+			webhookConfig, err = tg.NewWebhook(path.Join(p.WebhookDomain, p.ListenPath))
 			checkErr(err)
 		} else {
-			var _, err = w.bots[n].SetWebhook(tg.NewWebhookWithCert(path.Join(p.WebhookDomain, p.ListenPath), p.CertificatePath))
+			webhookConfig, err = tg.NewWebhookWithCert(
+				path.Join(p.WebhookDomain, p.ListenPath),
+				tg.FilePath(p.CertificatePath),
+			)
 			checkErr(err)
 		}
+		_, err = w.bots[n].Request(webhookConfig)
+		checkErr(err)
 		info, err := w.bots[n].GetWebhookInfo()
 		checkErr(err)
 		if info.LastErrorDate != 0 {
@@ -288,7 +295,7 @@ func (w *worker) setWebhook() {
 func (w *worker) removeWebhook() {
 	for n := range w.cfg.Endpoints {
 		linf("removing webhook for endpoint %s...", n)
-		_, err := w.bots[n].RemoveWebhook()
+		_, err := w.bots[n].Request(tg.DeleteWebhookConfig{})
 		checkErr(err)
 		linf("OK")
 	}
@@ -320,7 +327,20 @@ func (w *worker) setCommands() {
 			}
 		}
 		linf("setting commands for endpoint %s...", n)
-		err := w.bots[n].SetMyCommands(commands)
+		_, err := w.bots[n].Request(tg.SetMyCommandsConfig{Commands: commands})
+		checkErr(err)
+		linf("OK")
+	}
+}
+
+// TODO: replace MakeRequest with a proper method when the library supports it
+func (w *worker) setDefaultAdminRights() {
+	for n := range w.cfg.Endpoints {
+		linf("setting default admin rights for channels for endpoint %s...", n)
+		params := tg.Params{}
+		params["rights"] = `{"can_post_messages":true}`
+		params["for_channels"] = "true"
+		_, err := w.bots[n].MakeRequest("setMyDefaultAdministratorRights", params)
 		checkErr(err)
 		linf("OK")
 	}
@@ -357,7 +377,7 @@ func (w *worker) sendImage(
 	kind db.PacketKind,
 ) {
 	fileBytes := tg.FileBytes{Name: "preview", Bytes: image}
-	msg := tg.NewPhotoUpload(chatID, fileBytes)
+	msg := tg.NewPhoto(chatID, fileBytes)
 	msg.Caption = text
 	msg.DisableNotification = !notify
 	switch parse {
@@ -1189,7 +1209,7 @@ func (w *worker) getChatMemberCount(endpoint string, chatID int64) *int {
 		return nil
 	}
 	bot := w.bots[endpoint]
-	count, err := bot.GetChatMembersCount(tg.ChatConfig{ChatID: chatID})
+	count, err := bot.GetChatMembersCount(tg.ChatMemberCountConfig{ChatConfig: tg.ChatConfig{ChatID: chatID}})
 	if err != nil {
 		return nil // fail silently, non-critical data
 	}
@@ -1548,12 +1568,10 @@ func getCommandAndArgs(update tg.Update, mention string, ourIDs []int64) (int64,
 	if update.Message != nil && update.Message.Chat != nil {
 		text = update.Message.Text
 		chatID = update.Message.Chat.ID
-		if update.Message.NewChatMembers != nil {
-			for _, m := range *update.Message.NewChatMembers {
-				for _, ourID := range ourIDs {
-					if int64(m.ID) == ourID {
-						return chatID, "start", ""
-					}
+		for _, m := range update.Message.NewChatMembers {
+			for _, ourID := range ourIDs {
+				if m.ID == ourID {
+					return chatID, "start", ""
 				}
 			}
 		}
@@ -1842,6 +1860,7 @@ func main() {
 	w.logConfig()
 	w.setWebhook()
 	w.setCommands()
+	w.setDefaultAdminRights()
 	w.initBotNames()
 	databaseDone := make(chan bool)
 	w.serveEndpoints()
