@@ -259,6 +259,8 @@ settings:
       {{- end -}}
     {{- end -}}
 
+    {{- print "\n" -}}
+    {{- print "\n" -}}
     Silent messages (no sound): <b>{{ template "yes_no" .silent_messages }}</b>
     {{- print "\n" -}}
     {{- if .silent_messages -}}
