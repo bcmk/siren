@@ -384,7 +384,6 @@ func (w *worker) sendImage(
 ) {
 	params := &bot.SendPhotoParams{
 		ChatID:              chatID,
-		Photo:               &models.InputFileUpload{Filename: "preview", Data: bytes.NewReader(img)},
 		Caption:             text,
 		DisableNotification: !notify,
 	}
@@ -394,7 +393,7 @@ func (w *worker) sendImage(
 	case cmdlib.ParseMarkdown:
 		params.ParseMode = models.ParseModeMarkdown
 	}
-	w.enqueueMessage(queue, endpoint, &photoParams{params}, kind)
+	w.enqueueMessage(queue, endpoint, &photoParams{SendPhotoParams: params, imageData: img}, kind)
 }
 
 func (w *worker) enqueueMessage(queue chan outgoingPacket, endpoint string, msg sendable, kind db.PacketKind) {
