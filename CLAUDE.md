@@ -31,7 +31,7 @@
 - Ask before modifying tests — explain what needs changing and why
 
 ## Build
-- When building binaries, place them in the command's directory,
+- When building binaries, place them in their main.go's directory,
   e.g. `go build -o cmd/bot/ ./cmd/bot`
 
 ## Platform Notes
