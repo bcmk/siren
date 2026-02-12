@@ -503,8 +503,15 @@ func (d *Database) SetSilentMessages(chatID int64, silentMessages bool) {
 }
 
 // UpdateMemberCount updates the member_count for a user
-func (d *Database) UpdateMemberCount(chatID int64, memberCount *int) {
+func (d *Database) UpdateMemberCount(chatID int64, memberCount int) {
 	d.MustExec("update users set member_count = $1 where chat_id = $2", memberCount, chatID)
+}
+
+// UpdateChatType updates the chat_type for a user
+// TODO: remove after 2026-05-01,
+// we need to backfill chat_type for users who joined before we started storing it.
+func (d *Database) UpdateChatType(chatID int64, chatType string) {
+	d.MustExec("update users set chat_type = $1 where chat_id = $2", chatType, chatID)
 }
 
 // RemoveSubscription deletes a specific subscription

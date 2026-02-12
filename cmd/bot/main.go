@@ -1238,9 +1238,22 @@ func (w *worker) getChatMemberCount(endpoint string, chatID int64) *int {
 	ctx := context.Background()
 	count, err := w.bots[endpoint].GetChatMemberCount(ctx, &bot.GetChatMemberCountParams{ChatID: chatID})
 	if err != nil {
-		return nil // fail silently, non-critical data
+		linf("cannot get chat member count, %v", err)
+		return nil
 	}
 	return &count
+}
+
+// TODO: remove after 2026-05-01,
+// we need to backfill chat_type for users who joined before we started storing it.
+func (w *worker) getChatType(endpoint string, chatID int64) string {
+	ctx := context.Background()
+	chat, err := w.bots[endpoint].GetChat(ctx, &bot.GetChatParams{ChatID: chatID})
+	if err != nil {
+		linf("cannot get chat type, %v", err)
+		return ""
+	}
+	return string(chat.Type)
 }
 
 func (w *worker) refer(followerChatID int64, referrer string, now int, chatType string) (applied appliedKind) {
@@ -1678,7 +1691,14 @@ func (w *worker) processTGUpdate(p incomingPacket) bool {
 		}
 		result := w.processIncomingCommand(p.endpoint, chatID, command, args, now, chatType)
 		if memberCount := w.getChatMemberCount(p.endpoint, chatID); memberCount != nil {
-			w.db.UpdateMemberCount(chatID, memberCount)
+			w.db.UpdateMemberCount(chatID, *memberCount)
+		}
+		// TODO: remove after 2026-05-01,
+		// we need to backfill chat_type for users who joined before we started storing it.
+		if now < 1777593600 {
+			if user, exists := w.db.User(chatID); exists && user.ChatType == nil {
+				w.db.UpdateChatType(chatID, chatType)
+			}
 		}
 		return result
 	}
@@ -1974,8 +1994,17 @@ func main() {
 				w.db.IncrementBlock(r.endpoint, r.chatID)
 			case messageSent:
 				w.db.ResetBlock(r.endpoint, r.chatID)
+				// TODO: remove after 2026-05-01,
+				// we need to backfill chat_type for users who joined before we started storing it.
+				if r.timestamp < 1777593600 {
+					if user, exists := w.db.User(r.chatID); exists && user.ChatType == nil {
+						if chatType := w.getChatType(r.endpoint, r.chatID); chatType != "" {
+							w.db.UpdateChatType(r.chatID, chatType)
+						}
+					}
+				}
 				if memberCount := w.getChatMemberCount(r.endpoint, r.chatID); memberCount != nil {
-					w.db.UpdateMemberCount(r.chatID, memberCount)
+					w.db.UpdateMemberCount(r.chatID, *memberCount)
 				}
 			}
 			w.db.LogSentMessage(r.timestamp, r.chatID, r.result, r.endpoint, r.priority, r.delay, r.kind)
