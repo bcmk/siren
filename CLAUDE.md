@@ -1,6 +1,7 @@
 # Claude Code Guidelines
 
 ## Git
+- Never use `git -C` — the working directory is already the repo root
 - Prefer modern git commands, e.g. `switch` over `checkout` for branches
 - Don't use slashes in branch names
 - Use one-line commit messages only
