@@ -937,7 +937,7 @@ func (w *worker) downloadImage(url string) []byte {
 	imageBytes, err := w.downloadImageInternal(url)
 	elapsed := time.Since(start)
 	if err != nil {
-		lerr("cannot download image, %v", err)
+		linf("cannot download image, %v", err)
 	}
 	w.imageDownloadLogs <- imageDownloadLog{success: err == nil, durationMs: int(elapsed.Milliseconds())}
 	return imageBytes
