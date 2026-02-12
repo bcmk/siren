@@ -114,6 +114,7 @@ const (
 	messageMigrate             = -4
 	messageChatNotFound        = -5
 	messageSkipped             = -6
+	messageNoPhotoRights       = -7
 )
 
 type msgSendResult struct {
@@ -431,6 +432,12 @@ func (w *worker) sender(queue chan outgoingPacket, priority int) {
 			case messageTooManyRequests:
 				time.Sleep(8000 * time.Millisecond)
 				continue resend
+			case messageNoPhotoRights:
+				if p, ok := packet.message.(*photoParams); ok {
+					w.enqueueMessage(queue, packet.endpoint, p.toText(), packet.kind)
+				}
+				time.Sleep(60 * time.Millisecond)
+				break resend
 			default:
 				time.Sleep(60 * time.Millisecond)
 				break resend
@@ -472,6 +479,12 @@ func (w *worker) sendMessageInternal(endpoint string, msg sendable) int {
 					ldbg("cannot send a message, chat not found")
 				}
 				return messageChatNotFound
+			}
+			if strings.Contains(err.Error(), "not enough rights to send photos") {
+				if w.cfg.Debug {
+					ldbg("cannot send a message, no photo rights")
+				}
+				return messageNoPhotoRights
 			}
 			lerr("cannot send a message, bad request, error: %v", err)
 			return messageBadRequest

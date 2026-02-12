@@ -40,3 +40,12 @@ func (p *photoParams) send(ctx context.Context, b *bot.Bot) (*models.Message, er
 	p.Photo = &models.InputFileUpload{Filename: "preview", Data: bytes.NewReader(p.imageData)}
 	return b.SendPhoto(ctx, p.SendPhotoParams)
 }
+
+func (p *photoParams) toText() *messageParams {
+	return &messageParams{&bot.SendMessageParams{
+		ChatID:              p.ChatID,
+		Text:                p.Caption,
+		ParseMode:           p.ParseMode,
+		DisableNotification: p.DisableNotification,
+	}}
+}
