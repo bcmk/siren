@@ -21,13 +21,13 @@ import (
 var checkErr = cmdlib.CheckErr
 
 type endpoint struct {
-	ListenPath          string   `mapstructure:"listen_path"`          // the path excluding domain to listen to, the good choice is "/your-telegram-bot-token"
-	WebhookDomain       string   `mapstructure:"webhook_domain"`       // the domain listening to the webhook
-	BotToken            string   `mapstructure:"bot_token"`            // your Telegram bot token
-	Translation         []string `mapstructure:"translation"`          // translation files
-	Ads                 []string `mapstructure:"ads"`                  // ads files
-	Images              string   `mapstructure:"images"`               // images directory
-	MaintenanceResponse string   `mapstructure:"maintenance_response"` // the maintenance response
+	ListenPath          string        `mapstructure:"listen_path"`          // the path excluding domain to listen to, the good choice is "/your-telegram-bot-token"
+	WebhookDomain       string        `mapstructure:"webhook_domain"`       // the domain listening to the webhook
+	BotToken            cmdlib.Secret `mapstructure:"bot_token"`            // your Telegram bot token
+	Translation         []string      `mapstructure:"translation"`          // translation files
+	Ads                 []string      `mapstructure:"ads"`                  // ads files
+	Images              string        `mapstructure:"images"`               // images directory
+	MaintenanceResponse string        `mapstructure:"maintenance_response"` // the maintenance response
 }
 
 // StatusConfirmationSeconds represents configuration of confirmation durations
@@ -49,7 +49,7 @@ type Config struct {
 	TimeoutSeconds                  int                       `mapstructure:"timeout_seconds"`                    // HTTP timeout
 	AdminID                         int64                     `mapstructure:"admin_id"`                           // admin Telegram ID
 	AdminEndpoint                   string                    `mapstructure:"admin_endpoint"`                     // admin endpoint
-	DBPath                          string                    `mapstructure:"db_path"`                            // path to the database
+	DBConnectionString              cmdlib.Secret             `mapstructure:"db_connection_string"`               // database connection string
 	BlockThreshold                  int                       `mapstructure:"block_threshold"`                    // do not send a message to the user after being blocked by him this number of times
 	IntervalMs                      int                       `mapstructure:"interval_ms"`                        // queries interval per IP address for rate limited access
 	SourceIPAddresses               []string                  `mapstructure:"source_ip_addresses"`                // source IP addresses for rate limited access
@@ -65,7 +65,7 @@ type Config struct {
 	SQLPrelude                      []string                  `mapstructure:"sql_prelude"`                        // run these SQL commands before any other
 	EnableWeek                      bool                      `mapstructure:"enable_week"`                        // enable week command
 	AffiliateLink                   string                    `mapstructure:"affiliate_link"`                     // affiliate link template
-	SpecificConfig                  map[string]string         `mapstructure:"specific_config"`                    // the config for specific website
+	SpecificConfig                  map[string]cmdlib.Secret  `mapstructure:"specific_config"`                    // the config for specific website
 	TelegramTimeoutSeconds          int                       `mapstructure:"telegram_timeout_seconds"`           // the timeout for Telegram queries
 	MaxSubscriptionsForPics         int                       `mapstructure:"max_subscriptions_for_pics"`         // the maximum amount of subscriptions for pics in a group chat
 	SubsConfirmationPeriodSeconds   int                       `mapstructure:"subs_confirmation_period_seconds"`   // subscriptions confirmation period
@@ -278,8 +278,8 @@ func checkConfig(cfg *Config) error {
 	if cfg.AdminID == 0 {
 		return errors.New("configure admin_id")
 	}
-	if cfg.DBPath == "" {
-		return errors.New("configure db_path")
+	if cfg.DBConnectionString == "" {
+		return errors.New("configure db_connection_string")
 	}
 	if cfg.BlockThreshold == 0 {
 		return errors.New("configure block_threshold")

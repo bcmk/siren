@@ -32,7 +32,7 @@ func main() {
 	checker.Init(cmdlib.CheckerConfig{
 		UsersOnlineEndpoints: []string{*endpoint},
 		Clients:              []*cmdlib.Client{client},
-		SpecificConfig:       map[string]string{"user_id": *userID},
+		SpecificConfig:       map[string]cmdlib.Secret{"user_id": cmdlib.Secret(*userID)},
 		Dbg:                  *verbose,
 	})
 	streamers, err := checker.QueryOnlineStreamers()

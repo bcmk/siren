@@ -133,7 +133,7 @@ func (c *StripchatChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 
 func (c *StripchatChecker) checkOnlyOnline() (map[string]cmdlib.StreamerInfo, error) {
 	endpoint := c.UsersOnlineEndpoints[0]
-	userID := c.SpecificConfig["user_id"]
+	userID := string(c.SpecificConfig["user_id"])
 	streamers := map[string]cmdlib.StreamerInfo{}
 
 	client := c.ClientsLoop.NextClient()
@@ -188,7 +188,7 @@ func (c *StripchatChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInf
 	// This is the actual limit, although the documentation states 1000
 	limitK := 500
 	chunkIter := slices.Chunk(slices.Collect(maps.Keys(streamers)), limitK)
-	userID := c.SpecificConfig["user_id"]
+	userID := string(c.SpecificConfig["user_id"])
 	for chunk := range chunkIter {
 		modelIDs := strings.Join(chunk, ",")
 		client := c.ClientsLoop.NextClient()

@@ -45,6 +45,6 @@ func main() {
 	checker.Init(cmdlib.CheckerConfig{
 		Clients:        []*cmdlib.Client{client},
 		Dbg:            *verbose,
-		SpecificConfig: map[string]string{"ps_id": *psID, "access_key": *accessKey}})
+		SpecificConfig: map[string]cmdlib.Secret{"ps_id": cmdlib.Secret(*psID), "access_key": cmdlib.Secret(*accessKey)}})
 	fmt.Println(checker.CheckStatusSingle(modelID))
 }

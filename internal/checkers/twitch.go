@@ -29,8 +29,8 @@ func TwitchCanonicalChannelID(name string) string {
 func (c *TwitchChecker) CheckStatusSingle(channelID string) cmdlib.StatusKind {
 	client := c.ClientsLoop.NextClient()
 	helixClient, err := helix.NewClient(&helix.Options{
-		ClientID:     c.SpecificConfig["client_id"],
-		ClientSecret: c.SpecificConfig["client_secret"],
+		ClientID:     string(c.SpecificConfig["client_id"]),
+		ClientSecret: string(c.SpecificConfig["client_secret"]),
 		HTTPClient:   client.Client,
 	})
 	if err != nil {
@@ -79,8 +79,8 @@ func (c *TwitchChecker) CheckStatusSingle(channelID string) cmdlib.StatusKind {
 func (c *TwitchChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
 	client := c.ClientsLoop.NextClient()
 	helixClient, err := helix.NewClient(&helix.Options{
-		ClientID:     c.SpecificConfig["client_id"],
-		ClientSecret: c.SpecificConfig["client_secret"],
+		ClientID:     string(c.SpecificConfig["client_id"]),
+		ClientSecret: string(c.SpecificConfig["client_secret"]),
 		HTTPClient:   client.Client,
 	})
 	if err != nil {
@@ -103,8 +103,8 @@ func (c *TwitchChecker) QueryFixedListOnlineStreamers(
 ) (map[string]cmdlib.StreamerInfo, error) {
 	client := c.ClientsLoop.NextClient()
 	helixClient, err := helix.NewClient(&helix.Options{
-		ClientID:     c.SpecificConfig["client_id"],
-		ClientSecret: c.SpecificConfig["client_secret"],
+		ClientID:     string(c.SpecificConfig["client_id"]),
+		ClientSecret: string(c.SpecificConfig["client_secret"]),
 		HTTPClient:   client.Client,
 	})
 	if err != nil {
@@ -124,8 +124,8 @@ func (c *TwitchChecker) QueryFixedListOnlineStreamers(
 func (c *TwitchChecker) QueryFixedListStatuses(channelIDs []string, _ cmdlib.CheckMode) (map[string]cmdlib.StreamerInfoWithStatus, error) {
 	client := c.ClientsLoop.NextClient()
 	helixClient, err := helix.NewClient(&helix.Options{
-		ClientID:     c.SpecificConfig["client_id"],
-		ClientSecret: c.SpecificConfig["client_secret"],
+		ClientID:     string(c.SpecificConfig["client_id"]),
+		ClientSecret: string(c.SpecificConfig["client_secret"]),
 		HTTPClient:   client.Client,
 	})
 	if err != nil {

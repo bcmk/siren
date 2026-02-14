@@ -185,7 +185,7 @@ type CheckerConfig struct {
 	Clients              []*Client
 	Headers              [][2]string
 	Dbg                  bool
-	SpecificConfig       map[string]string
+	SpecificConfig       map[string]Secret
 	QueueSize            int
 	IntervalMs           int
 }

@@ -34,8 +34,8 @@ type liveJasminResponse struct {
 
 // CheckStatusSingle checks LiveJasmin model status
 func (c *LiveJasminChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
-	psID := c.SpecificConfig["ps_id"]
-	accessKey := c.SpecificConfig["access_key"]
+	psID := string(c.SpecificConfig["ps_id"])
+	accessKey := string(c.SpecificConfig["access_key"])
 	url := fmt.Sprintf("https://pt.potawe.com/api/model/status?performerId=%s&psId=%s&accessKey=%s&legacyRedirect=1", modelID, psID, accessKey)
 	addr, resp := c.DoGetRequest(url)
 	if resp == nil {

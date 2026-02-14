@@ -37,9 +37,9 @@ func main() {
 	checker.Init(cmdlib.CheckerConfig{
 		Clients: []*cmdlib.Client{client},
 		Dbg:     *verbose,
-		SpecificConfig: map[string]string{
-			"client_id":     *clientID,
-			"client_secret": *secret,
+		SpecificConfig: map[string]cmdlib.Secret{
+			"client_id":     cmdlib.Secret(*clientID),
+			"client_secret": cmdlib.Secret(*secret),
 		}})
 	fmt.Println(checker.CheckStatusSingle(channel))
 }

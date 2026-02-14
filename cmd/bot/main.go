@@ -151,7 +151,7 @@ func newWorker(cfg *botconfig.Config) *worker {
 		handler := func(_ context.Context, _ *bot.Bot, update *models.Update) {
 			incomingPackets <- incomingPacket{message: update, endpoint: endpointName}
 		}
-		b, err := bot.New(p.BotToken, bot.WithHTTPClient(0, telegramClient.Client), bot.WithDefaultHandler(handler))
+		b, err := bot.New(string(p.BotToken), bot.WithHTTPClient(0, telegramClient.Client), bot.WithDefaultHandler(handler))
 		checkErr(err)
 		bots[n] = b
 	}
@@ -162,7 +162,7 @@ func newWorker(cfg *botconfig.Config) *worker {
 	}
 	w := &worker{
 		bots:                       bots,
-		db:                         db.NewDatabase(cfg.DBPath, cfg.CheckGID),
+		db:                         db.NewDatabase(string(cfg.DBConnectionString), cfg.CheckGID),
 		cfg:                        cfg,
 		clients:                    clients,
 		tr:                         tr,
@@ -1719,8 +1719,8 @@ func (w *worker) incoming() chan incomingPacket {
 func getOurIDs(c *botconfig.Config) []int64 {
 	var ids []int64
 	for _, e := range c.Endpoints {
-		if idx := strings.Index(e.BotToken, ":"); idx != -1 {
-			id, err := strconv.ParseInt(e.BotToken[:idx], 10, 64)
+		if idx := strings.Index(string(e.BotToken), ":"); idx != -1 {
+			id, err := strconv.ParseInt(string(e.BotToken)[:idx], 10, 64)
 			checkErr(err)
 			ids = append(ids, id)
 		} else {
