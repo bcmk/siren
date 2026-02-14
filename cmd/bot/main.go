@@ -273,7 +273,7 @@ func (w *worker) setWebhook() {
 		if p.WebhookDomain == "" {
 			continue
 		}
-		params := &bot.SetWebhookParams{URL: path.Join(p.WebhookDomain, p.ListenPath)}
+		params := &bot.SetWebhookParams{URL: path.Join(p.WebhookDomain, string(p.ListenPath))}
 		_, err := w.bots[n].SetWebhook(ctx, params)
 		checkErr(err)
 		info, err := w.bots[n].GetWebhookInfo(ctx)
@@ -1710,7 +1710,7 @@ func (w *worker) incoming() chan incomingPacket {
 	ctx := context.Background()
 	for n, p := range w.cfg.Endpoints {
 		linf("listening for a webhook for endpoint %s", n)
-		http.Handle(p.ListenPath, w.bots[n].WebhookHandler())
+		http.Handle(string(p.ListenPath), w.bots[n].WebhookHandler())
 		go w.bots[n].StartWebhook(ctx)
 	}
 	return w.incomingPackets

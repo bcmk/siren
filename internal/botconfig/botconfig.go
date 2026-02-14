@@ -21,7 +21,7 @@ import (
 var checkErr = cmdlib.CheckErr
 
 type endpoint struct {
-	ListenPath          string        `mapstructure:"listen_path"`          // the path excluding domain to listen to, the good choice is "/your-telegram-bot-token"
+	ListenPath          cmdlib.Secret `mapstructure:"listen_path"`          // the path excluding domain to listen to, the good choice is "/your-telegram-bot-token"
 	WebhookDomain       string        `mapstructure:"webhook_domain"`       // the domain listening to the webhook
 	BotToken            cmdlib.Secret `mapstructure:"bot_token"`            // your Telegram bot token
 	Translation         []string      `mapstructure:"translation"`          // translation files
