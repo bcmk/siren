@@ -32,7 +32,7 @@ func main() {
 			"client_id":     *clientID,
 			"client_secret": *secret,
 		}})
-	channels, err := checker.QueryFixedListOnlineChannels(flag.Args(), cmdlib.CheckStatuses)
+	channels, err := checker.QueryFixedListOnlineStreamers(flag.Args(), cmdlib.CheckStatuses)
 	if err != nil {
 		fmt.Printf("error occurred: %v\n", err)
 		return

@@ -12,25 +12,25 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func checkUnconfirmedOnlineChannels(w *testWorker, t *testing.T) {
+func checkUnconfirmedOnlineStreamers(w *testWorker, t *testing.T) {
 	dbOnline := map[string]bool{}
-	var channelID string
+	var streamerID string
 	w.db.MustQuery(
-		"select channel_id from channels where unconfirmed_status = $1",
+		"select streamer_id from streamers where unconfirmed_status = $1",
 		[]interface{}{cmdlib.StatusOnline},
-		db.ScanTo{&channelID},
-		func() { dbOnline[channelID] = true })
-	if len(w.unconfirmedOnlineChannels) != len(dbOnline) {
-		t.Errorf("unconfirmedOnlineChannels size %d != DB size %d", len(w.unconfirmedOnlineChannels), len(dbOnline))
+		db.ScanTo{&streamerID},
+		func() { dbOnline[streamerID] = true })
+	if len(w.unconfirmedOnlineStreamers) != len(dbOnline) {
+		t.Errorf("unconfirmedOnlineStreamers size %d != DB size %d", len(w.unconfirmedOnlineStreamers), len(dbOnline))
 	}
 	for ch := range dbOnline {
-		if _, ok := w.unconfirmedOnlineChannels[ch]; !ok {
-			t.Errorf("channel %s in DB but not in unconfirmedOnlineChannels", ch)
+		if _, ok := w.unconfirmedOnlineStreamers[ch]; !ok {
+			t.Errorf("streamer %s in DB but not in unconfirmedOnlineStreamers", ch)
 		}
 	}
-	for ch := range w.unconfirmedOnlineChannels {
+	for ch := range w.unconfirmedOnlineStreamers {
 		if !dbOnline[ch] {
-			t.Errorf("channel %s in unconfirmedOnlineChannels but not in DB", ch)
+			t.Errorf("streamer %s in unconfirmedOnlineStreamers but not in DB", ch)
 		}
 	}
 }
@@ -41,18 +41,18 @@ func TestSql(t *testing.T) {
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
 	w.initCache()
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 1, "a")
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 2, "b")
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 3, "c")
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 3, "c2")
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 3, "c3")
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 4, "d")
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 5, "d")
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 6, "e")
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep1", 7, "f")
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep2", 6, "e")
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep2", 7, "f")
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)", "ep2", 8, "g")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, streamer_id) values ($1, $2, $3)", "ep1", 1, "a")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, streamer_id) values ($1, $2, $3)", "ep1", 2, "b")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, streamer_id) values ($1, $2, $3)", "ep1", 3, "c")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, streamer_id) values ($1, $2, $3)", "ep1", 3, "c2")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, streamer_id) values ($1, $2, $3)", "ep1", 3, "c3")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, streamer_id) values ($1, $2, $3)", "ep1", 4, "d")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, streamer_id) values ($1, $2, $3)", "ep1", 5, "d")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, streamer_id) values ($1, $2, $3)", "ep1", 6, "e")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, streamer_id) values ($1, $2, $3)", "ep1", 7, "f")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, streamer_id) values ($1, $2, $3)", "ep2", 6, "e")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, streamer_id) values ($1, $2, $3)", "ep2", 7, "f")
+	w.db.MustExec("insert into subscriptions (endpoint, chat_id, streamer_id) values ($1, $2, $3)", "ep2", 8, "g")
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 2, 0)
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 3, w.cfg.BlockThreshold)
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 4, w.cfg.BlockThreshold-1)
@@ -60,10 +60,10 @@ func TestSql(t *testing.T) {
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 6, w.cfg.BlockThreshold)
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 7, w.cfg.BlockThreshold)
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep2", 7, w.cfg.BlockThreshold)
-	w.db.MustExec("insert into channels (channel_id, confirmed_status) values ($1, $2)", "a", cmdlib.StatusOnline)
-	w.db.MustExec("insert into channels (channel_id, confirmed_status) values ($1, $2)", "b", cmdlib.StatusOnline)
-	w.db.MustExec("insert into channels (channel_id, confirmed_status) values ($1, $2)", "c", cmdlib.StatusOnline)
-	w.db.MustExec("insert into channels (channel_id, confirmed_status) values ($1, $2)", "c2", cmdlib.StatusOnline)
+	w.db.MustExec("insert into streamers (streamer_id, confirmed_status) values ($1, $2)", "a", cmdlib.StatusOnline)
+	w.db.MustExec("insert into streamers (streamer_id, confirmed_status) values ($1, $2)", "b", cmdlib.StatusOnline)
+	w.db.MustExec("insert into streamers (streamer_id, confirmed_status) values ($1, $2)", "c", cmdlib.StatusOnline)
+	w.db.MustExec("insert into streamers (streamer_id, confirmed_status) values ($1, $2)", "c2", cmdlib.StatusOnline)
 	broadcastChats := w.db.BroadcastChats("ep1")
 	if !reflect.DeepEqual(broadcastChats, []int64{1, 2, 3, 4, 5, 6, 7}) {
 		t.Error("unexpected broadcast chats result", broadcastChats)
@@ -72,58 +72,58 @@ func TestSql(t *testing.T) {
 	if !reflect.DeepEqual(broadcastChats, []int64{6, 7, 8}) {
 		t.Error("unexpected broadcast chats result", broadcastChats)
 	}
-	chatsForChannel, endpoints := w.chatsForChannel("a")
+	chatsForStreamer, endpoints := w.chatsForStreamer("a")
 	if !reflect.DeepEqual(endpoints, []string{"ep1"}) {
-		t.Error("unexpected chats for channel result", chatsForChannel)
+		t.Error("unexpected chats for streamer result", chatsForStreamer)
 	}
-	if !reflect.DeepEqual(chatsForChannel, []int64{1}) {
-		t.Error("unexpected chats for channel result", chatsForChannel)
+	if !reflect.DeepEqual(chatsForStreamer, []int64{1}) {
+		t.Error("unexpected chats for streamer result", chatsForStreamer)
 	}
-	chatsForChannel, _ = w.chatsForChannel("b")
-	if !reflect.DeepEqual(chatsForChannel, []int64{2}) {
-		t.Error("unexpected chats for channel result", chatsForChannel)
+	chatsForStreamer, _ = w.chatsForStreamer("b")
+	if !reflect.DeepEqual(chatsForStreamer, []int64{2}) {
+		t.Error("unexpected chats for streamer result", chatsForStreamer)
 	}
-	chatsForChannel, _ = w.chatsForChannel("c")
-	if !reflect.DeepEqual(chatsForChannel, []int64{3}) {
-		t.Error("unexpected chats for channel result", chatsForChannel)
+	chatsForStreamer, _ = w.chatsForStreamer("c")
+	if !reflect.DeepEqual(chatsForStreamer, []int64{3}) {
+		t.Error("unexpected chats for streamer result", chatsForStreamer)
 	}
-	chatsForChannel, _ = w.chatsForChannel("d")
-	if !reflect.DeepEqual(chatsForChannel, []int64{4, 5}) {
-		t.Error("unexpected chats for channel result", chatsForChannel)
+	chatsForStreamer, _ = w.chatsForStreamer("d")
+	if !reflect.DeepEqual(chatsForStreamer, []int64{4, 5}) {
+		t.Error("unexpected chats for streamer result", chatsForStreamer)
 	}
-	chatsForChannel, _ = w.chatsForChannel("e")
-	if !reflect.DeepEqual(chatsForChannel, []int64{6, 6}) {
-		t.Error("unexpected chats for channel result", chatsForChannel)
+	chatsForStreamer, _ = w.chatsForStreamer("e")
+	if !reflect.DeepEqual(chatsForStreamer, []int64{6, 6}) {
+		t.Error("unexpected chats for streamer result", chatsForStreamer)
 	}
-	chatsForChannel, _ = w.chatsForChannel("f")
-	if !reflect.DeepEqual(chatsForChannel, []int64{7, 7}) {
-		t.Error("unexpected chats for channel result", chatsForChannel)
+	chatsForStreamer, _ = w.chatsForStreamer("f")
+	if !reflect.DeepEqual(chatsForStreamer, []int64{7, 7}) {
+		t.Error("unexpected chats for streamer result", chatsForStreamer)
 	}
 	w.db.IncrementBlock("ep1", 2)
 	w.db.IncrementBlock("ep1", 2)
 	if w.db.MustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep1") != 2 {
-		t.Error("unexpected block for channel result", chatsForChannel)
+		t.Error("unexpected block for streamer result", chatsForStreamer)
 	}
 	w.db.IncrementBlock("ep2", 2)
 	if w.db.MustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep2") != 1 {
-		t.Error("unexpected block for channel result", chatsForChannel)
+		t.Error("unexpected block for streamer result", chatsForStreamer)
 	}
 	w.db.ResetBlock("ep1", 2)
 	if w.db.MustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep1") != 0 {
-		t.Error("unexpected block for channel result", chatsForChannel)
+		t.Error("unexpected block for streamer result", chatsForStreamer)
 	}
 	if w.db.MustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep2") != 1 {
-		t.Error("unexpected block for channel result", chatsForChannel)
+		t.Error("unexpected block for streamer result", chatsForStreamer)
 	}
 	w.db.IncrementBlock("ep1", 1)
 	w.db.IncrementBlock("ep1", 1)
 	if w.db.MustInt("select block from block where chat_id = $1", 1) != 2 {
-		t.Error("unexpected block for channel result", chatsForChannel)
+		t.Error("unexpected block for streamer result", chatsForStreamer)
 	}
 	statuses := w.db.ConfirmedStatusesForChat("ep1", 3)
-	if !reflect.DeepEqual(statuses, []db.Channel{
-		{ChannelID: "c", ConfirmedStatus: cmdlib.StatusOnline},
-		{ChannelID: "c2", ConfirmedStatus: cmdlib.StatusOnline}}) {
+	if !reflect.DeepEqual(statuses, []db.Streamer{
+		{StreamerID: "c", ConfirmedStatus: cmdlib.StatusOnline},
+		{StreamerID: "c2", ConfirmedStatus: cmdlib.StatusOnline}}) {
 		t.Error("unexpected statuses", statuses)
 	}
 	_ = w.db.Close()
@@ -136,22 +136,22 @@ func TestUpdateNotifications(t *testing.T) {
 	w.initCache()
 
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)",
+		"insert into subscriptions (endpoint, chat_id, streamer_id) values ($1, $2, $3)",
 		"ep1", 1, "a")
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)",
+		"insert into subscriptions (endpoint, chat_id, streamer_id) values ($1, $2, $3)",
 		"ep1", 2, "b")
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)",
+		"insert into subscriptions (endpoint, chat_id, streamer_id) values ($1, $2, $3)",
 		"ep1", 3, "a")
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)",
+		"insert into subscriptions (endpoint, chat_id, streamer_id) values ($1, $2, $3)",
 		"ep1", 3, "c")
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)",
+		"insert into subscriptions (endpoint, chat_id, streamer_id) values ($1, $2, $3)",
 		"ep1", 4, "d")
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, channel_id) values ($1, $2, $3)",
+		"insert into subscriptions (endpoint, chat_id, streamer_id) values ($1, $2, $3)",
 		"ep2", 4, "d")
 
 	w.db.MustExec("insert into users (chat_id, created_at) values ($1, 0)", 1)
@@ -159,40 +159,40 @@ func TestUpdateNotifications(t *testing.T) {
 	w.db.MustExec("insert into users (chat_id, created_at) values ($1, 0)", 3)
 	w.db.MustExec("insert into users (chat_id, created_at) values ($1, 0)", 4)
 
-	// All subscribed channels for this test
-	allChannels := map[string]bool{"a": true, "b": true, "c": true, "d": true}
+	// All subscribed streamers for this test
+	allStreamers := map[string]bool{"a": true, "b": true, "c": true, "d": true}
 
 	// Use fixed list checker mode for these tests
-	// Channel "a" goes online — 2 notifications (chat 1 and chat 3)
+	// Streamer "a" goes online — 2 notifications (chat 1 and chat 3)
 	result := &cmdlib.FixedListOnlineResults{
-		RequestedChannels: allChannels,
-		Channels:          map[string]cmdlib.ChannelInfo{"a": {}},
+		RequestedStreamers: allStreamers,
+		Streamers:          map[string]cmdlib.StreamerInfo{"a": {}},
 	}
 	if _, _, nots, _ := w.handleCheckerResults(result, 2); len(nots) != 2 {
-		t.Errorf("expected 2 notifications for channel 'a' online, got %d", len(nots))
+		t.Errorf("expected 2 notifications for streamer 'a' online, got %d", len(nots))
 	}
 	checkInv(&w.worker, t)
 
-	// Channel "a" goes offline — no notifications yet (needs 5s confirmation)
-	result.Channels = map[string]cmdlib.ChannelInfo{}
+	// Streamer "a" goes offline — no notifications yet (needs 5s confirmation)
+	result.Streamers = map[string]cmdlib.StreamerInfo{}
 	if _, _, nots, _ := w.handleCheckerResults(result, 3); len(nots) != 0 {
 		t.Errorf("expected 0 notifications before offline confirmation, got %d", len(nots))
 	}
 	checkInv(&w.worker, t)
 
 	// Trigger confirmation check at t=8 — offline confirmed, 2 notifications
-	result.Channels = map[string]cmdlib.ChannelInfo{}
+	result.Streamers = map[string]cmdlib.StreamerInfo{}
 	if _, _, nots, _ := w.handleCheckerResults(result, 8); len(nots) != 2 {
 		t.Errorf("expected 2 notifications after offline confirmation, got %d", len(nots))
 	}
 	checkInv(&w.worker, t)
 
-	// Channel "d" goes online — 2 notifications (chat 4 on ep1 and ep2)
-	result.Channels = map[string]cmdlib.ChannelInfo{
+	// Streamer "d" goes online — 2 notifications (chat 4 on ep1 and ep2)
+	result.Streamers = map[string]cmdlib.StreamerInfo{
 		"d": {},
 	}
 	if _, _, nots, _ := w.handleCheckerResults(result, 9); len(nots) != 2 {
-		t.Errorf("expected 2 notifications for channel 'd' online, got %d", len(nots))
+		t.Errorf("expected 2 notifications for streamer 'd' online, got %d", len(nots))
 	}
 	checkInv(&w.worker, t)
 }
@@ -202,13 +202,13 @@ func queryLastStatusChanges(d *db.Database) map[string]db.StatusChange {
 	var statusChange db.StatusChange
 	d.MustQuery(
 		`
-			select distinct on (channel_id) channel_id, status, timestamp
+			select distinct on (streamer_id) streamer_id, status, timestamp
 			from status_changes
-			order by channel_id, timestamp desc
+			order by streamer_id, timestamp desc
 		`,
 		nil,
-		db.ScanTo{&statusChange.ChannelID, &statusChange.Status, &statusChange.Timestamp},
-		func() { statusChanges[statusChange.ChannelID] = statusChange })
+		db.ScanTo{&statusChange.StreamerID, &statusChange.Status, &statusChange.Timestamp},
+		func() { statusChanges[statusChange.StreamerID] = statusChange })
 	return statusChanges
 }
 
@@ -216,28 +216,28 @@ func TestNotificationsStorage(t *testing.T) {
 	timeDiff := 2
 	nots := []db.Notification{
 		{
-			Endpoint:  "endpoint_a",
-			ChatID:    1,
-			ChannelID: "a",
-			Status:    cmdlib.StatusUnknown,
-			TimeDiff:  nil,
-			ImageURL:  "image_a",
-			Social:    false,
-			Priority:  1,
-			Sound:     false,
-			Kind:      db.NotificationPacket,
+			Endpoint:   "endpoint_a",
+			ChatID:     1,
+			StreamerID: "a",
+			Status:     cmdlib.StatusUnknown,
+			TimeDiff:   nil,
+			ImageURL:   "image_a",
+			Social:     false,
+			Priority:   1,
+			Sound:      false,
+			Kind:       db.NotificationPacket,
 		},
 		{
-			Endpoint:  "endpoint_b",
-			ChatID:    2,
-			ChannelID: "b",
-			Status:    cmdlib.StatusOffline,
-			TimeDiff:  &timeDiff,
-			ImageURL:  "image_b",
-			Social:    true,
-			Priority:  2,
-			Sound:     true,
-			Kind:      db.ReplyPacket,
+			Endpoint:   "endpoint_b",
+			ChatID:     2,
+			StreamerID: "b",
+			Status:     cmdlib.StatusOffline,
+			TimeDiff:   &timeDiff,
+			ImageURL:   "image_b",
+			Social:     true,
+			Priority:   2,
+			Sound:      true,
+			Kind:       db.ReplyPacket,
 		},
 	}
 	w := newTestWorker()
@@ -257,14 +257,14 @@ func TestNotificationsStorage(t *testing.T) {
 	}
 	nots = []db.Notification{
 		{
-			Endpoint:  "endpoint_c",
-			ChatID:    3,
-			ChannelID: "c",
-			Status:    cmdlib.StatusOnline,
-			TimeDiff:  nil,
-			ImageURL:  "image_c",
-			Social:    true,
-			Priority:  3,
+			Endpoint:   "endpoint_c",
+			ChatID:     3,
+			StreamerID: "c",
+			Status:     cmdlib.StatusOnline,
+			TimeDiff:   nil,
+			ImageURL:   "image_c",
+			Social:     true,
+			Priority:   3,
 		},
 	}
 	w.db.StoreNotifications(nots)
@@ -279,15 +279,15 @@ func TestNotificationsStorage(t *testing.T) {
 	}
 }
 
-func TestChannels(t *testing.T) {
+func TestStreamers(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
-	w.db.MustExec("insert into channels (channel_id, confirmed_status) values ($1, $2)", "a", cmdlib.StatusOffline)
-	if w.db.MaybeChannel("a") == nil {
+	w.db.MustExec("insert into streamers (streamer_id, confirmed_status) values ($1, $2)", "a", cmdlib.StatusOffline)
+	if w.db.MaybeStreamer("a") == nil {
 		t.Error("unexpected result")
 	}
-	if w.db.MaybeChannel("b") != nil {
+	if w.db.MaybeStreamer("b") != nil {
 		t.Error("unexpected result")
 	}
 }
@@ -313,7 +313,7 @@ func TestCopyFromAndBatchInTransaction(t *testing.T) {
 	_, err = tx.CopyFrom(
 		context.Background(),
 		pgx.Identifier{"status_changes"},
-		[]string{"channel_id", "status", "timestamp"},
+		[]string{"streamer_id", "status", "timestamp"},
 		pgx.CopyFromRows(rows),
 	)
 	if err != nil {
@@ -324,10 +324,10 @@ func TestCopyFromAndBatchInTransaction(t *testing.T) {
 	batch := &pgx.Batch{}
 	batch.Queue(
 		`
-			insert into channels (channel_id, unconfirmed_status)
+			insert into streamers (streamer_id, unconfirmed_status)
 			values ($1, $2)
 		`,
-		"test_channel", 999) // 999 violates check constraint
+		"test_streamer", 999) // 999 violates check constraint
 	br := tx.SendBatch(context.Background(), batch)
 	err = br.Close()
 
@@ -341,7 +341,7 @@ func TestCopyFromAndBatchInTransaction(t *testing.T) {
 
 	// Verify status_changes has NO data (CopyFrom was rolled back)
 	// Query using a new connection, not the failed transaction
-	count := w.db.MustInt("select count(*) from status_changes where channel_id = 'a'")
+	count := w.db.MustInt("select count(*) from status_changes where streamer_id = 'a'")
 	if count != 0 {
 		t.Errorf("expected 0 status_changes after rollback, got %d", count)
 	}
@@ -428,46 +428,46 @@ func TestUnconfirmedStatusConsistency(t *testing.T) {
 	w.createDatabase(make(chan bool, 1))
 	w.initCache()
 
-	// Insert first status change for channel "a"
+	// Insert first status change for streamer "a"
 	w.db.InsertStatusChanges([]db.StatusChange{
-		{ChannelID: "a", Status: cmdlib.StatusOnline},
+		{StreamerID: "a", Status: cmdlib.StatusOnline},
 	}, 100)
 
-	channel := w.db.MaybeChannel("a")
-	if channel == nil {
-		t.Fatal("channel not found")
+	streamer := w.db.MaybeStreamer("a")
+	if streamer == nil {
+		t.Fatal("streamer not found")
 	}
-	if channel.UnconfirmedStatus != cmdlib.StatusOnline || channel.UnconfirmedTimestamp != 100 {
-		t.Errorf("unexpected unconfirmed status: %+v", channel)
+	if streamer.UnconfirmedStatus != cmdlib.StatusOnline || streamer.UnconfirmedTimestamp != 100 {
+		t.Errorf("unexpected unconfirmed status: %+v", streamer)
 	}
-	if channel.PrevUnconfirmedStatus != cmdlib.StatusUnknown || channel.PrevUnconfirmedTimestamp != 0 {
-		t.Errorf("unexpected prev unconfirmed status: %+v", channel)
+	if streamer.PrevUnconfirmedStatus != cmdlib.StatusUnknown || streamer.PrevUnconfirmedTimestamp != 0 {
+		t.Errorf("unexpected prev unconfirmed status: %+v", streamer)
 	}
 
 	// Insert second status change — prev should be updated
 	w.db.InsertStatusChanges([]db.StatusChange{
-		{ChannelID: "a", Status: cmdlib.StatusOffline},
+		{StreamerID: "a", Status: cmdlib.StatusOffline},
 	}, 200)
 
-	channel = w.db.MaybeChannel("a")
-	if channel.UnconfirmedStatus != cmdlib.StatusOffline || channel.UnconfirmedTimestamp != 200 {
-		t.Errorf("unexpected unconfirmed status: %+v", channel)
+	streamer = w.db.MaybeStreamer("a")
+	if streamer.UnconfirmedStatus != cmdlib.StatusOffline || streamer.UnconfirmedTimestamp != 200 {
+		t.Errorf("unexpected unconfirmed status: %+v", streamer)
 	}
-	if channel.PrevUnconfirmedStatus != cmdlib.StatusOnline || channel.PrevUnconfirmedTimestamp != 100 {
-		t.Errorf("unexpected prev unconfirmed status: %+v", channel)
+	if streamer.PrevUnconfirmedStatus != cmdlib.StatusOnline || streamer.PrevUnconfirmedTimestamp != 100 {
+		t.Errorf("unexpected prev unconfirmed status: %+v", streamer)
 	}
 
 	// Insert third status change — prev should shift
 	w.db.InsertStatusChanges([]db.StatusChange{
-		{ChannelID: "a", Status: cmdlib.StatusOnline},
+		{StreamerID: "a", Status: cmdlib.StatusOnline},
 	}, 300)
 
-	channel = w.db.MaybeChannel("a")
-	if channel.UnconfirmedStatus != cmdlib.StatusOnline || channel.UnconfirmedTimestamp != 300 {
-		t.Errorf("unexpected unconfirmed status: %+v", channel)
+	streamer = w.db.MaybeStreamer("a")
+	if streamer.UnconfirmedStatus != cmdlib.StatusOnline || streamer.UnconfirmedTimestamp != 300 {
+		t.Errorf("unexpected unconfirmed status: %+v", streamer)
 	}
-	if channel.PrevUnconfirmedStatus != cmdlib.StatusOffline || channel.PrevUnconfirmedTimestamp != 200 {
-		t.Errorf("unexpected prev unconfirmed status: %+v", channel)
+	if streamer.PrevUnconfirmedStatus != cmdlib.StatusOffline || streamer.PrevUnconfirmedTimestamp != 200 {
+		t.Errorf("unexpected prev unconfirmed status: %+v", streamer)
 	}
 }
 
@@ -475,21 +475,21 @@ func checkInv(w *worker, t *testing.T) {
 	a := map[string]db.StatusChange{}
 	var recStatus db.StatusChange
 	w.db.MustQuery(`
-		select channel_id, status, timestamp
+		select streamer_id, status, timestamp
 		from (
-			select *, row_number() over (partition by channel_id order by timestamp desc) as row
+			select *, row_number() over (partition by streamer_id order by timestamp desc) as row
 			from status_changes
 		)
 		where row = 1`,
 		nil,
-		db.ScanTo{&recStatus.ChannelID, &recStatus.Status, &recStatus.Timestamp},
-		func() { a[recStatus.ChannelID] = recStatus })
+		db.ScanTo{&recStatus.StreamerID, &recStatus.Status, &recStatus.Timestamp},
+		func() { a[recStatus.StreamerID] = recStatus })
 
 	if !reflect.DeepEqual(a, queryLastStatusChanges(&w.db)) {
 		t.Errorf("unexpected inv check result, statuses: %v, site statuses: %v", a, queryLastStatusChanges(&w.db))
 		t.Log(string(debug.Stack()))
 	}
-	// Check unconfirmed status consistency — channels table must match last two status_changes
+	// Check unconfirmed status consistency — streamers table must match last two status_changes
 	type lastTwo struct {
 		unconfirmed, prev db.StatusChange
 	}
@@ -497,97 +497,97 @@ func checkInv(w *worker, t *testing.T) {
 	var sc db.StatusChange
 	var row int
 	w.db.MustQuery(`
-		select channel_id, status, timestamp, row
+		select streamer_id, status, timestamp, row
 		from (
-			select *, row_number() over (partition by channel_id order by timestamp desc) as row
+			select *, row_number() over (partition by streamer_id order by timestamp desc) as row
 			from status_changes
 		)
 		where row <= 2
-		order by channel_id, row`,
+		order by streamer_id, row`,
 		nil,
-		db.ScanTo{&sc.ChannelID, &sc.Status, &sc.Timestamp, &row},
+		db.ScanTo{&sc.StreamerID, &sc.Status, &sc.Timestamp, &row},
 		func() {
-			entry := fromStatusChanges[sc.ChannelID]
+			entry := fromStatusChanges[sc.StreamerID]
 			if row == 1 {
 				entry.unconfirmed = sc
 			} else {
 				entry.prev = sc
 			}
-			fromStatusChanges[sc.ChannelID] = entry
+			fromStatusChanges[sc.StreamerID] = entry
 		})
 
-	var channel db.Channel
+	var streamer db.Streamer
 	w.db.MustQuery(`
-		select channel_id, unconfirmed_status, unconfirmed_timestamp, prev_unconfirmed_status, prev_unconfirmed_timestamp
-		from channels
+		select streamer_id, unconfirmed_status, unconfirmed_timestamp, prev_unconfirmed_status, prev_unconfirmed_timestamp
+		from streamers
 		where unconfirmed_timestamp > 0`,
 		nil,
-		db.ScanTo{&channel.ChannelID, &channel.UnconfirmedStatus, &channel.UnconfirmedTimestamp, &channel.PrevUnconfirmedStatus, &channel.PrevUnconfirmedTimestamp},
+		db.ScanTo{&streamer.StreamerID, &streamer.UnconfirmedStatus, &streamer.UnconfirmedTimestamp, &streamer.PrevUnconfirmedStatus, &streamer.PrevUnconfirmedTimestamp},
 		func() {
-			expected := fromStatusChanges[channel.ChannelID]
-			if channel.UnconfirmedStatus != expected.unconfirmed.Status ||
-				channel.UnconfirmedTimestamp != expected.unconfirmed.Timestamp {
-				t.Errorf("unconfirmed status mismatch for %s: channel=%+v, expected=%+v", channel.ChannelID, channel, expected)
+			expected := fromStatusChanges[streamer.StreamerID]
+			if streamer.UnconfirmedStatus != expected.unconfirmed.Status ||
+				streamer.UnconfirmedTimestamp != expected.unconfirmed.Timestamp {
+				t.Errorf("unconfirmed status mismatch for %s: streamer=%+v, expected=%+v", streamer.StreamerID, streamer, expected)
 				t.Log(string(debug.Stack()))
 			}
-			if channel.PrevUnconfirmedStatus != expected.prev.Status ||
-				channel.PrevUnconfirmedTimestamp != expected.prev.Timestamp {
-				t.Errorf("prev unconfirmed status mismatch for %s: channel=%+v, expected=%+v", channel.ChannelID, channel, expected)
+			if streamer.PrevUnconfirmedStatus != expected.prev.Status ||
+				streamer.PrevUnconfirmedTimestamp != expected.prev.Timestamp {
+				t.Errorf("prev unconfirmed status mismatch for %s: streamer=%+v, expected=%+v", streamer.StreamerID, streamer, expected)
 				t.Log(string(debug.Stack()))
 			}
 		})
 
 	// Check for consecutive same statuses — should never happen
-	var badChannelID string
+	var badStreamerID string
 	var badStatus cmdlib.StatusKind
 	w.db.MustQuery(
 		`
 		with periods as (
 			select
-				channel_id,
+				streamer_id,
 				status,
-				lead(status) over (partition by channel_id order by timestamp) as next_status
+				lead(status) over (partition by streamer_id order by timestamp) as next_status
 			from status_changes
 		)
-		select channel_id, status
+		select streamer_id, status
 		from periods
 		where status = next_status
 		`,
 		nil,
-		db.ScanTo{&badChannelID, &badStatus},
+		db.ScanTo{&badStreamerID, &badStatus},
 		func() {
-			t.Errorf("consecutive same status found for %s: %v", badChannelID, badStatus)
+			t.Errorf("consecutive same status found for %s: %v", badStreamerID, badStatus)
 			t.Log(string(debug.Stack()))
 		})
 }
 
-func TestAddChannel(t *testing.T) {
+func TestAddStreamer(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
 	w.db.AddUser(1, 3, 0, "private")
 
-	// Add channel that doesn't exist — should insert with confirmed=0 and return false
-	if w.addChannel("test", 1, "newmodel", 100) {
-		t.Error("expected addChannel to return false for new channel")
+	// Add streamer that doesn't exist — should insert with confirmed=0 and return false
+	if w.addStreamer("test", 1, "newmodel", 100) {
+		t.Error("expected addStreamer to return false for new streamer")
 	}
-	if w.db.MustInt("select confirmed from subscriptions where channel_id = $1", "newmodel") != 0 {
-		t.Error("expected confirmed=0 for new channel")
+	if w.db.MustInt("select confirmed from subscriptions where streamer_id = $1", "newmodel") != 0 {
+		t.Error("expected confirmed=0 for new streamer")
 	}
-	// Drain the "checking channel" message
+	// Drain the "checking streamer" message
 	<-w.highPriorityMsg
 
-	// Add channel that exists with online status — should return true
+	// Add streamer that exists with online status — should return true
 	w.db.MustExec(
-		"insert into channels (channel_id, confirmed_status) values ($1, $2)",
+		"insert into streamers (streamer_id, confirmed_status) values ($1, $2)",
 		"onlinemodel",
 		cmdlib.StatusOnline,
 	)
-	if !w.addChannel("test", 1, "onlinemodel", 100) {
-		t.Error("expected addChannel to return true for existing channel")
+	if !w.addStreamer("test", 1, "onlinemodel", 100) {
+		t.Error("expected addStreamer to return true for existing streamer")
 	}
-	if w.db.MustInt("select confirmed from subscriptions where channel_id = $1", "onlinemodel") != 1 {
-		t.Error("expected confirmed=1 for existing channel")
+	if w.db.MustInt("select confirmed from subscriptions where streamer_id = $1", "onlinemodel") != 1 {
+		t.Error("expected confirmed=1 for existing streamer")
 	}
 	// Drain messages
 	<-w.highPriorityMsg
@@ -596,14 +596,14 @@ func TestAddChannel(t *testing.T) {
 		t.Errorf("expected online notification, got %+v", nots)
 	}
 
-	// Add channel that exists with offline status — should return true
+	// Add streamer that exists with offline status — should return true
 	w.db.MustExec(
-		"insert into channels (channel_id, confirmed_status) values ($1, $2)",
+		"insert into streamers (streamer_id, confirmed_status) values ($1, $2)",
 		"offlinemodel",
 		cmdlib.StatusOffline,
 	)
-	if !w.addChannel("test", 1, "offlinemodel", 100) {
-		t.Error("expected addChannel to return true for existing offline channel")
+	if !w.addStreamer("test", 1, "offlinemodel", 100) {
+		t.Error("expected addStreamer to return true for existing offline streamer")
 	}
 	nots = w.db.NewNotifications()
 	if len(nots) != 1 || nots[0].Status != cmdlib.StatusOffline {
@@ -618,21 +618,21 @@ func TestConfirmSub(t *testing.T) {
 
 	// Insert unconfirmed subscription
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, streamer_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 1, "a", 0,
 	)
 
 	// Confirm the subscription
-	w.db.ConfirmSub(db.Subscription{Endpoint: "test", ChatID: 1, ChannelID: "a"})
+	w.db.ConfirmSub(db.Subscription{Endpoint: "test", ChatID: 1, StreamerID: "a"})
 
 	// Check subscription is confirmed
-	if w.db.MustInt("select confirmed from subscriptions where channel_id = $1", "a") != 1 {
+	if w.db.MustInt("select confirmed from subscriptions where streamer_id = $1", "a") != 1 {
 		t.Error("expected confirmed=1 after ConfirmSub")
 	}
 
-	// Check channel was created
-	if w.db.MaybeChannel("a") == nil {
-		t.Error("expected channel to exist after ConfirmSub")
+	// Check streamer was created
+	if w.db.MaybeStreamer("a") == nil {
+		t.Error("expected streamer to exist after ConfirmSub")
 	}
 }
 
@@ -643,15 +643,15 @@ func TestDenySub(t *testing.T) {
 
 	// Insert unconfirmed subscription
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, streamer_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 1, "b", 0,
 	)
 
 	// Deny the subscription
-	w.db.DenySub(db.Subscription{Endpoint: "test", ChatID: 1, ChannelID: "b"})
+	w.db.DenySub(db.Subscription{Endpoint: "test", ChatID: 1, StreamerID: "b"})
 
 	// Check subscription is deleted
-	if w.db.MustInt("select count(*) from subscriptions where channel_id = $1", "b") != 0 {
+	if w.db.MustInt("select count(*) from subscriptions where streamer_id = $1", "b") != 0 {
 		t.Error("expected subscription to be deleted after DenySub")
 	}
 }
@@ -663,37 +663,37 @@ func TestProcessSubsConfirmations(t *testing.T) {
 
 	// Insert subscriptions waiting for confirmation (confirmed=2)
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, streamer_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 1, "online_model", 2,
 	)
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, streamer_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 2, "offline_model", 2,
 	)
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, streamer_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 3, "notfound_model", 2,
 	)
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, streamer_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 4, "denied_model", 2,
 	)
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, streamer_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 5, "notfound_denied_model", 2,
 	)
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, streamer_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 6, "online_offline_model", 2,
 	)
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, streamer_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 7, "unknown_model", 2,
 	)
 
 	// Process confirmations with checker results
 	w.processSubsConfirmations(&cmdlib.ExistenceListResults{
-		Channels: map[string]cmdlib.ChannelInfoWithStatus{
+		Streamers: map[string]cmdlib.StreamerInfoWithStatus{
 			"online_model":          {Status: cmdlib.StatusOnline},
 			"offline_model":         {Status: cmdlib.StatusOffline},
 			"notfound_model":        {Status: cmdlib.StatusNotFound},
@@ -705,37 +705,37 @@ func TestProcessSubsConfirmations(t *testing.T) {
 	})
 
 	// Online model should be confirmed
-	if w.db.MustInt("select confirmed from subscriptions where channel_id = $1", "online_model") != 1 {
+	if w.db.MustInt("select confirmed from subscriptions where streamer_id = $1", "online_model") != 1 {
 		t.Error("expected online_model to be confirmed")
 	}
 
 	// Offline model should be confirmed
-	if w.db.MustInt("select confirmed from subscriptions where channel_id = $1", "offline_model") != 1 {
+	if w.db.MustInt("select confirmed from subscriptions where streamer_id = $1", "offline_model") != 1 {
 		t.Error("expected offline_model to be confirmed")
 	}
 
 	// NotFound model should be denied (deleted)
-	if w.db.MustInt("select count(*) from subscriptions where channel_id = $1", "notfound_model") != 0 {
+	if w.db.MustInt("select count(*) from subscriptions where streamer_id = $1", "notfound_model") != 0 {
 		t.Error("expected notfound_model to be deleted")
 	}
 
 	// Denied model should be confirmed (StatusDenied is a valid status)
-	if w.db.MustInt("select confirmed from subscriptions where channel_id = $1", "denied_model") != 1 {
+	if w.db.MustInt("select confirmed from subscriptions where streamer_id = $1", "denied_model") != 1 {
 		t.Error("expected denied_model to be confirmed")
 	}
 
 	// NotFound|Denied model should be confirmed (StatusDenied bit is set)
-	if w.db.MustInt("select confirmed from subscriptions where channel_id = $1", "notfound_denied_model") != 1 {
+	if w.db.MustInt("select confirmed from subscriptions where streamer_id = $1", "notfound_denied_model") != 1 {
 		t.Error("expected notfound_denied_model to be confirmed")
 	}
 
 	// Online|Offline model should be confirmed (found but status uncertain)
-	if w.db.MustInt("select confirmed from subscriptions where channel_id = $1", "online_offline_model") != 1 {
+	if w.db.MustInt("select confirmed from subscriptions where streamer_id = $1", "online_offline_model") != 1 {
 		t.Error("expected online_offline_model to be confirmed")
 	}
 
 	// Unknown model should be denied (deleted)
-	if w.db.MustInt("select count(*) from subscriptions where channel_id = $1", "unknown_model") != 0 {
+	if w.db.MustInt("select count(*) from subscriptions where streamer_id = $1", "unknown_model") != 0 {
 		t.Error("expected unknown_model to be deleted")
 	}
 }
@@ -813,27 +813,27 @@ func TestStatusConfirmations(t *testing.T) {
 			defer w.terminate()
 			w.createDatabase(make(chan bool, 1))
 
-			// Set up background channels that should remain unchanged
+			// Set up background streamers that should remain unchanged
 			w.db.MustExec(
 				`
-					insert into channels
-					(channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp)
+					insert into streamers
+					(streamer_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp)
 					values ($1, $2, $3, $4)
 				`,
 				"always_online", cmdlib.StatusOnline, cmdlib.StatusOnline, 100,
 			)
 			w.db.MustExec(
 				`
-					insert into channels
-					(channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp)
+					insert into streamers
+					(streamer_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp)
 					values ($1, $2, $3, $4)
 				`,
 				"always_offline", cmdlib.StatusOffline, cmdlib.StatusOffline, 100,
 			)
 			w.db.MustExec(
 				`
-					insert into channels
-					(channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp)
+					insert into streamers
+					(streamer_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp)
 					values ($1, $2, $3, $4)
 				`,
 				"always_unknown", cmdlib.StatusUnknown, cmdlib.StatusUnknown, 100,
@@ -841,8 +841,8 @@ func TestStatusConfirmations(t *testing.T) {
 
 			w.db.MustExec(
 				`
-					insert into channels
-					(channel_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp)
+					insert into streamers
+					(streamer_id, confirmed_status, unconfirmed_status, unconfirmed_timestamp)
 					values ($1, $2, $3, $4)
 				`,
 				"ch", tt.confirmed, tt.unconfirmed, tt.timestamp,
@@ -864,14 +864,14 @@ func TestStatusConfirmations(t *testing.T) {
 				}
 			}
 
-			// Verify background channels were not affected
-			if s := w.db.MustInt("select confirmed_status from channels where channel_id = $1", "always_online"); s != int(cmdlib.StatusOnline) {
+			// Verify background streamers were not affected
+			if s := w.db.MustInt("select confirmed_status from streamers where streamer_id = $1", "always_online"); s != int(cmdlib.StatusOnline) {
 				t.Errorf("always_online confirmed_status was affected, got %v", s)
 			}
-			if s := w.db.MustInt("select confirmed_status from channels where channel_id = $1", "always_offline"); s != int(cmdlib.StatusOffline) {
+			if s := w.db.MustInt("select confirmed_status from streamers where streamer_id = $1", "always_offline"); s != int(cmdlib.StatusOffline) {
 				t.Errorf("always_offline confirmed_status was affected, got %v", s)
 			}
-			if s := w.db.MustInt("select confirmed_status from channels where channel_id = $1", "always_unknown"); s != int(cmdlib.StatusUnknown) {
+			if s := w.db.MustInt("select confirmed_status from streamers where streamer_id = $1", "always_unknown"); s != int(cmdlib.StatusUnknown) {
 				t.Errorf("always_unknown confirmed_status was affected, got %v", s)
 			}
 		})
@@ -885,17 +885,17 @@ func TestQueryLastSubscriptionStatuses(t *testing.T) {
 
 	// Insert confirmed subscriptions
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, streamer_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 1, "model_with_status", 1,
 	)
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, streamer_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 2, "model_without_status", 1,
 	)
 
 	// Insert model with unconfirmed_status for one model only
 	w.db.MustExec(
-		"insert into channels (channel_id, confirmed_status, unconfirmed_status) values ($1, $2, $3)",
+		"insert into streamers (streamer_id, confirmed_status, unconfirmed_status) values ($1, $2, $3)",
 		"model_with_status", cmdlib.StatusOnline, cmdlib.StatusOnline,
 	)
 
@@ -920,61 +920,61 @@ func TestHandleStatusUpdates(t *testing.T) {
 
 	// Insert a subscription
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, streamer_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 1, "a", 1,
 	)
 
 	// Test with OnlineListResults
 	result := &cmdlib.OnlineListResults{
-		Channels: map[string]cmdlib.ChannelInfo{"a": {ImageURL: "http://a.jpg"}},
+		Streamers: map[string]cmdlib.StreamerInfo{"a": {ImageURL: "http://a.jpg"}},
 	}
 	changes, _, _, _ := w.handleCheckerResults(result, 100)
 	if changes != 1 {
 		t.Errorf("expected 1 change with OnlineListResults, got %d", changes)
 	}
-	if w.unconfirmedOnlineChannels["a"].ImageURL != "http://a.jpg" {
-		t.Errorf("expected ImageURL to be set, got %s", w.unconfirmedOnlineChannels["a"].ImageURL)
+	if w.unconfirmedOnlineStreamers["a"].ImageURL != "http://a.jpg" {
+		t.Errorf("expected ImageURL to be set, got %s", w.unconfirmedOnlineStreamers["a"].ImageURL)
 	}
-	checkUnconfirmedOnlineChannels(w, t)
+	checkUnconfirmedOnlineStreamers(w, t)
 	checkInv(&w.worker, t)
 
-	// Test ImageURL update for channel that remains online
-	result.Channels["a"] = cmdlib.ChannelInfo{ImageURL: "http://a2.jpg"}
+	// Test ImageURL update for streamer that remains online
+	result.Streamers["a"] = cmdlib.StreamerInfo{ImageURL: "http://a2.jpg"}
 	w.handleCheckerResults(result, 101)
-	if w.unconfirmedOnlineChannels["a"].ImageURL != "http://a2.jpg" {
-		t.Errorf("expected ImageURL to be updated, got %s", w.unconfirmedOnlineChannels["a"].ImageURL)
+	if w.unconfirmedOnlineStreamers["a"].ImageURL != "http://a2.jpg" {
+		t.Errorf("expected ImageURL to be updated, got %s", w.unconfirmedOnlineStreamers["a"].ImageURL)
 	}
-	checkUnconfirmedOnlineChannels(w, t)
+	checkUnconfirmedOnlineStreamers(w, t)
 	checkInv(&w.worker, t)
 
-	// Test with FixedListOnlineResults — channel goes offline (not in Channels)
+	// Test with FixedListOnlineResults — streamer goes offline (not in Streamers)
 	result2 := &cmdlib.FixedListOnlineResults{
-		RequestedChannels: map[string]bool{"a": true},
-		Channels:          map[string]cmdlib.ChannelInfo{}, // empty = "a" is offline
+		RequestedStreamers: map[string]bool{"a": true},
+		Streamers:          map[string]cmdlib.StreamerInfo{}, // empty = "a" is offline
 	}
 	changes, _, _, _ = w.handleCheckerResults(result2, 102)
 	if changes != 1 {
 		t.Errorf("expected 1 change with FixedListOnlineResults, got %d", changes)
 	}
-	if _, ok := w.unconfirmedOnlineChannels["a"]; ok {
-		t.Error("expected offline channel to be removed from unconfirmedOnlineChannels")
+	if _, ok := w.unconfirmedOnlineStreamers["a"]; ok {
+		t.Error("expected offline streamer to be removed from unconfirmedOnlineStreamers")
 	}
-	checkUnconfirmedOnlineChannels(w, t)
+	checkUnconfirmedOnlineStreamers(w, t)
 	checkInv(&w.worker, t)
 
-	// Channel comes back online (use new map to avoid aliasing with unconfirmedOnlineChannels)
-	result2.Channels = map[string]cmdlib.ChannelInfo{"a": {ImageURL: "http://a3.jpg"}}
+	// Streamer comes back online (use new map to avoid aliasing with unconfirmedOnlineStreamers)
+	result2.Streamers = map[string]cmdlib.StreamerInfo{"a": {ImageURL: "http://a3.jpg"}}
 	w.handleCheckerResults(result2, 103)
-	checkUnconfirmedOnlineChannels(w, t)
+	checkUnconfirmedOnlineStreamers(w, t)
 	checkInv(&w.worker, t)
 
-	// Channel goes offline again (use new empty map)
-	result2.Channels = map[string]cmdlib.ChannelInfo{}
+	// Streamer goes offline again (use new empty map)
+	result2.Streamers = map[string]cmdlib.StreamerInfo{}
 	w.handleCheckerResults(result2, 104)
-	if _, ok := w.unconfirmedOnlineChannels["a"]; ok {
-		t.Error("expected offline channel to be removed from unconfirmedOnlineChannels")
+	if _, ok := w.unconfirmedOnlineStreamers["a"]; ok {
+		t.Error("expected offline streamer to be removed from unconfirmedOnlineStreamers")
 	}
-	checkUnconfirmedOnlineChannels(w, t)
+	checkUnconfirmedOnlineStreamers(w, t)
 	checkInv(&w.worker, t)
 
 	// Test error case (should return early with zero values)
@@ -1004,16 +1004,16 @@ func TestUnsubscribeBeforeRestart(t *testing.T) {
 
 	// Subscribe to "a" and "b"
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, streamer_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 1, "a", 1)
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, channel_id, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (endpoint, chat_id, streamer_id, confirmed) values ($1, $2, $3, $4)",
 		"test", 1, "b", 1)
 
-	// Both channels come online
+	// Both streamers come online
 	result := &cmdlib.FixedListOnlineResults{
-		RequestedChannels: map[string]bool{"a": true, "b": true},
-		Channels: map[string]cmdlib.ChannelInfo{
+		RequestedStreamers: map[string]bool{"a": true, "b": true},
+		Streamers: map[string]cmdlib.StreamerInfo{
 			"a": {},
 			"b": {},
 		},
@@ -1022,39 +1022,39 @@ func TestUnsubscribeBeforeRestart(t *testing.T) {
 	checkInv(&w.worker, t)
 
 	// Verify both are online in DB
-	if w.db.MaybeChannel("a").UnconfirmedStatus != cmdlib.StatusOnline {
+	if w.db.MaybeStreamer("a").UnconfirmedStatus != cmdlib.StatusOnline {
 		t.Error("expected 'a' to be online")
 	}
-	if w.db.MaybeChannel("b").UnconfirmedStatus != cmdlib.StatusOnline {
+	if w.db.MaybeStreamer("b").UnconfirmedStatus != cmdlib.StatusOnline {
 		t.Error("expected 'b' to be online")
 	}
 
 	// Unsubscribe from "a"
-	w.db.MustExec("delete from subscriptions where channel_id = $1", "a")
+	w.db.MustExec("delete from subscriptions where streamer_id = $1", "a")
 
 	// Simulate restart: reinitialize cache as would happen on restart
 	w.initCache()
 
 	// First query after restart — only "b" is subscribed.
-	// "a" is no longer in RequestedChannels since it's unsubscribed.
+	// "a" is no longer in RequestedStreamers since it's unsubscribed.
 	result2 := &cmdlib.FixedListOnlineResults{
-		RequestedChannels: map[string]bool{"b": true},
-		Channels: map[string]cmdlib.ChannelInfo{
+		RequestedStreamers: map[string]bool{"b": true},
+		Streamers: map[string]cmdlib.StreamerInfo{
 			"b": {},
 		},
 	}
 	w.handleCheckerResults(result2, 101)
 	checkInv(&w.worker, t)
 
-	// "a" should now have StatusUnknown in DB because it's a known channel
-	// but not in RequestedChannels (not subscribed anymore).
-	channelA := w.db.MaybeChannel("a")
-	if channelA.UnconfirmedStatus != cmdlib.StatusUnknown {
-		t.Errorf("expected 'a' to have StatusUnknown, got %v", channelA.UnconfirmedStatus)
+	// "a" should now have StatusUnknown in DB because it's a known streamer
+	// but not in RequestedStreamers (not subscribed anymore).
+	streamerA := w.db.MaybeStreamer("a")
+	if streamerA.UnconfirmedStatus != cmdlib.StatusUnknown {
+		t.Errorf("expected 'a' to have StatusUnknown, got %v", streamerA.UnconfirmedStatus)
 	}
 }
 
-func TestUnknownChannelFirstOfflineSaved(t *testing.T) {
+func TestUnknownStreamerFirstOfflineSaved(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
@@ -1063,39 +1063,39 @@ func TestUnknownChannelFirstOfflineSaved(t *testing.T) {
 	// Add a user
 	w.db.AddUser(1, 3, 0, "private")
 
-	// 1. User subscribes to a channel we don't know yet — creates unconfirmed subscription
-	// This simulates subscribing to a Twitch channel or a new unknown model
-	if w.addChannel("test", 1, "unknown_model", 100) {
-		t.Error("expected addChannel to return false for unknown channel")
+	// 1. User subscribes to a streamer we don't know yet — creates unconfirmed subscription
+	// This simulates subscribing to a Twitch streamer or a new unknown model
+	if w.addStreamer("test", 1, "unknown_model", 100) {
+		t.Error("expected addStreamer to return false for unknown streamer")
 	}
-	// Drain the "checking channel" message
+	// Drain the "checking streamer" message
 	<-w.highPriorityMsg
 
 	// Verify subscription is unconfirmed
-	if w.db.MustInt("select confirmed from subscriptions where channel_id = $1", "unknown_model") != 0 {
-		t.Error("expected confirmed=0 for new channel")
+	if w.db.MustInt("select confirmed from subscriptions where streamer_id = $1", "unknown_model") != 0 {
+		t.Error("expected confirmed=0 for new streamer")
 	}
 
 	// 2. Subscription is confirmed — checker returns offline status (Twitch returns Online|Offline)
 	// First, set subscription to "checking" state (confirmed=2) as queryUnconfirmedSubs would do
-	w.db.MustExec("update subscriptions set confirmed = 2 where channel_id = $1", "unknown_model")
+	w.db.MustExec("update subscriptions set confirmed = 2 where streamer_id = $1", "unknown_model")
 	w.processSubsConfirmations(&cmdlib.ExistenceListResults{
-		Channels: map[string]cmdlib.ChannelInfoWithStatus{
-			// Twitch returns Online|Offline when channel exists but is offline
+		Streamers: map[string]cmdlib.StreamerInfoWithStatus{
+			// Twitch returns Online|Offline when streamer exists but is offline
 			"unknown_model": {Status: cmdlib.StatusOnline | cmdlib.StatusOffline},
 		},
 	})
 
 	// Verify subscription is now confirmed
-	if w.db.MustInt("select confirmed from subscriptions where channel_id = $1", "unknown_model") != 1 {
+	if w.db.MustInt("select confirmed from subscriptions where streamer_id = $1", "unknown_model") != 1 {
 		t.Error("expected confirmed=1 after confirmation")
 	}
 
 	// 3. First status update: offline
 	// Offline status SHOULD be saved so we can calculate online duration later
 	result := &cmdlib.FixedListOnlineResults{
-		RequestedChannels: map[string]bool{"unknown_model": true},
-		Channels:          map[string]cmdlib.ChannelInfo{}, // empty = offline
+		RequestedStreamers: map[string]bool{"unknown_model": true},
+		Streamers:          map[string]cmdlib.StreamerInfo{}, // empty = offline
 	}
 	changes, _, _, _ := w.handleCheckerResults(result, 101)
 	checkInv(&w.worker, t)
@@ -1106,22 +1106,22 @@ func TestUnknownChannelFirstOfflineSaved(t *testing.T) {
 	}
 
 	// Verify status_change was recorded
-	count := w.db.MustInt("select count(*) from status_changes where channel_id = $1", "unknown_model")
+	count := w.db.MustInt("select count(*) from status_changes where streamer_id = $1", "unknown_model")
 	if count != 1 {
 		t.Errorf("expected 1 status_change for first offline, got %d", count)
 	}
 
-	// Verify channel has offline status
-	channel := w.db.MaybeChannel("unknown_model")
-	if channel == nil {
-		t.Fatal("expected channel to exist")
+	// Verify streamer has offline status
+	streamer := w.db.MaybeStreamer("unknown_model")
+	if streamer == nil {
+		t.Fatal("expected streamer to exist")
 	}
-	if channel.UnconfirmedStatus != cmdlib.StatusOffline {
-		t.Errorf("expected unconfirmed status to be offline, got %v", channel.UnconfirmedStatus)
+	if streamer.UnconfirmedStatus != cmdlib.StatusOffline {
+		t.Errorf("expected unconfirmed status to be offline, got %v", streamer.UnconfirmedStatus)
 	}
 
 	// 5. Subsequent status update with same offline status should NOT record a new change
-	result.Channels = map[string]cmdlib.ChannelInfo{} // use new map to avoid aliasing
+	result.Streamers = map[string]cmdlib.StreamerInfo{} // use new map to avoid aliasing
 	changes, _, _, _ = w.handleCheckerResults(result, 102)
 	checkInv(&w.worker, t)
 	if changes != 0 {
@@ -1129,7 +1129,7 @@ func TestUnknownChannelFirstOfflineSaved(t *testing.T) {
 	}
 
 	// Still only 1 status_change
-	count = w.db.MustInt("select count(*) from status_changes where channel_id = $1", "unknown_model")
+	count = w.db.MustInt("select count(*) from status_changes where streamer_id = $1", "unknown_model")
 	if count != 1 {
 		t.Errorf("expected still 1 status_change, got %d", count)
 	}
@@ -1139,10 +1139,10 @@ func TestStatusTransitions(t *testing.T) {
 	tests := []struct {
 		name          string
 		subscribed    bool
-		dbBefore      *cmdlib.StatusKind // nil means channel doesn't exist in DB
+		dbBefore      *cmdlib.StatusKind // nil means streamer doesn't exist in DB
 		fixedList     bool
-		checkerStatus *cmdlib.StatusKind // nil means channel not in checker result
-		dbAfter       *cmdlib.StatusKind // nil means channel shouldn't exist or no change
+		checkerStatus *cmdlib.StatusKind // nil means streamer not in checker result
+		dbAfter       *cmdlib.StatusKind // nil means streamer shouldn't exist or no change
 	}{
 		// Fixed list checker tests
 		{
@@ -1218,9 +1218,9 @@ func TestStatusTransitions(t *testing.T) {
 			checkerStatus: ptr(cmdlib.StatusOnline),
 			dbAfter:       ptr(cmdlib.StatusOnline),
 		},
-		// Unsubscribed channel tests
+		// Unsubscribed streamer tests
 		{
-			name:          "online list: unsubscribed channel stays online",
+			name:          "online list: unsubscribed streamer stays online",
 			subscribed:    false,
 			dbBefore:      nil,
 			fixedList:     false,
@@ -1228,7 +1228,7 @@ func TestStatusTransitions(t *testing.T) {
 			dbAfter:       ptr(cmdlib.StatusOnline),
 		},
 		{
-			name:          "fixed list: unsubscribed channel stays online",
+			name:          "fixed list: unsubscribed streamer stays online",
 			subscribed:    false,
 			dbBefore:      nil,
 			fixedList:     true,
@@ -1242,65 +1242,65 @@ func TestStatusTransitions(t *testing.T) {
 			w := newTestWorker()
 			defer w.terminate()
 			w.createDatabase(make(chan bool, 1))
-			// Set up background channels that should remain unchanged
+			// Set up background streamers that should remain unchanged
 			w.db.AddSubscription(1, "always_online", "ep", 1)
 			w.db.AddSubscription(1, "always_offline", "ep", 1)
 			w.db.AddSubscription(1, "always_unknown", "ep", 1)
 			w.db.MustExec(
-				"insert into channels (channel_id, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3)",
+				"insert into streamers (streamer_id, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3)",
 				"always_online", cmdlib.StatusOnline, 1,
 			)
 			w.db.MustExec(
-				"insert into channels (channel_id, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3)",
+				"insert into streamers (streamer_id, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3)",
 				"always_offline", cmdlib.StatusOffline, 1,
 			)
 			w.db.MustExec(
-				"insert into channels (channel_id, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3)",
+				"insert into streamers (streamer_id, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3)",
 				"always_unknown", cmdlib.StatusUnknown, 1,
 			)
 			w.db.MustExec(
-				"insert into status_changes (channel_id, status, timestamp) values ($1, $2, $3)",
+				"insert into status_changes (streamer_id, status, timestamp) values ($1, $2, $3)",
 				"always_online", cmdlib.StatusOnline, 1,
 			)
 			w.db.MustExec(
-				"insert into status_changes (channel_id, status, timestamp) values ($1, $2, $3)",
+				"insert into status_changes (streamer_id, status, timestamp) values ($1, $2, $3)",
 				"always_offline", cmdlib.StatusOffline, 1,
 			)
 			w.db.MustExec(
-				"insert into status_changes (channel_id, status, timestamp) values ($1, $2, $3)",
+				"insert into status_changes (streamer_id, status, timestamp) values ($1, $2, $3)",
 				"always_unknown", cmdlib.StatusUnknown, 1,
 			)
 
-			// Initialize cache after setting up background channels
+			// Initialize cache after setting up background streamers
 			w.initCache()
 
 			// Always subscribe during setup if we need to set initial state
-			// (subscription is needed to track the channel)
+			// (subscription is needed to track the streamer)
 			if tt.dbBefore != nil || tt.subscribed {
 				w.db.AddSubscription(1, "ch", "ep", 1)
-				// Create channel entry like ConfirmSub does for confirmed subscriptions
-				w.db.MustExec("insert into channels (channel_id) values ($1) on conflict(channel_id) do nothing", "ch")
+				// Create streamer entry like ConfirmSub does for confirmed subscriptions
+				w.db.MustExec("insert into streamers (streamer_id) values ($1) on conflict(streamer_id) do nothing", "ch")
 			}
 
-			// Include background channels in RequestedChannels to prevent them from being set to unknown
-			bgChannels := map[string]bool{"always_online": true, "always_offline": true}
+			// Include background streamers in RequestedStreamers to prevent them from being set to unknown
+			bgStreamers := map[string]bool{"always_online": true, "always_offline": true}
 
 			if tt.dbBefore != nil {
 				if tt.fixedList {
 					setupResult := &cmdlib.FixedListOnlineResults{
-						RequestedChannels: map[string]bool{"ch": true, "always_online": true, "always_offline": true},
-						Channels:          map[string]cmdlib.ChannelInfo{"always_online": {}},
+						RequestedStreamers: map[string]bool{"ch": true, "always_online": true, "always_offline": true},
+						Streamers:          map[string]cmdlib.StreamerInfo{"always_online": {}},
 					}
 					if *tt.dbBefore == cmdlib.StatusOnline {
-						setupResult.Channels["ch"] = cmdlib.ChannelInfo{}
+						setupResult.Streamers["ch"] = cmdlib.StreamerInfo{}
 					}
 					w.handleCheckerResults(setupResult, 100)
 				} else {
 					setupResult := &cmdlib.OnlineListResults{
-						Channels: map[string]cmdlib.ChannelInfo{"always_online": {}},
+						Streamers: map[string]cmdlib.StreamerInfo{"always_online": {}},
 					}
 					if *tt.dbBefore == cmdlib.StatusOnline {
-						setupResult.Channels["ch"] = cmdlib.ChannelInfo{}
+						setupResult.Streamers["ch"] = cmdlib.StreamerInfo{}
 					}
 					w.handleCheckerResults(setupResult, 100)
 				}
@@ -1309,48 +1309,48 @@ func TestStatusTransitions(t *testing.T) {
 
 			if tt.fixedList {
 				result := &cmdlib.FixedListOnlineResults{
-					RequestedChannels: bgChannels,
-					Channels:          map[string]cmdlib.ChannelInfo{"always_online": {}},
+					RequestedStreamers: bgStreamers,
+					Streamers:          map[string]cmdlib.StreamerInfo{"always_online": {}},
 				}
 				if tt.subscribed {
-					result.RequestedChannels["ch"] = true
+					result.RequestedStreamers["ch"] = true
 				}
 				if tt.checkerStatus != nil && *tt.checkerStatus == cmdlib.StatusOnline {
-					result.Channels["ch"] = cmdlib.ChannelInfo{}
+					result.Streamers["ch"] = cmdlib.StreamerInfo{}
 				}
 				w.handleCheckerResults(result, 101)
 			} else {
 				result := &cmdlib.OnlineListResults{
-					Channels: map[string]cmdlib.ChannelInfo{"always_online": {}},
+					Streamers: map[string]cmdlib.StreamerInfo{"always_online": {}},
 				}
 				if tt.checkerStatus != nil && *tt.checkerStatus == cmdlib.StatusOnline {
-					result.Channels["ch"] = cmdlib.ChannelInfo{}
+					result.Streamers["ch"] = cmdlib.StreamerInfo{}
 				}
 				w.handleCheckerResults(result, 101)
 			}
 			checkInv(&w.worker, t)
 
-			channel := w.db.MaybeChannel("ch")
+			streamer := w.db.MaybeStreamer("ch")
 			if tt.dbAfter == nil {
-				if channel != nil {
-					t.Errorf("expected no channel in DB, got %v", channel)
+				if streamer != nil {
+					t.Errorf("expected no streamer in DB, got %v", streamer)
 				}
 			} else {
-				if channel == nil {
-					t.Errorf("expected channel in DB with status %v, got nil", *tt.dbAfter)
-				} else if channel.UnconfirmedStatus != *tt.dbAfter {
-					t.Errorf("expected status %v, got %v", *tt.dbAfter, channel.UnconfirmedStatus)
+				if streamer == nil {
+					t.Errorf("expected streamer in DB with status %v, got nil", *tt.dbAfter)
+				} else if streamer.UnconfirmedStatus != *tt.dbAfter {
+					t.Errorf("expected status %v, got %v", *tt.dbAfter, streamer.UnconfirmedStatus)
 				}
 			}
 
-			// Verify background channels were not affected
-			if ch := w.db.MaybeChannel("always_online"); ch == nil || ch.UnconfirmedStatus != cmdlib.StatusOnline {
+			// Verify background streamers were not affected
+			if ch := w.db.MaybeStreamer("always_online"); ch == nil || ch.UnconfirmedStatus != cmdlib.StatusOnline {
 				t.Errorf("always_online was affected, got %v", ch)
 			}
-			if ch := w.db.MaybeChannel("always_offline"); ch == nil || ch.UnconfirmedStatus != cmdlib.StatusOffline {
+			if ch := w.db.MaybeStreamer("always_offline"); ch == nil || ch.UnconfirmedStatus != cmdlib.StatusOffline {
 				t.Errorf("always_offline was affected, got %v", ch)
 			}
-			if ch := w.db.MaybeChannel("always_unknown"); ch == nil || ch.UnconfirmedStatus != cmdlib.StatusUnknown {
+			if ch := w.db.MaybeStreamer("always_unknown"); ch == nil || ch.UnconfirmedStatus != cmdlib.StatusUnknown {
 				t.Errorf("always_unknown was affected, got %v", ch)
 			}
 		})
@@ -1370,10 +1370,10 @@ func TestNotifyOfStatuses(t *testing.T) {
 	w.db.AddUser(201, 3, 0, "private")
 
 	nots := []db.Notification{
-		{ChatID: 100, Endpoint: "test", ChannelID: "a", Status: cmdlib.StatusOnline, Priority: 0},
-		{ChatID: 101, Endpoint: "test", ChannelID: "b", Status: cmdlib.StatusOnline, Priority: 1},
-		{ChatID: 200, Endpoint: "test", ChannelID: "c", Status: cmdlib.StatusOnline, Priority: 0},
-		{ChatID: 201, Endpoint: "test", ChannelID: "d", Status: cmdlib.StatusOnline, Priority: 1},
+		{ChatID: 100, Endpoint: "test", StreamerID: "a", Status: cmdlib.StatusOnline, Priority: 0},
+		{ChatID: 101, Endpoint: "test", StreamerID: "b", Status: cmdlib.StatusOnline, Priority: 1},
+		{ChatID: 200, Endpoint: "test", StreamerID: "c", Status: cmdlib.StatusOnline, Priority: 0},
+		{ChatID: 201, Endpoint: "test", StreamerID: "d", Status: cmdlib.StatusOnline, Priority: 1},
 	}
 
 	w.notifyOfStatuses(w.highPriorityMsg, w.lowPriorityMsg, nots)

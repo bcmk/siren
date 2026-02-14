@@ -7,10 +7,10 @@ site:
 add_error:
   parse: html
   str: |-
-    Could not add the channel {{ .channel }}
+    Could not add the channel {{ .streamer }}
     Check the channel name or try later
     Syntax: /add <code>CHANNEL</code>
-checking_channel:
+checking_streamer:
   parse: raw
   str: Give us a second. We are checking this channel
 help:
@@ -77,7 +77,7 @@ faq:
     {{ template "faq_pricing" . }}
 already_added:
   parse: raw
-  str: 'Channel {{ .channel }} is already in your list'
+  str: 'Channel {{ .streamer }} is already in your list'
 raw_commands:
   parse: raw
   str: |-
@@ -108,18 +108,18 @@ commands:
 languages:
   parse: raw
   str: ""
-channel_added:
+streamer_added:
   parse: raw
   str: |-
-    Channel {{ .channel }} added successfully
+    Channel {{ .streamer }} added successfully
     Bot will notify you whenever it is online
-channel_not_in_list:
+streamer_not_in_list:
   parse: raw
-  str: 'Channel {{ .channel }} is not in your list'
-channel_removed:
+  str: 'Channel {{ .streamer }} is not in your list'
+streamer_removed:
   parse: raw
-  str: 'Channel {{ .channel }} removed successfully'
-no_online_channels:
+  str: 'Channel {{ .streamer }} removed successfully'
+no_online_streamers:
   parse: raw
   str: There are no online channels you subscribed to
 faq_pricing:
@@ -128,11 +128,11 @@ faq_pricing:
     <b>Pricing</b>
 
     The basic service is free.
-    If you need to subscribe to more than {{ .max_models }} channels you may earn additional subscriptions by sharing this service.
+    If you need to subscribe to more than {{ .max_subs }} channels you may earn additional subscriptions by sharing this service.
 invalid_symbols:
   parse: raw
   disable_preview: true
-  str: 'The channel name {{ .channel }} has invalid symbols'
+  str: 'The channel name {{ .streamer }} has invalid symbols'
 profile_removed:
   parse: raw
-  str: 'The channel {{ .channel }} is probably removed'
+  str: 'The channel {{ .streamer }} is probably removed'

@@ -3,7 +3,7 @@ package cmdlib
 // CheckMode  represents check mode
 type CheckMode int
 
-// Model statuses
+// Streamer statuses check mode
 const (
 	CheckOnline CheckMode = iota
 	CheckStatuses

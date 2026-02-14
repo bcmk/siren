@@ -25,21 +25,21 @@ ok:
 add_error:
   parse: html
   str: |-
-    Could not add the model {{ .channel }}
+    Could not add the model {{ .streamer }}
     Check the camname or try later
     Syntax: /add <code>CAMNAME</code>
-checking_channel:
+checking_streamer:
   parse: raw
   str: Give us a second. We are checking this model
-all_channels_removed:
+all_streamers_removed:
   parse: raw
   str: All your subscriptions removed
 already_added:
   parse: raw
-  str: 'Model {{ .channel }} is already in your list'
+  str: 'Model {{ .streamer }} is already in your list'
 denied:
   parse: raw
-  str: '{{ .channel }} has blocked access from the location of this bot'
+  str: '{{ .streamer }} has blocked access from the location of this bot'
 feedback:
   parse: raw
   str: Thank you for your feedback!
@@ -82,19 +82,19 @@ invalid_referral_link:
 invalid_symbols:
   parse: raw
   disable_preview: true
-  str: 'Camname {{ .channel }} has invalid symbols'
-channel_added:
+  str: 'Camname {{ .streamer }} has invalid symbols'
+streamer_added:
   parse: raw
   str: |-
-    Model {{ .channel }} added successfully
+    Model {{ .streamer }} added successfully
     Bot will notify you whenever they enters or leaves
-channel_not_in_list:
+streamer_not_in_list:
   parse: raw
-  str: 'Model {{ .channel }} is not in your list'
-channel_removed:
+  str: 'Model {{ .streamer }} is not in your list'
+streamer_removed:
   parse: raw
-  str: 'Model {{ .channel }} removed successfully'
-no_online_channels:
+  str: 'Model {{ .streamer }} removed successfully'
+no_online_streamers:
   parse: raw
   str: There are no online models you subscribed to
 not_enough_subscriptions:
@@ -106,7 +106,7 @@ online:
   str: |-
     🟢
     {{- print " " -}}
-    {{- template "affiliate_link" .channel }}
+    {{- template "affiliate_link" .streamer }}
     {{- print " " -}}
     <i>online
     {{- if .time_diff }} for {{ template "duration" .time_diff }}{{ end -}}
@@ -129,7 +129,7 @@ offline:
   str: |-
     🔴
     {{- print " " -}}
-    {{- template "affiliate_link" .channel }}
+    {{- template "affiliate_link" .streamer }}
     {{- print " " -}}
     <i>offline {{- if .time_diff }}, last seen {{ template "duration" .time_diff }} ago {{- end -}}</i>
 zero_subscriptions:
@@ -151,7 +151,7 @@ list:
       <code>ONLINE</code>
       {{- print "\n" -}}
       {{- range .online -}}
-        {{- template "affiliate_link" .Channel -}}
+        {{- template "affiliate_link" .Streamer -}}
         {{- if .TimeDiff }}  <i>for {{ template "duration" .TimeDiff }}</i> {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
@@ -167,7 +167,7 @@ list:
       <code>OFFLINE</code>
       {{- print "\n" -}}
       {{- range .offline -}}
-        {{- template "affiliate_link" .Channel -}}
+        {{- template "affiliate_link" .Streamer -}}
         {{- if .TimeDiff }}  <i>last seen {{ template "duration" .TimeDiff }}</i> ago {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
@@ -181,7 +181,7 @@ own_referral_link_hit:
   str: You've just hit your own referral link
 profile_removed:
   parse: raw
-  str: 'Model {{ .channel }} probably has removed their profile'
+  str: 'Model {{ .streamer }} probably has removed their profile'
 referral_applied:
   parse: raw
   str: Congrats! You've just got more subscriptions for the referral link!
@@ -323,7 +323,7 @@ week:
   parse: html
   disable_preview: true
   str: |-
-    {{- template "affiliate_link" .channel }}'s week (UTC):
+    {{- template "affiliate_link" .streamer }}'s week (UTC):
     {{- print "\n\n" -}}
     <code>
     {{- printf "    00     06     12     18\n" -}}
@@ -359,7 +359,7 @@ faq_pricing:
     <b>Pricing</b>
 
     The basic service is free.
-    If you need to subscribe to more than {{ .max_models }} models you may earn additional subscriptions by sharing this service.
+    If you need to subscribe to more than {{ .max_subs }} models you may earn additional subscriptions by sharing this service.
 too_many_subscriptions_for_pics:
   str: This command supports up to {{ .max_subs }} subscriptions in a group chat
 we_are_up:

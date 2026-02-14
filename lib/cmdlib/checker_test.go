@@ -23,25 +23,25 @@ func (c *TestChecker) CheckStatusSingle(string) StatusKind {
 	return c.status
 }
 
-func (c *testOnlineListChecker) QueryOnlineChannels() (map[string]ChannelInfo, error) {
+func (c *testOnlineListChecker) QueryOnlineStreamers() (map[string]StreamerInfo, error) {
 	if c.err != nil {
 		return nil, c.err
 	}
-	channels := map[string]ChannelInfo{}
+	streamers := map[string]StreamerInfo{}
 	for k := range c.online {
-		channels[k] = ChannelInfo{}
+		streamers[k] = StreamerInfo{}
 	}
-	return channels, nil
+	return streamers, nil
 }
 
-func (c *testOnlineListChecker) QueryFixedListOnlineChannels(channels []string, _ CheckMode) (map[string]ChannelInfo, error) {
+func (c *testOnlineListChecker) QueryFixedListOnlineStreamers(streamers []string, _ CheckMode) (map[string]StreamerInfo, error) {
 	if c.err != nil {
 		return nil, c.err
 	}
-	result := map[string]ChannelInfo{}
-	for _, ch := range channels {
+	result := map[string]StreamerInfo{}
+	for _, ch := range streamers {
 		if c.online[ch] {
-			result[ch] = ChannelInfo{}
+			result[ch] = StreamerInfo{}
 		}
 	}
 	return result, nil
@@ -59,7 +59,7 @@ func TestOnlineListCheckerHandlesFixedList(t *testing.T) {
 	checker.online = toSet("a", "b")
 	if err := checker.PushStatusRequest(&FixedListOnlineRequest{
 		ResultsCh: resultsCh,
-		Channels:  toSet("a", "c"),
+		Streamers: toSet("a", "c"),
 	}); err != nil {
 		t.Errorf("cannot query updates, %v", err)
 		return
@@ -68,16 +68,16 @@ func TestOnlineListCheckerHandlesFixedList(t *testing.T) {
 	if result.Failed() {
 		t.Error("unexpected error")
 	}
-	if _, ok := result.Channels["a"]; !ok {
-		t.Error("expected a to be in channels (online)")
+	if _, ok := result.Streamers["a"]; !ok {
+		t.Error("expected a to be in streamers (online)")
 	}
 	// c was queried but not online, should not be in the results
-	if _, ok := result.Channels["c"]; ok {
-		t.Error("expected c to not be in channels (not online)")
+	if _, ok := result.Streamers["c"]; ok {
+		t.Error("expected c to not be in streamers (not online)")
 	}
 	// b was online but not queried, should not be in the results
-	if _, ok := result.Channels["b"]; ok {
-		t.Error("expected b to not be in channels (not queried)")
+	if _, ok := result.Streamers["b"]; ok {
+		t.Error("expected b to not be in streamers (not queried)")
 	}
 }
 

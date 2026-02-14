@@ -85,9 +85,9 @@ func liveJasminShowKind(status string) cmdlib.ShowKind {
 }
 
 // CheckEndpoint returns LiveJasmin online models
-func (c *LiveJasminChecker) CheckEndpoint(endpoint string) (map[string]cmdlib.ChannelInfo, error) {
+func (c *LiveJasminChecker) CheckEndpoint(endpoint string) (map[string]cmdlib.StreamerInfo, error) {
 	client := c.ClientsLoop.NextClient()
-	channels := map[string]cmdlib.ChannelInfo{}
+	streamers := map[string]cmdlib.StreamerInfo{}
 	resp, buf, err := cmdlib.OnlineQuery(endpoint, client, c.Headers)
 	if err != nil {
 		return nil, fmt.Errorf("cannot send a query, %v", err)
@@ -112,35 +112,35 @@ func (c *LiveJasminChecker) CheckEndpoint(endpoint string) (map[string]cmdlib.Ch
 	}
 	for _, m := range parsed.Data.Models {
 		modelID := strings.ToLower(m.PerformerID)
-		channels[modelID] = cmdlib.ChannelInfo{
+		streamers[modelID] = cmdlib.StreamerInfo{
 			ImageURL: m.ProfilePictureURL.Size896x504,
 			ShowKind: liveJasminShowKind(m.Status),
 			Subject:  m.RoomTopic,
 		}
 	}
-	return channels, nil
+	return streamers, nil
 }
 
-// QueryOnlineChannels returns LiveJasmin online models
-func (c *LiveJasminChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, error) {
-	channels := map[string]cmdlib.ChannelInfo{}
+// QueryOnlineStreamers returns LiveJasmin online models
+func (c *LiveJasminChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
+	streamers := map[string]cmdlib.StreamerInfo{}
 	for _, endpoint := range c.UsersOnlineEndpoints {
-		endpointChannels, err := c.CheckEndpoint(endpoint)
+		endpointStreamers, err := c.CheckEndpoint(endpoint)
 		if err != nil {
 			return nil, err
 		}
 		if c.Dbg {
-			cmdlib.Ldbg("got channels for endpoint: %d", len(endpointChannels))
+			cmdlib.Ldbg("got streamers for endpoint: %d", len(endpointStreamers))
 		}
-		for channelID, info := range endpointChannels {
-			channels[channelID] = info
+		for streamerID, info := range endpointStreamers {
+			streamers[streamerID] = info
 		}
 	}
-	return channels, nil
+	return streamers, nil
 }
 
-// QueryFixedListOnlineChannels is not implemented for online list checkers
-func (c *LiveJasminChecker) QueryFixedListOnlineChannels([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+// QueryFixedListOnlineStreamers is not implemented for online list checkers
+func (c *LiveJasminChecker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckMode) (map[string]cmdlib.StreamerInfo, error) {
 	return nil, cmdlib.ErrNotImplemented
 }
 

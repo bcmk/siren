@@ -2,7 +2,7 @@ package checkers
 
 import "testing"
 
-func TestChannelID(t *testing.T) {
+func TestStreamerID(t *testing.T) {
 	if !TwitchChannelIDRegexp.MatchString("test") {
 		t.Error("unexpected results")
 	}

@@ -35,12 +35,12 @@ func main() {
 		SpecificConfig:       map[string]string{"user_id": *userID},
 		Dbg:                  *verbose,
 	})
-	channels, err := checker.QueryOnlineChannels()
+	streamers, err := checker.QueryOnlineStreamers()
 	if err != nil {
 		fmt.Printf("error occurred: %v\n", err)
 		return
 	}
-	for model, info := range channels {
+	for model, info := range streamers {
 		fmt.Printf("%s %s\n", model, info.ImageURL)
 	}
 }

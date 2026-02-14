@@ -51,10 +51,10 @@ func (c *CamSodaChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 	return cmdlib.StatusUnknown
 }
 
-// QueryOnlineChannels returns CamSoda online models
-func (c *CamSodaChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, error) {
+// QueryOnlineStreamers returns CamSoda online models
+func (c *CamSodaChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
 	client := c.ClientsLoop.NextClient()
-	channels := map[string]cmdlib.ChannelInfo{}
+	streamers := map[string]cmdlib.StreamerInfo{}
 	resp, buf, err := cmdlib.OnlineQuery(c.UsersOnlineEndpoints[0], client, c.Headers)
 	if err != nil {
 		return nil, fmt.Errorf("cannot send a query, %v", err)
@@ -77,18 +77,18 @@ func (c *CamSodaChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, e
 	for _, m := range parsed.Results {
 		modelID := strings.ToLower(m.Username)
 		viewers := m.Viewers
-		channels[modelID] = cmdlib.ChannelInfo{
+		streamers[modelID] = cmdlib.StreamerInfo{
 			ImageURL: m.Thumb,
 			Viewers:  &viewers,
 			ShowKind: camSodaShowKind(m.Status),
 			Subject:  m.Subject,
 		}
 	}
-	return channels, nil
+	return streamers, nil
 }
 
-// QueryFixedListOnlineChannels is not implemented for online list checkers
-func (c *CamSodaChecker) QueryFixedListOnlineChannels([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+// QueryFixedListOnlineStreamers is not implemented for online list checkers
+func (c *CamSodaChecker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckMode) (map[string]cmdlib.StreamerInfo, error) {
 	return nil, cmdlib.ErrNotImplemented
 }
 

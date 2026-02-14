@@ -12,7 +12,7 @@ import (
 
 var testConfig = botconfig.Config{
 	CheckGID:             true,
-	MaxChannels:          3,
+	MaxSubs:              3,
 	AdminID:              1,
 	HeavyUserRemainder:   1,
 	OfflineNotifications: true,
@@ -31,9 +31,9 @@ var testTranslations = cmdlib.Translations{
 	InvalidSymbols:         &cmdlib.Translation{Key: "invalid_symbols", Str: "InvalidSymbols", Parse: cmdlib.ParseRaw},
 	AlreadyAdded:           &cmdlib.Translation{Key: "already_added", Str: "AlreadyAdded %s", Parse: cmdlib.ParseRaw},
 	AddError:               &cmdlib.Translation{Key: "add_error", Str: "AddError %s", Parse: cmdlib.ParseRaw},
-	ChannelAdded:           &cmdlib.Translation{Key: "channel_added", Str: "ChannelAdded %s", Parse: cmdlib.ParseRaw},
-	ChannelNotInList:       &cmdlib.Translation{Key: "channel_not_in_list", Str: "ChannelNotInList %s", Parse: cmdlib.ParseRaw},
-	ChannelRemoved:         &cmdlib.Translation{Key: "channel_removed", Str: "ChannelRemoved %s", Parse: cmdlib.ParseRaw},
+	StreamerAdded:          &cmdlib.Translation{Key: "streamer_added", Str: "StreamerAdded %s", Parse: cmdlib.ParseRaw},
+	StreamerNotInList:      &cmdlib.Translation{Key: "streamer_not_in_list", Str: "StreamerNotInList %s", Parse: cmdlib.ParseRaw},
+	StreamerRemoved:        &cmdlib.Translation{Key: "streamer_removed", Str: "StreamerRemoved %s", Parse: cmdlib.ParseRaw},
 	Feedback:               &cmdlib.Translation{Key: "feedback", Str: "Feedback", Parse: cmdlib.ParseRaw},
 	Social:                 &cmdlib.Translation{Key: "social", Str: "Social", Parse: cmdlib.ParseRaw},
 	UnknownCommand:         &cmdlib.Translation{Key: "unknown_command", Str: "UnknownCommand", Parse: cmdlib.ParseRaw},
@@ -41,7 +41,7 @@ var testTranslations = cmdlib.Translations{
 	Version:                &cmdlib.Translation{Key: "version", Str: "Version %s", Parse: cmdlib.ParseRaw},
 	ProfileRemoved:         &cmdlib.Translation{Key: "profile_removed", Str: "ProfileRemoved %s", Parse: cmdlib.ParseRaw},
 	WeekRetrieving:         &cmdlib.Translation{Key: "week_retrieving", Str: "WeekRetrieving", Parse: cmdlib.ParseRaw},
-	CheckingChannel:        &cmdlib.Translation{Key: "checking_channel", Str: "CheckingChannel", Parse: cmdlib.ParseRaw},
+	CheckingStreamer:       &cmdlib.Translation{Key: "checking_streamer", Str: "CheckingStreamer", Parse: cmdlib.ParseRaw},
 	NotEnoughSubscriptions: &cmdlib.Translation{Key: "not_enough_subscriptions", Str: "NotEnoughSubscriptions", Parse: cmdlib.ParseRaw},
 	SubscriptionUsage:      &cmdlib.Translation{Key: "subscription_usage", Str: "SubscriptionUsage", Parse: cmdlib.ParseRaw},
 	SubscriptionUsageAd:    &cmdlib.Translation{Key: "subscription_usage_ad", Str: "SubscriptionUsageAd", Parse: cmdlib.ParseRaw},
@@ -68,8 +68,8 @@ func newTestWorker() *testWorker {
 	checkErr(err)
 
 	tpl := template.New("")
-	template.Must(tpl.New("checking_channel").Parse("CheckingChannel"))
-	template.Must(tpl.New("channel_added").Parse("ChannelAdded"))
+	template.Must(tpl.New("checking_streamer").Parse("CheckingStreamer"))
+	template.Must(tpl.New("streamer_added").Parse("StreamerAdded"))
 	template.Must(tpl.New("online").Parse("Online"))
 	template.Must(tpl.New("offline").Parse("Offline"))
 	template.Must(tpl.New("subscription_usage").Parse("SubscriptionUsage"))
@@ -78,16 +78,16 @@ func newTestWorker() *testWorker {
 
 	w := &testWorker{
 		worker: worker{
-			bots:                   nil,
-			db:                     db.NewDatabase(connStr, true),
-			cfg:                    &testConfig,
-			clients:                nil,
-			tr:                     map[string]*cmdlib.Translations{"test": &testTranslations},
-			tpl:                    map[string]*template.Template{"test": tpl},
-			lowPriorityMsg:         make(chan outgoingPacket, 10000),
-			highPriorityMsg:        make(chan outgoingPacket, 10000),
-			channelIDPreprocessing: cmdlib.CanonicalChannelID,
-			channelIDRegexp:        cmdlib.CommonChannelIDRegexp,
+			bots:                    nil,
+			db:                      db.NewDatabase(connStr, true),
+			cfg:                     &testConfig,
+			clients:                 nil,
+			tr:                      map[string]*cmdlib.Translations{"test": &testTranslations},
+			tpl:                     map[string]*template.Template{"test": tpl},
+			lowPriorityMsg:          make(chan outgoingPacket, 10000),
+			highPriorityMsg:         make(chan outgoingPacket, 10000),
+			streamerIDPreprocessing: cmdlib.CanonicalStreamerID,
+			streamerIDRegexp:        cmdlib.CommonStreamerIDRegexp,
 		},
 	}
 	w.terminate = func() {
@@ -97,12 +97,12 @@ func newTestWorker() *testWorker {
 	return w
 }
 
-func (w *testWorker) chatsForChannel(channelID string) (chats []int64, endpoints []string) {
+func (w *testWorker) chatsForStreamer(streamerID string) (chats []int64, endpoints []string) {
 	var chatID int64
 	var endpoint string
 	w.db.MustQuery(
-		`select chat_id, endpoint from subscriptions where channel_id = $1 order by chat_id`,
-		db.QueryParams{channelID},
+		`select chat_id, endpoint from subscriptions where streamer_id = $1 order by chat_id`,
+		db.QueryParams{streamerID},
 		db.ScanTo{&chatID, &endpoint},
 		func() {
 			chats = append(chats, chatID)

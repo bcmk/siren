@@ -63,10 +63,10 @@ type Translations struct {
 	InvalidSymbols              *Translation `yaml:"invalid_symbols"`
 	AlreadyAdded                *Translation `yaml:"already_added"`
 	AddError                    *Translation `yaml:"add_error"`
-	ChannelAdded                *Translation `yaml:"channel_added"`
-	ChannelNotInList            *Translation `yaml:"channel_not_in_list"`
-	ChannelRemoved              *Translation `yaml:"channel_removed"`
-	CheckingChannel             *Translation `yaml:"checking_channel"`
+	StreamerAdded               *Translation `yaml:"streamer_added"`
+	StreamerNotInList           *Translation `yaml:"streamer_not_in_list"`
+	StreamerRemoved             *Translation `yaml:"streamer_removed"`
+	CheckingStreamer            *Translation `yaml:"checking_streamer"`
 	Feedback                    *Translation `yaml:"feedback"`
 	Social                      *Translation `yaml:"social"`
 	UnknownCommand              *Translation `yaml:"unknown_command"`
@@ -74,9 +74,9 @@ type Translations struct {
 	Languages                   *Translation `yaml:"languages"`
 	Version                     *Translation `yaml:"version"`
 	ProfileRemoved              *Translation `yaml:"profile_removed"`
-	NoOnlineChannels            *Translation `yaml:"no_online_channels"`
+	NoOnlineStreamers           *Translation `yaml:"no_online_streamers"`
 	RemoveAll                   *Translation `yaml:"remove_all"`
-	AllChannelsRemoved          *Translation `yaml:"all_channels_removed"`
+	AllStreamersRemoved         *Translation `yaml:"all_streamers_removed"`
 	ReferralLink                *Translation `yaml:"referral_link"`
 	InvalidReferralLink         *Translation `yaml:"invalid_referral_link"`
 	FollowerExists              *Translation `yaml:"follower_exists"`

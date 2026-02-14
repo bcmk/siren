@@ -40,10 +40,10 @@ func (c *BongaCamsChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 	return cmdlib.StatusUnknown
 }
 
-// QueryOnlineChannels returns BongaCams online models
-func (c *BongaCamsChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, error) {
+// QueryOnlineStreamers returns BongaCams online models
+func (c *BongaCamsChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
 	client := c.ClientsLoop.NextClient()
-	channels := map[string]cmdlib.ChannelInfo{}
+	streamers := map[string]cmdlib.StreamerInfo{}
 
 	resp, buf, err := cmdlib.OnlineQuery(c.UsersOnlineEndpoints[0], client, c.Headers)
 	if err != nil {
@@ -69,17 +69,17 @@ func (c *BongaCamsChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo,
 	for _, m := range parsed {
 		modelID := strings.ToLower(m.Username)
 		viewers := m.MembersCount
-		channels[modelID] = cmdlib.ChannelInfo{
+		streamers[modelID] = cmdlib.StreamerInfo{
 			ImageURL: "https:" + m.ProfileImages.ThumbnailImageMediumLive,
 			Viewers:  &viewers,
 			Subject:  m.ChatTopic,
 		}
 	}
-	return channels, nil
+	return streamers, nil
 }
 
-// QueryFixedListOnlineChannels is not implemented for online list checkers
-func (c *BongaCamsChecker) QueryFixedListOnlineChannels([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+// QueryFixedListOnlineStreamers is not implemented for online list checkers
+func (c *BongaCamsChecker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckMode) (map[string]cmdlib.StreamerInfo, error) {
 	return nil, cmdlib.ErrNotImplemented
 }
 

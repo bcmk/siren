@@ -95,10 +95,10 @@ func cam4ShowKind(showType string) cmdlib.ShowKind {
 	return cmdlib.ShowUnknown
 }
 
-// QueryOnlineChannels returns CAM4 online models
-func (c *Cam4Checker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, error) {
+// QueryOnlineStreamers returns CAM4 online models
+func (c *Cam4Checker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
 	client := c.ClientsLoop.NextClient()
-	channels := map[string]cmdlib.ChannelInfo{}
+	streamers := map[string]cmdlib.StreamerInfo{}
 	resp, buf, err := cmdlib.OnlineQuery(c.UsersOnlineEndpoints[0], client, c.Headers)
 	if err != nil {
 		return nil, fmt.Errorf("cannot send a query, %v", err)
@@ -118,17 +118,17 @@ func (c *Cam4Checker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, erro
 	for _, m := range parsed {
 		modelID := strings.ToLower(m.Nickname)
 		viewers := m.Viewers
-		channels[modelID] = cmdlib.ChannelInfo{
+		streamers[modelID] = cmdlib.StreamerInfo{
 			ImageURL: m.ThumbBig,
 			Viewers:  &viewers,
 			ShowKind: cam4ShowKind(m.ShowType),
 		}
 	}
-	return channels, nil
+	return streamers, nil
 }
 
-// QueryFixedListOnlineChannels is not implemented for online list checkers
-func (c *Cam4Checker) QueryFixedListOnlineChannels([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+// QueryFixedListOnlineStreamers is not implemented for online list checkers
+func (c *Cam4Checker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckMode) (map[string]cmdlib.StreamerInfo, error) {
 	return nil, cmdlib.ErrNotImplemented
 }
 

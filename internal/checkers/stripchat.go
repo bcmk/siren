@@ -131,10 +131,10 @@ func (c *StripchatChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 	return cmdlib.StatusUnknown
 }
 
-func (c *StripchatChecker) checkOnlyOnline() (map[string]cmdlib.ChannelInfo, error) {
+func (c *StripchatChecker) checkOnlyOnline() (map[string]cmdlib.StreamerInfo, error) {
 	endpoint := c.UsersOnlineEndpoints[0]
 	userID := c.SpecificConfig["user_id"]
-	channels := map[string]cmdlib.ChannelInfo{}
+	streamers := map[string]cmdlib.StreamerInfo{}
 
 	client := c.ClientsLoop.NextClient()
 
@@ -170,24 +170,24 @@ func (c *StripchatChecker) checkOnlyOnline() (map[string]cmdlib.ChannelInfo, err
 	for _, m := range parsed.Models {
 		if m.Username != "" {
 			modelID := strings.ToLower(m.Username)
-			if _, ok := channels[modelID]; !ok {
-				channels[modelID] = cmdlib.ChannelInfo{}
+			if _, ok := streamers[modelID]; !ok {
+				streamers[modelID] = cmdlib.StreamerInfo{}
 			}
 		}
 	}
-	return channels, nil
+	return streamers, nil
 }
 
-// QueryOnlineChannels returns Stripchat online models
-func (c *StripchatChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, error) {
+// QueryOnlineStreamers returns Stripchat online models
+func (c *StripchatChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
 	endpoint := c.UsersOnlineEndpoints[0]
-	channels, err := c.checkOnlyOnline()
+	streamers, err := c.checkOnlyOnline()
 	if err != nil {
 		return nil, fmt.Errorf("cannot check online models, %v", err)
 	}
 	// This is the actual limit, although the documentation states 1000
 	limitK := 500
-	chunkIter := slices.Chunk(slices.Collect(maps.Keys(channels)), limitK)
+	chunkIter := slices.Chunk(slices.Collect(maps.Keys(streamers)), limitK)
 	userID := c.SpecificConfig["user_id"]
 	for chunk := range chunkIter {
 		modelIDs := strings.Join(chunk, ",")
@@ -229,7 +229,7 @@ func (c *StripchatChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo,
 			if m.Username != "" {
 				modelID := strings.ToLower(m.Username)
 				viewers := m.ViewersCount
-				channels[modelID] = cmdlib.ChannelInfo{
+				streamers[modelID] = cmdlib.StreamerInfo{
 					ImageURL: m.SnapshotURL,
 					Viewers:  &viewers,
 					ShowKind: stripchatShowKind(m.Status),
@@ -237,11 +237,11 @@ func (c *StripchatChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo,
 			}
 		}
 	}
-	return channels, nil
+	return streamers, nil
 }
 
-// QueryFixedListOnlineChannels is not implemented for online list checkers
-func (c *StripchatChecker) QueryFixedListOnlineChannels([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+// QueryFixedListOnlineStreamers is not implemented for online list checkers
+func (c *StripchatChecker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckMode) (map[string]cmdlib.StreamerInfo, error) {
 	return nil, cmdlib.ErrNotImplemented
 }
 

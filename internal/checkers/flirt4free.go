@@ -106,10 +106,10 @@ func Flirt4FreeCanonicalModelID(name string) string {
 	return strings.ToLower(name)
 }
 
-// QueryOnlineChannels returns Flirt4Free online models
-func (c *Flirt4FreeChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, error) {
+// QueryOnlineStreamers returns Flirt4Free online models
+func (c *Flirt4FreeChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
 	client := c.ClientsLoop.NextClient()
-	channels := map[string]cmdlib.ChannelInfo{}
+	streamers := map[string]cmdlib.StreamerInfo{}
 	resp, buf, err := cmdlib.OnlineQuery(c.UsersOnlineEndpoints[0], client, c.Headers)
 	if err != nil {
 		return nil, fmt.Errorf("cannot send a query, %v", err)
@@ -134,30 +134,30 @@ func (c *Flirt4FreeChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo
 	}
 	for _, m := range parsed.Girls {
 		modelID := flirt4FreeCanonicalAPIModelID(m.Name)
-		channels[modelID] = cmdlib.ChannelInfo{
+		streamers[modelID] = cmdlib.StreamerInfo{
 			ImageURL: m.ScreencapImage,
 			ShowKind: flirt4FreeShowKind(m.RoomStatus),
 		}
 	}
 	for _, m := range parsed.Guys {
 		modelID := flirt4FreeCanonicalAPIModelID(m.Name)
-		channels[modelID] = cmdlib.ChannelInfo{
+		streamers[modelID] = cmdlib.StreamerInfo{
 			ImageURL: m.ScreencapImage,
 			ShowKind: flirt4FreeShowKind(m.RoomStatus),
 		}
 	}
 	for _, m := range parsed.Trans {
 		modelID := flirt4FreeCanonicalAPIModelID(m.Name)
-		channels[modelID] = cmdlib.ChannelInfo{
+		streamers[modelID] = cmdlib.StreamerInfo{
 			ImageURL: m.ScreencapImage,
 			ShowKind: flirt4FreeShowKind(m.RoomStatus),
 		}
 	}
-	return channels, nil
+	return streamers, nil
 }
 
-// QueryFixedListOnlineChannels is not implemented for online list checkers
-func (c *Flirt4FreeChecker) QueryFixedListOnlineChannels([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+// QueryFixedListOnlineStreamers is not implemented for online list checkers
+func (c *Flirt4FreeChecker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckMode) (map[string]cmdlib.StreamerInfo, error) {
 	return nil, cmdlib.ErrNotImplemented
 }
 

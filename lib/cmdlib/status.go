@@ -2,10 +2,10 @@ package cmdlib
 
 import "strings"
 
-// StatusKind represents a status of a channel
+// StatusKind represents a status of a streamer
 type StatusKind int
 
-// Channel statuses
+// Streamer statuses
 const (
 	StatusUnknown  StatusKind = 0
 	StatusOffline  StatusKind = 1

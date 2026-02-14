@@ -58,29 +58,29 @@ type timeDiff struct {
 }
 
 type worker struct {
-	db                        db.Database
-	clients                   []*cmdlib.Client
-	bots                      map[string]*bot.Bot
-	cfg                       *botconfig.Config
-	tr                        map[string]*cmdlib.Translations
-	tpl                       map[string]*template.Template
-	trAds                     map[string]map[string]*cmdlib.Translation
-	tplAds                    map[string]*template.Template
-	channelIDPreprocessing    func(string) string
-	checker                   cmdlib.Checker
-	imageDownloadLogs         chan imageDownloadLog
-	unconfirmedOnlineChannels map[string]cmdlib.ChannelInfo
-	botNames                  map[string]string
-	lowPriorityMsg            chan outgoingPacket
-	highPriorityMsg           chan outgoingPacket
-	outgoingMsgResults        chan msgSendResult
-	existenceListResults      chan *cmdlib.ExistenceListResults
-	checkerResults            chan cmdlib.CheckerResults
-	sendingNotifications      chan []db.Notification
-	sentNotifications         chan []db.Notification
-	ourIDs                    []int64
-	channelIDRegexp           *regexp.Regexp
-	incomingPackets           chan incomingPacket
+	db                         db.Database
+	clients                    []*cmdlib.Client
+	bots                       map[string]*bot.Bot
+	cfg                        *botconfig.Config
+	tr                         map[string]*cmdlib.Translations
+	tpl                        map[string]*template.Template
+	trAds                      map[string]map[string]*cmdlib.Translation
+	tplAds                     map[string]*template.Template
+	streamerIDPreprocessing    func(string) string
+	checker                    cmdlib.Checker
+	imageDownloadLogs          chan imageDownloadLog
+	unconfirmedOnlineStreamers map[string]cmdlib.StreamerInfo
+	botNames                   map[string]string
+	lowPriorityMsg             chan outgoingPacket
+	highPriorityMsg            chan outgoingPacket
+	outgoingMsgResults         chan msgSendResult
+	existenceListResults       chan *cmdlib.ExistenceListResults
+	checkerResults             chan cmdlib.CheckerResults
+	sendingNotifications       chan []db.Notification
+	sentNotifications          chan []db.Notification
+	ourIDs                     []int64
+	streamerIDRegexp           *regexp.Regexp
+	incomingPackets            chan incomingPacket
 }
 
 type incomingPacket struct {
@@ -161,26 +161,26 @@ func newWorker(cfg *botconfig.Config) *worker {
 		template.Must(t.New("affiliate_link").Parse(cfg.AffiliateLink))
 	}
 	w := &worker{
-		bots:                      bots,
-		db:                        db.NewDatabase(cfg.DBPath, cfg.CheckGID),
-		cfg:                       cfg,
-		clients:                   clients,
-		tr:                        tr,
-		tpl:                       tpl,
-		trAds:                     trAds,
-		tplAds:                    tplAds,
-		imageDownloadLogs:         make(chan imageDownloadLog),
-		unconfirmedOnlineChannels: map[string]cmdlib.ChannelInfo{},
-		botNames:                  map[string]string{},
-		lowPriorityMsg:            make(chan outgoingPacket, 10000),
-		highPriorityMsg:           make(chan outgoingPacket, 10000),
-		outgoingMsgResults:        make(chan msgSendResult),
-		existenceListResults:      make(chan *cmdlib.ExistenceListResults),
-		checkerResults:            make(chan cmdlib.CheckerResults),
-		sendingNotifications:      make(chan []db.Notification, 1000),
-		sentNotifications:         make(chan []db.Notification),
-		ourIDs:                    getOurIDs(cfg),
-		incomingPackets:           incomingPackets,
+		bots:                       bots,
+		db:                         db.NewDatabase(cfg.DBPath, cfg.CheckGID),
+		cfg:                        cfg,
+		clients:                    clients,
+		tr:                         tr,
+		tpl:                        tpl,
+		trAds:                      trAds,
+		tplAds:                     tplAds,
+		imageDownloadLogs:          make(chan imageDownloadLog),
+		unconfirmedOnlineStreamers: map[string]cmdlib.StreamerInfo{},
+		botNames:                   map[string]string{},
+		lowPriorityMsg:             make(chan outgoingPacket, 10000),
+		highPriorityMsg:            make(chan outgoingPacket, 10000),
+		outgoingMsgResults:         make(chan msgSendResult),
+		existenceListResults:       make(chan *cmdlib.ExistenceListResults),
+		checkerResults:             make(chan cmdlib.CheckerResults),
+		sendingNotifications:       make(chan []db.Notification, 1000),
+		sentNotifications:          make(chan []db.Notification),
+		ourIDs:                     getOurIDs(cfg),
+		incomingPackets:            incomingPackets,
 	}
 	for endpoint, a := range tr {
 		for _, b := range a.ToMap() {
@@ -196,44 +196,44 @@ func newWorker(cfg *botconfig.Config) *worker {
 	switch cfg.Website {
 	case "test":
 		w.checker = &checkers.RandomChecker{}
-		w.channelIDPreprocessing = cmdlib.CanonicalChannelID
-		w.channelIDRegexp = cmdlib.CommonChannelIDRegexp
+		w.streamerIDPreprocessing = cmdlib.CanonicalStreamerID
+		w.streamerIDRegexp = cmdlib.CommonStreamerIDRegexp
 	case "bongacams":
 		w.checker = &checkers.BongaCamsChecker{}
-		w.channelIDPreprocessing = cmdlib.CanonicalChannelID
-		w.channelIDRegexp = cmdlib.CommonChannelIDRegexp
+		w.streamerIDPreprocessing = cmdlib.CanonicalStreamerID
+		w.streamerIDRegexp = cmdlib.CommonStreamerIDRegexp
 	case "chaturbate":
 		w.checker = &checkers.ChaturbateChecker{}
-		w.channelIDPreprocessing = checkers.ChaturbateCanonicalModelID
-		w.channelIDRegexp = cmdlib.CommonChannelIDRegexp
+		w.streamerIDPreprocessing = checkers.ChaturbateCanonicalModelID
+		w.streamerIDRegexp = cmdlib.CommonStreamerIDRegexp
 	case "stripchat":
 		w.checker = &checkers.StripchatChecker{}
-		w.channelIDPreprocessing = cmdlib.CanonicalChannelID
-		w.channelIDRegexp = cmdlib.CommonChannelIDRegexp
+		w.streamerIDPreprocessing = cmdlib.CanonicalStreamerID
+		w.streamerIDRegexp = cmdlib.CommonStreamerIDRegexp
 	case "livejasmin":
 		w.checker = &checkers.LiveJasminChecker{}
-		w.channelIDPreprocessing = cmdlib.CanonicalChannelID
-		w.channelIDRegexp = cmdlib.CommonChannelIDRegexp
+		w.streamerIDPreprocessing = cmdlib.CanonicalStreamerID
+		w.streamerIDRegexp = cmdlib.CommonStreamerIDRegexp
 	case "camsoda":
 		w.checker = &checkers.CamSodaChecker{}
-		w.channelIDPreprocessing = cmdlib.CanonicalChannelID
-		w.channelIDRegexp = cmdlib.CommonChannelIDRegexp
+		w.streamerIDPreprocessing = cmdlib.CanonicalStreamerID
+		w.streamerIDRegexp = cmdlib.CommonStreamerIDRegexp
 	case "flirt4free":
 		w.checker = &checkers.Flirt4FreeChecker{}
-		w.channelIDPreprocessing = checkers.Flirt4FreeCanonicalModelID
-		w.channelIDRegexp = cmdlib.CommonChannelIDRegexp
+		w.streamerIDPreprocessing = checkers.Flirt4FreeCanonicalModelID
+		w.streamerIDRegexp = cmdlib.CommonStreamerIDRegexp
 	case "streamate":
 		w.checker = &checkers.StreamateChecker{}
-		w.channelIDPreprocessing = cmdlib.CanonicalChannelID
-		w.channelIDRegexp = cmdlib.CommonChannelIDRegexp
+		w.streamerIDPreprocessing = cmdlib.CanonicalStreamerID
+		w.streamerIDRegexp = cmdlib.CommonStreamerIDRegexp
 	case "twitch":
 		w.checker = &checkers.TwitchChecker{}
-		w.channelIDPreprocessing = checkers.TwitchCanonicalChannelID
-		w.channelIDRegexp = checkers.TwitchChannelIDRegexp
+		w.streamerIDPreprocessing = checkers.TwitchCanonicalChannelID
+		w.streamerIDRegexp = checkers.TwitchChannelIDRegexp
 	case "cam4":
 		w.checker = &checkers.Cam4Checker{}
-		w.channelIDPreprocessing = checkers.Cam4CanonicalModelID
-		w.channelIDRegexp = checkers.Cam4ModelIDRegexp
+		w.streamerIDPreprocessing = checkers.Cam4CanonicalModelID
+		w.streamerIDRegexp = checkers.Cam4ModelIDRegexp
 	default:
 		panic("wrong website")
 	}
@@ -570,19 +570,19 @@ func (w *worker) createDatabase(done chan bool) {
 
 func (w *worker) initCache() {
 	start := time.Now()
-	w.unconfirmedOnlineChannels = map[string]cmdlib.ChannelInfo{}
-	for channelID := range w.db.QueryLastOnlineChannels() {
-		w.unconfirmedOnlineChannels[channelID] = cmdlib.ChannelInfo{}
+	w.unconfirmedOnlineStreamers = map[string]cmdlib.StreamerInfo{}
+	for streamerID := range w.db.QueryLastOnlineStreamers() {
+		w.unconfirmedOnlineStreamers[streamerID] = cmdlib.StreamerInfo{}
 	}
 	elapsed := time.Since(start)
-	linf("cache initialized with %d online channels in %d ms", len(w.unconfirmedOnlineChannels), elapsed.Milliseconds())
+	linf("cache initialized with %d online streamers in %d ms", len(w.unconfirmedOnlineStreamers), elapsed.Milliseconds())
 }
 
 func (w *worker) notifyOfAddResults(queue chan outgoingPacket, notifications []db.Notification) {
 	for _, n := range notifications {
-		data := tplData{"channel": n.ChannelID}
+		data := tplData{"streamer": n.StreamerID}
 		if n.Status&(cmdlib.StatusOnline|cmdlib.StatusOffline|cmdlib.StatusDenied) != 0 {
-			w.sendTr(queue, n.Endpoint, n.ChatID, false, w.tr[n.Endpoint].ChannelAdded, data, db.ReplyPacket)
+			w.sendTr(queue, n.Endpoint, n.ChatID, false, w.tr[n.Endpoint].StreamerAdded, data, db.ReplyPacket)
 		} else {
 			w.sendTr(queue, n.Endpoint, n.ChatID, false, w.tr[n.Endpoint].AddError, data, db.ReplyPacket)
 		}
@@ -636,7 +636,7 @@ func (w *worker) ad(queue chan outgoingPacket, endpoint string, chatID int64) {
 
 func (w *worker) notifyOfStatus(queue chan outgoingPacket, n db.Notification, image []byte, social bool) {
 	if w.cfg.Debug {
-		ldbg("notifying of status of the channel %s", n.ChannelID)
+		ldbg("notifying of status of the streamer %s", n.StreamerID)
 	}
 	var timeDiff *timeDiff
 	if n.TimeDiff != nil {
@@ -644,7 +644,7 @@ func (w *worker) notifyOfStatus(queue chan outgoingPacket, n db.Notification, im
 		timeDiff = &temp
 	}
 	data := tplData{
-		"channel":   n.ChannelID,
+		"streamer":  n.StreamerID,
 		"time_diff": timeDiff,
 		"viewers":   n.Viewers,
 		"show_kind": n.ShowKind,
@@ -676,34 +676,34 @@ func (w *worker) mustUser(chatID int64) (user db.User) {
 	return
 }
 
-func (w *worker) showWeek(endpoint string, chatID int64, channelID string) {
-	if channelID != "" {
-		channelID = w.channelIDPreprocessing(channelID)
-		if !w.channelIDRegexp.MatchString(channelID) {
-			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"channel": channelID}, db.ReplyPacket)
+func (w *worker) showWeek(endpoint string, chatID int64, streamerID string) {
+	if streamerID != "" {
+		streamerID = w.streamerIDPreprocessing(streamerID)
+		if !w.streamerIDRegexp.MatchString(streamerID) {
+			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"streamer": streamerID}, db.ReplyPacket)
 			return
 		}
-		hours, start := w.week(channelID)
+		hours, start := w.week(streamerID)
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Week, tplData{
-			"hours":   hours,
-			"weekday": int(start.UTC().Weekday()),
-			"channel": channelID,
+			"hours":    hours,
+			"weekday":  int(start.UTC().Weekday()),
+			"streamer": streamerID,
 		}, db.ReplyPacket)
 		return
 	}
-	channels := w.db.ChannelsForChat(endpoint, chatID)
-	if len(channels) == 0 {
+	streamers := w.db.StreamersForChat(endpoint, chatID)
+	if len(streamers) == 0 {
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ZeroSubscriptions, nil, db.ReplyPacket)
 		return
 	}
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].WeekRetrieving, nil, db.ReplyPacket)
-	hoursMap, start := w.weekForChannels(channels)
+	hoursMap, start := w.weekForStreamers(streamers)
 	var weeks []string
-	for _, channel := range channels {
+	for _, streamer := range streamers {
 		weeks = append(weeks, templateToString(w.tpl[endpoint], w.tr[endpoint].Week.Key, tplData{
-			"hours":   hoursMap[channel],
-			"weekday": int(start.UTC().Weekday()),
-			"channel": channel,
+			"hours":    hoursMap[streamer],
+			"weekday":  int(start.UTC().Weekday()),
+			"streamer": streamer,
 		}))
 	}
 	for chunk := range slices.Chunk(weeks, 10) {
@@ -711,51 +711,51 @@ func (w *worker) showWeek(endpoint string, chatID int64, channelID string) {
 	}
 }
 
-func (w *worker) addChannel(endpoint string, chatID int64, channelID string, now int) bool {
-	if channelID == "" {
+func (w *worker) addStreamer(endpoint string, chatID int64, streamerID string, now int) bool {
+	if streamerID == "" {
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].SyntaxAdd, nil, db.ReplyPacket)
 		return false
 	}
-	channelID = w.channelIDPreprocessing(channelID)
-	if !w.channelIDRegexp.MatchString(channelID) {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"channel": channelID}, db.ReplyPacket)
+	streamerID = w.streamerIDPreprocessing(streamerID)
+	if !w.streamerIDRegexp.MatchString(streamerID) {
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"streamer": streamerID}, db.ReplyPacket)
 		return false
 	}
 
-	if w.db.SubscriptionExists(endpoint, chatID, channelID) {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].AlreadyAdded, tplData{"channel": channelID}, db.ReplyPacket)
+	if w.db.SubscriptionExists(endpoint, chatID, streamerID) {
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].AlreadyAdded, tplData{"streamer": streamerID}, db.ReplyPacket)
 		return false
 	}
 	subscriptionsNumber := w.db.SubscriptionsNumber(endpoint, chatID)
 	user := w.mustUser(chatID)
-	if subscriptionsNumber >= user.MaxChannels {
+	if subscriptionsNumber >= user.MaxSubs {
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].NotEnoughSubscriptions, nil, db.ReplyPacket)
 		w.subscriptionUsage(endpoint, chatID, true)
 		return false
 	}
-	channel := w.db.MaybeChannel(channelID)
-	if channel == nil {
-		w.db.AddSubscription(chatID, channelID, endpoint, 0)
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].CheckingChannel, nil, db.ReplyPacket)
+	streamer := w.db.MaybeStreamer(streamerID)
+	if streamer == nil {
+		w.db.AddSubscription(chatID, streamerID, endpoint, 0)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].CheckingStreamer, nil, db.ReplyPacket)
 		return false
 	}
-	confirmedStatus := channel.ConfirmedStatus
+	confirmedStatus := streamer.ConfirmedStatus
 	if confirmedStatus != cmdlib.StatusOnline {
 		confirmedStatus = cmdlib.StatusOffline
 	}
-	w.db.AddSubscription(chatID, channelID, endpoint, 1)
+	w.db.AddSubscription(chatID, streamerID, endpoint, 1)
 	subscriptionsNumber++
-	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ChannelAdded, tplData{"channel": channelID}, db.ReplyPacket)
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].StreamerAdded, tplData{"streamer": streamerID}, db.ReplyPacket)
 	nots := []db.Notification{{
-		Endpoint:  endpoint,
-		ChatID:    chatID,
-		ChannelID: channelID,
-		Status:    confirmedStatus,
-		TimeDiff:  w.channelDurationByID(channelID, now),
-		Social:    false,
-		Priority:  1,
-		Kind:      db.ReplyPacket}}
-	if subscriptionsNumber >= user.MaxChannels-w.cfg.HeavyUserRemainder {
+		Endpoint:   endpoint,
+		ChatID:     chatID,
+		StreamerID: streamerID,
+		Status:     confirmedStatus,
+		TimeDiff:   w.streamerDurationByID(streamerID, now),
+		Social:     false,
+		Priority:   1,
+		Kind:       db.ReplyPacket}}
+	if subscriptionsNumber >= user.MaxSubs-w.cfg.HeavyUserRemainder {
 		w.subscriptionUsage(endpoint, chatID, true)
 	}
 	w.db.StoreNotifications(nots)
@@ -772,7 +772,7 @@ func (w *worker) subscriptionUsage(endpoint string, chatID int64, ad bool) {
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, tr,
 		tplData{
 			"subscriptions_used":  subscriptionsNumber,
-			"total_subscriptions": user.MaxChannels,
+			"total_subscriptions": user.MaxSubs,
 		},
 		db.ReplyPacket)
 }
@@ -786,7 +786,7 @@ func (w *worker) settings(endpoint string, chatID int64) {
 	user := w.mustUser(chatID)
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Settings, tplData{
 		"subscriptions_used":              subscriptionsNumber,
-		"total_subscriptions":             user.MaxChannels,
+		"total_subscriptions":             user.MaxSubs,
 		"show_images":                     user.ShowImages,
 		"offline_notifications_supported": w.cfg.OfflineNotifications,
 		"offline_notifications":           user.OfflineNotifications,
@@ -816,27 +816,27 @@ func (w *worker) enableSilentMessages(endpoint string, chatID int64, silentMessa
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].OK, nil, db.ReplyPacket)
 }
 
-func (w *worker) removeChannel(endpoint string, chatID int64, channelID string) {
-	if channelID == "" {
+func (w *worker) removeStreamer(endpoint string, chatID int64, streamerID string) {
+	if streamerID == "" {
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].SyntaxRemove, nil, db.ReplyPacket)
 		return
 	}
-	channelID = w.channelIDPreprocessing(channelID)
-	if !w.channelIDRegexp.MatchString(channelID) {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"channel": channelID}, db.ReplyPacket)
+	streamerID = w.streamerIDPreprocessing(streamerID)
+	if !w.streamerIDRegexp.MatchString(streamerID) {
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"streamer": streamerID}, db.ReplyPacket)
 		return
 	}
-	if !w.db.SubscriptionExists(endpoint, chatID, channelID) {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ChannelNotInList, tplData{"channel": channelID}, db.ReplyPacket)
+	if !w.db.SubscriptionExists(endpoint, chatID, streamerID) {
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].StreamerNotInList, tplData{"streamer": streamerID}, db.ReplyPacket)
 		return
 	}
-	w.db.RemoveSubscription(chatID, channelID, endpoint)
-	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].ChannelRemoved, tplData{"channel": channelID}, db.ReplyPacket)
+	w.db.RemoveSubscription(chatID, streamerID, endpoint)
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].StreamerRemoved, tplData{"streamer": streamerID}, db.ReplyPacket)
 }
 
 func (w *worker) sureRemoveAll(endpoint string, chatID int64) {
 	w.db.RemoveAllSubscriptions(chatID, endpoint)
-	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].AllChannelsRemoved, nil, db.ReplyPacket)
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].AllStreamersRemoved, nil, db.ReplyPacket)
 }
 
 // calcTimeDiff calculates time difference ignoring summer time and leap seconds
@@ -856,11 +856,11 @@ func calcTimeDiff(dur int) timeDiff {
 	return diff
 }
 
-func chunkChannels(xs []db.Channel, chunkSize int) [][]db.Channel {
+func chunkStreamers(xs []db.Streamer, chunkSize int) [][]db.Streamer {
 	if len(xs) == 0 {
 		return nil
 	}
-	divided := make([][]db.Channel, (len(xs)+chunkSize-1)/chunkSize)
+	divided := make([][]db.Streamer, (len(xs)+chunkSize-1)/chunkSize)
 	prev := 0
 	i := 0
 	till := len(xs) - chunkSize
@@ -874,7 +874,7 @@ func chunkChannels(xs []db.Channel, chunkSize int) [][]db.Channel {
 	return divided
 }
 
-func listChannelsSortWeight(s cmdlib.StatusKind) int {
+func listStreamersSortWeight(s cmdlib.StatusKind) int {
 	switch s {
 	case cmdlib.StatusOnline:
 		return 0
@@ -883,9 +883,9 @@ func listChannelsSortWeight(s cmdlib.StatusKind) int {
 	}
 }
 
-func (w *worker) listChannels(endpoint string, chatID int64, now int) {
+func (w *worker) listStreamers(endpoint string, chatID int64, now int) {
 	type data struct {
-		Channel  string
+		Streamer string
 		TimeDiff *timeDiff
 	}
 	statuses := w.db.UnconfirmedStatusesForChat(endpoint, chatID)
@@ -894,15 +894,15 @@ func (w *worker) listChannels(endpoint string, chatID int64, now int) {
 		return
 	}
 	sort.SliceStable(statuses, func(i, j int) bool {
-		return listChannelsSortWeight(statuses[i].UnconfirmedStatus) < listChannelsSortWeight(statuses[j].UnconfirmedStatus)
+		return listStreamersSortWeight(statuses[i].UnconfirmedStatus) < listStreamersSortWeight(statuses[j].UnconfirmedStatus)
 	})
-	chunks := chunkChannels(statuses, 50)
+	chunks := chunkStreamers(statuses, 50)
 	for _, chunk := range chunks {
 		var online, offline []data
 		for _, s := range chunk {
 			data := data{
-				Channel:  s.ChannelID,
-				TimeDiff: w.channelTimeDiff(s, now),
+				Streamer: s.StreamerID,
+				TimeDiff: w.streamerTimeDiff(s, now),
 			}
 			switch s.UnconfirmedStatus {
 			case cmdlib.StatusOnline:
@@ -916,9 +916,10 @@ func (w *worker) listChannels(endpoint string, chatID int64, now int) {
 	}
 }
 
-// channelDuration calculates time since last status change for display
-// Returns duration since going offline (if offline) or since going online (if online)
-func (w *worker) channelDuration(c db.Channel, now int) *int {
+// streamerDuration calculates time since last status change for display.
+// Returns duration since going offline (if offline)
+// or since going online (if online).
+func (w *worker) streamerDuration(c db.Streamer, now int) *int {
 	if c.UnconfirmedStatus == cmdlib.StatusOnline || c.UnconfirmedStatus == cmdlib.StatusOffline {
 		if c.UnconfirmedTimestamp != 0 && c.PrevUnconfirmedStatus != cmdlib.StatusUnknown {
 			dur := now - c.UnconfirmedTimestamp
@@ -928,16 +929,16 @@ func (w *worker) channelDuration(c db.Channel, now int) *int {
 	return nil
 }
 
-func (w *worker) channelDurationByID(channelID string, now int) *int {
-	c := w.db.MaybeChannel(channelID)
+func (w *worker) streamerDurationByID(streamerID string, now int) *int {
+	c := w.db.MaybeStreamer(streamerID)
 	if c == nil {
 		return nil
 	}
-	return w.channelDuration(*c, now)
+	return w.streamerDuration(*c, now)
 }
 
-func (w *worker) channelTimeDiff(c db.Channel, now int) *timeDiff {
-	dur := w.channelDuration(c, now)
+func (w *worker) streamerTimeDiff(c db.Streamer, now int) *timeDiff {
+	dur := w.streamerDuration(c, now)
 	if dur != nil {
 		td := calcTimeDiff(*dur)
 		return &td
@@ -978,9 +979,9 @@ func (w *worker) downloadImageInternal(url string) ([]byte, error) {
 	return data, nil
 }
 
-func (w *worker) listOnlineChannels(endpoint string, chatID int64, now int) {
+func (w *worker) listOnlineStreamers(endpoint string, chatID int64, now int) {
 	statuses := w.db.UnconfirmedStatusesForChat(endpoint, chatID)
-	var online []db.Channel
+	var online []db.Streamer
 	for _, s := range statuses {
 		if s.UnconfirmedStatus == cmdlib.StatusOnline {
 			online = append(online, s)
@@ -992,24 +993,24 @@ func (w *worker) listOnlineChannels(endpoint string, chatID int64, now int) {
 		return
 	}
 	if len(online) == 0 {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].NoOnlineChannels, nil, db.ReplyPacket)
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].NoOnlineStreamers, nil, db.ReplyPacket)
 		return
 	}
 	user := w.mustUser(chatID)
 	var nots []db.Notification
 	for _, s := range online {
-		info := w.unconfirmedOnlineChannels[s.ChannelID]
+		info := w.unconfirmedOnlineStreamers[s.StreamerID]
 		not := db.Notification{
-			Priority:  1,
-			Endpoint:  endpoint,
-			ChatID:    chatID,
-			ChannelID: s.ChannelID,
-			Status:    cmdlib.StatusOnline,
-			ImageURL:  info.ImageURL,
-			Viewers:   info.Viewers,
-			ShowKind:  info.ShowKind,
-			TimeDiff:  w.channelDuration(s, now),
-			Kind:      db.ReplyPacket,
+			Priority:   1,
+			Endpoint:   endpoint,
+			ChatID:     chatID,
+			StreamerID: s.StreamerID,
+			Status:     cmdlib.StatusOnline,
+			ImageURL:   info.ImageURL,
+			Viewers:    info.Viewers,
+			ShowKind:   info.ShowKind,
+			TimeDiff:   w.streamerDuration(s, now),
+			Kind:       db.ReplyPacket,
 		}
 		if user.ShowSubject {
 			not.Subject = info.Subject
@@ -1020,20 +1021,20 @@ func (w *worker) listOnlineChannels(endpoint string, chatID int64, now int) {
 	w.sendTr(w.lowPriorityMsg, endpoint, chatID, false, w.tr[endpoint].FieldsCustomizationHint, nil, db.ReplyPacket)
 }
 
-func (w *worker) week(channelID string) ([]bool, time.Time) {
-	result, start := w.weekForChannels([]string{channelID})
-	return result[channelID], start
+func (w *worker) week(streamerID string) ([]bool, time.Time) {
+	result, start := w.weekForStreamers([]string{streamerID})
+	return result[streamerID], start
 }
 
-func (w *worker) weekForChannels(channelIDs []string) (map[string][]bool, time.Time) {
+func (w *worker) weekForStreamers(streamerIDs []string) (map[string][]bool, time.Time) {
 	now := time.Now()
 	nowTimestamp := int(now.Unix())
 	today := now.Truncate(24 * time.Hour)
 	start := today.Add(-6 * 24 * time.Hour)
 	weekTimestamp := int(start.Unix())
-	changesMap := w.db.ChangesFromToForChannels(channelIDs, weekTimestamp, nowTimestamp)
+	changesMap := w.db.ChangesFromToForStreamers(streamerIDs, weekTimestamp, nowTimestamp)
 	result := make(map[string][]bool)
-	for channelID, changes := range changesMap {
+	for streamerID, changes := range changesMap {
 		hours := make([]bool, (nowTimestamp-weekTimestamp+3599)/3600)
 		for i, c := range changes[:len(changes)-1] {
 			if c.Status == cmdlib.StatusOnline {
@@ -1047,7 +1048,7 @@ func (w *worker) weekForChannels(channelIDs []string) (map[string][]bool, time.T
 				}
 			}
 		}
-		result[channelID] = hours
+		result[streamerID] = hours
 	}
 	return result, start
 }
@@ -1184,7 +1185,7 @@ func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arg
 	case "blacklist":
 		w.blacklist(endpoint, arguments)
 		return true, false
-	case "set_max_channels":
+	case "set_max_subs":
 		parts := strings.Fields(arguments)
 		if len(parts) != 2 {
 			w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, cmdlib.ParseRaw, "expecting two arguments", db.ReplyPacket)
@@ -1195,12 +1196,12 @@ func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arg
 			w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, cmdlib.ParseRaw, "first argument is invalid", db.ReplyPacket)
 			return true, false
 		}
-		maxChannels, err := strconv.Atoi(parts[1])
+		maxSubs, err := strconv.Atoi(parts[1])
 		if err != nil {
 			w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, cmdlib.ParseRaw, "second argument is invalid", db.ReplyPacket)
 			return true, false
 		}
-		w.db.SetLimit(who, maxChannels)
+		w.db.SetLimit(who, maxSubs)
 		w.sendText(w.highPriorityMsg, endpoint, chatID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
 		return true, false
 	case "maintenance":
@@ -1264,8 +1265,8 @@ func (w *worker) refer(followerChatID int64, referrer string, now int, chatType 
 	if _, exists := w.db.User(followerChatID); exists {
 		return followerExists
 	}
-	w.db.AddUserWithBonus(followerChatID, w.cfg.MaxChannels+w.cfg.FollowerBonus, now, chatType)
-	w.db.AddOrUpdateReferrer(*referrerChatID, w.cfg.MaxChannels+w.cfg.ReferralBonus, w.cfg.ReferralBonus)
+	w.db.AddUserWithBonus(followerChatID, w.cfg.MaxSubs+w.cfg.FollowerBonus, now, chatType)
+	w.db.AddOrUpdateReferrer(*referrerChatID, w.cfg.MaxSubs+w.cfg.ReferralBonus, w.cfg.ReferralBonus)
 	w.db.IncrementReferredUsers(*referrerChatID)
 	w.db.AddReferralEvent(now, referrerChatID, followerChatID, nil)
 	return referralApplied
@@ -1286,16 +1287,16 @@ func (w *worker) showReferral(endpoint string, chatID int64) {
 		"referral_bonus":      w.cfg.ReferralBonus,
 		"follower_bonus":      w.cfg.FollowerBonus,
 		"subscriptions_used":  subscriptionsNumber,
-		"total_subscriptions": user.MaxChannels,
+		"total_subscriptions": user.MaxSubs,
 	}, db.ReplyPacket)
 }
 
 func (w *worker) start(endpoint string, chatID int64, referrer string, now int, chatType string) {
-	channelID := ""
+	streamerID := ""
 	switch {
 	case strings.HasPrefix(referrer, "m-"):
-		channelID = referrer[2:]
-		channelID = w.channelIDPreprocessing(channelID)
+		streamerID = referrer[2:]
+		streamerID = w.streamerIDPreprocessing(streamerID)
 		referrer = ""
 	case referrer != "":
 		referralID := w.db.ReferralID(chatID)
@@ -1318,10 +1319,10 @@ func (w *worker) start(endpoint string, chatID int64, referrer string, now int, 
 			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].FollowerExists, nil, db.ReplyPacket)
 		}
 	}
-	w.db.AddUser(chatID, w.cfg.MaxChannels, now, chatType)
-	if channelID != "" {
-		if w.addChannel(endpoint, chatID, channelID, now) {
-			w.db.AddReferralEvent(now, nil, chatID, &channelID)
+	w.db.AddUser(chatID, w.cfg.MaxSubs, now, chatType)
+	if streamerID != "" {
+		if w.addStreamer(endpoint, chatID, streamerID, now) {
+			w.db.AddReferralEvent(now, nil, chatID, &streamerID)
 		}
 	}
 }
@@ -1336,7 +1337,7 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	w.db.ResetBlock(endpoint, chatID)
 	command = strings.ToLower(command)
 	if command != "start" {
-		w.db.AddUser(chatID, w.cfg.MaxChannels, now, chatType)
+		w.db.AddUser(chatID, w.cfg.MaxSubs, now, chatType)
 	}
 	linf("chat: %d, command: %s %s", chatID, command, arguments)
 
@@ -1353,14 +1354,14 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	switch command {
 	case "add":
 		arguments = strings.ReplaceAll(arguments, "—", "--")
-		_ = w.addChannel(endpoint, chatID, arguments, now)
+		_ = w.addStreamer(endpoint, chatID, arguments, now)
 	case "remove":
 		arguments = strings.ReplaceAll(arguments, "—", "--")
-		w.removeChannel(endpoint, chatID, arguments)
+		w.removeStreamer(endpoint, chatID, arguments)
 	case "list":
-		w.listChannels(endpoint, chatID, now)
+		w.listStreamers(endpoint, chatID, now)
 	case "pics", "online":
-		w.listOnlineChannels(endpoint, chatID, now)
+		w.listOnlineStreamers(endpoint, chatID, now)
 	case "start":
 		w.start(endpoint, chatID, arguments, now, chatType)
 	case "help":
@@ -1369,7 +1370,7 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		w.ad(w.highPriorityMsg, endpoint, chatID)
 	case "faq":
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].FAQ, tplData{
-			"max_channels": w.cfg.MaxChannels,
+			"max_subs": w.cfg.MaxSubs,
 		}, db.ReplyPacket)
 	case "feedback":
 		w.feedback(endpoint, chatID, arguments, now)
@@ -1431,7 +1432,7 @@ func (w *worker) pushOnlineRequest() {
 	if w.checker.UsesFixedList() {
 		request = &cmdlib.FixedListOnlineRequest{
 			ResultsCh: w.checkerResults,
-			Channels:  w.db.SubscribedChannels(),
+			Streamers: w.db.SubscribedStreamers(),
 		}
 	} else {
 		request = &cmdlib.OnlineListRequest{
@@ -1443,10 +1444,10 @@ func (w *worker) pushOnlineRequest() {
 	}
 }
 
-func (w *worker) pushExistenceRequest(channels map[string]bool) error {
+func (w *worker) pushExistenceRequest(streamers map[string]bool) error {
 	err := w.checker.PushStatusRequest(&cmdlib.FixedListStatusRequest{
 		ResultsCh: w.existenceListResults,
-		Channels:  channels,
+		Streamers: streamers,
 	})
 	if err != nil {
 		lerr("%v", err)
@@ -1470,79 +1471,79 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) (
 	switch r := result.(type) {
 	case *cmdlib.OnlineListResults:
 		// Went offline: was online but not in result
-		for channelID := range w.unconfirmedOnlineChannels {
-			if _, inResult := r.Channels[channelID]; !inResult {
+		for streamerID := range w.unconfirmedOnlineStreamers {
+			if _, inResult := r.Streamers[streamerID]; !inResult {
 				updates = append(updates, db.StatusChange{
-					ChannelID: channelID,
-					Status:    cmdlib.StatusOffline,
+					StreamerID: streamerID,
+					Status:     cmdlib.StatusOffline,
 				})
 			}
 		}
 		// Went online: in result but wasn't online
-		for channelID := range r.Channels {
-			if _, wasOnline := w.unconfirmedOnlineChannels[channelID]; !wasOnline {
+		for streamerID := range r.Streamers {
+			if _, wasOnline := w.unconfirmedOnlineStreamers[streamerID]; !wasOnline {
 				updates = append(updates, db.StatusChange{
-					ChannelID: channelID,
-					Status:    cmdlib.StatusOnline,
+					StreamerID: streamerID,
+					Status:     cmdlib.StatusOnline,
 				})
 			}
 		}
-		w.unconfirmedOnlineChannels = r.Channels
+		w.unconfirmedOnlineStreamers = r.Streamers
 
 	case *cmdlib.FixedListOnlineResults:
 		// Went offline: was online but not in result (and was requested)
 		var maybeFirstOffline []string
-		for channelID := range w.unconfirmedOnlineChannels {
-			if _, inResult := r.Channels[channelID]; !inResult && r.RequestedChannels[channelID] {
+		for streamerID := range w.unconfirmedOnlineStreamers {
+			if _, inResult := r.Streamers[streamerID]; !inResult && r.RequestedStreamers[streamerID] {
 				updates = append(updates, db.StatusChange{
-					ChannelID: channelID,
-					Status:    cmdlib.StatusOffline,
+					StreamerID: streamerID,
+					Status:     cmdlib.StatusOffline,
 				})
 			}
 		}
 
-		// Collect channels that might need first offline status:
+		// Collect streamers that might need first offline status:
 		// requested, not in result, and never seen online
-		for channelID := range r.RequestedChannels {
-			_, inResult := r.Channels[channelID]
-			_, inCache := w.unconfirmedOnlineChannels[channelID]
+		for streamerID := range r.RequestedStreamers {
+			_, inResult := r.Streamers[streamerID]
+			_, inCache := w.unconfirmedOnlineStreamers[streamerID]
 			if !inResult && !inCache {
-				maybeFirstOffline = append(maybeFirstOffline, channelID)
+				maybeFirstOffline = append(maybeFirstOffline, streamerID)
 			}
 		}
 
 		// First offline: exists in DB but never online, set offline if not already
 		if len(maybeFirstOffline) > 0 {
-			dbStatuses := w.db.UnconfirmedStatusesForChannels(maybeFirstOffline)
-			for _, channelID := range maybeFirstOffline {
-				if status, exists := dbStatuses[channelID]; exists && status.Status != cmdlib.StatusOffline {
+			dbStatuses := w.db.UnconfirmedStatusesForStreamers(maybeFirstOffline)
+			for _, streamerID := range maybeFirstOffline {
+				if status, exists := dbStatuses[streamerID]; exists && status.Status != cmdlib.StatusOffline {
 					updates = append(updates, db.StatusChange{
-						ChannelID: channelID,
-						Status:    cmdlib.StatusOffline,
+						StreamerID: streamerID,
+						Status:     cmdlib.StatusOffline,
 					})
 				}
 			}
 		}
 
 		// Went online: in result but wasn't online
-		for channelID := range r.Channels {
-			if _, inCache := w.unconfirmedOnlineChannels[channelID]; !inCache {
+		for streamerID := range r.Streamers {
+			if _, inCache := w.unconfirmedOnlineStreamers[streamerID]; !inCache {
 				updates = append(updates, db.StatusChange{
-					ChannelID: channelID,
-					Status:    cmdlib.StatusOnline,
+					StreamerID: streamerID,
+					Status:     cmdlib.StatusOnline,
 				})
 			}
 		}
 
-		w.unconfirmedOnlineChannels = r.Channels
+		w.unconfirmedOnlineStreamers = r.Streamers
 
-		// Set known channels not in request to unknown
-		for channelID := range w.db.KnownChannels() {
-			if !r.RequestedChannels[channelID] {
-				delete(w.unconfirmedOnlineChannels, channelID)
+		// Set known streamers not in request to unknown
+		for streamerID := range w.db.KnownStreamers() {
+			if !r.RequestedStreamers[streamerID] {
+				delete(w.unconfirmedOnlineStreamers, streamerID)
 				updates = append(updates, db.StatusChange{
-					ChannelID: channelID,
-					Status:    cmdlib.StatusUnknown,
+					StreamerID: streamerID,
+					Status:     cmdlib.StatusUnknown,
 				})
 			}
 		}
@@ -1565,32 +1566,32 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) (
 func (w *worker) buildNotifications(
 	confirmedStatusChanges []db.ConfirmedStatusChange,
 ) []db.Notification {
-	confirmedChannelIDs := []string{}
+	confirmedStreamerIDs := []string{}
 	for _, c := range confirmedStatusChanges {
-		confirmedChannelIDs = append(confirmedChannelIDs, c.ChannelID)
+		confirmedStreamerIDs = append(confirmedStreamerIDs, c.StreamerID)
 	}
 
 	var notifications []db.Notification
-	usersForChannels, endpointsForChannels := w.db.UsersForChannels(confirmedChannelIDs)
+	usersForStreamers, endpointsForStreamers := w.db.UsersForStreamers(confirmedStreamerIDs)
 	for _, c := range confirmedStatusChanges {
 		// Skip unknown -> offline transitions
 		// They don't represent meaningful events to users
 		if c.PrevStatus == cmdlib.StatusUnknown && c.Status == cmdlib.StatusOffline {
 			continue
 		}
-		users := usersForChannels[c.ChannelID]
-		endpoints := endpointsForChannels[c.ChannelID]
-		info := w.unconfirmedOnlineChannels[c.ChannelID]
+		users := usersForStreamers[c.StreamerID]
+		endpoints := endpointsForStreamers[c.StreamerID]
+		info := w.unconfirmedOnlineStreamers[c.StreamerID]
 		for i, user := range users {
 			if (w.cfg.OfflineNotifications && user.OfflineNotifications) || c.Status != cmdlib.StatusOffline {
 				n := db.Notification{
-					Endpoint:  endpoints[i],
-					ChatID:    user.ChatID,
-					ChannelID: c.ChannelID,
-					Status:    c.Status,
-					Social:    user.ChatID > 0,
-					Sound:     c.Status == cmdlib.StatusOnline,
-					Kind:      db.NotificationPacket}
+					Endpoint:   endpoints[i],
+					ChatID:     user.ChatID,
+					StreamerID: c.StreamerID,
+					Status:     c.Status,
+					Social:     user.ChatID > 0,
+					Sound:      c.Status == cmdlib.StatusOnline,
+					Kind:       db.NotificationPacket}
 				if user.ShowImages {
 					n.ImageURL = info.ImageURL
 				}
@@ -1775,11 +1776,11 @@ func (w *worker) sendNotificationsDaemon() {
 
 func (w *worker) queryUnconfirmedSubs() {
 	unconfirmed := map[string]bool{}
-	var channelID string
-	w.db.MustQuery("select channel_id from subscriptions where confirmed = 0", nil, db.ScanTo{&channelID}, func() { unconfirmed[channelID] = true })
+	var streamerID string
+	w.db.MustQuery("select streamer_id from subscriptions where confirmed = 0", nil, db.ScanTo{&streamerID}, func() { unconfirmed[streamerID] = true })
 	if len(unconfirmed) > 0 {
 		w.db.MarkUnconfirmedAsChecking()
-		ldbg("queueing unconfirmed subscriptions check for %d channels", len(unconfirmed))
+		ldbg("queueing unconfirmed subscriptions check for %d streamers", len(unconfirmed))
 		if w.pushExistenceRequest(unconfirmed) != nil {
 			w.db.ResetCheckingToUnconfirmed()
 		}
@@ -1787,32 +1788,32 @@ func (w *worker) queryUnconfirmedSubs() {
 }
 
 func (w *worker) processSubsConfirmations(res *cmdlib.ExistenceListResults) {
-	channelsNumber := len(res.Channels)
-	ldbg("processing subscription confirmations for %d channels", channelsNumber)
+	streamersNumber := len(res.Streamers)
+	ldbg("processing subscription confirmations for %d streamers", streamersNumber)
 	confirmationsInWork := map[string][]db.Subscription{}
 	var iter db.Subscription
 	w.db.MustQuery(
-		"select endpoint, channel_id, chat_id from subscriptions where confirmed = 2",
+		"select endpoint, streamer_id, chat_id from subscriptions where confirmed = 2",
 		nil,
-		db.ScanTo{&iter.Endpoint, &iter.ChannelID, &iter.ChatID},
-		func() { confirmationsInWork[iter.ChannelID] = append(confirmationsInWork[iter.ChannelID], iter) })
+		db.ScanTo{&iter.Endpoint, &iter.StreamerID, &iter.ChatID},
+		func() { confirmationsInWork[iter.StreamerID] = append(confirmationsInWork[iter.StreamerID], iter) })
 	var nots []db.Notification
 	if !res.Failed() {
-		for channelID, info := range res.Channels {
-			for _, sub := range confirmationsInWork[channelID] {
+		for streamerID, info := range res.Streamers {
+			for _, sub := range confirmationsInWork[streamerID] {
 				if info.Status&(cmdlib.StatusOnline|cmdlib.StatusOffline|cmdlib.StatusDenied) != 0 {
 					w.db.ConfirmSub(sub)
 				} else {
 					w.db.DenySub(sub)
 				}
 				n := db.Notification{
-					Endpoint:  sub.Endpoint,
-					ChatID:    sub.ChatID,
-					ChannelID: channelID,
-					Status:    info.Status,
-					Social:    false,
-					Priority:  1,
-					Kind:      db.ReplyPacket,
+					Endpoint:   sub.Endpoint,
+					ChatID:     sub.ChatID,
+					StreamerID: streamerID,
+					Status:     info.Status,
+					Social:     false,
+					Priority:   1,
+					Kind:       db.ReplyPacket,
 				}
 				nots = append(nots, n)
 			}

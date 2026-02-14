@@ -20,7 +20,7 @@ type CheckerResults interface {
 	Count() int
 }
 
-// OnlineListRequest requests statuses for all online channels
+// OnlineListRequest requests statuses for all online streamers
 type OnlineListRequest struct {
 	ResultsCh chan<- CheckerResults
 }
@@ -29,9 +29,9 @@ func (r *OnlineListRequest) isStatusRequest() {}
 
 // OnlineListResults contains results for OnlineListRequest
 type OnlineListResults struct {
-	Channels map[string]ChannelInfo
-	duration time.Duration
-	failed   bool
+	Streamers map[string]StreamerInfo
+	duration  time.Duration
+	failed    bool
 }
 
 func (r *OnlineListResults) isCheckerResults() {}
@@ -42,12 +42,12 @@ func (r *OnlineListResults) Duration() time.Duration { return r.duration }
 // Failed returns whether the request failed.
 func (r *OnlineListResults) Failed() bool { return r.failed }
 
-// Count returns the number of channels in the result.
-func (r *OnlineListResults) Count() int { return len(r.Channels) }
+// Count returns the number of streamers in the result.
+func (r *OnlineListResults) Count() int { return len(r.Streamers) }
 
 // NewOnlineListResults creates a successful OnlineListResults.
-func NewOnlineListResults(channels map[string]ChannelInfo, duration time.Duration) *OnlineListResults {
-	return &OnlineListResults{Channels: channels, duration: duration}
+func NewOnlineListResults(streamers map[string]StreamerInfo, duration time.Duration) *OnlineListResults {
+	return &OnlineListResults{Streamers: streamers, duration: duration}
 }
 
 // NewOnlineListResultsFailed creates a failed OnlineListResults.
@@ -55,9 +55,9 @@ func NewOnlineListResultsFailed() *OnlineListResults {
 	return &OnlineListResults{failed: true}
 }
 
-// FixedListOnlineRequest requests statuses for specific channels
+// FixedListOnlineRequest requests statuses for specific streamers
 type FixedListOnlineRequest struct {
-	Channels  map[string]bool
+	Streamers map[string]bool
 	ResultsCh chan<- CheckerResults
 }
 
@@ -65,10 +65,10 @@ func (r *FixedListOnlineRequest) isStatusRequest() {}
 
 // FixedListOnlineResults contains results for FixedListOnlineRequest
 type FixedListOnlineResults struct {
-	RequestedChannels map[string]bool
-	Channels          map[string]ChannelInfo
-	duration          time.Duration
-	failed            bool
+	RequestedStreamers map[string]bool
+	Streamers          map[string]StreamerInfo
+	duration           time.Duration
+	failed             bool
 }
 
 func (r *FixedListOnlineResults) isCheckerResults() {}
@@ -79,19 +79,19 @@ func (r *FixedListOnlineResults) Duration() time.Duration { return r.duration }
 // Failed returns whether the request failed.
 func (r *FixedListOnlineResults) Failed() bool { return r.failed }
 
-// Count returns the number of channels in the result.
-func (r *FixedListOnlineResults) Count() int { return len(r.Channels) }
+// Count returns the number of streamers in the result.
+func (r *FixedListOnlineResults) Count() int { return len(r.Streamers) }
 
 // NewFixedListOnlineResults creates a successful FixedListOnlineResults.
 func NewFixedListOnlineResults(
-	requestedChannels map[string]bool,
-	channels map[string]ChannelInfo,
+	requestedStreamers map[string]bool,
+	streamers map[string]StreamerInfo,
 	duration time.Duration,
 ) *FixedListOnlineResults {
 	return &FixedListOnlineResults{
-		RequestedChannels: requestedChannels,
-		Channels:          channels,
-		duration:          duration,
+		RequestedStreamers: requestedStreamers,
+		Streamers:          streamers,
+		duration:           duration,
 	}
 }
 
@@ -100,9 +100,9 @@ func NewFixedListOnlineResultsFailed() *FixedListOnlineResults {
 	return &FixedListOnlineResults{failed: true}
 }
 
-// FixedListStatusRequest checks if specific channels exist
+// FixedListStatusRequest checks if specific streamers exist
 type FixedListStatusRequest struct {
-	Channels  map[string]bool
+	Streamers map[string]bool
 	ResultsCh chan<- *ExistenceListResults
 }
 
@@ -110,9 +110,9 @@ func (r *FixedListStatusRequest) isStatusRequest() {}
 
 // ExistenceListResults contains results for ExistenceListRequest
 type ExistenceListResults struct {
-	Channels map[string]ChannelInfoWithStatus
-	duration time.Duration
-	failed   bool
+	Streamers map[string]StreamerInfoWithStatus
+	duration  time.Duration
+	failed    bool
 }
 
 func (r *ExistenceListResults) isCheckerResults() {}
@@ -123,15 +123,15 @@ func (r *ExistenceListResults) Duration() time.Duration { return r.duration }
 // Failed returns whether the request failed.
 func (r *ExistenceListResults) Failed() bool { return r.failed }
 
-// Count returns the number of channels in the result.
-func (r *ExistenceListResults) Count() int { return len(r.Channels) }
+// Count returns the number of streamers in the result.
+func (r *ExistenceListResults) Count() int { return len(r.Streamers) }
 
 // NewExistenceListResults creates a successful ExistenceListResults.
 func NewExistenceListResults(
-	channels map[string]ChannelInfoWithStatus,
+	streamers map[string]StreamerInfoWithStatus,
 	duration time.Duration,
 ) *ExistenceListResults {
-	return &ExistenceListResults{Channels: channels, duration: duration}
+	return &ExistenceListResults{Streamers: streamers, duration: duration}
 }
 
 // NewExistenceListResultsFailed creates a failed ExistenceListResults.
@@ -159,24 +159,24 @@ const (
 	ShowAway ShowKind = 6
 )
 
-// ChannelInfo contains image URL for a channel
-type ChannelInfo struct {
+// StreamerInfo contains image URL for a streamer
+type StreamerInfo struct {
 	ImageURL string
 	Viewers  *int
 	ShowKind ShowKind
 	Subject  string
 }
 
-// ChannelInfoWithStatus contains status and image URL for a channel
-type ChannelInfoWithStatus struct {
+// StreamerInfoWithStatus contains status and image URL for a streamer
+type StreamerInfoWithStatus struct {
 	Status   StatusKind
 	ImageURL string
 }
 
-// StatusUpdate represents an update of channel status
+// StatusUpdate represents an update of streamer status
 type StatusUpdate struct {
-	ChannelID string
-	Status    StatusKind
+	StreamerID string
+	Status     StatusKind
 }
 
 // CheckerConfig represents checker config
@@ -192,10 +192,10 @@ type CheckerConfig struct {
 
 // Checker is the interface for a checker for specific site
 type Checker interface {
-	CheckStatusSingle(channelID string) StatusKind
-	QueryOnlineChannels() (map[string]ChannelInfo, error)
-	QueryFixedListOnlineChannels(channels []string, checkMode CheckMode) (map[string]ChannelInfo, error)
-	QueryFixedListStatuses(channels []string, checkMode CheckMode) (map[string]ChannelInfoWithStatus, error)
+	CheckStatusSingle(streamerID string) StatusKind
+	QueryOnlineStreamers() (map[string]StreamerInfo, error)
+	QueryFixedListOnlineStreamers(streamers []string, checkMode CheckMode) (map[string]StreamerInfo, error)
+	QueryFixedListStatuses(streamers []string, checkMode CheckMode) (map[string]StreamerInfoWithStatus, error)
 	Init(config CheckerConfig)
 	PushStatusRequest(request StatusRequest) error
 	UsesFixedList() bool
@@ -229,8 +229,8 @@ func (c *CheckerCommon) PushStatusRequest(request StatusRequest) error {
 }
 
 // QueryFixedListStatuses returns ErrNotImplemented by default.
-// Checkers that support querying channel existence should override this.
-func (c *CheckerCommon) QueryFixedListStatuses(_ []string, _ CheckMode) (map[string]ChannelInfoWithStatus, error) {
+// Checkers that support querying streamer existence should override this.
+func (c *CheckerCommon) QueryFixedListStatuses(_ []string, _ CheckMode) (map[string]StreamerInfoWithStatus, error) {
 	return nil, ErrNotImplemented
 }
 
@@ -268,7 +268,7 @@ func StartCheckerDaemon(checker Checker) {
 
 			switch req := request.(type) {
 			case *OnlineListRequest:
-				onlineChannels, err := checker.QueryOnlineChannels()
+				onlineStreamers, err := checker.QueryOnlineStreamers()
 				if err != nil {
 					Lerr("%v", err)
 					req.ResultsCh <- NewOnlineListResultsFailed()
@@ -276,49 +276,49 @@ func StartCheckerDaemon(checker Checker) {
 				}
 				elapsed := time.Since(start)
 				if checker.Debug() {
-					Ldbg("got statuses: %d", len(onlineChannels))
+					Ldbg("got statuses: %d", len(onlineStreamers))
 				}
-				req.ResultsCh <- NewOnlineListResults(onlineChannels, elapsed)
+				req.ResultsCh <- NewOnlineListResults(onlineStreamers, elapsed)
 			case *FixedListOnlineRequest:
-				channels, err := checker.QueryFixedListOnlineChannels(setToSlice(req.Channels), CheckOnline)
+				streamers, err := checker.QueryFixedListOnlineStreamers(setToSlice(req.Streamers), CheckOnline)
 				if err != nil {
 					Lerr("%v", err)
 					req.ResultsCh <- NewFixedListOnlineResultsFailed()
 					continue
 				}
-				filtered := make(map[string]ChannelInfo, len(req.Channels))
-				for channelID := range req.Channels {
-					if info, ok := channels[channelID]; ok {
-						filtered[channelID] = info
+				filtered := make(map[string]StreamerInfo, len(req.Streamers))
+				for streamerID := range req.Streamers {
+					if info, ok := streamers[streamerID]; ok {
+						filtered[streamerID] = info
 					}
 				}
 				elapsed := time.Since(start)
 				if checker.Debug() {
-					Ldbg("got statuses: %d", len(channels))
+					Ldbg("got statuses: %d", len(streamers))
 				}
-				req.ResultsCh <- NewFixedListOnlineResults(req.Channels, filtered, elapsed)
+				req.ResultsCh <- NewFixedListOnlineResults(req.Streamers, filtered, elapsed)
 			case *FixedListStatusRequest:
-				channels, err := checker.QueryFixedListStatuses(setToSlice(req.Channels), CheckStatuses)
+				streamers, err := checker.QueryFixedListStatuses(setToSlice(req.Streamers), CheckStatuses)
 				if errors.Is(err, ErrNotImplemented) {
 					// Checker does not support status queries — deny all as unknown
-					channels = make(map[string]ChannelInfoWithStatus, len(req.Channels))
-					for channelID := range req.Channels {
-						channels[channelID] = ChannelInfoWithStatus{Status: StatusUnknown}
+					streamers = make(map[string]StreamerInfoWithStatus, len(req.Streamers))
+					for streamerID := range req.Streamers {
+						streamers[streamerID] = StreamerInfoWithStatus{Status: StatusUnknown}
 					}
 				} else if err != nil {
 					Lerr("%v", err)
 					req.ResultsCh <- NewExistenceListResultsFailed()
 					continue
 				}
-				filtered := make(map[string]ChannelInfoWithStatus, len(req.Channels))
-				for channelID := range req.Channels {
-					if info, ok := channels[channelID]; ok {
-						filtered[channelID] = info
+				filtered := make(map[string]StreamerInfoWithStatus, len(req.Streamers))
+				for streamerID := range req.Streamers {
+					if info, ok := streamers[streamerID]; ok {
+						filtered[streamerID] = info
 					}
 				}
 				elapsed := time.Since(start)
 				if checker.Debug() {
-					Ldbg("got statuses: %d", len(channels))
+					Ldbg("got statuses: %d", len(streamers))
 				}
 				req.ResultsCh <- NewExistenceListResults(filtered, elapsed)
 			}

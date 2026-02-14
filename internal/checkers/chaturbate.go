@@ -120,10 +120,10 @@ func chaturbateShowKind(currentShow string) cmdlib.ShowKind {
 	return cmdlib.ShowUnknown
 }
 
-// QueryOnlineChannels returns Chaturbate online models
-func (c *ChaturbateChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, error) {
+// QueryOnlineStreamers returns Chaturbate online models
+func (c *ChaturbateChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
 	client := c.ClientsLoop.NextClient()
-	channels := map[string]cmdlib.ChannelInfo{}
+	streamers := map[string]cmdlib.StreamerInfo{}
 	resp, buf, err := cmdlib.OnlineQuery(c.UsersOnlineEndpoints[0], client, c.Headers)
 	if err != nil {
 		return nil, fmt.Errorf("cannot send a query, %v", err)
@@ -143,18 +143,18 @@ func (c *ChaturbateChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo
 	for _, m := range parsed {
 		modelID := strings.ToLower(m.Username)
 		viewers := m.NumUsers
-		channels[modelID] = cmdlib.ChannelInfo{
+		streamers[modelID] = cmdlib.StreamerInfo{
 			ImageURL: m.ImageURL,
 			Viewers:  &viewers,
 			ShowKind: chaturbateShowKind(m.CurrentShow),
 			Subject:  m.RoomSubject,
 		}
 	}
-	return channels, nil
+	return streamers, nil
 }
 
-// QueryFixedListOnlineChannels is not implemented for online list checkers
-func (c *ChaturbateChecker) QueryFixedListOnlineChannels([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+// QueryFixedListOnlineStreamers is not implemented for online list checkers
+func (c *ChaturbateChecker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckMode) (map[string]cmdlib.StreamerInfo, error) {
 	return nil, cmdlib.ErrNotImplemented
 }
 

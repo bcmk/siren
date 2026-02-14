@@ -25,21 +25,21 @@ ok:
 add_error:
   parse: html
   str: |-
-    Не получилось добавить модель {{ .channel }}
+    Не получилось добавить модель {{ .streamer }}
     Проверьте ник модели или попробуйте позже
     Формат команды: /add <code>МОДЕЛЬ</code>
-checking_channel:
+checking_streamer:
   parse: raw
   str: Одну секунду. Мы проверяем эту модель
-all_channels_removed:
+all_streamers_removed:
   parse: raw
   str: Все ваши подписки удалены
 already_added:
   parse: raw
-  str: 'Модель {{ .channel }} уже в вашем списке'
+  str: 'Модель {{ .streamer }} уже в вашем списке'
 denied:
   parse: raw
-  str: '{{ .channel }} заблокировала доступ из региона этого бота'
+  str: '{{ .streamer }} заблокировала доступ из региона этого бота'
 feedback:
   parse: raw
   str: Спасибо за отклик!
@@ -82,19 +82,19 @@ invalid_referral_link:
 invalid_symbols:
   parse: raw
   disable_preview: true
-  str: 'Идентификатор модели {{ .channel }} содержит неподдерживаемые символы'
-channel_added:
+  str: 'Идентификатор модели {{ .streamer }} содержит неподдерживаемые символы'
+streamer_added:
   parse: raw
   str: |-
-    Модель {{ .channel }} добавлена
+    Модель {{ .streamer }} добавлена
     Бот сообщит, когда она входит в сеть или выходит
-channel_not_in_list:
+streamer_not_in_list:
   parse: raw
-  str: 'Модель {{ .channel }} не в вашем списке'
-channel_removed:
+  str: 'Модель {{ .streamer }} не в вашем списке'
+streamer_removed:
   parse: raw
-  str: 'Модель {{ .channel }} удалена'
-no_online_channels:
+  str: 'Модель {{ .streamer }} удалена'
+no_online_streamers:
   parse: raw
   str: Не найдено моделей в сети, на которые вы подписаны
 not_enough_subscriptions:
@@ -106,7 +106,7 @@ online:
   str: |-
     🟢
     {{- print " " -}}
-    {{- template "affiliate_link" .channel -}}
+    {{- template "affiliate_link" .streamer -}}
     {{- print " " -}}
     <i>в сети
     {{- if .time_diff }} {{ template "duration" .time_diff }}{{ end -}}
@@ -129,7 +129,7 @@ offline:
   str: |-
     🔴
     {{- print " " -}}
-    {{ template "affiliate_link" .channel }}
+    {{ template "affiliate_link" .streamer }}
     {{- print " " -}}
     <i>не в сети {{- if .time_diff -}}, была {{ template "duration" .time_diff }} назад {{- end -}}</i>
 zero_subscriptions:
@@ -151,7 +151,7 @@ list:
       <code>В СЕТИ</code>
       {{- print "\n" -}}
       {{- range .online -}}
-        {{- template "affiliate_link" .Channel -}}
+        {{- template "affiliate_link" .Streamer -}}
         {{- if .TimeDiff }}  <i>{{ template "duration" .TimeDiff }}</i> {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
@@ -167,7 +167,7 @@ list:
       <code>НЕ В СЕТИ</code>
       {{- print "\n" -}}
       {{- range .offline -}}
-        {{- template "affiliate_link" .Channel -}}
+        {{- template "affiliate_link" .Streamer -}}
         {{- if .TimeDiff }}  <i>была {{ template "duration" .TimeDiff }} назад</i> {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
@@ -181,7 +181,7 @@ own_referral_link_hit:
   str: Вы только что кликнули по собственной реферальной ссылке
 profile_removed:
   parse: raw
-  str: 'Модель {{ .channel }} вероятно удалила свой профиль'
+  str: 'Модель {{ .streamer }} вероятно удалила свой профиль'
 referral_applied:
   parse: raw
   str: Поздравляем! Вы только что получили дополнительные подписки по реферальной ссылке!
@@ -323,7 +323,7 @@ week:
   parse: html
   disable_preview: true
   str: |-
-    Неделя {{ template "affiliate_link" .channel }} (UTC):
+    Неделя {{ template "affiliate_link" .streamer }} (UTC):
     {{- print "\n\n" -}}
     <code>
     {{- printf "    00     06     12     18\n" -}}
@@ -359,7 +359,7 @@ faq_pricing:
     <b>Цены</b>
 
     Базовый пакет — бесплатный.
-    Если вы хотите подписаться на более чем {{ .max_models }} моделей, вы можете зарабатывать дополнительные подписки, делясь реферальными ссылками на этот сервис.
+    Если вы хотите подписаться на более чем {{ .max_subs }} моделей, вы можете зарабатывать дополнительные подписки, делясь реферальными ссылками на этот сервис.
 too_many_subscriptions_for_pics:
   str: Эта команда поддерживает до {{ .max_subs }} подписок в групповом чате
 we_are_up:

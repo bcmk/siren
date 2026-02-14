@@ -187,10 +187,10 @@ func (c *StreamateChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 	return cmdlib.StatusUnknown
 }
 
-// QueryOnlineChannels returns Streamate online models
-func (c *StreamateChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, error) {
+// QueryOnlineStreamers returns Streamate online models
+func (c *StreamateChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
 	client := c.ClientsLoop.NextClient()
-	channels := map[string]cmdlib.ChannelInfo{}
+	streamers := map[string]cmdlib.StreamerInfo{}
 	endpoint := c.UsersOnlineEndpoints[0]
 	// Somehow 500 doesn't work well
 	queriedPageSize := 400
@@ -241,7 +241,7 @@ func (c *StreamateChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo,
 				image = "https:" + m.Media.Pic.Full.Src
 			}
 			modelID := strings.ToLower(m.Name)
-			channels[modelID] = cmdlib.ChannelInfo{
+			streamers[modelID] = cmdlib.StreamerInfo{
 				ImageURL: image,
 				ShowKind: streamateShowKind(m),
 			}
@@ -253,11 +253,11 @@ func (c *StreamateChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo,
 			}
 		}
 	}
-	return channels, nil
+	return streamers, nil
 }
 
-// QueryFixedListOnlineChannels is not implemented for online list checkers
-func (c *StreamateChecker) QueryFixedListOnlineChannels([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+// QueryFixedListOnlineStreamers is not implemented for online list checkers
+func (c *StreamateChecker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckMode) (map[string]cmdlib.StreamerInfo, error) {
 	return nil, cmdlib.ErrNotImplemented
 }
 

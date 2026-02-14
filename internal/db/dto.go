@@ -7,7 +7,7 @@ type Notification struct {
 	ID             int
 	Endpoint       string
 	ChatID         int64
-	ChannelID      string
+	StreamerID     string
 	Status         cmdlib.StatusKind
 	TimeDiff       *int
 	ImageURL       string
@@ -42,7 +42,7 @@ const (
 type PerformanceLogKind int
 
 const (
-	// PerformanceLogUpdateQuery represents a query for channel status updates
+	// PerformanceLogUpdateQuery represents a query for streamer status updates
 	PerformanceLogUpdateQuery PerformanceLogKind = 0
 
 	// PerformanceLogExistenceQuery represents an existence check query
@@ -58,7 +58,7 @@ const (
 // User represents a chat
 type User struct {
 	ChatID               int64
-	MaxChannels          int
+	MaxSubs              int
 	Reports              int
 	Blacklist            bool
 	ShowImages           bool
@@ -70,9 +70,9 @@ type User struct {
 	MemberCount          *int
 }
 
-// Channel represents a channel
-type Channel struct {
-	ChannelID                string
+// Streamer represents a streamer
+type Streamer struct {
+	StreamerID               string
 	ConfirmedStatus          cmdlib.StatusKind
 	UnconfirmedStatus        cmdlib.StatusKind
 	UnconfirmedTimestamp     int
@@ -82,14 +82,14 @@ type Channel struct {
 
 // StatusChange represents a status change
 type StatusChange struct {
-	ChannelID string
-	Status    cmdlib.StatusKind
-	Timestamp int
+	StreamerID string
+	Status     cmdlib.StatusKind
+	Timestamp  int
 }
 
 // ConfirmedStatusChange represents a confirmed status change with previous status
 type ConfirmedStatusChange struct {
-	ChannelID  string
+	StreamerID string
 	Status     cmdlib.StatusKind
 	PrevStatus cmdlib.StatusKind
 	Timestamp  int
@@ -97,7 +97,7 @@ type ConfirmedStatusChange struct {
 
 // Subscription represents a subscription
 type Subscription struct {
-	ChatID    int64
-	ChannelID string
-	Endpoint  string
+	ChatID     int64
+	StreamerID string
+	Endpoint   string
 }

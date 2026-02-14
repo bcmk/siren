@@ -15,7 +15,7 @@ func (d *Database) NewNotifications() []Notification {
 	d.MustQuery(
 		`
 		select
-			n.id, n.endpoint, n.chat_id, n.channel_id, n.status, n.time_diff, n.image_url,
+			n.id, n.endpoint, n.chat_id, n.streamer_id, n.status, n.time_diff, n.image_url,
 			n.viewers, n.show_kind, n.social, n.priority, n.sound, n.kind, n.subject,
 			u.silent_messages
 		from notification_queue n
@@ -28,7 +28,7 @@ func (d *Database) NewNotifications() []Notification {
 			&iter.ID,
 			&iter.Endpoint,
 			&iter.ChatID,
-			&iter.ChannelID,
+			&iter.StreamerID,
 			&iter.Status,
 			&iter.TimeDiff,
 			&iter.ImageURL,
@@ -58,7 +58,7 @@ func (d *Database) StoreNotifications(nots []Notification) {
 				insert into notification_queue (
 					endpoint,
 					chat_id,
-					channel_id,
+					streamer_id,
 					status,
 					time_diff,
 					image_url,
@@ -72,17 +72,17 @@ func (d *Database) StoreNotifications(nots []Notification) {
 				)
 				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 			`,
-			n.Endpoint, n.ChatID, n.ChannelID, n.Status, n.TimeDiff, n.ImageURL, n.Viewers, n.ShowKind, n.Social, n.Priority, n.Sound, n.Kind, n.Subject,
+			n.Endpoint, n.ChatID, n.StreamerID, n.Status, n.TimeDiff, n.ImageURL, n.Viewers, n.ShowKind, n.Social, n.Priority, n.Sound, n.Kind, n.Subject,
 		)
 	}
 	d.SendBatch(batch)
 }
 
-// UsersForChannels returns users subscribed to a particular channel
-func (d *Database) UsersForChannels(channelIDs []string) (users map[string][]User, endpoints map[string][]string) {
+// UsersForStreamers returns users subscribed to a particular streamer
+func (d *Database) UsersForStreamers(streamerIDs []string) (users map[string][]User, endpoints map[string][]string) {
 	users = map[string][]User{}
 	endpoints = make(map[string][]string)
-	var channelID string
+	var streamerID string
 	var chatID int64
 	var endpoint string
 	var offlineNotifications bool
@@ -90,7 +90,7 @@ func (d *Database) UsersForChannels(channelIDs []string) (users map[string][]Use
 	var showSubject bool
 	d.MustQuery(`
 		select
-			subscriptions.channel_id,
+			subscriptions.streamer_id,
 			subscriptions.chat_id,
 			subscriptions.endpoint,
 			users.offline_notifications,
@@ -98,17 +98,17 @@ func (d *Database) UsersForChannels(channelIDs []string) (users map[string][]Use
 			users.show_subject
 		from subscriptions
 		join users on users.chat_id = subscriptions.chat_id
-		where subscriptions.channel_id = any($1)`,
-		QueryParams{channelIDs},
-		ScanTo{&channelID, &chatID, &endpoint, &offlineNotifications, &showImages, &showSubject},
+		where subscriptions.streamer_id = any($1)`,
+		QueryParams{streamerIDs},
+		ScanTo{&streamerID, &chatID, &endpoint, &offlineNotifications, &showImages, &showSubject},
 		func() {
-			users[channelID] = append(users[channelID], User{
+			users[streamerID] = append(users[streamerID], User{
 				ChatID:               chatID,
 				OfflineNotifications: offlineNotifications,
 				ShowImages:           showImages,
 				ShowSubject:          showSubject,
 			})
-			endpoints[channelID] = append(endpoints[channelID], endpoint)
+			endpoints[streamerID] = append(endpoints[streamerID], endpoint)
 		})
 	return
 }
@@ -124,49 +124,49 @@ func (d *Database) BroadcastChats(endpoint string) (chats []int64) {
 	return
 }
 
-// ChannelsForChat returns channels that particular chat is subscribed to
-func (d *Database) ChannelsForChat(endpoint string, chatID int64) (channels []string) {
-	var channelID string
+// StreamersForChat returns streamers that particular chat is subscribed to
+func (d *Database) StreamersForChat(endpoint string, chatID int64) (streamers []string) {
+	var streamerID string
 	d.MustQuery(
-		`select channel_id from subscriptions where chat_id = $1 and endpoint = $2 order by channel_id`,
+		`select streamer_id from subscriptions where chat_id = $1 and endpoint = $2 order by streamer_id`,
 		QueryParams{chatID, endpoint},
-		ScanTo{&channelID},
-		func() { channels = append(channels, channelID) })
+		ScanTo{&streamerID},
+		func() { streamers = append(streamers, streamerID) })
 	return
 }
 
-// ConfirmedStatusesForChat returns channels that particular chat is subscribed to and their statuses
-func (d *Database) ConfirmedStatusesForChat(endpoint string, chatID int64) (statuses []Channel) {
-	var iter Channel
+// ConfirmedStatusesForChat returns streamers that particular chat is subscribed to and their statuses
+func (d *Database) ConfirmedStatusesForChat(endpoint string, chatID int64) (statuses []Streamer) {
+	var iter Streamer
 	d.MustQuery(`
-		select channels.channel_id, channels.confirmed_status
-		from channels
-		join subscriptions on subscriptions.channel_id = channels.channel_id
+		select streamers.streamer_id, streamers.confirmed_status
+		from streamers
+		join subscriptions on subscriptions.streamer_id = streamers.streamer_id
 		where subscriptions.chat_id = $1 and subscriptions.endpoint = $2
-		order by channels.channel_id`,
+		order by streamers.streamer_id`,
 		QueryParams{chatID, endpoint},
-		ScanTo{&iter.ChannelID, &iter.ConfirmedStatus},
+		ScanTo{&iter.StreamerID, &iter.ConfirmedStatus},
 		func() { statuses = append(statuses, iter) })
 	return
 }
 
-// UnconfirmedStatusesForChat returns channels with their unconfirmed statuses from channels table
-func (d *Database) UnconfirmedStatusesForChat(endpoint string, chatID int64) (statuses []Channel) {
-	var iter Channel
+// UnconfirmedStatusesForChat returns streamers with their unconfirmed statuses from streamers table
+func (d *Database) UnconfirmedStatusesForChat(endpoint string, chatID int64) (statuses []Streamer) {
+	var iter Streamer
 	d.MustQuery(`
 		select
-			s.channel_id,
+			s.streamer_id,
 			coalesce(m.unconfirmed_status, 0),
 			coalesce(m.unconfirmed_timestamp, 0),
 			coalesce(m.prev_unconfirmed_status, 0),
 			coalesce(m.prev_unconfirmed_timestamp, 0)
 		from subscriptions s
-		left join channels m on m.channel_id = s.channel_id
+		left join streamers m on m.streamer_id = s.streamer_id
 		where s.chat_id = $1 and s.endpoint = $2
-		order by s.channel_id`,
+		order by s.streamer_id`,
 		QueryParams{chatID, endpoint},
 		ScanTo{
-			&iter.ChannelID,
+			&iter.StreamerID,
 			&iter.UnconfirmedStatus,
 			&iter.UnconfirmedTimestamp,
 			&iter.PrevUnconfirmedStatus,
@@ -177,8 +177,8 @@ func (d *Database) UnconfirmedStatusesForChat(endpoint string, chatID int64) (st
 }
 
 // SubscriptionExists checks if subscription exists
-func (d *Database) SubscriptionExists(endpoint string, chatID int64, channelID string) bool {
-	count := d.MustInt("select count(*) from subscriptions where chat_id = $1 and channel_id = $2 and endpoint = $3", chatID, channelID, endpoint)
+func (d *Database) SubscriptionExists(endpoint string, chatID int64, streamerID string) bool {
+	count := d.MustInt("select count(*) from subscriptions where chat_id = $1 and streamer_id = $2 and endpoint = $3", chatID, streamerID, endpoint)
 	return count != 0
 }
 
@@ -192,7 +192,7 @@ func (d *Database) User(chatID int64) (user User, found bool) {
 	found = d.MaybeRecord(`
 		select
 			chat_id,
-			max_channels,
+			max_subs,
 			reports,
 			blacklist,
 			show_images,
@@ -208,7 +208,7 @@ func (d *Database) User(chatID int64) (user User, found bool) {
 		QueryParams{chatID},
 		ScanTo{
 			&user.ChatID,
-			&user.MaxChannels,
+			&user.MaxSubs,
 			&user.Reports,
 			&user.Blacklist,
 			&user.ShowImages,
@@ -223,33 +223,33 @@ func (d *Database) User(chatID int64) (user User, found bool) {
 }
 
 // AddUser inserts a user
-func (d *Database) AddUser(chatID int64, maxChannels int, now int, chatType string) {
+func (d *Database) AddUser(chatID int64, maxSubs int, now int, chatType string) {
 	d.MustExec(`
-		insert into users (chat_id, max_channels, created_at, chat_type)
+		insert into users (chat_id, max_subs, created_at, chat_type)
 		values ($1, $2, $3, $4)
 		on conflict(chat_id) do nothing`,
 		chatID,
-		maxChannels,
+		maxSubs,
 		now,
 		chatType)
 }
 
-// MaybeChannel returns a channel if exists
-func (d *Database) MaybeChannel(channelID string) *Channel {
-	var result Channel
+// MaybeStreamer returns a streamer if exists
+func (d *Database) MaybeStreamer(streamerID string) *Streamer {
+	var result Streamer
 	if d.MaybeRecord(
 		`select
-			channel_id,
+			streamer_id,
 			confirmed_status,
 			unconfirmed_status,
 			unconfirmed_timestamp,
 			prev_unconfirmed_status,
 			prev_unconfirmed_timestamp
-		from channels
-		where channel_id = $1`,
-		QueryParams{channelID},
+		from streamers
+		where streamer_id = $1`,
+		QueryParams{streamerID},
 		ScanTo{
-			&result.ChannelID,
+			&result.StreamerID,
 			&result.ConfirmedStatus,
 			&result.UnconfirmedStatus,
 			&result.UnconfirmedTimestamp,
@@ -261,136 +261,136 @@ func (d *Database) MaybeChannel(channelID string) *Channel {
 	return nil
 }
 
-// ChangesFromToForChannels returns all changes for multiple channels in specified period
-func (d *Database) ChangesFromToForChannels(channelIDs []string, from int, to int) map[string][]StatusChange {
+// ChangesFromToForStreamers returns all changes for multiple streamers in specified period
+func (d *Database) ChangesFromToForStreamers(streamerIDs []string, from int, to int) map[string][]StatusChange {
 	result := make(map[string][]StatusChange)
 	beforeRangeAdded := make(map[string]bool)
 	var change StatusChange
 	var beforeRangeStatus *cmdlib.StatusKind
 	var beforeRangeTimestamp *int
 	d.MustQuery(`
-		select channel_id, status, timestamp, before_range_status, before_range_timestamp
+		select streamer_id, status, timestamp, before_range_status, before_range_timestamp
 		from (
 			select
 				*,
 				lag(status) over w as before_range_status,
 				lag(timestamp) over w as before_range_timestamp
 			from status_changes
-			where channel_id = any($1)
-			window w as (partition by channel_id order by timestamp)
+			where streamer_id = any($1)
+			window w as (partition by streamer_id order by timestamp)
 		) sub
 		where timestamp >= $2
-		order by channel_id, timestamp`,
-		QueryParams{channelIDs, from},
-		ScanTo{&change.ChannelID, &change.Status, &change.Timestamp, &beforeRangeStatus, &beforeRangeTimestamp},
+		order by streamer_id, timestamp`,
+		QueryParams{streamerIDs, from},
+		ScanTo{&change.StreamerID, &change.Status, &change.Timestamp, &beforeRangeStatus, &beforeRangeTimestamp},
 		func() {
-			if !beforeRangeAdded[change.ChannelID] && beforeRangeStatus != nil && beforeRangeTimestamp != nil {
-				result[change.ChannelID] = append(result[change.ChannelID], StatusChange{
-					ChannelID: change.ChannelID,
-					Status:    *beforeRangeStatus,
-					Timestamp: *beforeRangeTimestamp,
+			if !beforeRangeAdded[change.StreamerID] && beforeRangeStatus != nil && beforeRangeTimestamp != nil {
+				result[change.StreamerID] = append(result[change.StreamerID], StatusChange{
+					StreamerID: change.StreamerID,
+					Status:     *beforeRangeStatus,
+					Timestamp:  *beforeRangeTimestamp,
 				})
-				beforeRangeAdded[change.ChannelID] = true
+				beforeRangeAdded[change.StreamerID] = true
 			}
-			result[change.ChannelID] = append(result[change.ChannelID], change)
+			result[change.StreamerID] = append(result[change.StreamerID], change)
 		})
-	for _, channelID := range channelIDs {
-		result[channelID] = append(result[channelID], StatusChange{ChannelID: channelID, Timestamp: to})
+	for _, streamerID := range streamerIDs {
+		result[streamerID] = append(result[streamerID], StatusChange{StreamerID: streamerID, Timestamp: to})
 	}
 	return result
 }
 
-// SetLimit updates a particular user with its max channels limit
-func (d *Database) SetLimit(chatID int64, maxChannels int) {
+// SetLimit updates a particular user with its max subs limit
+func (d *Database) SetLimit(chatID int64, maxSubs int) {
 	d.MustExec(`
-		insert into users (chat_id, max_channels) values ($1, $2)
-		on conflict(chat_id) do update set max_channels=excluded.max_channels`,
+		insert into users (chat_id, max_subs) values ($1, $2)
+		on conflict(chat_id) do update set max_subs=excluded.max_subs`,
 		chatID,
-		maxChannels)
+		maxSubs)
 }
 
 // ConfirmSub confirms subscription
 func (d *Database) ConfirmSub(sub Subscription) {
 	d.MustExec(`
-		insert into channels (channel_id)
+		insert into streamers (streamer_id)
 		values ($1)
-		on conflict(channel_id) do nothing`,
-		sub.ChannelID)
-	d.MustExec("update subscriptions set confirmed=1 where endpoint = $1 and chat_id = $2 and channel_id = $3", sub.Endpoint, sub.ChatID, sub.ChannelID)
+		on conflict(streamer_id) do nothing`,
+		sub.StreamerID)
+	d.MustExec("update subscriptions set confirmed=1 where endpoint = $1 and chat_id = $2 and streamer_id = $3", sub.Endpoint, sub.ChatID, sub.StreamerID)
 }
 
 // DenySub denies subscription
 func (d *Database) DenySub(sub Subscription) {
-	d.MustExec("delete from subscriptions where endpoint = $1 and chat_id = $2 and channel_id = $3", sub.Endpoint, sub.ChatID, sub.ChannelID)
+	d.MustExec("delete from subscriptions where endpoint = $1 and chat_id = $2 and streamer_id = $3", sub.Endpoint, sub.ChatID, sub.StreamerID)
 }
 
-// UnconfirmedStatusesForChannels returns unconfirmed statuses for specific channels
-func (d *Database) UnconfirmedStatusesForChannels(channelIDs []string) map[string]StatusChange {
+// UnconfirmedStatusesForStreamers returns unconfirmed statuses for specific streamers
+func (d *Database) UnconfirmedStatusesForStreamers(streamerIDs []string) map[string]StatusChange {
 	statusChanges := map[string]StatusChange{}
 	var statusChange StatusChange
 	d.MustQuery(
 		`
-			select channel_id, unconfirmed_status, unconfirmed_timestamp
-			from channels
-			where channel_id = any($1)
+			select streamer_id, unconfirmed_status, unconfirmed_timestamp
+			from streamers
+			where streamer_id = any($1)
 		`,
-		QueryParams{channelIDs},
-		ScanTo{&statusChange.ChannelID, &statusChange.Status, &statusChange.Timestamp},
-		func() { statusChanges[statusChange.ChannelID] = statusChange })
+		QueryParams{streamerIDs},
+		ScanTo{&statusChange.StreamerID, &statusChange.Status, &statusChange.Timestamp},
+		func() { statusChanges[statusChange.StreamerID] = statusChange })
 	return statusChanges
 }
 
-// SubscribedChannels returns all confirmed subscribed channels
-func (d *Database) SubscribedChannels() map[string]bool {
-	channels := map[string]bool{}
-	var channelID string
+// SubscribedStreamers returns all confirmed subscribed streamers
+func (d *Database) SubscribedStreamers() map[string]bool {
+	streamers := map[string]bool{}
+	var streamerID string
 	d.MustQuery(
-		`select distinct channel_id from subscriptions where confirmed = 1`,
+		`select distinct streamer_id from subscriptions where confirmed = 1`,
 		nil,
-		ScanTo{&channelID},
-		func() { channels[channelID] = true })
-	return channels
+		ScanTo{&streamerID},
+		func() { streamers[streamerID] = true })
+	return streamers
 }
 
 // QueryLastSubscriptionStatuses returns latest statuses for subscriptions
 func (d *Database) QueryLastSubscriptionStatuses() map[string]cmdlib.StatusKind {
 	statuses := map[string]cmdlib.StatusKind{}
-	var channelID string
+	var streamerID string
 	var status cmdlib.StatusKind
 	d.MustQuery(
 		`
-			select s.channel_id, coalesce(m.unconfirmed_status, $1) as status
-			from (select distinct channel_id from subscriptions where confirmed = 1) s
-			left join channels m on m.channel_id = s.channel_id
+			select s.streamer_id, coalesce(m.unconfirmed_status, $1) as status
+			from (select distinct streamer_id from subscriptions where confirmed = 1) s
+			left join streamers m on m.streamer_id = s.streamer_id
 		`,
 		QueryParams{cmdlib.StatusUnknown},
-		ScanTo{&channelID, &status},
-		func() { statuses[channelID] = status })
+		ScanTo{&streamerID, &status},
+		func() { statuses[streamerID] = status })
 	return statuses
 }
 
-// QueryLastOnlineChannels queries latest online channels
-func (d *Database) QueryLastOnlineChannels() map[string]bool {
-	onlineChannels := map[string]bool{}
-	var channelID string
+// QueryLastOnlineStreamers queries latest online streamers
+func (d *Database) QueryLastOnlineStreamers() map[string]bool {
+	onlineStreamers := map[string]bool{}
+	var streamerID string
 	d.MustQuery(
-		`select channel_id from channels where unconfirmed_status = $1`,
+		`select streamer_id from streamers where unconfirmed_status = $1`,
 		QueryParams{cmdlib.StatusOnline},
-		ScanTo{&channelID},
-		func() { onlineChannels[channelID] = true })
-	return onlineChannels
+		ScanTo{&streamerID},
+		func() { onlineStreamers[streamerID] = true })
+	return onlineStreamers
 }
 
-// KnownChannels returns all channels with known status (not unknown).
-func (d *Database) KnownChannels() map[string]bool {
-	channels := map[string]bool{}
-	var channelID string
+// KnownStreamers returns all streamers with known status (not unknown).
+func (d *Database) KnownStreamers() map[string]bool {
+	streamers := map[string]bool{}
+	var streamerID string
 	d.MustQuery(
-		`select channel_id from channels where unconfirmed_status != 0`,
+		`select streamer_id from streamers where unconfirmed_status != 0`,
 		nil,
-		ScanTo{&channelID},
-		func() { channels[channelID] = true })
-	return channels
+		ScanTo{&streamerID},
+		func() { streamers[streamerID] = true })
+	return streamers
 }
 
 // ReferralID returns referral identifier
@@ -441,30 +441,30 @@ func (d *Database) InsertStatusChanges(changedStatuses []StatusChange, timestamp
 	// Use CopyFrom for fast bulk insert into status_changes
 	rows := make([][]interface{}, len(changedStatuses))
 	for i, sc := range changedStatuses {
-		rows[i] = []interface{}{sc.ChannelID, sc.Status, timestamp}
+		rows[i] = []interface{}{sc.StreamerID, sc.Status, timestamp}
 	}
 	_, err = tx.CopyFrom(
 		context.Background(),
 		pgx.Identifier{"status_changes"},
-		[]string{"channel_id", "status", "timestamp"},
+		[]string{"streamer_id", "status", "timestamp"},
 		pgx.CopyFromRows(rows),
 	)
 	checkErr(err)
 
-	// Use batch for channels upserts within the same transaction
+	// Use batch for streamers upserts within the same transaction
 	batch := &pgx.Batch{}
 	for _, sc := range changedStatuses {
 		batch.Queue(
 			`
-				insert into channels (channel_id, unconfirmed_status, unconfirmed_timestamp)
+				insert into streamers (streamer_id, unconfirmed_status, unconfirmed_timestamp)
 				values ($1, $2, $3)
-				on conflict(channel_id) do update set
-					prev_unconfirmed_status = channels.unconfirmed_status,
-					prev_unconfirmed_timestamp = channels.unconfirmed_timestamp,
+				on conflict(streamer_id) do update set
+					prev_unconfirmed_status = streamers.unconfirmed_status,
+					prev_unconfirmed_timestamp = streamers.unconfirmed_timestamp,
 					unconfirmed_status = excluded.unconfirmed_status,
 					unconfirmed_timestamp = excluded.unconfirmed_timestamp
 			`,
-			sc.ChannelID, sc.Status, timestamp)
+			sc.StreamerID, sc.Status, timestamp)
 	}
 	br := tx.SendBatch(context.Background(), batch)
 	checkErr(br.Close())
@@ -473,11 +473,11 @@ func (d *Database) InsertStatusChanges(changedStatuses []StatusChange, timestamp
 }
 
 // AddSubscription inserts a subscription with the given confirmed status
-func (d *Database) AddSubscription(chatID int64, channelID string, endpoint string, confirmed int) {
+func (d *Database) AddSubscription(chatID int64, streamerID string, endpoint string, confirmed int) {
 	d.MustExec(
-		"insert into subscriptions (chat_id, channel_id, endpoint, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (chat_id, streamer_id, endpoint, confirmed) values ($1, $2, $3, $4)",
 		chatID,
-		channelID,
+		streamerID,
 		endpoint,
 		confirmed)
 }
@@ -515,11 +515,11 @@ func (d *Database) UpdateChatType(chatID int64, chatType string) {
 }
 
 // RemoveSubscription deletes a specific subscription
-func (d *Database) RemoveSubscription(chatID int64, channelID string, endpoint string) {
+func (d *Database) RemoveSubscription(chatID int64, streamerID string, endpoint string) {
 	d.MustExec(
-		"delete from subscriptions where chat_id = $1 and channel_id = $2 and endpoint = $3",
+		"delete from subscriptions where chat_id = $1 and streamer_id = $2 and endpoint = $3",
 		chatID,
-		channelID,
+		streamerID,
 		endpoint)
 }
 
@@ -543,21 +543,21 @@ func (d *Database) BlacklistUser(chatID int64) {
 	d.MustExec("update users set blacklist=1 where chat_id = $1", chatID)
 }
 
-// AddUserWithBonus inserts a user with a specific max_channels value
-func (d *Database) AddUserWithBonus(chatID int64, maxChannels int, now int, chatType string) {
+// AddUserWithBonus inserts a user with a specific max_subs value
+func (d *Database) AddUserWithBonus(chatID int64, maxSubs int, now int, chatType string) {
 	d.MustExec(`
-		insert into users (chat_id, max_channels, created_at, chat_type)
+		insert into users (chat_id, max_subs, created_at, chat_type)
 		values ($1, $2, $3, $4)
-	`, chatID, maxChannels, now, chatType)
+	`, chatID, maxSubs, now, chatType)
 }
 
-// AddOrUpdateReferrer inserts or updates a referrer's max_channels
-func (d *Database) AddOrUpdateReferrer(chatID int64, maxChannels int, bonus int) {
+// AddOrUpdateReferrer inserts or updates a referrer's max_subs
+func (d *Database) AddOrUpdateReferrer(chatID int64, maxSubs int, bonus int) {
 	d.MustExec(`
-		insert into users as included (chat_id, max_channels) values ($1, $2)
-		on conflict(chat_id) do update set max_channels=included.max_channels + $3`,
+		insert into users as included (chat_id, max_subs) values ($1, $2)
+		on conflict(chat_id) do update set max_subs=included.max_subs + $3`,
 		chatID,
-		maxChannels,
+		maxSubs,
 		bonus)
 }
 
@@ -567,13 +567,13 @@ func (d *Database) IncrementReferredUsers(chatID int64) {
 }
 
 // AddReferralEvent adds a referral event
-func (d *Database) AddReferralEvent(timestamp int, referrerChatID *int64, followerChatID int64, channelID *string) {
+func (d *Database) AddReferralEvent(timestamp int, referrerChatID *int64, followerChatID int64, streamerID *string) {
 	d.MustExec(
-		"insert into referral_events (timestamp, referrer_chat_id, follower_chat_id, channel_id) values ($1, $2, $3, $4)",
+		"insert into referral_events (timestamp, referrer_chat_id, follower_chat_id, streamer_id) values ($1, $2, $3, $4)",
 		timestamp,
 		referrerChatID,
 		followerChatID,
-		channelID)
+		streamerID)
 }
 
 // AddReferral adds a new referral record
@@ -648,15 +648,15 @@ func (d *Database) IncrementReports(chatID int64) {
 	d.MustExec("update users set reports=reports+1 where chat_id = $1", chatID)
 }
 
-// ConfirmStatusChanges finds channels needing confirmation and updates them.
+// ConfirmStatusChanges finds streamers needing confirmation and updates them.
 // Returns the confirmed status changes with previous status.
 func (d *Database) ConfirmStatusChanges(
 	now int,
 	onlineSeconds int,
 	offlineSeconds int,
 ) []ConfirmedStatusChange {
-	// PostgreSQL uses ix_channels_status_mismatch partial index for select but
-	// not for update — we use a temp table to work around this.
+	// PostgreSQL uses ix_streamers_streamer_id_status_mismatch partial index
+	// for select but not for update — we use a temp table to work around this.
 	done := d.Measure("db: confirm status changes")
 	defer done()
 
@@ -668,8 +668,8 @@ func (d *Database) ConfirmStatusChanges(
 		context.Background(),
 		`
 			create temp table to_confirm on commit drop as
-			select channel_id, unconfirmed_status, confirmed_status
-			from channels
+			select streamer_id, unconfirmed_status, confirmed_status
+			from streamers
 			where confirmed_status != unconfirmed_status
 			and (
 				(unconfirmed_status = 2 and $1 - unconfirmed_timestamp >= $2)
@@ -683,16 +683,16 @@ func (d *Database) ConfirmStatusChanges(
 	_, err = tx.Exec(
 		context.Background(),
 		`
-			update channels c
+			update streamers c
 			set confirmed_status = tc.unconfirmed_status
 			from to_confirm tc
-			where c.channel_id = tc.channel_id
+			where c.streamer_id = tc.streamer_id
 		`)
 	checkErr(err)
 
 	rows, err := tx.Query(
 		context.Background(),
-		`select channel_id, unconfirmed_status, confirmed_status from to_confirm`,
+		`select streamer_id, unconfirmed_status, confirmed_status from to_confirm`,
 	)
 	checkErr(err)
 	defer rows.Close()
@@ -700,7 +700,7 @@ func (d *Database) ConfirmStatusChanges(
 	var result []ConfirmedStatusChange
 	for rows.Next() {
 		var change ConfirmedStatusChange
-		checkErr(rows.Scan(&change.ChannelID, &change.Status, &change.PrevStatus))
+		checkErr(rows.Scan(&change.StreamerID, &change.Status, &change.PrevStatus))
 		change.Timestamp = now
 		result = append(result, change)
 	}

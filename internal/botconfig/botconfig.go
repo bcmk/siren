@@ -43,9 +43,9 @@ type Config struct {
 	ListenAddress                   string                    `mapstructure:"listen_address"`                     // the address to listen to
 	Website                         string                    `mapstructure:"website"`                            // one of the following strings: "bongacams", "stripchat", "chaturbate", "livejasmin", "flirt4free", "streamate", "cam4"
 	WebsiteLink                     string                    `mapstructure:"website_link"`                       // affiliate link to website
-	PeriodSeconds                   int                       `mapstructure:"period_seconds"`                     // the period of querying channel statuses
+	PeriodSeconds                   int                       `mapstructure:"period_seconds"`                     // the period of querying streamer statuses
 	MaintainDBPeriodSeconds         int                       `mapstructure:"maintain_db_period_seconds"`         // the maintain DB period
-	MaxChannels                     int                       `mapstructure:"max_channels"`                       // maximum channels per user
+	MaxSubs                         int                       `mapstructure:"max_subs"`                           // maximum subscriptions per user
 	TimeoutSeconds                  int                       `mapstructure:"timeout_seconds"`                    // HTTP timeout
 	AdminID                         int64                     `mapstructure:"admin_id"`                           // admin Telegram ID
 	AdminEndpoint                   string                    `mapstructure:"admin_endpoint"`                     // admin endpoint
@@ -56,7 +56,7 @@ type Config struct {
 	EnableCookies                   bool                      `mapstructure:"enable_cookies"`                     // enable cookies, it can be useful to mitigate rate limits
 	Headers                         [][2]string               `mapstructure:"headers"`                            // HTTP headers to make queries with
 	Endpoints                       map[string]endpoint       `mapstructure:"endpoints"`                          // the endpoints by simple name, used for the support of the bots in different languages accessing the same database
-	HeavyUserRemainder              int                       `mapstructure:"heavy_user_remainder"`               // the maximum remainder of channels to treat a user as heavy
+	HeavyUserRemainder              int                       `mapstructure:"heavy_user_remainder"`               // the maximum remainder of subscriptions to treat a user as heavy
 	ReferralBonus                   int                       `mapstructure:"referral_bonus"`                     // number of additional subscriptions for a referrer
 	FollowerBonus                   int                       `mapstructure:"follower_bonus"`                     // number of additional subscriptions for a new user registered by a referral link
 	UsersOnlineEndpoint             []string                  `mapstructure:"users_online_endpoint"`              // the endpoint to fetch online users
@@ -269,8 +269,8 @@ func checkConfig(cfg *Config) error {
 	if cfg.PeriodSeconds == 0 {
 		return errors.New("configure period_seconds")
 	}
-	if cfg.MaxChannels == 0 {
-		return errors.New("configure max_channels")
+	if cfg.MaxSubs == 0 {
+		return errors.New("configure max_subs")
 	}
 	if cfg.TimeoutSeconds == 0 {
 		return errors.New("configure timeout_seconds")

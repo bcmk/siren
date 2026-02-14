@@ -28,23 +28,23 @@ func randString(n int) string {
 	return string(b)
 }
 
-// QueryOnlineChannels returns Random online channels
-func (c *RandomChecker) QueryOnlineChannels() (map[string]cmdlib.ChannelInfo, error) {
+// QueryOnlineStreamers returns Random online streamers
+func (c *RandomChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
 	now := time.Now()
 	seconds := now.Sub(now.Truncate(time.Minute))
-	channels := map[string]cmdlib.ChannelInfo{}
+	streamers := map[string]cmdlib.StreamerInfo{}
 	if seconds < time.Second*30 {
-		channels["toggle"] = cmdlib.ChannelInfo{}
+		streamers["toggle"] = cmdlib.StreamerInfo{}
 	}
 	for i := 0; i < 300; i++ {
-		channelID := randString(4)
-		channels[channelID] = cmdlib.ChannelInfo{}
+		streamerID := randString(4)
+		streamers[streamerID] = cmdlib.StreamerInfo{}
 	}
-	return channels, nil
+	return streamers, nil
 }
 
-// QueryFixedListOnlineChannels is not implemented for online list checkers
-func (c *RandomChecker) QueryFixedListOnlineChannels([]string, cmdlib.CheckMode) (map[string]cmdlib.ChannelInfo, error) {
+// QueryFixedListOnlineStreamers is not implemented for online list checkers
+func (c *RandomChecker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckMode) (map[string]cmdlib.StreamerInfo, error) {
 	return nil, cmdlib.ErrNotImplemented
 }
 

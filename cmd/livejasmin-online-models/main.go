@@ -34,12 +34,12 @@ func main() {
 	client := cmdlib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
 	checker := &checkers.LiveJasminChecker{}
 	checker.Init(cmdlib.CheckerConfig{UsersOnlineEndpoints: toSlice(endpoints), Clients: []*cmdlib.Client{client}, Dbg: *verbose})
-	channels, err := checker.QueryOnlineChannels()
+	streamers, err := checker.QueryOnlineStreamers()
 	if err != nil {
 		fmt.Printf("error occurred: %v\n", err)
 		return
 	}
-	for model, info := range channels {
+	for model, info := range streamers {
 		fmt.Printf("%s %s\n", model, info.ImageURL)
 	}
 }
