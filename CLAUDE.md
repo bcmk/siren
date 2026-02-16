@@ -8,6 +8,9 @@
 - Use conventional commit style
 - Use site scope for single-site changes, e.g. `feat(chaturbate): add room subject`
 - When stashing, use a descriptive name
+- Never delete tags after pushing to the container registry
+- After a mistake is corrected, ask if a new guideline
+  should be added to CLAUDE.md to prevent it in the future
 
 ## Code Style
 - Put function arguments on separate lines if they don't fit on one line
@@ -35,11 +38,26 @@
 - When building binaries, place them in their main.go's directory,
   e.g. `go build -o cmd/bot/ ./cmd/bot`
 
+## Communication
+- Always suggest English grammar/style fixes
+  in the user's messages
+
 ## Platform Notes
 - GNU sed is installed as `sed` (no empty string needed for `-i`)
 - Don't use `cat -A` (macOS cat doesn't support it)
 - Many commands are allowed in the project directory — prefer relative paths
+- Never store personal info (usernames, credentials, connection strings)
+  in memory files
 - Use WebFetch/WebSearch freely without asking permission
+
+## Database
+- Use `set role` to the table owner before DDL commands in psql
+- pgx caches prepared statements, which can cause
+  PostgreSQL to use slow generic plans.
+  We use `pgx.QueryExecModeExec` to avoid this when needed.
+- When testing query performance, use at least 10 examples,
+  and up to 100 if they run fast enough.
+  Never draw conclusions from fewer examples.
 
 ## Database Migrations
 - SQL files are in `internal/db/migrations/`, runner is in `internal/db/migrations.go`
