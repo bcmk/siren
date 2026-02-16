@@ -37,6 +37,8 @@
 ## Build
 - When building binaries, place them in their main.go's directory,
   e.g. `go build -o cmd/bot/ ./cmd/bot`
+- To build a Docker image and push to the registry,
+  run `scripts/publish` (uses the current git tag as version)
 
 ## Communication
 - Always suggest English grammar/style fixes
