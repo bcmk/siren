@@ -13,6 +13,7 @@
       "Edit",
       "Write",
       "WebSearch",
+      "WebFetch",
       "Bash(go build:*)",
       "Bash(go test:*)",
       "Bash(go mod graph:*)",

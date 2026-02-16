@@ -39,6 +39,7 @@
 - GNU sed is installed as `sed` (no empty string needed for `-i`)
 - Don't use `cat -A` (macOS cat doesn't support it)
 - Many commands are allowed in the project directory — prefer relative paths
+- Use WebFetch/WebSearch freely without asking permission
 
 ## Database Migrations
 - SQL files are in `internal/db/migrations/`, runner is in `internal/db/migrations.go`
