@@ -38,7 +38,12 @@
 - When building binaries, place them in their main.go's directory,
   e.g. `go build -o cmd/bot/ ./cmd/bot`
 - To build a Docker image and push to the registry,
-  run `scripts/publish` (uses the current git tag as version)
+  run `scripts/publish` (uses `git describe --tags` as version)
+- Only create tags for completed features ready to be published.
+  `scripts/publish` works without tagging —
+  it produces versions like `v2.9.0-2-gabcdef12`.
+- Run `scripts/query-registry-versions`
+  to list images in the container registry.
 
 ## Communication
 - Always suggest English grammar/style fixes
