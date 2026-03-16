@@ -48,15 +48,7 @@ address_line:
 syntax_add:
   parse: html
   str: |-
-    Наберите
-
-    /add <code>МОДЕЛЬ</code>
-
-    {{ template "address_line" }}
-
-    Пример
-
-    /add bbbweb
+    Укажите модель, например, <code>{{ template "add_example" }}</code>
 syntax_remove:
   parse: html
   str: |-

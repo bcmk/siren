@@ -274,6 +274,7 @@ func StartCheckerDaemon(checker Checker) {
 					req.ResultsCh <- NewOnlineListResultsFailed()
 					continue
 				}
+				delete(onlineStreamers, "")
 				elapsed := time.Since(start)
 				if checker.Debug() {
 					Ldbg("got statuses: %d", len(onlineStreamers))
@@ -286,6 +287,7 @@ func StartCheckerDaemon(checker Checker) {
 					req.ResultsCh <- NewFixedListOnlineResultsFailed()
 					continue
 				}
+				delete(streamers, "")
 				filtered := make(map[string]StreamerInfo, len(req.Streamers))
 				for streamerID := range req.Streamers {
 					if info, ok := streamers[streamerID]; ok {
@@ -310,6 +312,7 @@ func StartCheckerDaemon(checker Checker) {
 					req.ResultsCh <- NewExistenceListResultsFailed()
 					continue
 				}
+				delete(streamers, "")
 				filtered := make(map[string]StreamerInfoWithStatus, len(req.Streamers))
 				for streamerID := range req.Streamers {
 					if info, ok := streamers[streamerID]; ok {

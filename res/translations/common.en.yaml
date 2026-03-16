@@ -280,13 +280,25 @@ syntax_feedback:
 syntax_add:
   parse: html
   str: |-
-    Enter
-
-    /add <code>CAMNAME</code>
-
-    Example
-
-    {{ template "add_example" }}
+    Specify a model, e.g., <code>{{ template "add_example" }}</code>
+search_button:
+  parse: raw
+  str: Or Find and Add
+search_header:
+  parse: raw
+  str: Find and add a model
+search_placeholder:
+  parse: raw
+  str: Search...
+search_no_results:
+  parse: raw
+  str: No results
+search_failed:
+  parse: raw
+  str: Search failed
+search_failed_to_add:
+  parse: raw
+  str: Failed to add
 syntax_remove:
   parse: html
   str: |-

@@ -95,6 +95,12 @@ type Translations struct {
 	TooManySubscriptionsForPics *Translation `yaml:"too_many_subscriptions_for_pics"`
 	WeAreUp                     *Translation `yaml:"we_are_up"`
 	FieldsCustomizationHint     *Translation `yaml:"fields_customization_hint"`
+	SearchButton                *Translation `yaml:"search_button"`
+	SearchHeader                *Translation `yaml:"search_header"`
+	SearchPlaceholder           *Translation `yaml:"search_placeholder"`
+	SearchNoResults             *Translation `yaml:"search_no_results"`
+	SearchFailed                *Translation `yaml:"search_failed"`
+	SearchFailedToAdd           *Translation `yaml:"search_failed_to_add"`
 }
 
 // LoadEndpointTranslations loads translations for a specific endpoint

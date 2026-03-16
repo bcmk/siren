@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/bcmk/siren/v2/lib/cmdlib"
 	"github.com/jackc/pgx/v5"
@@ -390,6 +391,223 @@ func (d *Database) KnownStreamers() map[string]bool {
 		nil,
 		ScanTo{&streamerID},
 		func() { streamers[streamerID] = true })
+	return streamers
+}
+
+// SearchStreamers returns streamer IDs matching a search term.
+// Uses a temp table with multiple search strategies:
+// exact match, LIKE infix (GIN), word similarity
+// (%>, forced GIN bitmap), and functional index legs
+// for patterns with long non-alnum or repeated char runs.
+// Results are deduplicated and sorted by trigram distance.
+func (d *Database) SearchStreamers(term string) []string {
+	done := d.Measure("db: search streamers")
+	defer done()
+
+	escaped := strings.NewReplacer(
+		`\`, `\\`, `%`, `\%`, `_`, `\_`,
+	).Replace(term)
+
+	alnumCount := 0
+	maxAlnumRun := 0
+	alnumRun := 0
+	maxRepeatedAlnumRun := 0
+	repeatedAlnumRun := 0
+	maxNonalnumRun := 0
+	nonalnumRun := 0
+	var prev byte
+	for i := 0; i < len(term); i++ {
+		c := term[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= '0' && c <= '9':
+			alnumCount++
+			alnumRun++
+			if alnumRun > maxAlnumRun {
+				maxAlnumRun = alnumRun
+			}
+			nonalnumRun = 0
+		case c == '_', c == '-', c == '@':
+			alnumRun = 0
+			nonalnumRun++
+			if nonalnumRun > maxNonalnumRun {
+				maxNonalnumRun = nonalnumRun
+			}
+		default:
+			return nil
+		}
+		isAlnum := (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+		if c == prev && isAlnum {
+			repeatedAlnumRun++
+		} else if isAlnum {
+			repeatedAlnumRun = 1
+		} else {
+			repeatedAlnumRun = 0
+		}
+		if repeatedAlnumRun > maxRepeatedAlnumRun {
+			maxRepeatedAlnumRun = repeatedAlnumRun
+		}
+		prev = c
+	}
+
+	tx, err := d.Begin()
+	checkErr(err)
+	defer func() { _ = tx.Rollback(context.Background()) }()
+
+	// Exact match via pkey — guarantees the exact streamer
+	// appears in results even if other legs miss it
+	_, err = tx.Exec(context.Background(),
+		`
+			create temp table _search_results on commit drop as
+			select streamer_id from streamers
+			where streamer_id = $1
+		`,
+		pgx.QueryExecModeExec, term)
+	checkErr(err)
+
+	// GIN LIKE infix — substring search via GIN trigram index.
+	// Needs longest alnum run >= 3 for selective trigrams —
+	// shorter inputs produce only space-padded trigrams
+	// ("  a", " aa", "aa ") that match over half the table
+	// (1.8M/3.3M), producing a huge bitmap of candidate
+	// rows that GIN must scan (8s vs 8ms).
+	// Long repeated-char runs are handled by the
+	// repeated-alnum-runs and nonalnum-runs legs instead.
+	// Forcing GIN bitmap prevents the planner from picking
+	// a slow btree index-only scan.
+	if maxAlnumRun >= 3 && maxRepeatedAlnumRun < 5 {
+		_, err = tx.Exec(context.Background(),
+			`
+				set local enable_seqscan = off;
+				set local enable_indexscan = off;
+				set local enable_indexonlyscan = off;
+				set local enable_bitmapscan = on;
+				insert into _search_results
+				select streamer_id from streamers
+				where streamer_id like '%' || $1 || '%'
+				limit 100
+			`,
+			pgx.QueryExecModeSimpleProtocol, escaped)
+		checkErr(err)
+	}
+
+	// Word similarity via forced GIN bitmap —
+	// finds fuzzy matches (typos, partial names).
+	// Planner settings force GIN bitmap scan because
+	// the default planner picks pkey over GIN for %>.
+	// Needs 2+ alnum chars and 4+ total chars for
+	// meaningful similarity scores — single alnum chars
+	// produce non-selective trigrams.
+	if alnumCount >= 2 && len(term) >= 4 {
+		_, err = tx.Exec(context.Background(),
+			`
+				set local enable_seqscan = off;
+				set local enable_indexscan = off;
+				set local enable_indexonlyscan = off;
+				set local enable_bitmapscan = on;
+				set local pg_trgm.word_similarity_threshold = 0.5;
+				insert into _search_results
+				select streamer_id from streamers
+				where streamer_id %> $1
+				limit 100
+			`,
+			pgx.QueryExecModeSimpleProtocol, term)
+		checkErr(err)
+	}
+
+	// Repeated-alnum-runs leg — substring search for patterns
+	// with long repeated alnum runs (aaaaa, eeeeee).
+	// This is a fallback because GIN doesn't count
+	// occurrences of the same trigram, so GIN suggests
+	// every row with the "aaa" trigram, but most don't
+	// contain "aaaaaa".
+	// The planner can still narrow results using BitmapAnd
+	// with the GIN trigram index very effectively,
+	// since alnum patterns have useful trigrams.
+	if maxRepeatedAlnumRun >= 5 {
+		_, err = tx.Exec(context.Background(),
+			`
+				set local enable_seqscan = off;
+				set local enable_indexscan = off;
+				set local enable_indexonlyscan = off;
+				set local enable_bitmapscan = on;
+				insert into _search_results
+				select streamer_id from streamers
+				where max_repeated_alnum_run(streamer_id) >= $1
+				and streamer_id like '%' || $2 || '%'
+				limit 100
+			`,
+			pgx.QueryExecModeSimpleProtocol,
+			maxRepeatedAlnumRun, escaped)
+		checkErr(err)
+	}
+
+	// Nonalnum-runs leg — substring search for patterns
+	// with nonalnum runs (___, _____, __________).
+	// Partial covering index on max_nonalnum_run enables
+	// index-only scan without heap access.
+	// Disabling bitmap scan prevents GIN from being used.
+	if maxNonalnumRun >= 3 {
+		_, err = tx.Exec(context.Background(),
+			`
+				set local enable_seqscan = off;
+				set local enable_indexscan = off;
+				set local enable_indexonlyscan = on;
+				set local enable_bitmapscan = off;
+				insert into _search_results
+				select streamer_id from streamers
+				where max_nonalnum_run(streamer_id) >= $1
+				and streamer_id like '%' || $2 || '%'
+				limit 100
+			`,
+			pgx.QueryExecModeSimpleProtocol,
+			maxNonalnumRun, escaped)
+		checkErr(err)
+	}
+
+	// Prefix match via btree text_pattern_ops —
+	// fallback for patterns with short alnum runs
+	// (aa, ab, b__, _a_, __) where GIN trigrams are too
+	// non-selective for infix and the functional index
+	// isn't applicable (short runs).
+	if maxAlnumRun < 3 && maxNonalnumRun < 3 {
+		_, err = tx.Exec(context.Background(),
+			`
+				set local enable_seqscan = off;
+				set local enable_indexscan = off;
+				set local enable_indexonlyscan = on;
+				set local enable_bitmapscan = off;
+				insert into _search_results
+				select streamer_id from streamers
+				where streamer_id like $1 || '%'
+				limit 100
+			`,
+			pgx.QueryExecModeSimpleProtocol, escaped)
+		checkErr(err)
+	}
+
+	// Results are deduplicated and sorted by trigram distance.
+	// No planner reset needed — _search_results has no indexes.
+	rows, err := tx.Query(context.Background(),
+		`
+			select streamer_id from (
+				select distinct streamer_id from _search_results
+			) sub
+			order by streamer_id <-> $1
+			limit 7
+		`,
+		pgx.QueryExecModeExec, term)
+	checkErr(err)
+	defer rows.Close()
+
+	var streamers []string
+	for rows.Next() {
+		var streamerID string
+		checkErr(rows.Scan(&streamerID))
+		streamers = append(streamers, streamerID)
+	}
+	checkErr(rows.Err())
+
+	checkErr(tx.Commit(context.Background()))
 	return streamers
 }
 

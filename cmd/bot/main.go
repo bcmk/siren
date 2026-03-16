@@ -4,14 +4,19 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
+	htmltemplate "html/template"
 	"image"
 	"math/rand"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path"
@@ -22,7 +27,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"text/template"
+	texttemplate "text/template"
 	"time"
 
 	_ "image/gif"
@@ -59,13 +64,14 @@ type timeDiff struct {
 
 type worker struct {
 	db                         db.Database
+	fuzzySearchDB              db.Database
 	clients                    []*cmdlib.Client
 	bots                       map[string]*bot.Bot
 	cfg                        *botconfig.Config
 	tr                         map[string]*cmdlib.Translations
-	tpl                        map[string]*template.Template
+	tpl                        map[string]*texttemplate.Template
 	trAds                      map[string]map[string]*cmdlib.Translation
-	tplAds                     map[string]*template.Template
+	tplAds                     map[string]*texttemplate.Template
 	streamerIDPreprocessing    func(string) string
 	checker                    cmdlib.Checker
 	imageDownloadLogs          chan imageDownloadLog
@@ -80,7 +86,24 @@ type worker struct {
 	sentNotifications          chan []db.Notification
 	ourIDs                     []int64
 	streamerIDRegexp           *regexp.Regexp
+	searchHTML                 *htmltemplate.Template
+	searchRequests             chan searchRequest
+	addRequests                chan addRequest
 	incomingPackets            chan incomingPacket
+}
+
+type searchRequest struct {
+	endpoint string
+	userID   int64
+	term     string
+	resultCh chan []string
+}
+
+type addRequest struct {
+	endpoint   string
+	chatID     int64
+	streamerID string
+	doneCh     chan struct{}
 }
 
 type incomingPacket struct {
@@ -158,11 +181,12 @@ func newWorker(cfg *botconfig.Config) *worker {
 	tr, tpl := cmdlib.LoadAllTranslations(trsByEndpoint(cfg))
 	trAds, tplAds := cmdlib.LoadAllAds(trsAdsByEndpoint(cfg))
 	for _, t := range tpl {
-		template.Must(t.New("affiliate_link").Parse(cfg.AffiliateLink))
+		texttemplate.Must(t.New("affiliate_link").Parse(cfg.AffiliateLink))
 	}
 	w := &worker{
 		bots:                       bots,
 		db:                         db.NewDatabase(string(cfg.DBConnectionString), cfg.CheckGID),
+		fuzzySearchDB:              db.NewDatabase(string(cfg.DBConnectionString), false),
 		cfg:                        cfg,
 		clients:                    clients,
 		tr:                         tr,
@@ -180,6 +204,8 @@ func newWorker(cfg *botconfig.Config) *worker {
 		sendingNotifications:       make(chan []db.Notification, 1000),
 		sentNotifications:          make(chan []db.Notification),
 		ourIDs:                     getOurIDs(cfg),
+		searchRequests:             make(chan searchRequest),
+		addRequests:                make(chan addRequest),
 		incomingPackets:            incomingPackets,
 	}
 	for endpoint, a := range tr {
@@ -237,6 +263,11 @@ func newWorker(cfg *botconfig.Config) *worker {
 	default:
 		panic("wrong website")
 	}
+
+	searchHTMLBytes, err := os.ReadFile("res/webapp/search.html")
+	checkErr(err)
+	w.searchHTML, err = htmltemplate.New("search").Parse(string(searchHTMLBytes))
+	checkErr(err)
 
 	return w
 }
@@ -506,7 +537,7 @@ func (w *worker) sendMessageInternal(endpoint string, msg sendable) int {
 	return messageSent
 }
 
-func templateToString(t *template.Template, key string, data map[string]interface{}) string {
+func templateToString(t *texttemplate.Template, key string, data map[string]interface{}) string {
 	buf := &bytes.Buffer{}
 	err := t.ExecuteTemplate(buf, key, data)
 	checkErr(err)
@@ -560,9 +591,10 @@ func (w *worker) sendTrImage(
 }
 
 func (w *worker) createDatabase(done chan bool) {
-	linf("creating database if needed...")
+	linf("ensuring database created...")
 	for _, prelude := range w.cfg.SQLPrelude {
 		w.db.MustExec(prelude)
+		w.fuzzySearchDB.MustExec(prelude)
 	}
 	w.db.ApplyMigrations()
 	done <- true
@@ -713,7 +745,33 @@ func (w *worker) showWeek(endpoint string, chatID int64, streamerID string) {
 
 func (w *worker) addStreamer(endpoint string, chatID int64, streamerID string, now int) bool {
 	if streamerID == "" {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].SyntaxAdd, nil, db.ReplyPacket)
+		tr := w.tr[endpoint].SyntaxAdd
+		text := templateToString(w.tpl[endpoint], tr.Key, nil)
+		params := &bot.SendMessageParams{
+			ChatID: chatID,
+			Text:   text,
+		}
+		if chatID > 0 && !w.checker.UsesFixedList() {
+			params.ReplyMarkup = &models.InlineKeyboardMarkup{
+				InlineKeyboard: [][]models.InlineKeyboardButton{{
+					{
+						Text:   w.tr[endpoint].SearchButton.Str,
+						WebApp: &models.WebAppInfo{URL: w.webAppURL(endpoint)},
+					},
+				}},
+			}
+		}
+		if tr.DisablePreview {
+			disabled := true
+			params.LinkPreviewOptions = &models.LinkPreviewOptions{IsDisabled: &disabled}
+		}
+		switch tr.Parse {
+		case cmdlib.ParseHTML:
+			params.ParseMode = models.ParseModeHTML
+		case cmdlib.ParseMarkdown:
+			params.ParseMode = models.ParseModeMarkdown
+		}
+		w.enqueueMessage(w.highPriorityMsg, endpoint, &messageParams{params}, db.ReplyPacket)
 		return false
 	}
 	streamerID = w.streamerIDPreprocessing(streamerID)
@@ -1155,11 +1213,180 @@ func (w *worker) blacklist(endpoint string, arguments string) {
 	w.sendText(w.highPriorityMsg, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
 }
 
+func (w *worker) webAppURL(endpoint string) string {
+	return "https://" + w.cfg.Endpoints[endpoint].WebhookDomain +
+		"/apps/add?endpoint=" + endpoint
+}
+
+func (w *worker) parseInitData(initData string, botToken string) (url.Values, bool) {
+	values, err := url.ParseQuery(initData)
+	if err != nil {
+		lerr("search auth: cannot parse init data: %v", err)
+		return nil, false
+	}
+	hash := values.Get("hash")
+	if hash == "" {
+		lerr("search auth: empty hash, initData length: %d", len(initData))
+		return nil, false
+	}
+	values.Del("hash")
+	authDateStr := values.Get("auth_date")
+	authDate, err := strconv.ParseInt(authDateStr, 10, 64)
+	if err != nil {
+		lerr("search auth: cannot parse auth_date: %v", err)
+		return nil, false
+	}
+	if time.Now().Unix()-authDate > 3600 {
+		lerr("search auth: auth_date too old: %d", authDate)
+		return nil, false
+	}
+	var keys []string
+	for k := range values {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var parts []string
+	for _, k := range keys {
+		parts = append(parts, k+"="+values.Get(k))
+	}
+	dataCheckString := strings.Join(parts, "\n")
+	secretKey := hmac.New(sha256.New, []byte("WebAppData"))
+	secretKey.Write([]byte(botToken))
+	h := hmac.New(sha256.New, secretKey.Sum(nil))
+	h.Write([]byte(dataCheckString))
+	hashBytes, err := hex.DecodeString(hash)
+	if err != nil || !hmac.Equal(h.Sum(nil), hashBytes) {
+		lerr("search auth: hash mismatch, keys: %v", keys)
+		return nil, false
+	}
+	return values, true
+}
+
+func (w *worker) handleWebApp(rw http.ResponseWriter, r *http.Request) {
+	endpoint := r.URL.Query().Get("endpoint")
+	if _, ok := w.cfg.Endpoints[endpoint]; !ok {
+		http.Error(rw, "bad endpoint", http.StatusBadRequest)
+		return
+	}
+	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
+	tr := w.tr[endpoint]
+	data := struct {
+		Header      string
+		Placeholder string
+		NoResults   string
+		Failed      string
+		FailedToAdd string
+	}{
+		Header:      tr.SearchHeader.Str,
+		Placeholder: tr.SearchPlaceholder.Str,
+		NoResults:   tr.SearchNoResults.Str,
+		Failed:      tr.SearchFailed.Str,
+		FailedToAdd: tr.SearchFailedToAdd.Str,
+	}
+	err := w.searchHTML.Execute(rw, data)
+	if err != nil {
+		lerr("cannot write web app response, %v", err)
+	}
+}
+
+func (w *worker) handleSearch(rw http.ResponseWriter, r *http.Request) {
+	endpoint := r.URL.Query().Get("endpoint")
+	if _, ok := w.cfg.Endpoints[endpoint]; !ok {
+		lerr("search: bad endpoint %q", endpoint)
+		http.Error(rw, "bad endpoint", http.StatusBadRequest)
+		return
+	}
+	initData := r.Header.Get("X-Init-Data")
+	values, ok := w.parseInitData(initData, string(w.cfg.Endpoints[endpoint].BotToken))
+	if !ok {
+		lerr("search: invalid init data for endpoint %s", endpoint)
+		http.Error(rw, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	term := strings.TrimSpace(strings.ToLower(r.URL.Query().Get("term")))
+	var results []string
+	if len(term) >= 1 && len(term) <= 32 {
+		var userID int64
+		var user struct {
+			ID int64 `json:"id"`
+		}
+		if json.Unmarshal([]byte(values.Get("user")), &user) == nil {
+			userID = user.ID
+		}
+		req := searchRequest{
+			endpoint: endpoint,
+			userID:   userID,
+			term:     term,
+			resultCh: make(chan []string, 1),
+		}
+		w.searchRequests <- req
+		results = <-req.resultCh
+	}
+	if results == nil {
+		results = []string{}
+	}
+	rw.Header().Set("Content-Type", "application/json")
+	err := json.NewEncoder(rw).Encode(results)
+	if err != nil {
+		lerr("cannot write search response, %v", err)
+	}
+}
+
 func (w *worker) serveEndpoints() {
 	go func() {
 		err := http.ListenAndServe(w.cfg.ListenAddress, nil)
 		checkErr(err)
 	}()
+}
+
+func (w *worker) handleWebAppAdd(rw http.ResponseWriter, r *http.Request) {
+	endpoint := r.URL.Query().Get("endpoint")
+	if _, ok := w.cfg.Endpoints[endpoint]; !ok {
+		lerr("web app add: bad endpoint %q", endpoint)
+		http.Error(rw, "bad endpoint", http.StatusBadRequest)
+		return
+	}
+	initData := r.Header.Get("X-Init-Data")
+	values, ok := w.parseInitData(initData, string(w.cfg.Endpoints[endpoint].BotToken))
+	if !ok {
+		lerr("web app add: invalid init data for endpoint %s", endpoint)
+		http.Error(rw, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	streamerID := strings.TrimSpace(strings.ToLower(r.URL.Query().Get("streamer")))
+	if streamerID == "" {
+		http.Error(rw, "empty streamer", http.StatusBadRequest)
+		return
+	}
+	var user struct {
+		ID int64 `json:"id"`
+	}
+	if json.Unmarshal([]byte(values.Get("user")), &user) != nil || user.ID == 0 {
+		lerr("web app add: missing user id")
+		http.Error(rw, "missing user id", http.StatusBadRequest)
+		return
+	}
+	req := addRequest{
+		endpoint:   endpoint,
+		chatID:     user.ID,
+		streamerID: streamerID,
+		doneCh:     make(chan struct{}, 1),
+	}
+	w.addRequests <- req
+	<-req.doneCh
+	rw.WriteHeader(http.StatusOK)
+}
+
+func (w *worker) handleUnmatched(rw http.ResponseWriter, r *http.Request) {
+	linf("unhandled request: %s %s", r.Method, r.URL)
+	http.NotFound(rw, r)
+}
+
+func (w *worker) registerWebApp() {
+	http.HandleFunc("/", w.handleUnmatched)
+	http.HandleFunc("/apps/add", w.handleWebApp)
+	http.HandleFunc("/apps/add/api/search", w.handleSearch)
+	http.HandleFunc("/apps/add/api/submit", w.handleWebAppAdd)
 }
 
 func (w *worker) logConfig() {
@@ -1774,6 +2001,19 @@ func (w *worker) sendNotificationsDaemon() {
 	}
 }
 
+func (w *worker) fuzzySearchDaemon() {
+	for req := range w.searchRequests {
+		if req.userID != 0 {
+			now := int(time.Now().Unix())
+			command := "search"
+			w.fuzzySearchDB.LogReceivedMessage(
+				now, req.endpoint,
+				req.userID, &command)
+		}
+		req.resultCh <- w.fuzzySearchDB.SearchStreamers(req.term)
+	}
+}
+
 func (w *worker) queryUnconfirmedSubs() {
 	unconfirmed := map[string]bool{}
 	var streamerID string
@@ -1917,8 +2157,10 @@ func main() {
 	go w.sender(w.lowPriorityMsg, 1)
 	go w.maintenanceStartupReply(incoming, databaseDone)
 	go w.sendNotificationsDaemon()
+	go w.fuzzySearchDaemon()
 	w.sendText(w.highPriorityMsg, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, "bot started", db.MessagePacket)
 	w.createDatabase(databaseDone)
+	w.registerWebApp()
 	w.initCache()
 	w.db.ResetNotificationSending()
 	w.db.ResetCheckingToUnconfirmed()
@@ -1972,6 +2214,10 @@ func main() {
 			if w.cfg.Debug {
 				ldbg("status updates processed in %v", elapsed)
 			}
+		case req := <-w.addRequests:
+			now := int(time.Now().Unix())
+			w.addStreamer(req.endpoint, req.chatID, req.streamerID, now)
+			req.doneCh <- struct{}{}
 		case u := <-incoming:
 			if w.processTGUpdate(u) {
 				if !w.maintenance(signals, incoming) {

@@ -48,15 +48,7 @@ address_line:
 syntax_add:
   parse: html
   str: |-
-    Enter
-
-    /add <code>CAMNAME</code>
-
-    {{ template "address_line" }}
-
-    Example
-
-    {{ template "add_example" }}
+    Specify a model, e.g., <code>{{ template "add_example" }}</code>
 syntax_remove:
   parse: html
   str: |-

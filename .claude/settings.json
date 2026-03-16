@@ -23,6 +23,7 @@
       "Bash(go doc:*)",
       "Bash(go env:*)",
       "Bash(golangci-lint run:*)",
+      "Bash(git add:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(git show:*)",
@@ -35,7 +36,10 @@
       "Bash(find:*)",
       "Bash(printf:*)",
       "Bash(xxd:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(prettier:*)",
+      "Bash(psql:*)",
+      "Bash(cmd/schema-dump/schema-dump)"
     ]
   }
 }

@@ -280,13 +280,25 @@ syntax_feedback:
 syntax_add:
   parse: html
   str: |-
-    Наберите
-
-    /add <code>МОДЕЛЬ</code>
-
-    Пример
-
-    {{ template "add_example" }}
+    Укажите модель, например, <code>{{ template "add_example" }}</code>
+search_button:
+  parse: raw
+  str: Или найти и добавить
+search_header:
+  parse: raw
+  str: Найти и добавить модель
+search_placeholder:
+  parse: raw
+  str: Поиск...
+search_no_results:
+  parse: raw
+  str: Ничего не найдено
+search_failed:
+  parse: raw
+  str: Ошибка поиска
+search_failed_to_add:
+  parse: raw
+  str: Не удалось добавить
 syntax_remove:
   parse: html
   str: |-
