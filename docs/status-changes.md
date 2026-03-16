@@ -35,13 +35,20 @@ These fields are used to find who is online and calculate durations.
 Reliable combinations are (offline, online) and (online, offline).
 If either status is unknown, duration data is unreliable.
 
-We bulk insert into `status_changes`
-and update the denormalized fields in `streamers`.
+We upsert streamers first to obtain integer IDs,
+then bulk insert into `status_changes` with those IDs,
+updating the denormalized fields in the same transaction.
 
 ## Constraints
 
 Both `status_changes.status` and `streamers.confirmed_status` are constrained
 to (0, 1, 2) — unknown, offline, online.
+
+We do not use foreign key constraints.
+PostgreSQL enforces them via per-row trigger-based lookups,
+which adds overhead to every bulk insert into `status_changes`.
+Since all writes go through a single well-tested code path,
+application-level consistency is sufficient.
 
 ## Invariant: status_changes and streamers must be in sync
 

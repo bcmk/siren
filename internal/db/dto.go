@@ -72,6 +72,7 @@ type User struct {
 
 // Streamer represents a streamer
 type Streamer struct {
+	ID                       int
 	Nickname                 string
 	ConfirmedStatus          cmdlib.StatusKind
 	UnconfirmedStatus        cmdlib.StatusKind

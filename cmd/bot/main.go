@@ -72,7 +72,7 @@ type worker struct {
 	tpl                        map[string]*texttemplate.Template
 	trAds                      map[string]map[string]*cmdlib.Translation
 	tplAds                     map[string]*texttemplate.Template
-	nicknamePreprocessing    func(string) string
+	nicknamePreprocessing      func(string) string
 	checker                    cmdlib.Checker
 	imageDownloadLogs          chan imageDownloadLog
 	unconfirmedOnlineStreamers map[string]cmdlib.StreamerInfo
@@ -85,7 +85,7 @@ type worker struct {
 	sendingNotifications       chan []db.Notification
 	sentNotifications          chan []db.Notification
 	ourIDs                     []int64
-	nicknameRegexp           *regexp.Regexp
+	nicknameRegexp             *regexp.Regexp
 	searchHTML                 *htmltemplate.Template
 	searchRequests             chan searchRequest
 	addRequests                chan addRequest
@@ -100,10 +100,10 @@ type searchRequest struct {
 }
 
 type addRequest struct {
-	endpoint   string
-	chatID     int64
+	endpoint string
+	chatID   int64
 	nickname string
-	doneCh     chan struct{}
+	doneCh   chan struct{}
 }
 
 type incomingPacket struct {
@@ -732,13 +732,17 @@ func (w *worker) showWeek(endpoint string, chatID int64, nickname string) {
 		return
 	}
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].WeekRetrieving, nil, db.ReplyPacket)
-	hoursMap, start := w.weekForStreamers(streamers)
+	ids := make([]int, len(streamers))
+	for i, s := range streamers {
+		ids[i] = s.ID
+	}
+	hoursMap, start := w.weekForStreamers(ids)
 	var weeks []string
-	for _, streamer := range streamers {
+	for _, s := range streamers {
 		weeks = append(weeks, templateToString(w.tpl[endpoint], w.tr[endpoint].Week.Key, tplData{
-			"hours":    hoursMap[streamer],
+			"hours":    hoursMap[s.ID],
 			"weekday":  int(start.UTC().Weekday()),
-			"streamer": streamer,
+			"streamer": s.Nickname,
 		}))
 	}
 	for chunk := range slices.Chunk(weeks, 10) {
@@ -808,14 +812,14 @@ func (w *worker) addStreamer(endpoint string, chatID int64, nickname string, now
 	subscriptionsNumber++
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].StreamerAdded, tplData{"streamer": nickname}, db.ReplyPacket)
 	nots := []db.Notification{{
-		Endpoint:   endpoint,
-		ChatID:     chatID,
+		Endpoint: endpoint,
+		ChatID:   chatID,
 		Nickname: nickname,
-		Status:     confirmedStatus,
-		TimeDiff:   w.streamerDurationByNickname(nickname, now),
-		Social:     false,
-		Priority:   1,
-		Kind:       db.ReplyPacket}}
+		Status:   confirmedStatus,
+		TimeDiff: w.streamerDurationByNickname(nickname, now),
+		Social:   false,
+		Priority: 1,
+		Kind:     db.ReplyPacket}}
 	if subscriptionsNumber >= user.MaxSubs-w.cfg.HeavyUserRemainder {
 		w.subscriptionUsage(endpoint, chatID, true)
 	}
@@ -1062,16 +1066,16 @@ func (w *worker) listOnlineStreamers(endpoint string, chatID int64, now int) {
 	for _, s := range online {
 		info := w.unconfirmedOnlineStreamers[s.Nickname]
 		not := db.Notification{
-			Priority:   1,
-			Endpoint:   endpoint,
-			ChatID:     chatID,
+			Priority: 1,
+			Endpoint: endpoint,
+			ChatID:   chatID,
 			Nickname: s.Nickname,
-			Status:     cmdlib.StatusOnline,
-			ImageURL:   info.ImageURL,
-			Viewers:    info.Viewers,
-			ShowKind:   info.ShowKind,
-			TimeDiff:   w.streamerDuration(s, now),
-			Kind:       db.ReplyPacket,
+			Status:   cmdlib.StatusOnline,
+			ImageURL: info.ImageURL,
+			Viewers:  info.Viewers,
+			ShowKind: info.ShowKind,
+			TimeDiff: w.streamerDuration(s, now),
+			Kind:     db.ReplyPacket,
 		}
 		if user.ShowSubject {
 			not.Subject = info.Subject
@@ -1083,19 +1087,23 @@ func (w *worker) listOnlineStreamers(endpoint string, chatID int64, now int) {
 }
 
 func (w *worker) week(nickname string) ([]bool, time.Time) {
-	result, start := w.weekForStreamers([]string{nickname})
-	return result[nickname], start
+	streamer := w.db.MaybeStreamer(nickname)
+	if streamer == nil {
+		return nil, time.Time{}
+	}
+	result, start := w.weekForStreamers([]int{streamer.ID})
+	return result[streamer.ID], start
 }
 
-func (w *worker) weekForStreamers(nicknames []string) (map[string][]bool, time.Time) {
+func (w *worker) weekForStreamers(streamerIDs []int) (map[int][]bool, time.Time) {
 	now := time.Now()
 	nowTimestamp := int(now.Unix())
 	today := now.Truncate(24 * time.Hour)
 	start := today.Add(-6 * 24 * time.Hour)
 	weekTimestamp := int(start.Unix())
-	changesMap := w.db.ChangesFromToForStreamers(nicknames, weekTimestamp, nowTimestamp)
-	result := make(map[string][]bool)
-	for nickname, changes := range changesMap {
+	changesMap := w.db.ChangesFromToForStreamers(streamerIDs, weekTimestamp, nowTimestamp)
+	result := make(map[int][]bool)
+	for streamerID, changes := range changesMap {
 		hours := make([]bool, (nowTimestamp-weekTimestamp+3599)/3600)
 		for i, c := range changes[:len(changes)-1] {
 			if c.Status == cmdlib.StatusOnline {
@@ -1109,7 +1117,7 @@ func (w *worker) weekForStreamers(nicknames []string) (map[string][]bool, time.T
 				}
 			}
 		}
-		result[nickname] = hours
+		result[streamerID] = hours
 	}
 	return result, start
 }
@@ -1370,10 +1378,10 @@ func (w *worker) handleWebAppAdd(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req := addRequest{
-		endpoint:   endpoint,
-		chatID:     user.ID,
+		endpoint: endpoint,
+		chatID:   user.ID,
 		nickname: nickname,
-		doneCh:     make(chan struct{}, 1),
+		doneCh:   make(chan struct{}, 1),
 	}
 	w.addRequests <- req
 	<-req.doneCh
@@ -1705,7 +1713,7 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) (
 			if _, inResult := r.Streamers[nickname]; !inResult {
 				updates = append(updates, db.StatusChange{
 					Nickname: nickname,
-					Status:     cmdlib.StatusOffline,
+					Status:   cmdlib.StatusOffline,
 				})
 			}
 		}
@@ -1714,7 +1722,7 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) (
 			if _, wasOnline := w.unconfirmedOnlineStreamers[nickname]; !wasOnline {
 				updates = append(updates, db.StatusChange{
 					Nickname: nickname,
-					Status:     cmdlib.StatusOnline,
+					Status:   cmdlib.StatusOnline,
 				})
 			}
 		}
@@ -1727,7 +1735,7 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) (
 			if _, inResult := r.Streamers[nickname]; !inResult && r.RequestedStreamers[nickname] {
 				updates = append(updates, db.StatusChange{
 					Nickname: nickname,
-					Status:     cmdlib.StatusOffline,
+					Status:   cmdlib.StatusOffline,
 				})
 			}
 		}
@@ -1749,7 +1757,7 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) (
 				if status, exists := dbStatuses[nickname]; exists && status.Status != cmdlib.StatusOffline {
 					updates = append(updates, db.StatusChange{
 						Nickname: nickname,
-						Status:     cmdlib.StatusOffline,
+						Status:   cmdlib.StatusOffline,
 					})
 				}
 			}
@@ -1760,7 +1768,7 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) (
 			if _, inCache := w.unconfirmedOnlineStreamers[nickname]; !inCache {
 				updates = append(updates, db.StatusChange{
 					Nickname: nickname,
-					Status:     cmdlib.StatusOnline,
+					Status:   cmdlib.StatusOnline,
 				})
 			}
 		}
@@ -1773,7 +1781,7 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) (
 				delete(w.unconfirmedOnlineStreamers, nickname)
 				updates = append(updates, db.StatusChange{
 					Nickname: nickname,
-					Status:     cmdlib.StatusUnknown,
+					Status:   cmdlib.StatusUnknown,
 				})
 			}
 		}
@@ -1815,13 +1823,13 @@ func (w *worker) buildNotifications(
 		for i, user := range users {
 			if (w.cfg.OfflineNotifications && user.OfflineNotifications) || c.Status != cmdlib.StatusOffline {
 				n := db.Notification{
-					Endpoint:   endpoints[i],
-					ChatID:     user.ChatID,
+					Endpoint: endpoints[i],
+					ChatID:   user.ChatID,
 					Nickname: c.Nickname,
-					Status:     c.Status,
-					Social:     user.ChatID > 0,
-					Sound:      c.Status == cmdlib.StatusOnline,
-					Kind:       db.NotificationPacket}
+					Status:   c.Status,
+					Social:   user.ChatID > 0,
+					Sound:    c.Status == cmdlib.StatusOnline,
+					Kind:     db.NotificationPacket}
 				if user.ShowImages {
 					n.ImageURL = info.ImageURL
 				}
@@ -2050,13 +2058,13 @@ func (w *worker) processSubsConfirmations(res *cmdlib.ExistenceListResults) {
 					w.db.DenySub(sub)
 				}
 				n := db.Notification{
-					Endpoint:   sub.Endpoint,
-					ChatID:     sub.ChatID,
+					Endpoint: sub.Endpoint,
+					ChatID:   sub.ChatID,
 					Nickname: nickname,
-					Status:     info.Status,
-					Social:     false,
-					Priority:   1,
-					Kind:       db.ReplyPacket,
+					Status:   info.Status,
+					Social:   false,
+					Priority: 1,
+					Kind:     db.ReplyPacket,
 				}
 				nots = append(nots, n)
 			}

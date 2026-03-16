@@ -78,14 +78,14 @@ func newTestWorker() *testWorker {
 
 	w := &testWorker{
 		worker: worker{
-			bots:                    nil,
-			db:                      db.NewDatabase(connStr, true),
-			cfg:                     &testConfig,
-			clients:                 nil,
-			tr:                      map[string]*cmdlib.Translations{"test": &testTranslations},
-			tpl:                     map[string]*template.Template{"test": tpl},
-			lowPriorityMsg:          make(chan outgoingPacket, 10000),
-			highPriorityMsg:         make(chan outgoingPacket, 10000),
+			bots:                  nil,
+			db:                    db.NewDatabase(connStr, true),
+			cfg:                   &testConfig,
+			clients:               nil,
+			tr:                    map[string]*cmdlib.Translations{"test": &testTranslations},
+			tpl:                   map[string]*template.Template{"test": tpl},
+			lowPriorityMsg:        make(chan outgoingPacket, 10000),
+			highPriorityMsg:       make(chan outgoingPacket, 10000),
 			nicknamePreprocessing: cmdlib.CanonicalNicknamePreprocessing,
 			nicknameRegexp:        cmdlib.CommonNicknameRegexp,
 		},
@@ -95,6 +95,37 @@ func newTestWorker() *testWorker {
 		checkErr(pgContainer.Terminate(ctx))
 	}
 	return w
+}
+
+func confirmedStatusesForChat(d *db.Database, endpoint string, chatID int64) (statuses []db.Streamer) {
+	var iter db.Streamer
+	d.MustQuery(`
+		select streamers.nickname, streamers.confirmed_status
+		from streamers
+		join subscriptions on subscriptions.nickname = streamers.nickname
+		where subscriptions.chat_id = $1 and subscriptions.endpoint = $2
+		order by streamers.nickname`,
+		db.QueryParams{chatID, endpoint},
+		db.ScanTo{&iter.Nickname, &iter.ConfirmedStatus},
+		func() { statuses = append(statuses, iter) })
+	return
+}
+
+func queryLastStatusChanges(d *db.Database) map[string]db.StatusChange {
+	statusChanges := map[string]db.StatusChange{}
+	var statusChange db.StatusChange
+	d.MustQuery(
+		`
+			select distinct on (sc.streamer_id)
+				s.nickname, sc.status, sc.timestamp
+			from status_changes sc
+			join streamers s on s.id = sc.streamer_id
+			order by sc.streamer_id, sc.timestamp desc
+		`,
+		nil,
+		db.ScanTo{&statusChange.Nickname, &statusChange.Status, &statusChange.Timestamp},
+		func() { statusChanges[statusChange.Nickname] = statusChange })
+	return statusChanges
 }
 
 func (w *testWorker) chatsForStreamer(nickname string) (chats []int64, endpoints []string) {

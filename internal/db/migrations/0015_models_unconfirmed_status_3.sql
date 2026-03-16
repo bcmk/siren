@@ -4,12 +4,12 @@ alter table models rename constraint chk_models_status to chk_models_confirmed_s
 
 -- Add unconfirmed status columns to models (last two status changes)
 alter table models
-    add column unconfirmed_status integer not null default 0,
-    add column unconfirmed_timestamp integer not null default 0,
-    add column prev_unconfirmed_status integer not null default 0,
-    add column prev_unconfirmed_timestamp integer not null default 0,
-    add constraint chk_models_unconfirmed_status check (unconfirmed_status in (0, 1, 2)),
-    add constraint chk_models_prev_unconfirmed_status check (prev_unconfirmed_status in (0, 1, 2));
+add column unconfirmed_status integer not null default 0,
+add column unconfirmed_timestamp integer not null default 0,
+add column prev_unconfirmed_status integer not null default 0,
+add column prev_unconfirmed_timestamp integer not null default 0,
+add constraint chk_models_unconfirmed_status check (unconfirmed_status in (0, 1, 2)),
+add constraint chk_models_prev_unconfirmed_status check (prev_unconfirmed_status in (0, 1, 2));
 
 -- Populate from status_changes using window function
 update models m set

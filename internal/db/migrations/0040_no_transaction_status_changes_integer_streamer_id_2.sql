@@ -1,0 +1,4 @@
+create index ix_status_changes_timestamp_btree on status_changes (timestamp);
+cluster status_changes using ix_status_changes_timestamp_btree;
+drop index ix_status_changes_timestamp_btree;
+analyze status_changes;

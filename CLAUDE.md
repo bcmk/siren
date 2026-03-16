@@ -40,7 +40,7 @@
 ## Checks and Tests
 
 - Run `prettier --write` on markdown files after changes (no `npx`)
-- Run `go fmt ./...` after changes
+- Run `go fmt ./...` after changes and before committing
 - Run `golangci-lint run ./...` before committing
 - Run `go test ./...` to ensure changes work
 - Ask before modifying tests — explain what needs changing and why
@@ -90,9 +90,12 @@
 - Use `0001_no_transaction_name.sql` for statements like `vacuum` that cannot
   run inside a transaction
 - A `vacuum` statement must be alone in its own `no_transaction` file.
-- When a migration needs multiple files, use `_1`, `_2` naming suffixes.
+- When a migration needs multiple files, use `_1`, `_2` suffixes.
+  They must share the same base name
+  (differing only in number prefix, suffix, and `no_transaction`).
 - When renaming a table, also rename its primary key constraint.
   PostgreSQL auto-creates it as `tablename_pkey`.
+- Don't indent continuation lines in multi-line SQL statements
 
 ## Documentation
 

@@ -39,6 +39,7 @@
       "Bash(curl:*)",
       "Bash(prettier:*)",
       "Bash(psql:*)",
+      "Bash(rm:*)",
       "Bash(cmd/schema-dump/schema-dump)"
     ]
   }

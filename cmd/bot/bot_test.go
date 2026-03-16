@@ -120,7 +120,7 @@ func TestSql(t *testing.T) {
 	if w.db.MustInt("select block from block where chat_id = $1", 1) != 2 {
 		t.Error("unexpected block for streamer result", chatsForStreamer)
 	}
-	statuses := w.db.ConfirmedStatusesForChat("ep1", 3)
+	statuses := confirmedStatusesForChat(&w.db, "ep1", 3)
 	if !reflect.DeepEqual(statuses, []db.Streamer{
 		{Nickname: "c", ConfirmedStatus: cmdlib.StatusOnline},
 		{Nickname: "c2", ConfirmedStatus: cmdlib.StatusOnline}}) {
@@ -197,47 +197,32 @@ func TestUpdateNotifications(t *testing.T) {
 	checkInv(&w.worker, t)
 }
 
-func queryLastStatusChanges(d *db.Database) map[string]db.StatusChange {
-	statusChanges := map[string]db.StatusChange{}
-	var statusChange db.StatusChange
-	d.MustQuery(
-		`
-			select distinct on (nickname) nickname, status, timestamp
-			from status_changes
-			order by nickname, timestamp desc
-		`,
-		nil,
-		db.ScanTo{&statusChange.Nickname, &statusChange.Status, &statusChange.Timestamp},
-		func() { statusChanges[statusChange.Nickname] = statusChange })
-	return statusChanges
-}
-
 func TestNotificationsStorage(t *testing.T) {
 	timeDiff := 2
 	nots := []db.Notification{
 		{
-			Endpoint:   "endpoint_a",
-			ChatID:     1,
+			Endpoint: "endpoint_a",
+			ChatID:   1,
 			Nickname: "a",
-			Status:     cmdlib.StatusUnknown,
-			TimeDiff:   nil,
-			ImageURL:   "image_a",
-			Social:     false,
-			Priority:   1,
-			Sound:      false,
-			Kind:       db.NotificationPacket,
+			Status:   cmdlib.StatusUnknown,
+			TimeDiff: nil,
+			ImageURL: "image_a",
+			Social:   false,
+			Priority: 1,
+			Sound:    false,
+			Kind:     db.NotificationPacket,
 		},
 		{
-			Endpoint:   "endpoint_b",
-			ChatID:     2,
+			Endpoint: "endpoint_b",
+			ChatID:   2,
 			Nickname: "b",
-			Status:     cmdlib.StatusOffline,
-			TimeDiff:   &timeDiff,
-			ImageURL:   "image_b",
-			Social:     true,
-			Priority:   2,
-			Sound:      true,
-			Kind:       db.ReplyPacket,
+			Status:   cmdlib.StatusOffline,
+			TimeDiff: &timeDiff,
+			ImageURL: "image_b",
+			Social:   true,
+			Priority: 2,
+			Sound:    true,
+			Kind:     db.ReplyPacket,
 		},
 	}
 	w := newTestWorker()
@@ -257,14 +242,14 @@ func TestNotificationsStorage(t *testing.T) {
 	}
 	nots = []db.Notification{
 		{
-			Endpoint:   "endpoint_c",
-			ChatID:     3,
+			Endpoint: "endpoint_c",
+			ChatID:   3,
 			Nickname: "c",
-			Status:     cmdlib.StatusOnline,
-			TimeDiff:   nil,
-			ImageURL:   "image_c",
-			Social:     true,
-			Priority:   3,
+			Status:   cmdlib.StatusOnline,
+			TimeDiff: nil,
+			ImageURL: "image_c",
+			Social:   true,
+			Priority: 3,
 		},
 	}
 	w.db.StoreNotifications(nots)
@@ -300,6 +285,10 @@ func TestCopyFromAndBatchInTransaction(t *testing.T) {
 	// Test that CopyFrom and SendBatch are in the same transaction
 	// by making SendBatch fail and verifying CopyFrom data is rolled back
 
+	// Insert a streamer to get an integer ID for the CopyFrom test
+	w.db.MustExec("insert into streamers (nickname) values ($1)", "a")
+	streamerIntID := w.db.MustInt("select id from streamers where nickname = $1", "a")
+
 	tx, err := w.db.Begin()
 	if err != nil {
 		t.Fatal(err)
@@ -308,12 +297,12 @@ func TestCopyFromAndBatchInTransaction(t *testing.T) {
 
 	// CopyFrom should succeed
 	rows := [][]interface{}{
-		{"a", cmdlib.StatusOnline, 100},
+		{streamerIntID, cmdlib.StatusOnline, 100},
 	}
 	_, err = tx.CopyFrom(
 		context.Background(),
 		pgx.Identifier{"status_changes"},
-		[]string{"nickname", "status", "timestamp"},
+		[]string{"streamer_id", "status", "timestamp"},
 		pgx.CopyFromRows(rows),
 	)
 	if err != nil {
@@ -341,7 +330,10 @@ func TestCopyFromAndBatchInTransaction(t *testing.T) {
 
 	// Verify status_changes has NO data (CopyFrom was rolled back)
 	// Query using a new connection, not the failed transaction
-	count := w.db.MustInt("select count(*) from status_changes where nickname = 'a'")
+	count := w.db.MustInt(
+		"select count(*) from status_changes where streamer_id = $1",
+		streamerIntID,
+	)
 	if count != 0 {
 		t.Errorf("expected 0 status_changes after rollback, got %d", count)
 	}
@@ -475,12 +467,13 @@ func checkInv(w *worker, t *testing.T) {
 	a := map[string]db.StatusChange{}
 	var recStatus db.StatusChange
 	w.db.MustQuery(`
-		select nickname, status, timestamp
+		select s.nickname, sub.status, sub.timestamp
 		from (
-			select *, row_number() over (partition by nickname order by timestamp desc) as row
+			select *, row_number() over (partition by streamer_id order by timestamp desc) as row
 			from status_changes
-		)
-		where row = 1`,
+		) sub
+		join streamers s on s.id = sub.streamer_id
+		where sub.row = 1`,
 		nil,
 		db.ScanTo{&recStatus.Nickname, &recStatus.Status, &recStatus.Timestamp},
 		func() { a[recStatus.Nickname] = recStatus })
@@ -497,13 +490,14 @@ func checkInv(w *worker, t *testing.T) {
 	var sc db.StatusChange
 	var row int
 	w.db.MustQuery(`
-		select nickname, status, timestamp, row
+		select s.nickname, sub.status, sub.timestamp, sub.row
 		from (
-			select *, row_number() over (partition by nickname order by timestamp desc) as row
+			select *, row_number() over (partition by streamer_id order by timestamp desc) as row
 			from status_changes
-		)
-		where row <= 2
-		order by nickname, row`,
+		) sub
+		join streamers s on s.id = sub.streamer_id
+		where sub.row <= 2
+		order by s.id, sub.row`,
 		nil,
 		db.ScanTo{&sc.Nickname, &sc.Status, &sc.Timestamp, &row},
 		func() {
@@ -544,10 +538,11 @@ func checkInv(w *worker, t *testing.T) {
 		`
 		with periods as (
 			select
-				nickname,
-				status,
-				lead(status) over (partition by nickname order by timestamp) as next_status
-			from status_changes
+				s.nickname,
+				sc.status,
+				lead(sc.status) over (partition by sc.streamer_id order by sc.timestamp) as next_status
+			from status_changes sc
+			join streamers s on s.id = sc.streamer_id
 		)
 		select nickname, status
 		from periods
@@ -1106,7 +1101,10 @@ func TestUnknownStreamerFirstOfflineSaved(t *testing.T) {
 	}
 
 	// Verify status_change was recorded
-	count := w.db.MustInt("select count(*) from status_changes where nickname = $1", "unknown_model")
+	count := w.db.MustInt(
+		"select count(*) from status_changes where streamer_id = (select id from streamers where nickname = $1)",
+		"unknown_model",
+	)
 	if count != 1 {
 		t.Errorf("expected 1 status_change for first offline, got %d", count)
 	}
@@ -1129,7 +1127,10 @@ func TestUnknownStreamerFirstOfflineSaved(t *testing.T) {
 	}
 
 	// Still only 1 status_change
-	count = w.db.MustInt("select count(*) from status_changes where nickname = $1", "unknown_model")
+	count = w.db.MustInt(
+		"select count(*) from status_changes where streamer_id = (select id from streamers where nickname = $1)",
+		"unknown_model",
+	)
 	if count != 1 {
 		t.Errorf("expected still 1 status_change, got %d", count)
 	}
@@ -1259,15 +1260,18 @@ func TestStatusTransitions(t *testing.T) {
 				"always_unknown", cmdlib.StatusUnknown, 1,
 			)
 			w.db.MustExec(
-				"insert into status_changes (nickname, status, timestamp) values ($1, $2, $3)",
+				`insert into status_changes (streamer_id, status, timestamp)
+				values ((select id from streamers where nickname = $1), $2, $3)`,
 				"always_online", cmdlib.StatusOnline, 1,
 			)
 			w.db.MustExec(
-				"insert into status_changes (nickname, status, timestamp) values ($1, $2, $3)",
+				`insert into status_changes (streamer_id, status, timestamp)
+				values ((select id from streamers where nickname = $1), $2, $3)`,
 				"always_offline", cmdlib.StatusOffline, 1,
 			)
 			w.db.MustExec(
-				"insert into status_changes (nickname, status, timestamp) values ($1, $2, $3)",
+				`insert into status_changes (streamer_id, status, timestamp)
+				values ((select id from streamers where nickname = $1), $2, $3)`,
 				"always_unknown", cmdlib.StatusUnknown, 1,
 			)
 

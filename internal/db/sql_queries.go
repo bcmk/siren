@@ -126,28 +126,17 @@ func (d *Database) BroadcastChats(endpoint string) (chats []int64) {
 }
 
 // StreamersForChat returns streamers that particular chat is subscribed to
-func (d *Database) StreamersForChat(endpoint string, chatID int64) (streamers []string) {
-	var nickname string
-	d.MustQuery(
-		`select nickname from subscriptions where chat_id = $1 and endpoint = $2 order by nickname`,
-		QueryParams{chatID, endpoint},
-		ScanTo{&nickname},
-		func() { streamers = append(streamers, nickname) })
-	return
-}
-
-// ConfirmedStatusesForChat returns streamers that particular chat is subscribed to and their statuses
-func (d *Database) ConfirmedStatusesForChat(endpoint string, chatID int64) (statuses []Streamer) {
+func (d *Database) StreamersForChat(endpoint string, chatID int64) (streamers []Streamer) {
 	var iter Streamer
 	d.MustQuery(`
-		select streamers.nickname, streamers.confirmed_status
-		from streamers
-		join subscriptions on subscriptions.nickname = streamers.nickname
-		where subscriptions.chat_id = $1 and subscriptions.endpoint = $2
-		order by streamers.nickname`,
+		select s.id, sub.nickname
+		from subscriptions sub
+		join streamers s on s.nickname = sub.nickname
+		where sub.chat_id = $1 and sub.endpoint = $2
+		order by sub.nickname`,
 		QueryParams{chatID, endpoint},
-		ScanTo{&iter.Nickname, &iter.ConfirmedStatus},
-		func() { statuses = append(statuses, iter) })
+		ScanTo{&iter.ID, &iter.Nickname},
+		func() { streamers = append(streamers, iter) })
 	return
 }
 
@@ -240,6 +229,7 @@ func (d *Database) MaybeStreamer(nickname string) *Streamer {
 	var result Streamer
 	if d.MaybeRecord(
 		`select
+			id,
 			nickname,
 			confirmed_status,
 			unconfirmed_status,
@@ -250,6 +240,7 @@ func (d *Database) MaybeStreamer(nickname string) *Streamer {
 		where nickname = $1`,
 		QueryParams{nickname},
 		ScanTo{
+			&result.ID,
 			&result.Nickname,
 			&result.ConfirmedStatus,
 			&result.UnconfirmedStatus,
@@ -263,40 +254,42 @@ func (d *Database) MaybeStreamer(nickname string) *Streamer {
 }
 
 // ChangesFromToForStreamers returns all changes for multiple streamers in specified period
-func (d *Database) ChangesFromToForStreamers(nicknames []string, from int, to int) map[string][]StatusChange {
-	result := make(map[string][]StatusChange)
-	beforeRangeAdded := make(map[string]bool)
+func (d *Database) ChangesFromToForStreamers(streamerIDs []int, from int, to int) map[int][]StatusChange {
+	result := make(map[int][]StatusChange)
+	beforeRangeAdded := make(map[int]bool)
+	var streamerID int
 	var change StatusChange
 	var beforeRangeStatus *cmdlib.StatusKind
 	var beforeRangeTimestamp *int
 	d.MustQuery(`
-		select nickname, status, timestamp, before_range_status, before_range_timestamp
+		select
+			sub.streamer_id, sub.status, sub.timestamp,
+			sub.before_range_status, sub.before_range_timestamp
 		from (
 			select
-				*,
-				lag(status) over w as before_range_status,
-				lag(timestamp) over w as before_range_timestamp
-			from status_changes
-			where nickname = any($1)
-			window w as (partition by nickname order by timestamp)
+				sc.*,
+				lag(sc.status) over w as before_range_status,
+				lag(sc.timestamp) over w as before_range_timestamp
+			from status_changes sc
+			where sc.streamer_id = any($1)
+			window w as (partition by sc.streamer_id order by sc.timestamp)
 		) sub
-		where timestamp >= $2
-		order by nickname, timestamp`,
-		QueryParams{nicknames, from},
-		ScanTo{&change.Nickname, &change.Status, &change.Timestamp, &beforeRangeStatus, &beforeRangeTimestamp},
+		where sub.timestamp >= $2
+		order by sub.streamer_id, sub.timestamp`,
+		QueryParams{streamerIDs, from},
+		ScanTo{&streamerID, &change.Status, &change.Timestamp, &beforeRangeStatus, &beforeRangeTimestamp},
 		func() {
-			if !beforeRangeAdded[change.Nickname] && beforeRangeStatus != nil && beforeRangeTimestamp != nil {
-				result[change.Nickname] = append(result[change.Nickname], StatusChange{
-					Nickname: change.Nickname,
-					Status:     *beforeRangeStatus,
-					Timestamp:  *beforeRangeTimestamp,
+			if !beforeRangeAdded[streamerID] && beforeRangeStatus != nil && beforeRangeTimestamp != nil {
+				result[streamerID] = append(result[streamerID], StatusChange{
+					Status:    *beforeRangeStatus,
+					Timestamp: *beforeRangeTimestamp,
 				})
-				beforeRangeAdded[change.Nickname] = true
+				beforeRangeAdded[streamerID] = true
 			}
-			result[change.Nickname] = append(result[change.Nickname], change)
+			result[streamerID] = append(result[streamerID], change)
 		})
-	for _, nickname := range nicknames {
-		result[nickname] = append(result[nickname], StatusChange{Nickname: nickname, Timestamp: to})
+	for _, id := range streamerIDs {
+		result[id] = append(result[id], StatusChange{Timestamp: to})
 	}
 	return result
 }
@@ -643,7 +636,9 @@ func (d *Database) ResetBlock(endpoint string, chatID int64) {
 	d.MustExec("update block set block=0 where endpoint = $1 and chat_id = $2", endpoint, chatID)
 }
 
-// InsertStatusChanges inserts status changes using a bulk method
+// InsertStatusChanges inserts status changes using a bulk method.
+// Upserts streamers first to obtain integer IDs,
+// then bulk inserts into status_changes with those IDs.
 func (d *Database) InsertStatusChanges(changedStatuses []StatusChange, timestamp int) {
 	statusDone := d.Measure("db: insert unconfirmed status updates")
 	defer statusDone()
@@ -656,36 +651,50 @@ func (d *Database) InsertStatusChanges(changedStatuses []StatusChange, timestamp
 	checkErr(err)
 	defer func() { _ = tx.Rollback(context.Background()) }()
 
-	// Use CopyFrom for fast bulk insert into status_changes
-	rows := make([][]interface{}, len(changedStatuses))
+	// Upsert streamers and get integer IDs
+	nicknames := make([]string, len(changedStatuses))
+	statuses := make([]int, len(changedStatuses))
 	for i, sc := range changedStatuses {
-		rows[i] = []interface{}{sc.Nickname, sc.Status, timestamp}
+		nicknames[i] = sc.Nickname
+		statuses[i] = int(sc.Status)
+	}
+	rows, err := tx.Query(
+		context.Background(),
+		`
+			insert into streamers (nickname, unconfirmed_status, unconfirmed_timestamp)
+			select unnest($1::text[]), unnest($2::int[]), $3
+			on conflict(nickname) do update set
+				prev_unconfirmed_status = streamers.unconfirmed_status,
+				prev_unconfirmed_timestamp = streamers.unconfirmed_timestamp,
+				unconfirmed_status = excluded.unconfirmed_status,
+				unconfirmed_timestamp = excluded.unconfirmed_timestamp
+			returning id, nickname
+		`,
+		nicknames, statuses, timestamp,
+	)
+	checkErr(err)
+	idMap := make(map[string]int, len(changedStatuses))
+	for rows.Next() {
+		var id int
+		var nickname string
+		checkErr(rows.Scan(&id, &nickname))
+		idMap[nickname] = id
+	}
+	checkErr(rows.Err())
+	rows.Close()
+
+	// Use CopyFrom for fast bulk insert into status_changes
+	copyRows := make([][]interface{}, len(changedStatuses))
+	for i, sc := range changedStatuses {
+		copyRows[i] = []interface{}{idMap[sc.Nickname], sc.Status, timestamp}
 	}
 	_, err = tx.CopyFrom(
 		context.Background(),
 		pgx.Identifier{"status_changes"},
-		[]string{"nickname", "status", "timestamp"},
-		pgx.CopyFromRows(rows),
+		[]string{"streamer_id", "status", "timestamp"},
+		pgx.CopyFromRows(copyRows),
 	)
 	checkErr(err)
-
-	// Use batch for streamers upserts within the same transaction
-	batch := &pgx.Batch{}
-	for _, sc := range changedStatuses {
-		batch.Queue(
-			`
-				insert into streamers (nickname, unconfirmed_status, unconfirmed_timestamp)
-				values ($1, $2, $3)
-				on conflict(nickname) do update set
-					prev_unconfirmed_status = streamers.unconfirmed_status,
-					prev_unconfirmed_timestamp = streamers.unconfirmed_timestamp,
-					unconfirmed_status = excluded.unconfirmed_status,
-					unconfirmed_timestamp = excluded.unconfirmed_timestamp
-			`,
-			sc.Nickname, sc.Status, timestamp)
-	}
-	br := tx.SendBatch(context.Background(), batch)
-	checkErr(br.Close())
 
 	checkErr(tx.Commit(context.Background()))
 }
@@ -873,7 +882,7 @@ func (d *Database) ConfirmStatusChanges(
 	onlineSeconds int,
 	offlineSeconds int,
 ) []ConfirmedStatusChange {
-	// PostgreSQL uses ix_streamers_nickname_status_mismatch partial index
+	// PostgreSQL uses ix_streamers_status_mismatch partial index
 	// for select but not for update — we use a temp table to work around this.
 	done := d.Measure("db: confirm status changes")
 	defer done()
@@ -886,7 +895,7 @@ func (d *Database) ConfirmStatusChanges(
 		context.Background(),
 		`
 			create temp table to_confirm on commit drop as
-			select nickname, unconfirmed_status, confirmed_status
+			select id, nickname, unconfirmed_status, confirmed_status
 			from streamers
 			where confirmed_status != unconfirmed_status
 			and (
@@ -904,7 +913,7 @@ func (d *Database) ConfirmStatusChanges(
 			update streamers c
 			set confirmed_status = tc.unconfirmed_status
 			from to_confirm tc
-			where c.nickname = tc.nickname
+			where c.id = tc.id
 		`)
 	checkErr(err)
 
