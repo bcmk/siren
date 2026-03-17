@@ -667,6 +667,9 @@ func (w *worker) ad(queue chan outgoingPacket, endpoint string, chatID int64) {
 }
 
 func (w *worker) notifyOfStatus(queue chan outgoingPacket, n db.Notification, image []byte, social bool) {
+	if w.tr[n.Endpoint] == nil {
+		return
+	}
 	if w.cfg.Debug {
 		ldbg("notifying of status of the streamer %s", n.StreamerID)
 	}
