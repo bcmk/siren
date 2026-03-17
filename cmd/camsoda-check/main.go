@@ -26,8 +26,8 @@ func main() {
 		return
 	}
 	modelID := flag.Arg(0)
-	modelID = cmdlib.CanonicalStreamerID(modelID)
-	if !cmdlib.CommonStreamerIDRegexp.MatchString(modelID) {
+	modelID = cmdlib.CanonicalNicknamePreprocessing(modelID)
+	if !cmdlib.CommonNicknameRegexp.MatchString(modelID) {
 		fmt.Println("invalid model ID")
 		return
 	}

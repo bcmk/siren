@@ -132,8 +132,8 @@ func (c *LiveJasminChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerIn
 		if c.Dbg {
 			cmdlib.Ldbg("got streamers for endpoint: %d", len(endpointStreamers))
 		}
-		for streamerID, info := range endpointStreamers {
-			streamers[streamerID] = info
+		for nickname, info := range endpointStreamers {
+			streamers[nickname] = info
 		}
 	}
 	return streamers, nil

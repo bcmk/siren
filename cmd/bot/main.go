@@ -72,7 +72,7 @@ type worker struct {
 	tpl                        map[string]*texttemplate.Template
 	trAds                      map[string]map[string]*cmdlib.Translation
 	tplAds                     map[string]*texttemplate.Template
-	streamerIDPreprocessing    func(string) string
+	nicknamePreprocessing    func(string) string
 	checker                    cmdlib.Checker
 	imageDownloadLogs          chan imageDownloadLog
 	unconfirmedOnlineStreamers map[string]cmdlib.StreamerInfo
@@ -85,7 +85,7 @@ type worker struct {
 	sendingNotifications       chan []db.Notification
 	sentNotifications          chan []db.Notification
 	ourIDs                     []int64
-	streamerIDRegexp           *regexp.Regexp
+	nicknameRegexp           *regexp.Regexp
 	searchHTML                 *htmltemplate.Template
 	searchRequests             chan searchRequest
 	addRequests                chan addRequest
@@ -102,7 +102,7 @@ type searchRequest struct {
 type addRequest struct {
 	endpoint   string
 	chatID     int64
-	streamerID string
+	nickname string
 	doneCh     chan struct{}
 }
 
@@ -222,44 +222,44 @@ func newWorker(cfg *botconfig.Config) *worker {
 	switch cfg.Website {
 	case "test":
 		w.checker = &checkers.RandomChecker{}
-		w.streamerIDPreprocessing = cmdlib.CanonicalStreamerID
-		w.streamerIDRegexp = cmdlib.CommonStreamerIDRegexp
+		w.nicknamePreprocessing = cmdlib.CanonicalNicknamePreprocessing
+		w.nicknameRegexp = cmdlib.CommonNicknameRegexp
 	case "bongacams":
 		w.checker = &checkers.BongaCamsChecker{}
-		w.streamerIDPreprocessing = cmdlib.CanonicalStreamerID
-		w.streamerIDRegexp = cmdlib.CommonStreamerIDRegexp
+		w.nicknamePreprocessing = cmdlib.CanonicalNicknamePreprocessing
+		w.nicknameRegexp = cmdlib.CommonNicknameRegexp
 	case "chaturbate":
 		w.checker = &checkers.ChaturbateChecker{}
-		w.streamerIDPreprocessing = checkers.ChaturbateCanonicalModelID
-		w.streamerIDRegexp = cmdlib.CommonStreamerIDRegexp
+		w.nicknamePreprocessing = checkers.ChaturbateCanonicalModelID
+		w.nicknameRegexp = cmdlib.CommonNicknameRegexp
 	case "stripchat":
 		w.checker = &checkers.StripchatChecker{}
-		w.streamerIDPreprocessing = cmdlib.CanonicalStreamerID
-		w.streamerIDRegexp = cmdlib.CommonStreamerIDRegexp
+		w.nicknamePreprocessing = cmdlib.CanonicalNicknamePreprocessing
+		w.nicknameRegexp = cmdlib.CommonNicknameRegexp
 	case "livejasmin":
 		w.checker = &checkers.LiveJasminChecker{}
-		w.streamerIDPreprocessing = cmdlib.CanonicalStreamerID
-		w.streamerIDRegexp = cmdlib.CommonStreamerIDRegexp
+		w.nicknamePreprocessing = cmdlib.CanonicalNicknamePreprocessing
+		w.nicknameRegexp = cmdlib.CommonNicknameRegexp
 	case "camsoda":
 		w.checker = &checkers.CamSodaChecker{}
-		w.streamerIDPreprocessing = cmdlib.CanonicalStreamerID
-		w.streamerIDRegexp = cmdlib.CommonStreamerIDRegexp
+		w.nicknamePreprocessing = cmdlib.CanonicalNicknamePreprocessing
+		w.nicknameRegexp = cmdlib.CommonNicknameRegexp
 	case "flirt4free":
 		w.checker = &checkers.Flirt4FreeChecker{}
-		w.streamerIDPreprocessing = checkers.Flirt4FreeCanonicalModelID
-		w.streamerIDRegexp = cmdlib.CommonStreamerIDRegexp
+		w.nicknamePreprocessing = checkers.Flirt4FreeCanonicalModelID
+		w.nicknameRegexp = cmdlib.CommonNicknameRegexp
 	case "streamate":
 		w.checker = &checkers.StreamateChecker{}
-		w.streamerIDPreprocessing = cmdlib.CanonicalStreamerID
-		w.streamerIDRegexp = cmdlib.CommonStreamerIDRegexp
+		w.nicknamePreprocessing = cmdlib.CanonicalNicknamePreprocessing
+		w.nicknameRegexp = cmdlib.CommonNicknameRegexp
 	case "twitch":
 		w.checker = &checkers.TwitchChecker{}
-		w.streamerIDPreprocessing = checkers.TwitchCanonicalChannelID
-		w.streamerIDRegexp = checkers.TwitchChannelIDRegexp
+		w.nicknamePreprocessing = checkers.TwitchCanonicalChannelID
+		w.nicknameRegexp = checkers.TwitchChannelIDRegexp
 	case "cam4":
 		w.checker = &checkers.Cam4Checker{}
-		w.streamerIDPreprocessing = checkers.Cam4CanonicalModelID
-		w.streamerIDRegexp = checkers.Cam4ModelIDRegexp
+		w.nicknamePreprocessing = checkers.Cam4CanonicalModelID
+		w.nicknameRegexp = checkers.Cam4ModelIDRegexp
 	default:
 		panic("wrong website")
 	}
@@ -603,8 +603,8 @@ func (w *worker) createDatabase(done chan bool) {
 func (w *worker) initCache() {
 	start := time.Now()
 	w.unconfirmedOnlineStreamers = map[string]cmdlib.StreamerInfo{}
-	for streamerID := range w.db.QueryLastOnlineStreamers() {
-		w.unconfirmedOnlineStreamers[streamerID] = cmdlib.StreamerInfo{}
+	for nickname := range w.db.QueryLastOnlineStreamers() {
+		w.unconfirmedOnlineStreamers[nickname] = cmdlib.StreamerInfo{}
 	}
 	elapsed := time.Since(start)
 	linf("cache initialized with %d online streamers in %d ms", len(w.unconfirmedOnlineStreamers), elapsed.Milliseconds())
@@ -612,7 +612,7 @@ func (w *worker) initCache() {
 
 func (w *worker) notifyOfAddResults(queue chan outgoingPacket, notifications []db.Notification) {
 	for _, n := range notifications {
-		data := tplData{"streamer": n.StreamerID}
+		data := tplData{"streamer": n.Nickname}
 		if n.Status&(cmdlib.StatusOnline|cmdlib.StatusOffline|cmdlib.StatusDenied) != 0 {
 			w.sendTr(queue, n.Endpoint, n.ChatID, false, w.tr[n.Endpoint].StreamerAdded, data, db.ReplyPacket)
 		} else {
@@ -671,7 +671,7 @@ func (w *worker) notifyOfStatus(queue chan outgoingPacket, n db.Notification, im
 		return
 	}
 	if w.cfg.Debug {
-		ldbg("notifying of status of the streamer %s", n.StreamerID)
+		ldbg("notifying of status of the streamer %s", n.Nickname)
 	}
 	var timeDiff *timeDiff
 	if n.TimeDiff != nil {
@@ -679,7 +679,7 @@ func (w *worker) notifyOfStatus(queue chan outgoingPacket, n db.Notification, im
 		timeDiff = &temp
 	}
 	data := tplData{
-		"streamer":  n.StreamerID,
+		"streamer":  n.Nickname,
 		"time_diff": timeDiff,
 		"viewers":   n.Viewers,
 		"show_kind": n.ShowKind,
@@ -711,18 +711,18 @@ func (w *worker) mustUser(chatID int64) (user db.User) {
 	return
 }
 
-func (w *worker) showWeek(endpoint string, chatID int64, streamerID string) {
-	if streamerID != "" {
-		streamerID = w.streamerIDPreprocessing(streamerID)
-		if !w.streamerIDRegexp.MatchString(streamerID) {
-			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"streamer": streamerID}, db.ReplyPacket)
+func (w *worker) showWeek(endpoint string, chatID int64, nickname string) {
+	if nickname != "" {
+		nickname = w.nicknamePreprocessing(nickname)
+		if !w.nicknameRegexp.MatchString(nickname) {
+			w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"streamer": nickname}, db.ReplyPacket)
 			return
 		}
-		hours, start := w.week(streamerID)
+		hours, start := w.week(nickname)
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].Week, tplData{
 			"hours":    hours,
 			"weekday":  int(start.UTC().Weekday()),
-			"streamer": streamerID,
+			"streamer": nickname,
 		}, db.ReplyPacket)
 		return
 	}
@@ -746,8 +746,8 @@ func (w *worker) showWeek(endpoint string, chatID int64, streamerID string) {
 	}
 }
 
-func (w *worker) addStreamer(endpoint string, chatID int64, streamerID string, now int) bool {
-	if streamerID == "" {
+func (w *worker) addStreamer(endpoint string, chatID int64, nickname string, now int) bool {
+	if nickname == "" {
 		tr := w.tr[endpoint].SyntaxAdd
 		text := templateToString(w.tpl[endpoint], tr.Key, nil)
 		params := &bot.SendMessageParams{
@@ -777,14 +777,14 @@ func (w *worker) addStreamer(endpoint string, chatID int64, streamerID string, n
 		w.enqueueMessage(w.highPriorityMsg, endpoint, &messageParams{params}, db.ReplyPacket)
 		return false
 	}
-	streamerID = w.streamerIDPreprocessing(streamerID)
-	if !w.streamerIDRegexp.MatchString(streamerID) {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"streamer": streamerID}, db.ReplyPacket)
+	nickname = w.nicknamePreprocessing(nickname)
+	if !w.nicknameRegexp.MatchString(nickname) {
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"streamer": nickname}, db.ReplyPacket)
 		return false
 	}
 
-	if w.db.SubscriptionExists(endpoint, chatID, streamerID) {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].AlreadyAdded, tplData{"streamer": streamerID}, db.ReplyPacket)
+	if w.db.SubscriptionExists(endpoint, chatID, nickname) {
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].AlreadyAdded, tplData{"streamer": nickname}, db.ReplyPacket)
 		return false
 	}
 	subscriptionsNumber := w.db.SubscriptionsNumber(endpoint, chatID)
@@ -794,9 +794,9 @@ func (w *worker) addStreamer(endpoint string, chatID int64, streamerID string, n
 		w.subscriptionUsage(endpoint, chatID, true)
 		return false
 	}
-	streamer := w.db.MaybeStreamer(streamerID)
+	streamer := w.db.MaybeStreamer(nickname)
 	if streamer == nil {
-		w.db.AddSubscription(chatID, streamerID, endpoint, 0)
+		w.db.AddSubscription(chatID, nickname, endpoint, 0)
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].CheckingStreamer, nil, db.ReplyPacket)
 		return false
 	}
@@ -804,15 +804,15 @@ func (w *worker) addStreamer(endpoint string, chatID int64, streamerID string, n
 	if confirmedStatus != cmdlib.StatusOnline {
 		confirmedStatus = cmdlib.StatusOffline
 	}
-	w.db.AddSubscription(chatID, streamerID, endpoint, 1)
+	w.db.AddSubscription(chatID, nickname, endpoint, 1)
 	subscriptionsNumber++
-	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].StreamerAdded, tplData{"streamer": streamerID}, db.ReplyPacket)
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].StreamerAdded, tplData{"streamer": nickname}, db.ReplyPacket)
 	nots := []db.Notification{{
 		Endpoint:   endpoint,
 		ChatID:     chatID,
-		StreamerID: streamerID,
+		Nickname: nickname,
 		Status:     confirmedStatus,
-		TimeDiff:   w.streamerDurationByID(streamerID, now),
+		TimeDiff:   w.streamerDurationByNickname(nickname, now),
 		Social:     false,
 		Priority:   1,
 		Kind:       db.ReplyPacket}}
@@ -877,22 +877,22 @@ func (w *worker) enableSilentMessages(endpoint string, chatID int64, silentMessa
 	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].OK, nil, db.ReplyPacket)
 }
 
-func (w *worker) removeStreamer(endpoint string, chatID int64, streamerID string) {
-	if streamerID == "" {
+func (w *worker) removeStreamer(endpoint string, chatID int64, nickname string) {
+	if nickname == "" {
 		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].SyntaxRemove, nil, db.ReplyPacket)
 		return
 	}
-	streamerID = w.streamerIDPreprocessing(streamerID)
-	if !w.streamerIDRegexp.MatchString(streamerID) {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"streamer": streamerID}, db.ReplyPacket)
+	nickname = w.nicknamePreprocessing(nickname)
+	if !w.nicknameRegexp.MatchString(nickname) {
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"streamer": nickname}, db.ReplyPacket)
 		return
 	}
-	if !w.db.SubscriptionExists(endpoint, chatID, streamerID) {
-		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].StreamerNotInList, tplData{"streamer": streamerID}, db.ReplyPacket)
+	if !w.db.SubscriptionExists(endpoint, chatID, nickname) {
+		w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].StreamerNotInList, tplData{"streamer": nickname}, db.ReplyPacket)
 		return
 	}
-	w.db.RemoveSubscription(chatID, streamerID, endpoint)
-	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].StreamerRemoved, tplData{"streamer": streamerID}, db.ReplyPacket)
+	w.db.RemoveSubscription(chatID, nickname, endpoint)
+	w.sendTr(w.highPriorityMsg, endpoint, chatID, false, w.tr[endpoint].StreamerRemoved, tplData{"streamer": nickname}, db.ReplyPacket)
 }
 
 func (w *worker) sureRemoveAll(endpoint string, chatID int64) {
@@ -962,7 +962,7 @@ func (w *worker) listStreamers(endpoint string, chatID int64, now int) {
 		var online, offline []data
 		for _, s := range chunk {
 			data := data{
-				Streamer: s.StreamerID,
+				Streamer: s.Nickname,
 				TimeDiff: w.streamerTimeDiff(s, now),
 			}
 			switch s.UnconfirmedStatus {
@@ -990,8 +990,8 @@ func (w *worker) streamerDuration(c db.Streamer, now int) *int {
 	return nil
 }
 
-func (w *worker) streamerDurationByID(streamerID string, now int) *int {
-	c := w.db.MaybeStreamer(streamerID)
+func (w *worker) streamerDurationByNickname(nickname string, now int) *int {
+	c := w.db.MaybeStreamer(nickname)
 	if c == nil {
 		return nil
 	}
@@ -1060,12 +1060,12 @@ func (w *worker) listOnlineStreamers(endpoint string, chatID int64, now int) {
 	user := w.mustUser(chatID)
 	var nots []db.Notification
 	for _, s := range online {
-		info := w.unconfirmedOnlineStreamers[s.StreamerID]
+		info := w.unconfirmedOnlineStreamers[s.Nickname]
 		not := db.Notification{
 			Priority:   1,
 			Endpoint:   endpoint,
 			ChatID:     chatID,
-			StreamerID: s.StreamerID,
+			Nickname: s.Nickname,
 			Status:     cmdlib.StatusOnline,
 			ImageURL:   info.ImageURL,
 			Viewers:    info.Viewers,
@@ -1082,20 +1082,20 @@ func (w *worker) listOnlineStreamers(endpoint string, chatID int64, now int) {
 	w.sendTr(w.lowPriorityMsg, endpoint, chatID, false, w.tr[endpoint].FieldsCustomizationHint, nil, db.ReplyPacket)
 }
 
-func (w *worker) week(streamerID string) ([]bool, time.Time) {
-	result, start := w.weekForStreamers([]string{streamerID})
-	return result[streamerID], start
+func (w *worker) week(nickname string) ([]bool, time.Time) {
+	result, start := w.weekForStreamers([]string{nickname})
+	return result[nickname], start
 }
 
-func (w *worker) weekForStreamers(streamerIDs []string) (map[string][]bool, time.Time) {
+func (w *worker) weekForStreamers(nicknames []string) (map[string][]bool, time.Time) {
 	now := time.Now()
 	nowTimestamp := int(now.Unix())
 	today := now.Truncate(24 * time.Hour)
 	start := today.Add(-6 * 24 * time.Hour)
 	weekTimestamp := int(start.Unix())
-	changesMap := w.db.ChangesFromToForStreamers(streamerIDs, weekTimestamp, nowTimestamp)
+	changesMap := w.db.ChangesFromToForStreamers(nicknames, weekTimestamp, nowTimestamp)
 	result := make(map[string][]bool)
-	for streamerID, changes := range changesMap {
+	for nickname, changes := range changesMap {
 		hours := make([]bool, (nowTimestamp-weekTimestamp+3599)/3600)
 		for i, c := range changes[:len(changes)-1] {
 			if c.Status == cmdlib.StatusOnline {
@@ -1109,7 +1109,7 @@ func (w *worker) weekForStreamers(streamerIDs []string) (map[string][]bool, time
 				}
 			}
 		}
-		result[streamerID] = hours
+		result[nickname] = hours
 	}
 	return result, start
 }
@@ -1356,8 +1356,8 @@ func (w *worker) handleWebAppAdd(rw http.ResponseWriter, r *http.Request) {
 		http.Error(rw, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	streamerID := strings.TrimSpace(strings.ToLower(r.URL.Query().Get("streamer")))
-	if streamerID == "" {
+	nickname := strings.TrimSpace(strings.ToLower(r.URL.Query().Get("streamer")))
+	if nickname == "" {
 		http.Error(rw, "empty streamer", http.StatusBadRequest)
 		return
 	}
@@ -1372,7 +1372,7 @@ func (w *worker) handleWebAppAdd(rw http.ResponseWriter, r *http.Request) {
 	req := addRequest{
 		endpoint:   endpoint,
 		chatID:     user.ID,
-		streamerID: streamerID,
+		nickname: nickname,
 		doneCh:     make(chan struct{}, 1),
 	}
 	w.addRequests <- req
@@ -1522,11 +1522,11 @@ func (w *worker) showReferral(endpoint string, chatID int64) {
 }
 
 func (w *worker) start(endpoint string, chatID int64, referrer string, now int, chatType string) {
-	streamerID := ""
+	nickname := ""
 	switch {
 	case strings.HasPrefix(referrer, "m-"):
-		streamerID = referrer[2:]
-		streamerID = w.streamerIDPreprocessing(streamerID)
+		nickname = referrer[2:]
+		nickname = w.nicknamePreprocessing(nickname)
 		referrer = ""
 	case referrer != "":
 		referralID := w.db.ReferralID(chatID)
@@ -1550,9 +1550,9 @@ func (w *worker) start(endpoint string, chatID int64, referrer string, now int, 
 		}
 	}
 	w.db.AddUser(chatID, w.cfg.MaxSubs, now, chatType)
-	if streamerID != "" {
-		if w.addStreamer(endpoint, chatID, streamerID, now) {
-			w.db.AddReferralEvent(now, nil, chatID, &streamerID)
+	if nickname != "" {
+		if w.addStreamer(endpoint, chatID, nickname, now) {
+			w.db.AddReferralEvent(now, nil, chatID, &nickname)
 		}
 	}
 }
@@ -1701,19 +1701,19 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) (
 	switch r := result.(type) {
 	case *cmdlib.OnlineListResults:
 		// Went offline: was online but not in result
-		for streamerID := range w.unconfirmedOnlineStreamers {
-			if _, inResult := r.Streamers[streamerID]; !inResult {
+		for nickname := range w.unconfirmedOnlineStreamers {
+			if _, inResult := r.Streamers[nickname]; !inResult {
 				updates = append(updates, db.StatusChange{
-					StreamerID: streamerID,
+					Nickname: nickname,
 					Status:     cmdlib.StatusOffline,
 				})
 			}
 		}
 		// Went online: in result but wasn't online
-		for streamerID := range r.Streamers {
-			if _, wasOnline := w.unconfirmedOnlineStreamers[streamerID]; !wasOnline {
+		for nickname := range r.Streamers {
+			if _, wasOnline := w.unconfirmedOnlineStreamers[nickname]; !wasOnline {
 				updates = append(updates, db.StatusChange{
-					StreamerID: streamerID,
+					Nickname: nickname,
 					Status:     cmdlib.StatusOnline,
 				})
 			}
@@ -1723,10 +1723,10 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) (
 	case *cmdlib.FixedListOnlineResults:
 		// Went offline: was online but not in result (and was requested)
 		var maybeFirstOffline []string
-		for streamerID := range w.unconfirmedOnlineStreamers {
-			if _, inResult := r.Streamers[streamerID]; !inResult && r.RequestedStreamers[streamerID] {
+		for nickname := range w.unconfirmedOnlineStreamers {
+			if _, inResult := r.Streamers[nickname]; !inResult && r.RequestedStreamers[nickname] {
 				updates = append(updates, db.StatusChange{
-					StreamerID: streamerID,
+					Nickname: nickname,
 					Status:     cmdlib.StatusOffline,
 				})
 			}
@@ -1734,21 +1734,21 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) (
 
 		// Collect streamers that might need first offline status:
 		// requested, not in result, and never seen online
-		for streamerID := range r.RequestedStreamers {
-			_, inResult := r.Streamers[streamerID]
-			_, inCache := w.unconfirmedOnlineStreamers[streamerID]
+		for nickname := range r.RequestedStreamers {
+			_, inResult := r.Streamers[nickname]
+			_, inCache := w.unconfirmedOnlineStreamers[nickname]
 			if !inResult && !inCache {
-				maybeFirstOffline = append(maybeFirstOffline, streamerID)
+				maybeFirstOffline = append(maybeFirstOffline, nickname)
 			}
 		}
 
 		// First offline: exists in DB but never online, set offline if not already
 		if len(maybeFirstOffline) > 0 {
 			dbStatuses := w.db.UnconfirmedStatusesForStreamers(maybeFirstOffline)
-			for _, streamerID := range maybeFirstOffline {
-				if status, exists := dbStatuses[streamerID]; exists && status.Status != cmdlib.StatusOffline {
+			for _, nickname := range maybeFirstOffline {
+				if status, exists := dbStatuses[nickname]; exists && status.Status != cmdlib.StatusOffline {
 					updates = append(updates, db.StatusChange{
-						StreamerID: streamerID,
+						Nickname: nickname,
 						Status:     cmdlib.StatusOffline,
 					})
 				}
@@ -1756,10 +1756,10 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) (
 		}
 
 		// Went online: in result but wasn't online
-		for streamerID := range r.Streamers {
-			if _, inCache := w.unconfirmedOnlineStreamers[streamerID]; !inCache {
+		for nickname := range r.Streamers {
+			if _, inCache := w.unconfirmedOnlineStreamers[nickname]; !inCache {
 				updates = append(updates, db.StatusChange{
-					StreamerID: streamerID,
+					Nickname: nickname,
 					Status:     cmdlib.StatusOnline,
 				})
 			}
@@ -1768,11 +1768,11 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) (
 		w.unconfirmedOnlineStreamers = r.Streamers
 
 		// Set known streamers not in request to unknown
-		for streamerID := range w.db.KnownStreamers() {
-			if !r.RequestedStreamers[streamerID] {
-				delete(w.unconfirmedOnlineStreamers, streamerID)
+		for nickname := range w.db.KnownStreamers() {
+			if !r.RequestedStreamers[nickname] {
+				delete(w.unconfirmedOnlineStreamers, nickname)
 				updates = append(updates, db.StatusChange{
-					StreamerID: streamerID,
+					Nickname: nickname,
 					Status:     cmdlib.StatusUnknown,
 				})
 			}
@@ -1796,28 +1796,28 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) (
 func (w *worker) buildNotifications(
 	confirmedStatusChanges []db.ConfirmedStatusChange,
 ) []db.Notification {
-	confirmedStreamerIDs := []string{}
+	confirmedNicknames := []string{}
 	for _, c := range confirmedStatusChanges {
-		confirmedStreamerIDs = append(confirmedStreamerIDs, c.StreamerID)
+		confirmedNicknames = append(confirmedNicknames, c.Nickname)
 	}
 
 	var notifications []db.Notification
-	usersForStreamers, endpointsForStreamers := w.db.UsersForStreamers(confirmedStreamerIDs)
+	usersForStreamers, endpointsForStreamers := w.db.UsersForStreamers(confirmedNicknames)
 	for _, c := range confirmedStatusChanges {
 		// Skip unknown -> offline transitions
 		// They don't represent meaningful events to users
 		if c.PrevStatus == cmdlib.StatusUnknown && c.Status == cmdlib.StatusOffline {
 			continue
 		}
-		users := usersForStreamers[c.StreamerID]
-		endpoints := endpointsForStreamers[c.StreamerID]
-		info := w.unconfirmedOnlineStreamers[c.StreamerID]
+		users := usersForStreamers[c.Nickname]
+		endpoints := endpointsForStreamers[c.Nickname]
+		info := w.unconfirmedOnlineStreamers[c.Nickname]
 		for i, user := range users {
 			if (w.cfg.OfflineNotifications && user.OfflineNotifications) || c.Status != cmdlib.StatusOffline {
 				n := db.Notification{
 					Endpoint:   endpoints[i],
 					ChatID:     user.ChatID,
-					StreamerID: c.StreamerID,
+					Nickname: c.Nickname,
 					Status:     c.Status,
 					Social:     user.ChatID > 0,
 					Sound:      c.Status == cmdlib.StatusOnline,
@@ -2019,8 +2019,8 @@ func (w *worker) fuzzySearchDaemon() {
 
 func (w *worker) queryUnconfirmedSubs() {
 	unconfirmed := map[string]bool{}
-	var streamerID string
-	w.db.MustQuery("select streamer_id from subscriptions where confirmed = 0", nil, db.ScanTo{&streamerID}, func() { unconfirmed[streamerID] = true })
+	var nickname string
+	w.db.MustQuery("select nickname from subscriptions where confirmed = 0", nil, db.ScanTo{&nickname}, func() { unconfirmed[nickname] = true })
 	if len(unconfirmed) > 0 {
 		w.db.MarkUnconfirmedAsChecking()
 		ldbg("queueing unconfirmed subscriptions check for %d streamers", len(unconfirmed))
@@ -2036,14 +2036,14 @@ func (w *worker) processSubsConfirmations(res *cmdlib.ExistenceListResults) {
 	confirmationsInWork := map[string][]db.Subscription{}
 	var iter db.Subscription
 	w.db.MustQuery(
-		"select endpoint, streamer_id, chat_id from subscriptions where confirmed = 2",
+		"select endpoint, nickname, chat_id from subscriptions where confirmed = 2",
 		nil,
-		db.ScanTo{&iter.Endpoint, &iter.StreamerID, &iter.ChatID},
-		func() { confirmationsInWork[iter.StreamerID] = append(confirmationsInWork[iter.StreamerID], iter) })
+		db.ScanTo{&iter.Endpoint, &iter.Nickname, &iter.ChatID},
+		func() { confirmationsInWork[iter.Nickname] = append(confirmationsInWork[iter.Nickname], iter) })
 	var nots []db.Notification
 	if !res.Failed() {
-		for streamerID, info := range res.Streamers {
-			for _, sub := range confirmationsInWork[streamerID] {
+		for nickname, info := range res.Streamers {
+			for _, sub := range confirmationsInWork[nickname] {
 				if info.Status&(cmdlib.StatusOnline|cmdlib.StatusOffline|cmdlib.StatusDenied) != 0 {
 					w.db.ConfirmSub(sub)
 				} else {
@@ -2052,7 +2052,7 @@ func (w *worker) processSubsConfirmations(res *cmdlib.ExistenceListResults) {
 				n := db.Notification{
 					Endpoint:   sub.Endpoint,
 					ChatID:     sub.ChatID,
-					StreamerID: streamerID,
+					Nickname: nickname,
 					Status:     info.Status,
 					Social:     false,
 					Priority:   1,
@@ -2219,7 +2219,7 @@ func main() {
 			}
 		case req := <-w.addRequests:
 			now := int(time.Now().Unix())
-			w.addStreamer(req.endpoint, req.chatID, req.streamerID, now)
+			w.addStreamer(req.endpoint, req.chatID, req.nickname, now)
 			req.doneCh <- struct{}{}
 		case u := <-incoming:
 			if w.processTGUpdate(u) {

@@ -175,8 +175,8 @@ type StreamerInfoWithStatus struct {
 
 // StatusUpdate represents an update of streamer status
 type StatusUpdate struct {
-	StreamerID string
-	Status     StatusKind
+	Nickname string
+	Status   StatusKind
 }
 
 // CheckerConfig represents checker config
@@ -192,7 +192,7 @@ type CheckerConfig struct {
 
 // Checker is the interface for a checker for specific site
 type Checker interface {
-	CheckStatusSingle(streamerID string) StatusKind
+	CheckStatusSingle(nickname string) StatusKind
 	QueryOnlineStreamers() (map[string]StreamerInfo, error)
 	QueryFixedListOnlineStreamers(streamers []string, checkMode CheckMode) (map[string]StreamerInfo, error)
 	QueryFixedListStatuses(streamers []string, checkMode CheckMode) (map[string]StreamerInfoWithStatus, error)
@@ -289,9 +289,9 @@ func StartCheckerDaemon(checker Checker) {
 				}
 				delete(streamers, "")
 				filtered := make(map[string]StreamerInfo, len(req.Streamers))
-				for streamerID := range req.Streamers {
-					if info, ok := streamers[streamerID]; ok {
-						filtered[streamerID] = info
+				for nickname := range req.Streamers {
+					if info, ok := streamers[nickname]; ok {
+						filtered[nickname] = info
 					}
 				}
 				elapsed := time.Since(start)
@@ -304,8 +304,8 @@ func StartCheckerDaemon(checker Checker) {
 				if errors.Is(err, ErrNotImplemented) {
 					// Checker does not support status queries — deny all as unknown
 					streamers = make(map[string]StreamerInfoWithStatus, len(req.Streamers))
-					for streamerID := range req.Streamers {
-						streamers[streamerID] = StreamerInfoWithStatus{Status: StatusUnknown}
+					for nickname := range req.Streamers {
+						streamers[nickname] = StreamerInfoWithStatus{Status: StatusUnknown}
 					}
 				} else if err != nil {
 					Lerr("%v", err)
@@ -314,9 +314,9 @@ func StartCheckerDaemon(checker Checker) {
 				}
 				delete(streamers, "")
 				filtered := make(map[string]StreamerInfoWithStatus, len(req.Streamers))
-				for streamerID := range req.Streamers {
-					if info, ok := streamers[streamerID]; ok {
-						filtered[streamerID] = info
+				for nickname := range req.Streamers {
+					if info, ok := streamers[nickname]; ok {
+						filtered[nickname] = info
 					}
 				}
 				elapsed := time.Since(start)

@@ -37,8 +37,8 @@ func (c *RandomChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, 
 		streamers["toggle"] = cmdlib.StreamerInfo{}
 	}
 	for i := 0; i < 300; i++ {
-		streamerID := randString(4)
-		streamers[streamerID] = cmdlib.StreamerInfo{}
+		nickname := randString(4)
+		streamers[nickname] = cmdlib.StreamerInfo{}
 	}
 	return streamers, nil
 }

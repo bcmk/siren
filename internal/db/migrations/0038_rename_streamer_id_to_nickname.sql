@@ -1,0 +1,25 @@
+alter table streamers rename column streamer_id to nickname;
+alter table status_changes rename column streamer_id to nickname;
+alter table subscriptions rename column streamer_id to nickname;
+alter table notification_queue rename column streamer_id to nickname;
+alter table referral_events rename column streamer_id to nickname;
+
+alter table streamers
+rename constraint chk_streamers_streamer_id_not_empty to chk_streamers_nickname_not_empty;
+
+alter index ix_streamers_streamer_id_online rename to ix_streamers_nickname_online;
+alter index ix_streamers_streamer_id_status_mismatch
+rename to ix_streamers_nickname_status_mismatch;
+alter index ix_subscriptions_streamer_id rename to ix_subscriptions_nickname;
+alter index ix_subscriptions_streamer_id_confirmed
+rename to ix_subscriptions_nickname_confirmed;
+alter index ix_streamers_streamer_id_trgm_gin
+rename to ix_streamers_nickname_trgm_gin;
+alter index ix_streamers_streamer_id_max_repeated_alnum_run
+rename to ix_streamers_nickname_max_repeated_alnum_run;
+alter index ix_streamers_streamer_id_max_nonalnum_run
+rename to ix_streamers_nickname_max_nonalnum_run;
+alter index ix_streamers_streamer_id_prefix
+rename to ix_streamers_nickname_prefix;
+alter index ix_status_changes_streamer_id_timestamp
+rename to ix_status_changes_nickname_timestamp;

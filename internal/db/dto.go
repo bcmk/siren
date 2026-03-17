@@ -7,7 +7,7 @@ type Notification struct {
 	ID             int
 	Endpoint       string
 	ChatID         int64
-	StreamerID     string
+	Nickname       string
 	Status         cmdlib.StatusKind
 	TimeDiff       *int
 	ImageURL       string
@@ -72,7 +72,7 @@ type User struct {
 
 // Streamer represents a streamer
 type Streamer struct {
-	StreamerID               string
+	Nickname                 string
 	ConfirmedStatus          cmdlib.StatusKind
 	UnconfirmedStatus        cmdlib.StatusKind
 	UnconfirmedTimestamp     int
@@ -82,14 +82,14 @@ type Streamer struct {
 
 // StatusChange represents a status change
 type StatusChange struct {
-	StreamerID string
-	Status     cmdlib.StatusKind
-	Timestamp  int
+	Nickname  string
+	Status    cmdlib.StatusKind
+	Timestamp int
 }
 
 // ConfirmedStatusChange represents a confirmed status change with previous status
 type ConfirmedStatusChange struct {
-	StreamerID string
+	Nickname   string
 	Status     cmdlib.StatusKind
 	PrevStatus cmdlib.StatusKind
 	Timestamp  int
@@ -97,7 +97,7 @@ type ConfirmedStatusChange struct {
 
 // Subscription represents a subscription
 type Subscription struct {
-	ChatID     int64
-	StreamerID string
-	Endpoint   string
+	ChatID   int64
+	Nickname string
+	Endpoint string
 }

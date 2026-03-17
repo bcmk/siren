@@ -86,8 +86,8 @@ func newTestWorker() *testWorker {
 			tpl:                     map[string]*template.Template{"test": tpl},
 			lowPriorityMsg:          make(chan outgoingPacket, 10000),
 			highPriorityMsg:         make(chan outgoingPacket, 10000),
-			streamerIDPreprocessing: cmdlib.CanonicalStreamerID,
-			streamerIDRegexp:        cmdlib.CommonStreamerIDRegexp,
+			nicknamePreprocessing: cmdlib.CanonicalNicknamePreprocessing,
+			nicknameRegexp:        cmdlib.CommonNicknameRegexp,
 		},
 	}
 	w.terminate = func() {
@@ -97,12 +97,12 @@ func newTestWorker() *testWorker {
 	return w
 }
 
-func (w *testWorker) chatsForStreamer(streamerID string) (chats []int64, endpoints []string) {
+func (w *testWorker) chatsForStreamer(nickname string) (chats []int64, endpoints []string) {
 	var chatID int64
 	var endpoint string
 	w.db.MustQuery(
-		`select chat_id, endpoint from subscriptions where streamer_id = $1 order by chat_id`,
-		db.QueryParams{streamerID},
+		`select chat_id, endpoint from subscriptions where nickname = $1 order by chat_id`,
+		db.QueryParams{nickname},
 		db.ScanTo{&chatID, &endpoint},
 		func() {
 			chats = append(chats, chatID)

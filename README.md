@@ -1,63 +1,59 @@
-__[Русский](README-ru.md)__
+**[Русский](README-ru.md)**
 
-<img src="https://xiren.ams3.digitaloceanspaces.com/icons/siren-dia.svg" height="23">&ensp;SIREN
-================================================================================================
+# <img src="https://xiren.ams3.digitaloceanspaces.com/icons/siren-dia.svg" height="23">&ensp;SIREN
+
 Telegram bot for webcast alerts
 
 [![CI](https://github.com/bcmk/siren/actions/workflows/ci.yml/badge.svg)](https://github.com/bcmk/siren/actions/workflows/ci.yml)
 [![GoReportCard](https://goreportcard.com/badge/github.com/bcmk/siren/v2)](https://goreportcard.com/report/github.com/bcmk/siren/v2)
 
 This is the Telegram bot notifying you whenever webcasts are online.
-You subscribe to your favorite streamers with __/add__ command.
+You subscribe to your favorite streamers with **/add** command.
 We notify you whenever they start broadcasting.
-The bot queries channels statuses every minute.
+The bot queries streamer statuses every minute.
 
-Open In Telegram
-----------------
+## Open In Telegram
 
-* Twitch: [t.me/TwitchSirenBot](https://t.me/TwitchSirenBot)
-* Chaturbate #1: [t.me/ChaturbateAlarmBot](https://t.me/ChaturbateAlarmBot)
-* Chaturbate #2: [t.me/ChaturbateAlertsBot](https://t.me/ChaturbateAlertsBot)
-* Stripchat and xHamster Live: [t.me/StripchatOnlineBot](https://t.me/StripchatOnlineBot)
-* BongaCams: [t.me/BongacamsOnlineBot](https://t.me/BongacamsOnlineBot)
-* LiveJasmin: [t.me/LiveJasminSirenBot](https://t.me/LiveJasminSirenBot)
-* CamSoda: [t.me/CamSodaSirenBot](https://t.me/CamSodaSirenBot)
-* Flirt4Free: [t.me/Flirt4FreeSirenBot](https://t.me/Flirt4FreeSirenBot)
-* Streamate: [t.me/StreamateSirenBot](https://t.me/StreamateSirenBot)
-* CAM4: [t.me/C4SirenBot](https://t.me/C4SirenBot)
+- Twitch: [t.me/TwitchSirenBot](https://t.me/TwitchSirenBot)
+- Chaturbate #1: [t.me/ChaturbateAlarmBot](https://t.me/ChaturbateAlarmBot)
+- Chaturbate #2: [t.me/ChaturbateAlertsBot](https://t.me/ChaturbateAlertsBot)
+- Stripchat and xHamster Live: [t.me/StripchatOnlineBot](https://t.me/StripchatOnlineBot)
+- BongaCams: [t.me/BongacamsOnlineBot](https://t.me/BongacamsOnlineBot)
+- LiveJasmin: [t.me/LiveJasminSirenBot](https://t.me/LiveJasminSirenBot)
+- CamSoda: [t.me/CamSodaSirenBot](https://t.me/CamSodaSirenBot)
+- Flirt4Free: [t.me/Flirt4FreeSirenBot](https://t.me/Flirt4FreeSirenBot)
+- Streamate: [t.me/StreamateSirenBot](https://t.me/StreamateSirenBot)
+- CAM4: [t.me/C4SirenBot](https://t.me/C4SirenBot)
 
-Commands
---------
+## Commands
 
-* __add__ _CHANNEL_ — Subscribe to a channel
-* __remove__ _CHANNEL_ — Remove a channel
-* __remove_all__ — Remove all subscriptions
-* __list__ — List your subscriptions
-* __pics__ — Pictures of your online subscriptions
-* __week__ _CHANNEL_ — Online hours in the previous 7 days
-* __help__ — Help
-* __settings__ — Show settings
-* __feedback__ _YOUR_MESSAGE_ — Send feedback
+- **add** _NICKNAME_ — Subscribe to a streamer
+- **remove** _NICKNAME_ — Remove a streamer
+- **remove_all** — Remove all subscriptions
+- **list** — List your subscriptions
+- **pics** — Pictures of your online subscriptions
+- **week** _NICKNAME_ — Online hours in the previous 7 days
+- **help** — Help
+- **settings** — Show settings
+- **feedback** _YOUR_MESSAGE_ — Send feedback
 
-Substitute ___CHANNEL___ with the actual channel or model ID.
-It is the same as __model name__ in Chaturbate and Stripchat.
-For BongaCams you can find a model ID in the address line of your browser.
+Substitute **_NICKNAME_** with the actual streamer nickname.
+It is the same as **model name** in Chaturbate and Stripchat.
+For BongaCams you can find a nickname in the address line of your browser.
 
-For streamers
--------------
+## For streamers
 
 Here are details [For streamers](https://siren.chat/streamer)
 
 We offer several ways you can use our bot:
 
-* You can share your own notification link to your users. They will be notified in Telegram whenever you are online
-* You can add our bot to your Telegram channel or group. Subscribers will be notified whenever you are online
-* You can use our floting icons in your Chaturbate profile via [Chaturbate icons constructor](https://siren.chat/chic)
+- You can share your own notification link to your users. They will be notified in Telegram whenever you are online
+- You can add our bot to your Telegram channel or group. Subscribers will be notified whenever you are online
+- You can use our floting icons in your Chaturbate profile via [Chaturbate icons constructor](https://siren.chat/chic)
 
 Write to siren.chat@gmail.com in case of any questions.
 
-Running your own bot
---------------------
+## Running your own bot
 
 Create and set up your bot using [@BotFather](https://telegram.me/BotFather) bot.
 
@@ -72,15 +68,13 @@ An example of translation are in [common.en.yaml](https://github.com/bcmk/siren/
 
 Build cmd/bot. Run this executable with a path to config file as an argument.
 
-Privacy policy
---------------
+## Privacy policy
 
 We do not store any sensitive personal information.
 We store only your Telegram chat ID that is essential for core functionality of the bot.
 Telegram chat ID is just a number which we use to send you notifications.
 
-Links
------
+## Links
 
 [Site](https://siren.chat)
 

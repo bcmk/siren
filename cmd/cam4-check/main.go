@@ -27,7 +27,7 @@ func main() {
 	}
 	modelID := flag.Arg(0)
 	modelID = checkers.Cam4CanonicalModelID(modelID)
-	if !cmdlib.CommonStreamerIDRegexp.MatchString(modelID) {
+	if !cmdlib.CommonNicknameRegexp.MatchString(modelID) {
 		fmt.Println("invalid model ID")
 		return
 	}

@@ -28,7 +28,7 @@ func main() {
 		return
 	}
 	channel := flag.Arg(0)
-	if !cmdlib.CommonStreamerIDRegexp.MatchString(channel) {
+	if !cmdlib.CommonNicknameRegexp.MatchString(channel) {
 		fmt.Println("invalid channel name")
 		return
 	}
