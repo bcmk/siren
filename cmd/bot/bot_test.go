@@ -208,7 +208,7 @@ func TestNotificationsStorage(t *testing.T) {
 			TimeDiff: nil,
 			ImageURL: "image_a",
 			Social:   false,
-			Priority: 1,
+			Priority: db.PriorityHigh,
 			Sound:    false,
 			Kind:     db.NotificationPacket,
 		},
@@ -220,7 +220,7 @@ func TestNotificationsStorage(t *testing.T) {
 			TimeDiff: &timeDiff,
 			ImageURL: "image_b",
 			Social:   true,
-			Priority: 2,
+			Priority: db.PriorityLow,
 			Sound:    true,
 			Kind:     db.ReplyPacket,
 		},
@@ -249,7 +249,7 @@ func TestNotificationsStorage(t *testing.T) {
 			TimeDiff: nil,
 			ImageURL: "image_c",
 			Social:   true,
-			Priority: 3,
+			Priority: db.PriorityLow,
 		},
 	}
 	w.db.StoreNotifications(nots)
@@ -570,7 +570,7 @@ func TestAddStreamer(t *testing.T) {
 		t.Error("expected confirmed=0 for new streamer")
 	}
 	// Drain the "checking streamer" message
-	<-w.highPriorityMsg
+	<-w.outgoingMsgCh
 
 	// Add streamer that exists with online status — should return true
 	w.db.MustExec(
@@ -585,7 +585,7 @@ func TestAddStreamer(t *testing.T) {
 		t.Error("expected confirmed=1 for existing streamer")
 	}
 	// Drain messages
-	<-w.highPriorityMsg
+	<-w.outgoingMsgCh
 	nots := w.db.NewNotifications()
 	if len(nots) != 1 || nots[0].Status != cmdlib.StatusOnline {
 		t.Errorf("expected online notification, got %+v", nots)
@@ -1064,7 +1064,7 @@ func TestUnknownStreamerFirstOfflineSaved(t *testing.T) {
 		t.Error("expected addStreamer to return false for unknown streamer")
 	}
 	// Drain the "checking streamer" message
-	<-w.highPriorityMsg
+	<-w.outgoingMsgCh
 
 	// Verify subscription is unconfirmed
 	if w.db.MustInt("select confirmed from subscriptions where nickname = $1", "unknown_model") != 0 {
@@ -1374,18 +1374,31 @@ func TestNotifyOfStatuses(t *testing.T) {
 	w.db.AddUser(201, 3, 0, "private")
 
 	nots := []db.Notification{
-		{ChatID: 100, Endpoint: "test", Nickname: "a", Status: cmdlib.StatusOnline, Priority: 0},
-		{ChatID: 101, Endpoint: "test", Nickname: "b", Status: cmdlib.StatusOnline, Priority: 1},
-		{ChatID: 200, Endpoint: "test", Nickname: "c", Status: cmdlib.StatusOnline, Priority: 0},
-		{ChatID: 201, Endpoint: "test", Nickname: "d", Status: cmdlib.StatusOnline, Priority: 1},
+		{ChatID: 100, Endpoint: "test", Nickname: "a", Status: cmdlib.StatusOnline, Priority: db.PriorityLow},
+		{ChatID: 101, Endpoint: "test", Nickname: "b", Status: cmdlib.StatusOnline, Priority: db.PriorityHigh},
+		{ChatID: 200, Endpoint: "test", Nickname: "c", Status: cmdlib.StatusOnline, Priority: db.PriorityLow},
+		{ChatID: 201, Endpoint: "test", Nickname: "d", Status: cmdlib.StatusOnline, Priority: db.PriorityHigh},
 	}
 
-	w.notifyOfStatuses(w.highPriorityMsg, w.lowPriorityMsg, nots)
+	w.notifyOfStatuses(nots)
 
-	if len(w.lowPriorityMsg) != 2 {
-		t.Errorf("expected 2 low priority messages, got %d", len(w.lowPriorityMsg))
+	if len(w.outgoingMsgCh) != 4 {
+		t.Errorf("expected 4 outgoing messages, got %d", len(w.outgoingMsgCh))
 	}
-	if len(w.highPriorityMsg) != 2 {
-		t.Errorf("expected 2 high priority messages, got %d", len(w.highPriorityMsg))
+	lowCount := 0
+	highCount := 0
+	for range len(w.outgoingMsgCh) {
+		p := <-w.outgoingMsgCh
+		if p.priority == db.PriorityLow {
+			lowCount++
+		} else {
+			highCount++
+		}
+	}
+	if lowCount != 2 {
+		t.Errorf("expected 2 low priority messages, got %d", lowCount)
+	}
+	if highCount != 2 {
+		t.Errorf("expected 2 high priority messages, got %d", highCount)
 	}
 }

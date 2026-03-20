@@ -13,9 +13,16 @@
 - Never delete tags after pushing to the container registry
 - After a mistake is corrected, ask if a new guideline
   should be added to CLAUDE.md to prevent it in the future
-- Before modifying a file using an ad-hoc script,
-  `git add` it first
-  so the pre-script state can be restored
+- Before modifying a file using an ad-hoc script (e.g. `sed`),
+  `git add` it first so the pre-script state can be restored.
+  This includes new untracked files
+
+## Refactoring
+
+- Use `gopls rename` for renaming Go identifiers, not `sed`.
+  Always verify line/column points to the right identifier
+  before running, and check at least one occurrence after.
+  Run `go fmt` after `gopls rename`
 
 ## Code Style
 
@@ -47,9 +54,10 @@
 
 ## Build
 
-- When building binaries, place them in their main.go's directory,
+- When building binaries for whatever reason, e.g. to check if code compiles,
+  always place them in their main.go's directory,
   e.g. `go build -o cmd/bot/ ./cmd/bot`
-- To build a Docker image and push to the registry,
+- To build a Docker image and publish to the registry,
   run `scripts/publish` (uses `git describe --tags` as version)
 - Only create tags for completed features ready to be published.
   `scripts/publish` works without tagging —

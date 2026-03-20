@@ -15,11 +15,22 @@ type Notification struct {
 	ShowKind       cmdlib.ShowKind
 	Social         bool
 	Sound          bool
-	Priority       int
+	Priority       Priority
 	Kind           PacketKind
 	Subject        string
 	SilentMessages bool
 }
+
+// Priority represents a message priority
+type Priority int
+
+const (
+	// PriorityHigh is for user-initiated replies and admin commands
+	PriorityHigh Priority = 0
+
+	// PriorityLow is for bulk notifications and background messages
+	PriorityLow Priority = 1
+)
 
 // PacketKind represents a notification kind
 type PacketKind int

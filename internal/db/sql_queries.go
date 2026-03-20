@@ -853,15 +853,15 @@ func (d *Database) ResetNotificationSending() {
 }
 
 // LogSentMessage logs a sent message
-func (d *Database) LogSentMessage(timestamp int, chatID int64, result int, endpoint string, priority int, delay int, kind PacketKind) {
+func (d *Database) LogSentMessage(timestamp int, chatID int64, result int, endpoint string, priority Priority, latency int, kind PacketKind) {
 	d.MustExec(
-		"insert into sent_message_log (timestamp, chat_id, result, endpoint, priority, delay, kind) values ($1, $2, $3, $4, $5, $6, $7)",
+		"insert into sent_message_log (timestamp, chat_id, result, endpoint, priority, latency, kind) values ($1, $2, $3, $4, $5, $6, $7)",
 		timestamp,
 		chatID,
 		result,
 		endpoint,
 		priority,
-		delay,
+		latency,
 		kind)
 }
 
