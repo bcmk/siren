@@ -1676,15 +1676,20 @@ func (w *worker) pushExistenceRequest(streamers map[string]bool) error {
 	return err
 }
 
-func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) (
-	changesCount int,
-	confirmedChangesCount int,
-	notifications []db.Notification,
-	elapsed time.Duration,
-) {
+type processingResult struct {
+	changesCount          int
+	confirmedChangesCount int
+	notifications         []db.Notification
+	elapsed               time.Duration
+	upsertTimings         db.UpsertUnconfirmedTimings
+	confirmChangesMs      int
+	storeNotificationsMs  int
+}
+
+func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) processingResult {
 	start := time.Now()
 	if result.Failed() {
-		return
+		return processingResult{}
 	}
 
 	var updates []db.StatusChange
@@ -1770,18 +1775,30 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) (
 		}
 	}
 
-	w.db.InsertStatusChanges(updates, now)
+	upsertTimings := w.db.UpsertUnconfirmedStatusChanges(updates, now)
 
+	confirmChangesStart := time.Now()
 	confirmedStatusChanges := w.db.ConfirmStatusChanges(
 		now,
 		w.cfg.StatusConfirmationSeconds.Online,
 		w.cfg.StatusConfirmationSeconds.Offline,
 	)
-	confirmedChangesCount = len(confirmedStatusChanges)
-	notifications = w.buildNotifications(confirmedStatusChanges)
-	elapsed = time.Since(start)
-	changesCount = len(updates)
-	return
+	confirmChangesMs := int(time.Since(confirmChangesStart).Milliseconds())
+
+	storeNotificationsStart := time.Now()
+	notifications := w.buildNotifications(confirmedStatusChanges)
+	w.db.StoreNotifications(notifications)
+	storeNotificationsMs := int(time.Since(storeNotificationsStart).Milliseconds())
+
+	return processingResult{
+		changesCount:          len(updates),
+		confirmedChangesCount: len(confirmedStatusChanges),
+		notifications:         notifications,
+		elapsed:               time.Since(start),
+		storeNotificationsMs:  storeNotificationsMs,
+		upsertTimings:         upsertTimings,
+		confirmChangesMs:      confirmChangesMs,
+	}
 }
 
 func (w *worker) buildNotifications(
@@ -2203,19 +2220,23 @@ func main() {
 			w.sendReadyNotifications()
 		case result := <-w.checkerResults:
 			now := int(time.Now().Unix())
-			changesInPeriod, confirmedChangesInPeriod, notifications, elapsed := w.handleCheckerResults(result, now)
-			w.db.StoreNotifications(notifications)
+			cr := w.handleCheckerResults(result, now)
 			w.db.LogPerformance(now, db.PerformanceLogUpdateQuery, int(result.Duration().Milliseconds()), map[string]any{
 				"failed": result.Failed(),
 				"count":  result.Count(),
 			})
-			w.db.LogPerformance(now, db.PerformanceLogUpdateProcessing, int(elapsed.Milliseconds()), map[string]any{
-				"unconfirmed_count":   changesInPeriod,
-				"confirmed_count":     confirmedChangesInPeriod,
-				"notifications_count": len(notifications),
+			w.db.LogPerformance(now, db.PerformanceLogUpdateProcessing, int(cr.elapsed.Milliseconds()), map[string]any{
+				"unconfirmed_count":                    cr.changesCount,
+				"confirmed_count":                      cr.confirmedChangesCount,
+				"notifications_count":                  len(cr.notifications),
+				"upsert_unconfirmed_streamers_ms":      cr.upsertTimings.UpsertStreamersMs,
+				"insert_unconfirmed_status_changes_ms": cr.upsertTimings.InsertStatusChangesMs,
+				"commit_unconfirmed_ms":                cr.upsertTimings.CommitMs,
+				"confirm_changes_ms":                   cr.confirmChangesMs,
+				"store_notifications_ms":               cr.storeNotificationsMs,
 			})
 			if w.cfg.Debug {
-				ldbg("status updates processed in %v", elapsed)
+				ldbg("status updates processed in %v", cr.elapsed)
 			}
 		case req := <-w.addRequests:
 			now := int(time.Now().Unix())

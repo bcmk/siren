@@ -149,7 +149,7 @@ func TestChangesFromToForStreamers(t *testing.T) {
 			defer db.terminate()
 
 			for _, ins := range tc.inserts {
-				db.InsertStatusChanges(
+				db.UpsertUnconfirmedStatusChanges(
 					[]StatusChange{{Nickname: ins.nickname, Status: ins.status}},
 					ins.ts,
 				)
@@ -209,7 +209,7 @@ func TestChangesFromToForStreamersConsistency(t *testing.T) {
 		if i%2 == 0 {
 			status = cmdlib.StatusOnline
 		}
-		db.InsertStatusChanges(
+		db.UpsertUnconfirmedStatusChanges(
 			[]StatusChange{{Nickname: "a", Status: status}},
 			100+i*10,
 		)

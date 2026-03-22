@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/bcmk/siren/v2/lib/cmdlib"
 	"github.com/jackc/pgx/v5"
@@ -674,15 +675,25 @@ func (d *Database) ResetBlock(endpoint string, chatID int64) {
 	d.MustExec("update block set block=0 where endpoint = $1 and chat_id = $2", endpoint, chatID)
 }
 
-// InsertStatusChanges inserts status changes using a bulk method.
-// Upserts streamers first to obtain integer IDs,
+// UpsertUnconfirmedTimings holds per-phase timing
+// for UpsertUnconfirmedStatusChanges.
+type UpsertUnconfirmedTimings struct {
+	UpsertStreamersMs     int
+	InsertStatusChangesMs int
+	CommitMs              int
+}
+
+// UpsertUnconfirmedStatusChanges upserts streamers to obtain integer IDs,
 // then bulk inserts into status_changes with those IDs.
-func (d *Database) InsertStatusChanges(changedStatuses []StatusChange, timestamp int) {
+func (d *Database) UpsertUnconfirmedStatusChanges(
+	changedStatuses []StatusChange,
+	timestamp int,
+) UpsertUnconfirmedTimings {
 	statusDone := d.Measure("db: insert unconfirmed status updates")
 	defer statusDone()
 
 	if len(changedStatuses) == 0 {
-		return
+		return UpsertUnconfirmedTimings{}
 	}
 
 	tx, err := d.Begin()
@@ -690,6 +701,7 @@ func (d *Database) InsertStatusChanges(changedStatuses []StatusChange, timestamp
 	defer func() { _ = tx.Rollback(context.Background()) }()
 
 	// Upsert streamers and get integer IDs
+	upsertStart := time.Now()
 	nicknames := make([]string, len(changedStatuses))
 	statuses := make([]int, len(changedStatuses))
 	for i, sc := range changedStatuses {
@@ -720,8 +732,11 @@ func (d *Database) InsertStatusChanges(changedStatuses []StatusChange, timestamp
 	}
 	checkErr(rows.Err())
 	rows.Close()
+	var timings UpsertUnconfirmedTimings
+	timings.UpsertStreamersMs = int(time.Since(upsertStart).Milliseconds())
 
 	// Use CopyFrom for fast bulk insert into status_changes
+	insertStart := time.Now()
 	copyRows := make([][]interface{}, len(changedStatuses))
 	for i, sc := range changedStatuses {
 		copyRows[i] = []interface{}{idMap[sc.Nickname], sc.Status, timestamp}
@@ -733,8 +748,12 @@ func (d *Database) InsertStatusChanges(changedStatuses []StatusChange, timestamp
 		pgx.CopyFromRows(copyRows),
 	)
 	checkErr(err)
+	timings.InsertStatusChangesMs = int(time.Since(insertStart).Milliseconds())
 
+	commitStart := time.Now()
 	checkErr(tx.Commit(context.Background()))
+	timings.CommitMs = int(time.Since(commitStart).Milliseconds())
+	return timings
 }
 
 // AddSubscription inserts a confirmed subscription

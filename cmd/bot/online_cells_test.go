@@ -146,7 +146,7 @@ func TestOnlineCells(t *testing.T) {
 			w.createDatabase(make(chan bool, 1))
 
 			for _, ins := range tc.inserts {
-				w.db.InsertStatusChanges(
+				w.db.UpsertUnconfirmedStatusChanges(
 					[]db.StatusChange{{Nickname: ins.nickname, Status: ins.status}},
 					ins.ts,
 				)

@@ -157,22 +157,22 @@ func TestUpdateNotifications(t *testing.T) {
 		RequestedStreamers: allStreamers,
 		Streamers:          map[string]cmdlib.StreamerInfo{"a": {}},
 	}
-	if _, _, nots, _ := w.handleCheckerResults(result, 2); len(nots) != 2 {
-		t.Errorf("expected 2 notifications for streamer 'a' online, got %d", len(nots))
+	if r := w.handleCheckerResults(result, 2); len(r.notifications) != 2 {
+		t.Errorf("expected 2 notifications for streamer 'a' online, got %d", len(r.notifications))
 	}
 	checkInv(&w.worker, t)
 
 	// Streamer "a" goes offline — no notifications yet (needs 5s confirmation)
 	result.Streamers = map[string]cmdlib.StreamerInfo{}
-	if _, _, nots, _ := w.handleCheckerResults(result, 3); len(nots) != 0 {
-		t.Errorf("expected 0 notifications before offline confirmation, got %d", len(nots))
+	if r := w.handleCheckerResults(result, 3); len(r.notifications) != 0 {
+		t.Errorf("expected 0 notifications before offline confirmation, got %d", len(r.notifications))
 	}
 	checkInv(&w.worker, t)
 
 	// Trigger confirmation check at t=8 — offline confirmed, 2 notifications
 	result.Streamers = map[string]cmdlib.StreamerInfo{}
-	if _, _, nots, _ := w.handleCheckerResults(result, 8); len(nots) != 2 {
-		t.Errorf("expected 2 notifications after offline confirmation, got %d", len(nots))
+	if r := w.handleCheckerResults(result, 8); len(r.notifications) != 2 {
+		t.Errorf("expected 2 notifications after offline confirmation, got %d", len(r.notifications))
 	}
 	checkInv(&w.worker, t)
 
@@ -180,8 +180,8 @@ func TestUpdateNotifications(t *testing.T) {
 	result.Streamers = map[string]cmdlib.StreamerInfo{
 		"d": {},
 	}
-	if _, _, nots, _ := w.handleCheckerResults(result, 9); len(nots) != 2 {
-		t.Errorf("expected 2 notifications for streamer 'd' online, got %d", len(nots))
+	if r := w.handleCheckerResults(result, 9); len(r.notifications) != 2 {
+		t.Errorf("expected 2 notifications for streamer 'd' online, got %d", len(r.notifications))
 	}
 	checkInv(&w.worker, t)
 }
@@ -414,7 +414,7 @@ func TestUnconfirmedStatusConsistency(t *testing.T) {
 	w.initCache()
 
 	// Insert first status change for streamer "a"
-	w.db.InsertStatusChanges([]db.StatusChange{
+	w.db.UpsertUnconfirmedStatusChanges([]db.StatusChange{
 		{Nickname: "a", Status: cmdlib.StatusOnline},
 	}, 100)
 
@@ -430,7 +430,7 @@ func TestUnconfirmedStatusConsistency(t *testing.T) {
 	}
 
 	// Insert second status change — prev should be updated
-	w.db.InsertStatusChanges([]db.StatusChange{
+	w.db.UpsertUnconfirmedStatusChanges([]db.StatusChange{
 		{Nickname: "a", Status: cmdlib.StatusOffline},
 	}, 200)
 
@@ -443,7 +443,7 @@ func TestUnconfirmedStatusConsistency(t *testing.T) {
 	}
 
 	// Insert third status change — prev should shift
-	w.db.InsertStatusChanges([]db.StatusChange{
+	w.db.UpsertUnconfirmedStatusChanges([]db.StatusChange{
 		{Nickname: "a", Status: cmdlib.StatusOnline},
 	}, 300)
 
@@ -984,9 +984,9 @@ func TestHandleStatusUpdates(t *testing.T) {
 	result := &cmdlib.OnlineListResults{
 		Streamers: map[string]cmdlib.StreamerInfo{"a": {ImageURL: "http://a.jpg"}},
 	}
-	changes, _, _, _ := w.handleCheckerResults(result, 100)
-	if changes != 1 {
-		t.Errorf("expected 1 change with OnlineListResults, got %d", changes)
+	r := w.handleCheckerResults(result, 100)
+	if r.changesCount != 1 {
+		t.Errorf("expected 1 change with OnlineListResults, got %d", r.changesCount)
 	}
 	if w.unconfirmedOnlineStreamers["a"].ImageURL != "http://a.jpg" {
 		t.Errorf("expected ImageURL to be set, got %s", w.unconfirmedOnlineStreamers["a"].ImageURL)
@@ -1008,9 +1008,9 @@ func TestHandleStatusUpdates(t *testing.T) {
 		RequestedStreamers: map[string]bool{"a": true},
 		Streamers:          map[string]cmdlib.StreamerInfo{}, // empty = "a" is offline
 	}
-	changes, _, _, _ = w.handleCheckerResults(result2, 102)
-	if changes != 1 {
-		t.Errorf("expected 1 change with FixedListOnlineResults, got %d", changes)
+	r = w.handleCheckerResults(result2, 102)
+	if r.changesCount != 1 {
+		t.Errorf("expected 1 change with FixedListOnlineResults, got %d", r.changesCount)
 	}
 	if _, ok := w.unconfirmedOnlineStreamers["a"]; ok {
 		t.Error("expected offline streamer to be removed from unconfirmedOnlineStreamers")
@@ -1035,20 +1035,20 @@ func TestHandleStatusUpdates(t *testing.T) {
 
 	// Test error case (should return early with zero values)
 	result3 := cmdlib.NewOnlineListResultsFailed()
-	changes, confirmedChanges, nots, elapsed := w.handleCheckerResults(result3, 105)
-	if changes != 0 || confirmedChanges != 0 || len(nots) != 0 || elapsed != 0 {
+	r = w.handleCheckerResults(result3, 105)
+	if r.changesCount != 0 || r.confirmedChangesCount != 0 || len(r.notifications) != 0 || r.elapsed != 0 {
 		t.Errorf(
 			"expected zero values on error, got changes=%d, confirmedChanges=%d, nots=%d, elapsed=%d",
-			changes, confirmedChanges, len(nots), elapsed)
+			r.changesCount, r.confirmedChangesCount, len(r.notifications), r.elapsed)
 	}
 
 	// Test error case with FixedListResults
 	result4 := cmdlib.NewFixedListOnlineResultsFailed()
-	changes, confirmedChanges, nots, elapsed = w.handleCheckerResults(result4, 106)
-	if changes != 0 || confirmedChanges != 0 || len(nots) != 0 || elapsed != 0 {
+	r = w.handleCheckerResults(result4, 106)
+	if r.changesCount != 0 || r.confirmedChangesCount != 0 || len(r.notifications) != 0 || r.elapsed != 0 {
 		t.Errorf(
 			"expected zero values on error with FixedListResults, got changes=%d, confirmedChanges=%d, nots=%d, elapsed=%d",
-			changes, confirmedChanges, len(nots), elapsed)
+			r.changesCount, r.confirmedChangesCount, len(r.notifications), r.elapsed)
 	}
 }
 
@@ -1154,12 +1154,12 @@ func TestUnknownStreamerFirstOfflineSaved(t *testing.T) {
 		RequestedStreamers: map[string]bool{"unknown_model": true},
 		Streamers:          map[string]cmdlib.StreamerInfo{}, // empty = offline
 	}
-	changes, _, _, _ := w.handleCheckerResults(result, 101)
+	r := w.handleCheckerResults(result, 101)
 	checkInv(&w.worker, t)
 
 	// 4. Offline status should be recorded for proper online time calculation
-	if changes != 1 {
-		t.Errorf("expected 1 change for first offline status, got %d", changes)
+	if r.changesCount != 1 {
+		t.Errorf("expected 1 change for first offline status, got %d", r.changesCount)
 	}
 
 	// Verify status_change was recorded
@@ -1182,10 +1182,10 @@ func TestUnknownStreamerFirstOfflineSaved(t *testing.T) {
 
 	// 5. Subsequent status update with same offline status should NOT record a new change
 	result.Streamers = map[string]cmdlib.StreamerInfo{} // use new map to avoid aliasing
-	changes, _, _, _ = w.handleCheckerResults(result, 102)
+	r = w.handleCheckerResults(result, 102)
 	checkInv(&w.worker, t)
-	if changes != 0 {
-		t.Errorf("expected 0 changes for same offline status, got %d", changes)
+	if r.changesCount != 0 {
+		t.Errorf("expected 0 changes for same offline status, got %d", r.changesCount)
 	}
 
 	// Still only 1 status_change
