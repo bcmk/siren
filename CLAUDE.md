@@ -10,6 +10,7 @@
 - Use conventional commit style
 - Use site scope for single-site changes, e.g. `feat(chaturbate): add room subject`
 - When stashing, use a descriptive name
+- Never push to remote without explicit permission
 - Never delete tags after pushing to the container registry
 - After a mistake is corrected, ask if a new guideline
   should be added to CLAUDE.md to prevent it in the future

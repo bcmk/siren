@@ -684,17 +684,44 @@ func (w *worker) showWeek(endpoint string, chatID int64, nickname string) {
 	for i, s := range streamers {
 		ids[i] = s.ID
 	}
-	hoursMap, start := w.weekForStreamers(ids, time.Now())
+	now := time.Now()
+	hoursMap, start := w.weekForStreamers(ids, now)
+	statuses := w.db.UnconfirmedStatusesForChat(endpoint, chatID)
+	statusMap := make(map[string]db.Streamer, len(statuses))
+	for _, s := range statuses {
+		statusMap[s.Nickname] = s
+	}
+	type streamerData struct {
+		Streamer string
+		TimeDiff *timeDiff
+	}
 	var weeks []string
+	var neverOnline []streamerData
+	nowUnix := int(now.Unix())
 	for _, s := range streamers {
+		hours := hoursMap[s.ID]
+		if !slices.Contains(hours, true) {
+			var td *timeDiff
+			if st, ok := statusMap[s.Nickname]; ok {
+				td = w.streamerTimeDiff(st, nowUnix)
+			}
+			neverOnline = append(neverOnline, streamerData{
+				Streamer: s.Nickname,
+				TimeDiff: td,
+			})
+			continue
+		}
 		weeks = append(weeks, templateToString(w.tpl[endpoint], w.tr[endpoint].Week.Key, tplData{
-			"hours":    hoursMap[s.ID],
+			"hours":    hours,
 			"weekday":  int(start.UTC().Weekday()),
 			"streamer": s.Nickname,
 		}))
 	}
 	for chunk := range slices.Chunk(weeks, 10) {
 		w.sendText(db.PriorityLow, endpoint, chatID, false, true, w.tr[endpoint].Week.Parse, strings.Join(chunk, "\n\n"), db.ReplyPacket)
+	}
+	for chunk := range slices.Chunk(neverOnline, 50) {
+		w.sendTr(db.PriorityLow, endpoint, chatID, false, w.tr[endpoint].WeekNeverOnline, tplData{"streamers": chunk}, db.ReplyPacket)
 	}
 }
 

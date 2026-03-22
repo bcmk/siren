@@ -36,10 +36,10 @@ all_streamers_removed:
   str: Все ваши подписки удалены
 already_added:
   parse: raw
-  str: 'Модель {{ .streamer }} уже в вашем списке'
+  str: "Модель {{ .streamer }} уже в вашем списке"
 denied:
   parse: raw
-  str: '{{ .streamer }} заблокировала доступ из региона этого бота'
+  str: "{{ .streamer }} заблокировала доступ из региона этого бота"
 feedback:
   parse: raw
   str: Спасибо за отклик!
@@ -82,7 +82,7 @@ invalid_referral_link:
 invalid_symbols:
   parse: raw
   disable_preview: true
-  str: 'Идентификатор модели {{ .streamer }} содержит неподдерживаемые символы'
+  str: "Идентификатор модели {{ .streamer }} содержит неподдерживаемые символы"
 streamer_added:
   parse: raw
   str: |-
@@ -90,10 +90,10 @@ streamer_added:
     Бот сообщит, когда она входит в сеть или выходит
 streamer_not_in_list:
   parse: raw
-  str: 'Модель {{ .streamer }} не в вашем списке'
+  str: "Модель {{ .streamer }} не в вашем списке"
 streamer_removed:
   parse: raw
-  str: 'Модель {{ .streamer }} удалена'
+  str: "Модель {{ .streamer }} удалена"
 no_online_streamers:
   parse: raw
   str: Не найдено моделей в сети, на которые вы подписаны
@@ -181,7 +181,7 @@ own_referral_link_hit:
   str: Вы только что кликнули по собственной реферальной ссылке
 profile_removed:
   parse: raw
-  str: 'Модель {{ .streamer }} вероятно удалила свой профиль'
+  str: "Модель {{ .streamer }} вероятно удалила свой профиль"
 referral_applied:
   parse: raw
   str: Поздравляем! Вы только что получили дополнительные подписки по реферальной ссылке!
@@ -213,7 +213,7 @@ social:
     GitHub: https://github.com/bcmk/siren
 subscription_usage:
   parse: raw
-  str: 'Использовано подписок: {{ .subscriptions_used }}/{{ .total_subscriptions }}'
+  str: "Использовано подписок: {{ .subscriptions_used }}/{{ .total_subscriptions }}"
 subscription_usage_ad:
   parse: raw
   str: |-
@@ -270,7 +270,7 @@ settings:
     {{- end -}}
 yes_no:
   parse: raw
-  str: '{{- if . -}} да {{- else -}} нет {{- end -}}'
+  str: "{{- if . -}} да {{- else -}} нет {{- end -}}"
 syntax_feedback:
   parse: html
   str: |-
@@ -317,7 +317,7 @@ unknown_command:
     {{ template "add_example" }}
 version:
   parse: raw
-  str: 'Версия: {{ .version }}'
+  str: "Версия: {{ .version }}"
 duration:
   str: |-
     {{- if and .Days (not .Hours) -}}
@@ -354,6 +354,19 @@ week:
       {{- $i = add $i 1 -}}
     {{- end -}}
     </code>
+week_never_online:
+  parse: html
+  disable_preview: true
+  str: |-
+    🔴
+    {{- print " " -}}
+    <code>НЕ БЫЛИ В СЕТИ НА ЭТОЙ НЕДЕЛЕ</code>
+    {{- print "\n" -}}
+    {{- range .streamers -}}
+      {{- template "affiliate_link" .Streamer -}}
+      {{- if .TimeDiff }}  <i>была {{ template "duration" .TimeDiff }} назад</i> {{- end -}}
+      {{- print "\n" -}}
+    {{- end -}}
 week_retrieving:
   str: Получаем данные, пожалуйста, подождите...
 weekday:
@@ -378,4 +391,4 @@ we_are_up:
   str: Мы снова работаем
 fields_customization_hint:
   parse: html
-  str: '<i>Совет: Вы можете настроить, что отображать, в /settings</i>'
+  str: "<i>Совет: Вы можете настроить, что отображать, в /settings</i>"

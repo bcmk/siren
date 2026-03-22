@@ -36,10 +36,10 @@ all_streamers_removed:
   str: All your subscriptions removed
 already_added:
   parse: raw
-  str: 'Model {{ .streamer }} is already in your list'
+  str: "Model {{ .streamer }} is already in your list"
 denied:
   parse: raw
-  str: '{{ .streamer }} has blocked access from the location of this bot'
+  str: "{{ .streamer }} has blocked access from the location of this bot"
 feedback:
   parse: raw
   str: Thank you for your feedback!
@@ -82,7 +82,7 @@ invalid_referral_link:
 invalid_symbols:
   parse: raw
   disable_preview: true
-  str: 'Camname {{ .streamer }} has invalid symbols'
+  str: "Camname {{ .streamer }} has invalid symbols"
 streamer_added:
   parse: raw
   str: |-
@@ -90,10 +90,10 @@ streamer_added:
     Bot will notify you whenever they enters or leaves
 streamer_not_in_list:
   parse: raw
-  str: 'Model {{ .streamer }} is not in your list'
+  str: "Model {{ .streamer }} is not in your list"
 streamer_removed:
   parse: raw
-  str: 'Model {{ .streamer }} removed successfully'
+  str: "Model {{ .streamer }} removed successfully"
 no_online_streamers:
   parse: raw
   str: There are no online models you subscribed to
@@ -181,7 +181,7 @@ own_referral_link_hit:
   str: You've just hit your own referral link
 profile_removed:
   parse: raw
-  str: 'Model {{ .streamer }} probably has removed their profile'
+  str: "Model {{ .streamer }} probably has removed their profile"
 referral_applied:
   parse: raw
   str: Congrats! You've just got more subscriptions for the referral link!
@@ -213,7 +213,7 @@ social:
     GitHub: https://github.com/bcmk/siren
 subscription_usage:
   parse: raw
-  str: 'Subscriptions usage: {{ .subscriptions_used }}/{{ .total_subscriptions }}'
+  str: "Subscriptions usage: {{ .subscriptions_used }}/{{ .total_subscriptions }}"
 subscription_usage_ad:
   parse: raw
   str: |-
@@ -270,7 +270,7 @@ settings:
     {{- end -}}
 yes_no:
   parse: raw
-  str: '{{- if . -}} yes {{- else -}} no {{- end -}}'
+  str: "{{- if . -}} yes {{- else -}} no {{- end -}}"
 syntax_feedback:
   parse: html
   str: |-
@@ -317,7 +317,7 @@ unknown_command:
     {{ template "add_example" }}
 version:
   parse: raw
-  str: 'Version: {{ .version }}'
+  str: "Version: {{ .version }}"
 duration:
   str: |-
     {{- if and .Days (not .Hours) -}}
@@ -354,6 +354,19 @@ week:
       {{- $i = add $i 1 -}}
     {{- end -}}
     </code>
+week_never_online:
+  parse: html
+  disable_preview: true
+  str: |-
+    🔴
+    {{- print " " -}}
+    <code>NEVER ONLINE THIS WEEK</code>
+    {{- print "\n" -}}
+    {{- range .streamers -}}
+      {{- template "affiliate_link" .Streamer -}}
+      {{- if .TimeDiff }}  <i>last seen {{ template "duration" .TimeDiff }}</i> ago {{- end -}}
+      {{- print "\n" -}}
+    {{- end -}}
 week_retrieving:
   str: Retrieving data, please wait...
 weekday:
@@ -378,4 +391,4 @@ we_are_up:
   str: We are up again
 fields_customization_hint:
   parse: html
-  str: '<i>Tip: You can customize what is shown in /settings</i>'
+  str: "<i>Tip: You can customize what is shown in /settings</i>"
