@@ -684,7 +684,7 @@ func (w *worker) showWeek(endpoint string, chatID int64, nickname string) {
 	for i, s := range streamers {
 		ids[i] = s.ID
 	}
-	hoursMap, start := w.weekForStreamers(ids)
+	hoursMap, start := w.weekForStreamers(ids, time.Now())
 	var weeks []string
 	for _, s := range streamers {
 		weeks = append(weeks, templateToString(w.tpl[endpoint], w.tr[endpoint].Week.Key, tplData{
@@ -1039,35 +1039,43 @@ func (w *worker) week(nickname string) ([]bool, time.Time) {
 	if streamer == nil {
 		return nil, time.Time{}
 	}
-	result, start := w.weekForStreamers([]int{streamer.ID})
+	result, start := w.weekForStreamers([]int{streamer.ID}, time.Now())
 	return result[streamer.ID], start
 }
 
-func (w *worker) weekForStreamers(streamerIDs []int) (map[int][]bool, time.Time) {
-	now := time.Now()
-	nowTimestamp := int(now.Unix())
-	today := now.Truncate(24 * time.Hour)
-	start := today.Add(-6 * 24 * time.Hour)
-	weekTimestamp := int(start.Unix())
-	changesMap := w.db.ChangesFromToForStreamers(streamerIDs, weekTimestamp, nowTimestamp)
+func onlineCells(
+	changesMap map[int][]db.StatusChange,
+	from int,
+	to int,
+	cellSeconds int,
+) map[int][]bool {
 	result := make(map[int][]bool)
 	for streamerID, changes := range changesMap {
-		hours := make([]bool, (nowTimestamp-weekTimestamp+3599)/3600)
+		cells := make([]bool, (to-from+cellSeconds-1)/cellSeconds)
 		for i, c := range changes[:len(changes)-1] {
 			if c.Status == cmdlib.StatusOnline {
-				begin := (c.Timestamp - weekTimestamp) / 3600
+				begin := (c.Timestamp - from) / cellSeconds
 				if begin < 0 {
 					begin = 0
 				}
-				end := (changes[i+1].Timestamp - weekTimestamp + 3599) / 3600
+				end := (changes[i+1].Timestamp - from + cellSeconds - 1) / cellSeconds
 				for j := begin; j < end; j++ {
-					hours[j] = true
+					cells[j] = true
 				}
 			}
 		}
-		result[streamerID] = hours
+		result[streamerID] = cells
 	}
-	return result, start
+	return result
+}
+
+func (w *worker) weekForStreamers(streamerIDs []int, now time.Time) (map[int][]bool, time.Time) {
+	today := now.Truncate(24 * time.Hour)
+	start := today.Add(-6 * 24 * time.Hour)
+	from := int(start.Unix())
+	to := int(now.Unix())
+	changesMap := w.db.ChangesFromToForStreamers(streamerIDs, from, to)
+	return onlineCells(changesMap, from, to, 3600), start
 }
 
 func (w *worker) feedback(endpoint string, chatID int64, text string, now int) {

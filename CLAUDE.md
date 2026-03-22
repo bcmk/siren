@@ -51,6 +51,7 @@
 - Run `golangci-lint run ./...` before committing
 - Run `go test ./...` to ensure changes work
 - Ask before modifying tests — explain what needs changing and why
+- Use table-driven tests with `t.Run` subtests
 
 ## Build
 

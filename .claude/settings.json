@@ -41,7 +41,8 @@
       "Bash(prettier:*)",
       "Bash(psql:*)",
       "Bash(rm:*)",
-      "Bash(cmd/schema-dump/schema-dump)"
+      "Bash(cmd/schema-dump/schema-dump)",
+      "Bash(scripts/publish)"
     ]
   }
 }

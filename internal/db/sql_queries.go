@@ -256,36 +256,36 @@ func (d *Database) MaybeStreamer(nickname string) *Streamer {
 // ChangesFromToForStreamers returns all changes for multiple streamers in specified period
 func (d *Database) ChangesFromToForStreamers(streamerIDs []int, from int, to int) map[int][]StatusChange {
 	result := make(map[int][]StatusChange)
-	beforeRangeAdded := make(map[int]bool)
 	var streamerID int
 	var change StatusChange
-	var beforeRangeStatus *cmdlib.StatusKind
-	var beforeRangeTimestamp *int
 	d.MustQuery(`
-		select
-			sub.streamer_id, sub.status, sub.timestamp,
-			sub.before_range_status, sub.before_range_timestamp
+		with last_before as (
+			select lb.streamer_id, lb.status, lb.timestamp
+			from unnest($1::integer[]) as s(id)
+			cross join lateral (
+				select streamer_id, status, timestamp
+				from status_changes
+				where streamer_id = s.id
+				and timestamp < $2
+				order by timestamp desc
+				limit 1
+			) lb
+		)
+		select streamer_id, status, timestamp
 		from (
-			select
-				sc.*,
-				lag(sc.status) over w as before_range_status,
-				lag(sc.timestamp) over w as before_range_timestamp
-			from status_changes sc
-			where sc.streamer_id = any($1)
-			window w as (partition by sc.streamer_id order by sc.timestamp)
-		) sub
-		where sub.timestamp >= $2
-		order by sub.streamer_id, sub.timestamp`,
-		QueryParams{streamerIDs, from},
-		ScanTo{&streamerID, &change.Status, &change.Timestamp, &beforeRangeStatus, &beforeRangeTimestamp},
+			select streamer_id, status, timestamp
+			from status_changes
+			where streamer_id = any($1)
+			and timestamp >= $2
+			and timestamp <= $3
+			union all
+			select streamer_id, status, timestamp
+			from last_before
+		) combined
+		order by streamer_id, timestamp`,
+		QueryParams{streamerIDs, from, to},
+		ScanTo{&streamerID, &change.Status, &change.Timestamp},
 		func() {
-			if !beforeRangeAdded[streamerID] && beforeRangeStatus != nil && beforeRangeTimestamp != nil {
-				result[streamerID] = append(result[streamerID], StatusChange{
-					Status:    *beforeRangeStatus,
-					Timestamp: *beforeRangeTimestamp,
-				})
-				beforeRangeAdded[streamerID] = true
-			}
 			result[streamerID] = append(result[streamerID], change)
 		})
 	for _, id := range streamerIDs {
