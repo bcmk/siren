@@ -106,6 +106,14 @@ func (d *Database) MustInt(query string, args ...interface{}) (result int) {
 	return result
 }
 
+// MustBool executes the query and returns single boolean
+func (d *Database) MustBool(query string, args ...interface{}) (result bool) {
+	defer d.Measure("db: " + query)()
+	row := d.db.QueryRow(context.Background(), query, args...)
+	checkErr(row.Scan(&result))
+	return result
+}
+
 // MaybeRecord executes the query and returns single record on no records
 func (d *Database) MaybeRecord(query string, args QueryParams, record ScanTo) bool {
 	defer d.Measure("db: " + query)()

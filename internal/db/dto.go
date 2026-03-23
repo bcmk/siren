@@ -2,7 +2,8 @@ package db
 
 import "github.com/bcmk/siren/v2/lib/cmdlib"
 
-// Notification represents a notification
+// Notification represents a notification.
+// Nickname is only populated when joined with streamers.
 type Notification struct {
 	ID             int
 	Endpoint       string
@@ -107,9 +108,10 @@ type ConfirmedStatusChange struct {
 	Timestamp  int
 }
 
-// Subscription represents a subscription
-type Subscription struct {
+// PendingSubscription represents an unconfirmed subscription
+type PendingSubscription struct {
 	ChatID   int64
 	Nickname string
 	Endpoint string
+	Referral bool
 }

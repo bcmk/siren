@@ -16,11 +16,12 @@ func (d *Database) NewNotifications() []Notification {
 	d.MustQuery(
 		`
 		select
-			n.id, n.endpoint, n.chat_id, n.nickname, n.status, n.time_diff, n.image_url,
+			n.id, n.endpoint, n.chat_id, s.nickname, n.status, n.time_diff, n.image_url,
 			n.viewers, n.show_kind, n.social, n.priority, n.sound, n.kind, n.subject,
 			u.silent_messages
 		from notification_queue n
 		join users u on u.chat_id = n.chat_id
+		join streamers s on s.id = n.streamer_id
 		where n.sending = 0
 		order by n.id
 		`,
@@ -59,7 +60,7 @@ func (d *Database) StoreNotifications(nots []Notification) {
 				insert into notification_queue (
 					endpoint,
 					chat_id,
-					nickname,
+					streamer_id,
 					status,
 					time_diff,
 					image_url,
@@ -71,7 +72,10 @@ func (d *Database) StoreNotifications(nots []Notification) {
 					kind,
 					subject
 				)
-				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+				values (
+					$1, $2,
+					(select id from streamers where nickname = $3),
+					$4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 			`,
 			n.Endpoint, n.ChatID, n.Nickname, n.Status, n.TimeDiff, n.ImageURL, n.Viewers, n.ShowKind, n.Social, n.Priority, n.Sound, n.Kind, n.Subject,
 		)
@@ -91,15 +95,16 @@ func (d *Database) UsersForStreamers(nicknames []string) (users map[string][]Use
 	var showSubject bool
 	d.MustQuery(`
 		select
-			subscriptions.nickname,
-			subscriptions.chat_id,
-			subscriptions.endpoint,
-			users.offline_notifications,
-			users.show_images,
-			users.show_subject
-		from subscriptions
-		join users on users.chat_id = subscriptions.chat_id
-		where subscriptions.nickname = any($1)`,
+			s.nickname,
+			sub.chat_id,
+			sub.endpoint,
+			u.offline_notifications,
+			u.show_images,
+			u.show_subject
+		from subscriptions sub
+		join streamers s on s.id = sub.streamer_id
+		join users u on u.chat_id = sub.chat_id
+		where s.nickname = any($1)`,
 		QueryParams{nicknames},
 		ScanTo{&nickname, &chatID, &endpoint, &offlineNotifications, &showImages, &showSubject},
 		func() {
@@ -129,11 +134,11 @@ func (d *Database) BroadcastChats(endpoint string) (chats []int64) {
 func (d *Database) StreamersForChat(endpoint string, chatID int64) (streamers []Streamer) {
 	var iter Streamer
 	d.MustQuery(`
-		select s.id, sub.nickname
+		select s.id, s.nickname
 		from subscriptions sub
-		join streamers s on s.nickname = sub.nickname
+		join streamers s on s.id = sub.streamer_id
 		where sub.chat_id = $1 and sub.endpoint = $2
-		order by sub.nickname`,
+		order by s.nickname`,
 		QueryParams{chatID, endpoint},
 		ScanTo{&iter.ID, &iter.Nickname},
 		func() { streamers = append(streamers, iter) })
@@ -146,13 +151,13 @@ func (d *Database) UnconfirmedStatusesForChat(endpoint string, chatID int64) (st
 	d.MustQuery(`
 		select
 			s.nickname,
-			coalesce(m.unconfirmed_status, 0),
-			coalesce(m.unconfirmed_timestamp, 0),
-			coalesce(m.prev_unconfirmed_status, 0),
-			coalesce(m.prev_unconfirmed_timestamp, 0)
-		from subscriptions s
-		left join streamers m on m.nickname = s.nickname
-		where s.chat_id = $1 and s.endpoint = $2
+			s.unconfirmed_status,
+			s.unconfirmed_timestamp,
+			s.prev_unconfirmed_status,
+			s.prev_unconfirmed_timestamp
+		from subscriptions sub
+		join streamers s on s.id = sub.streamer_id
+		where sub.chat_id = $1 and sub.endpoint = $2
 		order by s.nickname`,
 		QueryParams{chatID, endpoint},
 		ScanTo{
@@ -166,15 +171,30 @@ func (d *Database) UnconfirmedStatusesForChat(endpoint string, chatID int64) (st
 	return
 }
 
-// SubscriptionExists checks if subscription exists
-func (d *Database) SubscriptionExists(endpoint string, chatID int64, nickname string) bool {
-	count := d.MustInt("select count(*) from subscriptions where chat_id = $1 and nickname = $2 and endpoint = $3", chatID, nickname, endpoint)
-	return count != 0
+// SubscribedOrPending checks if a subscription or pending subscription exists
+func (d *Database) SubscribedOrPending(endpoint string, chatID int64, nickname string) bool {
+	return d.MustBool(`
+		select exists(
+			select 1 from subscriptions sub
+			join streamers s on s.id = sub.streamer_id
+			where sub.chat_id = $1 and s.nickname = $2 and sub.endpoint = $3
+			union all
+			select 1 from pending_subscriptions
+			where chat_id = $1 and nickname = $2 and endpoint = $3
+		)`,
+		chatID, nickname, endpoint)
 }
 
-// SubscriptionsNumber return the number of subscriptions of a particular chat
-func (d *Database) SubscriptionsNumber(endpoint string, chatID int64) int {
-	return d.MustInt("select count(*) from subscriptions where chat_id = $1 and endpoint = $2", chatID, endpoint)
+// SubscribedOrPendingCount returns the total number of subscriptions
+// and pending subscriptions of a particular chat
+func (d *Database) SubscribedOrPendingCount(endpoint string, chatID int64) int {
+	return d.MustInt(`
+		select
+			(select count(*) from subscriptions
+			where chat_id = $1 and endpoint = $2) +
+			(select count(*) from pending_subscriptions
+			where chat_id = $1 and endpoint = $2)`,
+		chatID, endpoint)
 }
 
 // User queries a user with particular ID
@@ -303,19 +323,37 @@ func (d *Database) SetLimit(chatID int64, maxSubs int) {
 		maxSubs)
 }
 
-// ConfirmSub confirms subscription
-func (d *Database) ConfirmSub(sub Subscription) {
-	d.MustExec(`
+// ConfirmSub confirms a pending subscription by upserting the streamer,
+// moving it from pending_subscriptions to subscriptions, and deleting the pending entry
+func (d *Database) ConfirmSub(sub PendingSubscription) {
+	defer d.Measure("db: confirm sub")()
+	tx, err := d.Begin()
+	checkErr(err)
+	defer func() { _ = tx.Rollback(context.Background()) }()
+
+	_, err = tx.Exec(context.Background(), `
 		insert into streamers (nickname)
 		values ($1)
 		on conflict(nickname) do nothing`,
 		sub.Nickname)
-	d.MustExec("update subscriptions set confirmed=1 where endpoint = $1 and chat_id = $2 and nickname = $3", sub.Endpoint, sub.ChatID, sub.Nickname)
+	checkErr(err)
+	_, err = tx.Exec(context.Background(), `
+		insert into subscriptions (chat_id, streamer_id, endpoint)
+		values ($1, (select id from streamers where nickname = $2), $3)`,
+		sub.ChatID, sub.Nickname, sub.Endpoint)
+	checkErr(err)
+	_, err = tx.Exec(context.Background(),
+		"delete from pending_subscriptions where endpoint = $1 and chat_id = $2 and nickname = $3",
+		sub.Endpoint, sub.ChatID, sub.Nickname)
+	checkErr(err)
+	checkErr(tx.Commit(context.Background()))
 }
 
-// DenySub denies subscription
-func (d *Database) DenySub(sub Subscription) {
-	d.MustExec("delete from subscriptions where endpoint = $1 and chat_id = $2 and nickname = $3", sub.Endpoint, sub.ChatID, sub.Nickname)
+// DenySub denies a pending subscription
+func (d *Database) DenySub(sub PendingSubscription) {
+	d.MustExec(
+		"delete from pending_subscriptions where endpoint = $1 and chat_id = $2 and nickname = $3",
+		sub.Endpoint, sub.ChatID, sub.Nickname)
 }
 
 // UnconfirmedStatusesForStreamers returns unconfirmed statuses for specific streamers
@@ -334,12 +372,14 @@ func (d *Database) UnconfirmedStatusesForStreamers(nicknames []string) map[strin
 	return statusChanges
 }
 
-// SubscribedStreamers returns all confirmed subscribed streamers
+// SubscribedStreamers returns all subscribed streamers
 func (d *Database) SubscribedStreamers() map[string]bool {
 	streamers := map[string]bool{}
 	var nickname string
-	d.MustQuery(
-		`select distinct nickname from subscriptions where confirmed = 1`,
+	d.MustQuery(`
+		select distinct s.nickname
+		from subscriptions sub
+		join streamers s on s.id = sub.streamer_id`,
 		nil,
 		ScanTo{&nickname},
 		func() { streamers[nickname] = true })
@@ -351,13 +391,11 @@ func (d *Database) QueryLastSubscriptionStatuses() map[string]cmdlib.StatusKind 
 	statuses := map[string]cmdlib.StatusKind{}
 	var nickname string
 	var status cmdlib.StatusKind
-	d.MustQuery(
-		`
-			select s.nickname, coalesce(m.unconfirmed_status, $1) as status
-			from (select distinct nickname from subscriptions where confirmed = 1) s
-			left join streamers m on m.nickname = s.nickname
-		`,
-		QueryParams{cmdlib.StatusUnknown},
+	d.MustQuery(`
+		select s.nickname, s.unconfirmed_status
+		from (select distinct streamer_id from subscriptions) sub
+		join streamers s on s.id = sub.streamer_id`,
+		nil,
 		ScanTo{&nickname, &status},
 		func() { statuses[nickname] = status })
 	return statuses
@@ -699,14 +737,23 @@ func (d *Database) InsertStatusChanges(changedStatuses []StatusChange, timestamp
 	checkErr(tx.Commit(context.Background()))
 }
 
-// AddSubscription inserts a subscription with the given confirmed status
-func (d *Database) AddSubscription(chatID int64, nickname string, endpoint string, confirmed int) {
+// AddSubscription inserts a confirmed subscription
+func (d *Database) AddSubscription(chatID int64, streamerID int, endpoint string) {
 	d.MustExec(
-		"insert into subscriptions (chat_id, nickname, endpoint, confirmed) values ($1, $2, $3, $4)",
+		"insert into subscriptions (chat_id, streamer_id, endpoint) values ($1, $2, $3)",
+		chatID,
+		streamerID,
+		endpoint)
+}
+
+// AddPendingSubscription inserts a pending subscription for an unknown streamer
+func (d *Database) AddPendingSubscription(chatID int64, nickname string, endpoint string, referral bool) {
+	d.MustExec(
+		"insert into pending_subscriptions (chat_id, nickname, endpoint, referral) values ($1, $2, $3, $4)",
 		chatID,
 		nickname,
 		endpoint,
-		confirmed)
+		referral)
 }
 
 // SetShowImages updates the show_images setting for a user
@@ -741,18 +788,41 @@ func (d *Database) UpdateChatType(chatID int64, chatType string) {
 	d.MustExec("update users set chat_type = $1 where chat_id = $2", chatType, chatID)
 }
 
-// RemoveSubscription deletes a specific subscription
+// RemoveSubscription deletes a specific subscription and any pending subscription
 func (d *Database) RemoveSubscription(chatID int64, nickname string, endpoint string) {
-	d.MustExec(
-		"delete from subscriptions where chat_id = $1 and nickname = $2 and endpoint = $3",
-		chatID,
-		nickname,
-		endpoint)
+	defer d.Measure("db: remove subscription")()
+	tx, err := d.Begin()
+	checkErr(err)
+	defer func() { _ = tx.Rollback(context.Background()) }()
+
+	_, err = tx.Exec(context.Background(), `
+		delete from subscriptions
+		where chat_id = $1
+		and streamer_id = (select id from streamers where nickname = $2)
+		and endpoint = $3`,
+		chatID, nickname, endpoint)
+	checkErr(err)
+	_, err = tx.Exec(context.Background(),
+		"delete from pending_subscriptions where chat_id = $1 and nickname = $2 and endpoint = $3",
+		chatID, nickname, endpoint)
+	checkErr(err)
+	checkErr(tx.Commit(context.Background()))
 }
 
-// RemoveAllSubscriptions deletes all subscriptions for a chat and endpoint
+// RemoveAllSubscriptions deletes all subscriptions and pending subscriptions for a chat and endpoint
 func (d *Database) RemoveAllSubscriptions(chatID int64, endpoint string) {
-	d.MustExec("delete from subscriptions where chat_id = $1 and endpoint = $2", chatID, endpoint)
+	defer d.Measure("db: remove all subscriptions")()
+	tx, err := d.Begin()
+	checkErr(err)
+	defer func() { _ = tx.Rollback(context.Background()) }()
+
+	_, err = tx.Exec(context.Background(),
+		"delete from subscriptions where chat_id = $1 and endpoint = $2", chatID, endpoint)
+	checkErr(err)
+	_, err = tx.Exec(context.Background(),
+		"delete from pending_subscriptions where chat_id = $1 and endpoint = $2", chatID, endpoint)
+	checkErr(err)
+	checkErr(tx.Commit(context.Background()))
 }
 
 // AddFeedback stores user feedback
@@ -795,8 +865,9 @@ func (d *Database) IncrementReferredUsers(chatID int64) {
 
 // AddReferralEvent adds a referral event
 func (d *Database) AddReferralEvent(timestamp int, referrerChatID *int64, followerChatID int64, nickname *string) {
-	d.MustExec(
-		"insert into referral_events (timestamp, referrer_chat_id, follower_chat_id, nickname) values ($1, $2, $3, $4)",
+	d.MustExec(`
+		insert into referral_events (timestamp, referrer_chat_id, follower_chat_id, streamer_id)
+		values ($1, $2, $3, (select id from streamers where nickname = $4))`,
 		timestamp,
 		referrerChatID,
 		followerChatID,
@@ -837,14 +908,14 @@ func (d *Database) MaintainBrinIndexes() {
 	d.MustExec("select brin_summarize_new_values('ix_performance_log_timestamp')")
 }
 
-// MarkUnconfirmedAsChecking marks unconfirmed subscriptions as checking (0 -> 2)
+// MarkUnconfirmedAsChecking marks pending subscriptions as checking
 func (d *Database) MarkUnconfirmedAsChecking() {
-	d.MustExec("update subscriptions set confirmed = 2 where confirmed = 0")
+	d.MustExec("update pending_subscriptions set checking = true where not checking")
 }
 
-// ResetCheckingToUnconfirmed resets checking subscriptions back to unconfirmed (2 -> 0)
+// ResetCheckingToUnconfirmed resets checking pending subscriptions back to not checking
 func (d *Database) ResetCheckingToUnconfirmed() {
-	d.MustExec("update subscriptions set confirmed = 0 where confirmed = 2")
+	d.MustExec("update pending_subscriptions set checking = false where checking")
 }
 
 // ResetNotificationSending resets all sending notifications to not sending

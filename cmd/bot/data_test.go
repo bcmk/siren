@@ -99,11 +99,11 @@ func newTestWorker() *testWorker {
 func confirmedStatusesForChat(d *db.Database, endpoint string, chatID int64) (statuses []db.Streamer) {
 	var iter db.Streamer
 	d.MustQuery(`
-		select streamers.nickname, streamers.confirmed_status
-		from streamers
-		join subscriptions on subscriptions.nickname = streamers.nickname
-		where subscriptions.chat_id = $1 and subscriptions.endpoint = $2
-		order by streamers.nickname`,
+		select s.nickname, s.confirmed_status
+		from subscriptions sub
+		join streamers s on s.id = sub.streamer_id
+		where sub.chat_id = $1 and sub.endpoint = $2
+		order by s.nickname`,
 		db.QueryParams{chatID, endpoint},
 		db.ScanTo{&iter.Nickname, &iter.ConfirmedStatus},
 		func() { statuses = append(statuses, iter) })
@@ -130,8 +130,12 @@ func queryLastStatusChanges(d *db.Database) map[string]db.StatusChange {
 func (w *testWorker) chatsForStreamer(nickname string) (chats []int64, endpoints []string) {
 	var chatID int64
 	var endpoint string
-	w.db.MustQuery(
-		`select chat_id, endpoint from subscriptions where nickname = $1 order by chat_id`,
+	w.db.MustQuery(`
+		select sub.chat_id, sub.endpoint
+		from subscriptions sub
+		join streamers s on s.id = sub.streamer_id
+		where s.nickname = $1
+		order by sub.chat_id`,
 		db.QueryParams{nickname},
 		db.ScanTo{&chatID, &endpoint},
 		func() {
@@ -139,4 +143,16 @@ func (w *testWorker) chatsForStreamer(nickname string) (chats []int64, endpoints
 			endpoints = append(endpoints, endpoint)
 		})
 	return
+}
+
+// insertSubscription creates a streamer (if needed) and inserts
+// a confirmed subscription for tests
+func insertSubscription(d *db.Database, endpoint string, chatID int64, nickname string) {
+	d.MustExec(
+		"insert into streamers (nickname) values ($1) on conflict(nickname) do nothing",
+		nickname)
+	d.MustExec(`
+		insert into subscriptions (endpoint, chat_id, streamer_id)
+		values ($1, $2, (select id from streamers where nickname = $3))`,
+		endpoint, chatID, nickname)
 }

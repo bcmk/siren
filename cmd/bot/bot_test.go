@@ -41,18 +41,18 @@ func TestSql(t *testing.T) {
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
 	w.initCache()
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, nickname) values ($1, $2, $3)", "ep1", 1, "a")
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, nickname) values ($1, $2, $3)", "ep1", 2, "b")
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, nickname) values ($1, $2, $3)", "ep1", 3, "c")
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, nickname) values ($1, $2, $3)", "ep1", 3, "c2")
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, nickname) values ($1, $2, $3)", "ep1", 3, "c3")
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, nickname) values ($1, $2, $3)", "ep1", 4, "d")
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, nickname) values ($1, $2, $3)", "ep1", 5, "d")
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, nickname) values ($1, $2, $3)", "ep1", 6, "e")
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, nickname) values ($1, $2, $3)", "ep1", 7, "f")
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, nickname) values ($1, $2, $3)", "ep2", 6, "e")
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, nickname) values ($1, $2, $3)", "ep2", 7, "f")
-	w.db.MustExec("insert into subscriptions (endpoint, chat_id, nickname) values ($1, $2, $3)", "ep2", 8, "g")
+	insertSubscription(&w.db, "ep1", 1, "a")
+	insertSubscription(&w.db, "ep1", 2, "b")
+	insertSubscription(&w.db, "ep1", 3, "c")
+	insertSubscription(&w.db, "ep1", 3, "c2")
+	insertSubscription(&w.db, "ep1", 3, "c3")
+	insertSubscription(&w.db, "ep1", 4, "d")
+	insertSubscription(&w.db, "ep1", 5, "d")
+	insertSubscription(&w.db, "ep1", 6, "e")
+	insertSubscription(&w.db, "ep1", 7, "f")
+	insertSubscription(&w.db, "ep2", 6, "e")
+	insertSubscription(&w.db, "ep2", 7, "f")
+	insertSubscription(&w.db, "ep2", 8, "g")
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 2, 0)
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 3, w.cfg.BlockThreshold)
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 4, w.cfg.BlockThreshold-1)
@@ -60,10 +60,10 @@ func TestSql(t *testing.T) {
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 6, w.cfg.BlockThreshold)
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 7, w.cfg.BlockThreshold)
 	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep2", 7, w.cfg.BlockThreshold)
-	w.db.MustExec("insert into streamers (nickname, confirmed_status) values ($1, $2)", "a", cmdlib.StatusOnline)
-	w.db.MustExec("insert into streamers (nickname, confirmed_status) values ($1, $2)", "b", cmdlib.StatusOnline)
-	w.db.MustExec("insert into streamers (nickname, confirmed_status) values ($1, $2)", "c", cmdlib.StatusOnline)
-	w.db.MustExec("insert into streamers (nickname, confirmed_status) values ($1, $2)", "c2", cmdlib.StatusOnline)
+	w.db.MustExec("update streamers set confirmed_status = $2 where nickname = $1", "a", cmdlib.StatusOnline)
+	w.db.MustExec("update streamers set confirmed_status = $2 where nickname = $1", "b", cmdlib.StatusOnline)
+	w.db.MustExec("update streamers set confirmed_status = $2 where nickname = $1", "c", cmdlib.StatusOnline)
+	w.db.MustExec("update streamers set confirmed_status = $2 where nickname = $1", "c2", cmdlib.StatusOnline)
 	broadcastChats := w.db.BroadcastChats("ep1")
 	if !reflect.DeepEqual(broadcastChats, []int64{1, 2, 3, 4, 5, 6, 7}) {
 		t.Error("unexpected broadcast chats result", broadcastChats)
@@ -123,7 +123,8 @@ func TestSql(t *testing.T) {
 	statuses := confirmedStatusesForChat(&w.db, "ep1", 3)
 	if !reflect.DeepEqual(statuses, []db.Streamer{
 		{Nickname: "c", ConfirmedStatus: cmdlib.StatusOnline},
-		{Nickname: "c2", ConfirmedStatus: cmdlib.StatusOnline}}) {
+		{Nickname: "c2", ConfirmedStatus: cmdlib.StatusOnline},
+		{Nickname: "c3"}}) {
 		t.Error("unexpected statuses", statuses)
 	}
 	_ = w.db.Close()
@@ -135,24 +136,12 @@ func TestUpdateNotifications(t *testing.T) {
 	w.createDatabase(make(chan bool, 1))
 	w.initCache()
 
-	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, nickname) values ($1, $2, $3)",
-		"ep1", 1, "a")
-	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, nickname) values ($1, $2, $3)",
-		"ep1", 2, "b")
-	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, nickname) values ($1, $2, $3)",
-		"ep1", 3, "a")
-	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, nickname) values ($1, $2, $3)",
-		"ep1", 3, "c")
-	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, nickname) values ($1, $2, $3)",
-		"ep1", 4, "d")
-	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, nickname) values ($1, $2, $3)",
-		"ep2", 4, "d")
+	insertSubscription(&w.db, "ep1", 1, "a")
+	insertSubscription(&w.db, "ep1", 2, "b")
+	insertSubscription(&w.db, "ep1", 3, "a")
+	insertSubscription(&w.db, "ep1", 3, "c")
+	insertSubscription(&w.db, "ep1", 4, "d")
+	insertSubscription(&w.db, "ep2", 4, "d")
 
 	w.db.MustExec("insert into users (chat_id, created_at) values ($1, 0)", 1)
 	w.db.MustExec("insert into users (chat_id, created_at) values ($1, 0)", 2)
@@ -232,6 +221,10 @@ func TestNotificationsStorage(t *testing.T) {
 	w.db.AddUser(1, 3, 0, "private")
 	w.db.AddUser(2, 3, 0, "private")
 	w.db.AddUser(3, 3, 0, "private")
+
+	w.db.MustExec("insert into streamers (nickname) values ($1)", "a")
+	w.db.MustExec("insert into streamers (nickname) values ($1)", "b")
+	w.db.MustExec("insert into streamers (nickname) values ($1)", "c")
 
 	w.db.StoreNotifications(nots)
 	newNots := w.db.NewNotifications()
@@ -562,12 +555,12 @@ func TestAddStreamer(t *testing.T) {
 	w.createDatabase(make(chan bool, 1))
 	w.db.AddUser(1, 3, 0, "private")
 
-	// Add streamer that doesn't exist — should insert with confirmed=0 and return false
-	if w.addStreamer("test", 1, "newmodel", 100) {
+	// Add streamer that doesn't exist — should insert into pending_subscriptions and return false
+	if w.addStreamer("test", 1, "newmodel", 100, false) {
 		t.Error("expected addStreamer to return false for new streamer")
 	}
-	if w.db.MustInt("select confirmed from subscriptions where nickname = $1", "newmodel") != 0 {
-		t.Error("expected confirmed=0 for new streamer")
+	if w.db.MustInt("select count(*) from pending_subscriptions where nickname = $1", "newmodel") != 1 {
+		t.Error("expected pending subscription for new streamer")
 	}
 	// Drain the "checking streamer" message
 	<-w.outgoingMsgCh
@@ -578,11 +571,14 @@ func TestAddStreamer(t *testing.T) {
 		"onlinemodel",
 		cmdlib.StatusOnline,
 	)
-	if !w.addStreamer("test", 1, "onlinemodel", 100) {
+	if !w.addStreamer("test", 1, "onlinemodel", 100, false) {
 		t.Error("expected addStreamer to return true for existing streamer")
 	}
-	if w.db.MustInt("select confirmed from subscriptions where nickname = $1", "onlinemodel") != 1 {
-		t.Error("expected confirmed=1 for existing streamer")
+	if w.db.MustInt(`
+		select count(*) from subscriptions sub
+		join streamers s on s.id = sub.streamer_id
+		where s.nickname = $1`, "onlinemodel") != 1 {
+		t.Error("expected subscription for existing streamer")
 	}
 	// Drain messages
 	<-w.outgoingMsgCh
@@ -597,7 +593,7 @@ func TestAddStreamer(t *testing.T) {
 		"offlinemodel",
 		cmdlib.StatusOffline,
 	)
-	if !w.addStreamer("test", 1, "offlinemodel", 100) {
+	if !w.addStreamer("test", 1, "offlinemodel", 100, false) {
 		t.Error("expected addStreamer to return true for existing offline streamer")
 	}
 	nots = w.db.NewNotifications()
@@ -611,18 +607,26 @@ func TestConfirmSub(t *testing.T) {
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
 
-	// Insert unconfirmed subscription
+	// Insert pending subscription
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, nickname, confirmed) values ($1, $2, $3, $4)",
-		"test", 1, "a", 0,
+		"insert into pending_subscriptions (endpoint, chat_id, nickname) values ($1, $2, $3)",
+		"test", 1, "a",
 	)
 
 	// Confirm the subscription
-	w.db.ConfirmSub(db.Subscription{Endpoint: "test", ChatID: 1, Nickname: "a"})
+	w.db.ConfirmSub(db.PendingSubscription{Endpoint: "test", ChatID: 1, Nickname: "a"})
 
-	// Check subscription is confirmed
-	if w.db.MustInt("select confirmed from subscriptions where nickname = $1", "a") != 1 {
-		t.Error("expected confirmed=1 after ConfirmSub")
+	// Check subscription was moved to subscriptions table
+	if w.db.MustInt(`
+		select count(*) from subscriptions sub
+		join streamers s on s.id = sub.streamer_id
+		where s.nickname = $1`, "a") != 1 {
+		t.Error("expected subscription after ConfirmSub")
+	}
+
+	// Check pending subscription was deleted
+	if w.db.MustInt("select count(*) from pending_subscriptions where nickname = $1", "a") != 0 {
+		t.Error("expected pending subscription to be deleted after ConfirmSub")
 	}
 
 	// Check streamer was created
@@ -636,18 +640,18 @@ func TestDenySub(t *testing.T) {
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
 
-	// Insert unconfirmed subscription
+	// Insert pending subscription
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, nickname, confirmed) values ($1, $2, $3, $4)",
-		"test", 1, "b", 0,
+		"insert into pending_subscriptions (endpoint, chat_id, nickname) values ($1, $2, $3)",
+		"test", 1, "b",
 	)
 
 	// Deny the subscription
-	w.db.DenySub(db.Subscription{Endpoint: "test", ChatID: 1, Nickname: "b"})
+	w.db.DenySub(db.PendingSubscription{Endpoint: "test", ChatID: 1, Nickname: "b"})
 
-	// Check subscription is deleted
-	if w.db.MustInt("select count(*) from subscriptions where nickname = $1", "b") != 0 {
-		t.Error("expected subscription to be deleted after DenySub")
+	// Check pending subscription is deleted
+	if w.db.MustInt("select count(*) from pending_subscriptions where nickname = $1", "b") != 0 {
+		t.Error("expected pending subscription to be deleted after DenySub")
 	}
 }
 
@@ -656,34 +660,44 @@ func TestProcessSubsConfirmations(t *testing.T) {
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
 
-	// Insert subscriptions waiting for confirmation (confirmed=2)
+	// Insert pending subscriptions in checking state
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, nickname, confirmed) values ($1, $2, $3, $4)",
-		"test", 1, "online_model", 2,
+		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking) values ($1, $2, $3, $4)",
+		"test", 1, "online_model", true,
 	)
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, nickname, confirmed) values ($1, $2, $3, $4)",
-		"test", 2, "offline_model", 2,
+		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking) values ($1, $2, $3, $4)",
+		"test", 2, "offline_model", true,
 	)
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, nickname, confirmed) values ($1, $2, $3, $4)",
-		"test", 3, "notfound_model", 2,
+		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking) values ($1, $2, $3, $4)",
+		"test", 3, "notfound_model", true,
 	)
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, nickname, confirmed) values ($1, $2, $3, $4)",
-		"test", 4, "denied_model", 2,
+		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking) values ($1, $2, $3, $4)",
+		"test", 4, "denied_model", true,
 	)
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, nickname, confirmed) values ($1, $2, $3, $4)",
-		"test", 5, "notfound_denied_model", 2,
+		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking) values ($1, $2, $3, $4)",
+		"test", 5, "notfound_denied_model", true,
 	)
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, nickname, confirmed) values ($1, $2, $3, $4)",
-		"test", 6, "online_offline_model", 2,
+		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking) values ($1, $2, $3, $4)",
+		"test", 6, "online_offline_model", true,
 	)
 	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, nickname, confirmed) values ($1, $2, $3, $4)",
-		"test", 7, "unknown_model", 2,
+		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking) values ($1, $2, $3, $4)",
+		"test", 7, "unknown_model", true,
+	)
+	// Referral pending subscription — should create referral event on confirmation
+	w.db.MustExec(
+		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking, referral) values ($1, $2, $3, $4, $5)",
+		"test", 8, "referral_model", true, true,
+	)
+	// Non-referral pending subscription — should NOT create referral event
+	w.db.MustExec(
+		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking) values ($1, $2, $3, $4)",
+		"test", 9, "nonreferral_model", true,
 	)
 
 	// Process confirmations with checker results
@@ -696,42 +710,88 @@ func TestProcessSubsConfirmations(t *testing.T) {
 			"notfound_denied_model": {Status: cmdlib.StatusNotFound | cmdlib.StatusDenied},
 			"online_offline_model":  {Status: cmdlib.StatusOnline | cmdlib.StatusOffline},
 			"unknown_model":         {Status: cmdlib.StatusUnknown},
+			"referral_model":        {Status: cmdlib.StatusOnline},
+			"nonreferral_model":     {Status: cmdlib.StatusOnline},
 		},
 	})
 
-	// Online model should be confirmed
-	if w.db.MustInt("select confirmed from subscriptions where nickname = $1", "online_model") != 1 {
-		t.Error("expected online_model to be confirmed")
+	subCount := func(nickname string) int {
+		return w.db.MustInt(`
+			select count(*) from subscriptions sub
+			join streamers s on s.id = sub.streamer_id
+			where s.nickname = $1`, nickname)
+	}
+	pendingCount := func(nickname string) int {
+		return w.db.MustInt(
+			"select count(*) from pending_subscriptions where nickname = $1", nickname)
+	}
+
+	// Online model should be confirmed (in subscriptions, not in pending)
+	if subCount("online_model") != 1 {
+		t.Error("expected online_model to be in subscriptions")
+	}
+	if pendingCount("online_model") != 0 {
+		t.Error("expected online_model to be removed from pending")
 	}
 
 	// Offline model should be confirmed
-	if w.db.MustInt("select confirmed from subscriptions where nickname = $1", "offline_model") != 1 {
-		t.Error("expected offline_model to be confirmed")
+	if subCount("offline_model") != 1 {
+		t.Error("expected offline_model to be in subscriptions")
 	}
 
-	// NotFound model should be denied (deleted)
-	if w.db.MustInt("select count(*) from subscriptions where nickname = $1", "notfound_model") != 0 {
+	// NotFound model should be denied (deleted from pending)
+	if pendingCount("notfound_model") != 0 {
 		t.Error("expected notfound_model to be deleted")
+	}
+	if subCount("notfound_model") != 0 {
+		t.Error("expected notfound_model not in subscriptions")
 	}
 
 	// Denied model should be confirmed (StatusDenied is a valid status)
-	if w.db.MustInt("select confirmed from subscriptions where nickname = $1", "denied_model") != 1 {
-		t.Error("expected denied_model to be confirmed")
+	if subCount("denied_model") != 1 {
+		t.Error("expected denied_model to be in subscriptions")
 	}
 
 	// NotFound|Denied model should be confirmed (StatusDenied bit is set)
-	if w.db.MustInt("select confirmed from subscriptions where nickname = $1", "notfound_denied_model") != 1 {
-		t.Error("expected notfound_denied_model to be confirmed")
+	if subCount("notfound_denied_model") != 1 {
+		t.Error("expected notfound_denied_model to be in subscriptions")
 	}
 
 	// Online|Offline model should be confirmed (found but status uncertain)
-	if w.db.MustInt("select confirmed from subscriptions where nickname = $1", "online_offline_model") != 1 {
-		t.Error("expected online_offline_model to be confirmed")
+	if subCount("online_offline_model") != 1 {
+		t.Error("expected online_offline_model to be in subscriptions")
 	}
 
 	// Unknown model should be denied (deleted)
-	if w.db.MustInt("select count(*) from subscriptions where nickname = $1", "unknown_model") != 0 {
+	if pendingCount("unknown_model") != 0 {
 		t.Error("expected unknown_model to be deleted")
+	}
+	if subCount("unknown_model") != 0 {
+		t.Error("expected unknown_model not in subscriptions")
+	}
+
+	// Referral model should be confirmed and have a referral event
+	if subCount("referral_model") != 1 {
+		t.Error("expected referral_model to be in subscriptions")
+	}
+	referralCount := w.db.MustInt(`
+		select count(*) from referral_events r
+		join streamers s on s.id = r.streamer_id
+		where s.nickname = $1 and r.follower_chat_id = $2`, "referral_model", 8)
+	if referralCount != 1 {
+		t.Error("expected referral event for referral_model")
+	}
+
+	// Non-referral model should be confirmed but have no referral event
+	if subCount("nonreferral_model") != 1 {
+		t.Error("expected nonreferral_model to be in subscriptions")
+	}
+	nonReferralCount := w.db.MustInt(`
+		select count(*) from referral_events r
+		join streamers s on s.id = r.streamer_id
+		where s.nickname = $1 and r.follower_chat_id = $2`, "nonreferral_model", 9)
+	if nonReferralCount != 0 {
+		t.Error("expected no referral event for nonreferral_model")
 	}
 }
 
@@ -878,20 +938,24 @@ func TestQueryLastSubscriptionStatuses(t *testing.T) {
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
 
-	// Insert confirmed subscriptions
-	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, nickname, confirmed) values ($1, $2, $3, $4)",
-		"test", 1, "model_with_status", 1,
-	)
-	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, nickname, confirmed) values ($1, $2, $3, $4)",
-		"test", 2, "model_without_status", 1,
-	)
-
-	// Insert model with unconfirmed_status for one model only
+	// Insert streamers and confirmed subscriptions
 	w.db.MustExec(
 		"insert into streamers (nickname, confirmed_status, unconfirmed_status) values ($1, $2, $3)",
 		"model_with_status", cmdlib.StatusOnline, cmdlib.StatusOnline,
+	)
+	w.db.MustExec(
+		"insert into streamers (nickname) values ($1)",
+		"model_without_status",
+	)
+	w.db.MustExec(`
+		insert into subscriptions (endpoint, chat_id, streamer_id)
+		values ($1, $2, (select id from streamers where nickname = $3))`,
+		"test", 1, "model_with_status",
+	)
+	w.db.MustExec(`
+		insert into subscriptions (endpoint, chat_id, streamer_id)
+		values ($1, $2, (select id from streamers where nickname = $3))`,
+		"test", 2, "model_without_status",
 	)
 
 	statuses := w.db.QueryLastSubscriptionStatuses()
@@ -901,7 +965,7 @@ func TestQueryLastSubscriptionStatuses(t *testing.T) {
 		t.Errorf("expected model_with_status to be online, got %v", statuses["model_with_status"])
 	}
 
-	// Model without models record should return StatusUnknown
+	// Model with default unconfirmed_status (0) should return StatusUnknown
 	if statuses["model_without_status"] != cmdlib.StatusUnknown {
 		t.Errorf("expected model_without_status to be unknown, got %v", statuses["model_without_status"])
 	}
@@ -914,10 +978,7 @@ func TestHandleStatusUpdates(t *testing.T) {
 	w.initCache()
 
 	// Insert a subscription
-	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, nickname, confirmed) values ($1, $2, $3, $4)",
-		"test", 1, "a", 1,
-	)
+	insertSubscription(&w.db, "test", 1, "a")
 
 	// Test with OnlineListResults
 	result := &cmdlib.OnlineListResults{
@@ -998,12 +1059,8 @@ func TestUnsubscribeBeforeRestart(t *testing.T) {
 	w.initCache()
 
 	// Subscribe to "a" and "b"
-	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, nickname, confirmed) values ($1, $2, $3, $4)",
-		"test", 1, "a", 1)
-	w.db.MustExec(
-		"insert into subscriptions (endpoint, chat_id, nickname, confirmed) values ($1, $2, $3, $4)",
-		"test", 1, "b", 1)
+	insertSubscription(&w.db, "test", 1, "a")
+	insertSubscription(&w.db, "test", 1, "b")
 
 	// Both streamers come online
 	result := &cmdlib.FixedListOnlineResults{
@@ -1025,7 +1082,9 @@ func TestUnsubscribeBeforeRestart(t *testing.T) {
 	}
 
 	// Unsubscribe from "a"
-	w.db.MustExec("delete from subscriptions where nickname = $1", "a")
+	w.db.MustExec(`
+		delete from subscriptions
+		where streamer_id = (select id from streamers where nickname = $1)`, "a")
 
 	// Simulate restart: reinitialize cache as would happen on restart
 	w.initCache()
@@ -1060,20 +1119,20 @@ func TestUnknownStreamerFirstOfflineSaved(t *testing.T) {
 
 	// 1. User subscribes to a streamer we don't know yet — creates unconfirmed subscription
 	// This simulates subscribing to a Twitch streamer or a new unknown model
-	if w.addStreamer("test", 1, "unknown_model", 100) {
+	if w.addStreamer("test", 1, "unknown_model", 100, false) {
 		t.Error("expected addStreamer to return false for unknown streamer")
 	}
 	// Drain the "checking streamer" message
 	<-w.outgoingMsgCh
 
-	// Verify subscription is unconfirmed
-	if w.db.MustInt("select confirmed from subscriptions where nickname = $1", "unknown_model") != 0 {
-		t.Error("expected confirmed=0 for new streamer")
+	// Verify pending subscription exists
+	if w.db.MustInt("select count(*) from pending_subscriptions where nickname = $1", "unknown_model") != 1 {
+		t.Error("expected pending subscription for new streamer")
 	}
 
 	// 2. Subscription is confirmed — checker returns offline status (Twitch returns Online|Offline)
-	// First, set subscription to "checking" state (confirmed=2) as queryUnconfirmedSubs would do
-	w.db.MustExec("update subscriptions set confirmed = 2 where nickname = $1", "unknown_model")
+	// Set subscription to "checking" state as queryUnconfirmedSubs would do
+	w.db.MustExec("update pending_subscriptions set checking = true where nickname = $1", "unknown_model")
 	w.processSubsConfirmations(&cmdlib.ExistenceListResults{
 		Streamers: map[string]cmdlib.StreamerInfoWithStatus{
 			// Twitch returns Online|Offline when streamer exists but is offline
@@ -1081,9 +1140,12 @@ func TestUnknownStreamerFirstOfflineSaved(t *testing.T) {
 		},
 	})
 
-	// Verify subscription is now confirmed
-	if w.db.MustInt("select confirmed from subscriptions where nickname = $1", "unknown_model") != 1 {
-		t.Error("expected confirmed=1 after confirmation")
+	// Verify subscription moved to subscriptions table
+	if w.db.MustInt(`
+		select count(*) from subscriptions sub
+		join streamers s on s.id = sub.streamer_id
+		where s.nickname = $1`, "unknown_model") != 1 {
+		t.Error("expected subscription after confirmation")
 	}
 
 	// 3. First status update: offline
@@ -1244,19 +1306,19 @@ func TestStatusTransitions(t *testing.T) {
 			defer w.terminate()
 			w.createDatabase(make(chan bool, 1))
 			// Set up background streamers that should remain unchanged
-			w.db.AddSubscription(1, "always_online", "ep", 1)
-			w.db.AddSubscription(1, "always_offline", "ep", 1)
-			w.db.AddSubscription(1, "always_unknown", "ep", 1)
+			insertSubscription(&w.db, "ep", 1, "always_online")
+			insertSubscription(&w.db, "ep", 1, "always_offline")
+			insertSubscription(&w.db, "ep", 1, "always_unknown")
 			w.db.MustExec(
-				"insert into streamers (nickname, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3)",
+				"update streamers set unconfirmed_status = $2, unconfirmed_timestamp = $3 where nickname = $1",
 				"always_online", cmdlib.StatusOnline, 1,
 			)
 			w.db.MustExec(
-				"insert into streamers (nickname, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3)",
+				"update streamers set unconfirmed_status = $2, unconfirmed_timestamp = $3 where nickname = $1",
 				"always_offline", cmdlib.StatusOffline, 1,
 			)
 			w.db.MustExec(
-				"insert into streamers (nickname, unconfirmed_status, unconfirmed_timestamp) values ($1, $2, $3)",
+				"update streamers set unconfirmed_status = $2, unconfirmed_timestamp = $3 where nickname = $1",
 				"always_unknown", cmdlib.StatusUnknown, 1,
 			)
 			w.db.MustExec(
@@ -1281,9 +1343,7 @@ func TestStatusTransitions(t *testing.T) {
 			// Always subscribe during setup if we need to set initial state
 			// (subscription is needed to track the streamer)
 			if tt.dbBefore != nil || tt.subscribed {
-				w.db.AddSubscription(1, "ch", "ep", 1)
-				// Create streamer entry like ConfirmSub does for confirmed subscriptions
-				w.db.MustExec("insert into streamers (nickname) values ($1) on conflict(nickname) do nothing", "ch")
+				insertSubscription(&w.db, "ep", 1, "ch")
 			}
 
 			// Include background streamers in RequestedStreamers to prevent them from being set to unknown

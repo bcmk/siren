@@ -725,7 +725,7 @@ func (w *worker) showWeek(endpoint string, chatID int64, nickname string) {
 	}
 }
 
-func (w *worker) addStreamer(endpoint string, chatID int64, nickname string, now int) bool {
+func (w *worker) addStreamer(endpoint string, chatID int64, nickname string, now int, referral bool) bool {
 	if nickname == "" {
 		tr := w.tr[endpoint].SyntaxAdd
 		text := templateToString(w.tpl[endpoint], tr.Key, nil)
@@ -762,11 +762,11 @@ func (w *worker) addStreamer(endpoint string, chatID int64, nickname string, now
 		return false
 	}
 
-	if w.db.SubscriptionExists(endpoint, chatID, nickname) {
+	if w.db.SubscribedOrPending(endpoint, chatID, nickname) {
 		w.sendTr(db.PriorityHigh, endpoint, chatID, false, w.tr[endpoint].AlreadyAdded, tplData{"streamer": nickname}, db.ReplyPacket)
 		return false
 	}
-	subscriptionsNumber := w.db.SubscriptionsNumber(endpoint, chatID)
+	subscriptionsNumber := w.db.SubscribedOrPendingCount(endpoint, chatID)
 	user := w.mustUser(chatID)
 	if subscriptionsNumber >= user.MaxSubs {
 		w.sendTr(db.PriorityHigh, endpoint, chatID, false, w.tr[endpoint].NotEnoughSubscriptions, nil, db.ReplyPacket)
@@ -775,7 +775,7 @@ func (w *worker) addStreamer(endpoint string, chatID int64, nickname string, now
 	}
 	streamer := w.db.MaybeStreamer(nickname)
 	if streamer == nil {
-		w.db.AddSubscription(chatID, nickname, endpoint, 0)
+		w.db.AddPendingSubscription(chatID, nickname, endpoint, referral)
 		w.sendTr(db.PriorityHigh, endpoint, chatID, false, w.tr[endpoint].CheckingStreamer, nil, db.ReplyPacket)
 		return false
 	}
@@ -783,7 +783,7 @@ func (w *worker) addStreamer(endpoint string, chatID int64, nickname string, now
 	if confirmedStatus != cmdlib.StatusOnline {
 		confirmedStatus = cmdlib.StatusOffline
 	}
-	w.db.AddSubscription(chatID, nickname, endpoint, 1)
+	w.db.AddSubscription(chatID, streamer.ID, endpoint)
 	subscriptionsNumber++
 	w.sendTr(db.PriorityHigh, endpoint, chatID, false, w.tr[endpoint].StreamerAdded, tplData{"streamer": nickname}, db.ReplyPacket)
 	nots := []db.Notification{{
@@ -803,7 +803,7 @@ func (w *worker) addStreamer(endpoint string, chatID int64, nickname string, now
 }
 
 func (w *worker) subscriptionUsage(endpoint string, chatID int64, ad bool) {
-	subscriptionsNumber := w.db.SubscriptionsNumber(endpoint, chatID)
+	subscriptionsNumber := w.db.SubscribedOrPendingCount(endpoint, chatID)
 	user := w.mustUser(chatID)
 	tr := w.tr[endpoint].SubscriptionUsage
 	if ad {
@@ -822,7 +822,7 @@ func (w *worker) wantMore(endpoint string, chatID int64) {
 }
 
 func (w *worker) settings(endpoint string, chatID int64) {
-	subscriptionsNumber := w.db.SubscriptionsNumber(endpoint, chatID)
+	subscriptionsNumber := w.db.SubscribedOrPendingCount(endpoint, chatID)
 	user := w.mustUser(chatID)
 	w.sendTr(db.PriorityHigh, endpoint, chatID, false, w.tr[endpoint].Settings, tplData{
 		"subscriptions_used":              subscriptionsNumber,
@@ -866,7 +866,7 @@ func (w *worker) removeStreamer(endpoint string, chatID int64, nickname string) 
 		w.sendTr(db.PriorityHigh, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"streamer": nickname}, db.ReplyPacket)
 		return
 	}
-	if !w.db.SubscriptionExists(endpoint, chatID, nickname) {
+	if !w.db.SubscribedOrPending(endpoint, chatID, nickname) {
 		w.sendTr(db.PriorityHigh, endpoint, chatID, false, w.tr[endpoint].StreamerNotInList, tplData{"streamer": nickname}, db.ReplyPacket)
 		return
 	}
@@ -1501,7 +1501,7 @@ func (w *worker) showReferral(endpoint string, chatID int64) {
 		w.db.AddReferral(chatID, *referralID)
 	}
 	referralLink := fmt.Sprintf("https://t.me/%s?start=%s", w.botNames[endpoint], *referralID)
-	subscriptionsNumber := w.db.SubscriptionsNumber(endpoint, chatID)
+	subscriptionsNumber := w.db.SubscribedOrPendingCount(endpoint, chatID)
 	user := w.mustUser(chatID)
 	w.sendTr(db.PriorityHigh, endpoint, chatID, false, w.tr[endpoint].ReferralLink, tplData{
 		"link":                referralLink,
@@ -1542,7 +1542,7 @@ func (w *worker) start(endpoint string, chatID int64, referrer string, now int, 
 	}
 	w.db.AddUser(chatID, w.cfg.MaxSubs, now, chatType)
 	if nickname != "" {
-		if w.addStreamer(endpoint, chatID, nickname, now) {
+		if w.addStreamer(endpoint, chatID, nickname, now, true) {
 			w.db.AddReferralEvent(now, nil, chatID, &nickname)
 		}
 	}
@@ -1575,7 +1575,7 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	switch command {
 	case "add":
 		arguments = strings.ReplaceAll(arguments, "—", "--")
-		_ = w.addStreamer(endpoint, chatID, arguments, now)
+		_ = w.addStreamer(endpoint, chatID, arguments, now, false)
 	case "remove":
 		arguments = strings.ReplaceAll(arguments, "—", "--")
 		w.removeStreamer(endpoint, chatID, arguments)
@@ -2012,7 +2012,7 @@ func (w *worker) fuzzySearchDaemon() {
 func (w *worker) queryUnconfirmedSubs() {
 	unconfirmed := map[string]bool{}
 	var nickname string
-	w.db.MustQuery("select nickname from subscriptions where confirmed = 0", nil, db.ScanTo{&nickname}, func() { unconfirmed[nickname] = true })
+	w.db.MustQuery("select nickname from pending_subscriptions where not checking", nil, db.ScanTo{&nickname}, func() { unconfirmed[nickname] = true })
 	if len(unconfirmed) > 0 {
 		w.db.MarkUnconfirmedAsChecking()
 		ldbg("queueing unconfirmed subscriptions check for %d streamers", len(unconfirmed))
@@ -2025,19 +2025,25 @@ func (w *worker) queryUnconfirmedSubs() {
 func (w *worker) processSubsConfirmations(res *cmdlib.ExistenceListResults) {
 	streamersNumber := len(res.Streamers)
 	ldbg("processing subscription confirmations for %d streamers", streamersNumber)
-	confirmationsInWork := map[string][]db.Subscription{}
-	var iter db.Subscription
+	confirmationsInWork := map[string][]db.PendingSubscription{}
+	var iter db.PendingSubscription
 	w.db.MustQuery(
-		"select endpoint, nickname, chat_id from subscriptions where confirmed = 2",
+		"select endpoint, nickname, chat_id, referral from pending_subscriptions where checking",
 		nil,
-		db.ScanTo{&iter.Endpoint, &iter.Nickname, &iter.ChatID},
+		db.ScanTo{&iter.Endpoint, &iter.Nickname, &iter.ChatID, &iter.Referral},
 		func() { confirmationsInWork[iter.Nickname] = append(confirmationsInWork[iter.Nickname], iter) })
 	var nots []db.Notification
+	var confirmedNots []db.Notification
 	if !res.Failed() {
 		for nickname, info := range res.Streamers {
 			for _, sub := range confirmationsInWork[nickname] {
-				if info.Status&(cmdlib.StatusOnline|cmdlib.StatusOffline|cmdlib.StatusDenied) != 0 {
+				confirmed := info.Status&(cmdlib.StatusOnline|cmdlib.StatusOffline|cmdlib.StatusDenied) != 0
+				if confirmed {
 					w.db.ConfirmSub(sub)
+					if sub.Referral {
+						now := int(time.Now().Unix())
+						w.db.AddReferralEvent(now, nil, sub.ChatID, &nickname)
+					}
 				} else {
 					w.db.DenySub(sub)
 				}
@@ -2051,6 +2057,9 @@ func (w *worker) processSubsConfirmations(res *cmdlib.ExistenceListResults) {
 					Kind:     db.ReplyPacket,
 				}
 				nots = append(nots, n)
+				if confirmed {
+					confirmedNots = append(confirmedNots, n)
+				}
 			}
 		}
 	} else {
@@ -2058,7 +2067,7 @@ func (w *worker) processSubsConfirmations(res *cmdlib.ExistenceListResults) {
 		w.db.ResetCheckingToUnconfirmed()
 	}
 	w.notifyOfAddResults(db.PriorityHigh, nots)
-	w.db.StoreNotifications(nots)
+	w.db.StoreNotifications(confirmedNots)
 }
 
 func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacket) bool {
@@ -2210,7 +2219,7 @@ func main() {
 			}
 		case req := <-w.addRequests:
 			now := int(time.Now().Unix())
-			w.addStreamer(req.endpoint, req.chatID, req.nickname, now)
+			w.addStreamer(req.endpoint, req.chatID, req.nickname, now, false)
 			req.doneCh <- struct{}{}
 		case u := <-incoming:
 			if w.processTGUpdate(u) {
