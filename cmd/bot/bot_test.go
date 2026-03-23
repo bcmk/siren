@@ -795,6 +795,208 @@ func TestProcessSubsConfirmations(t *testing.T) {
 	}
 }
 
+func TestUserReferral(t *testing.T) {
+	t.Run("valid referral creates event and bonuses", func(t *testing.T) {
+		w := newTestWorker()
+		defer w.terminate()
+		w.createDatabase(make(chan bool, 1))
+
+		// Create referrer and their referral link
+		w.db.AddUser(20, w.cfg.MaxSubs, 0, "private")
+		w.db.AddReferral(20, "ref-abc")
+
+		// New user clicks referral link
+		w.start("test", 21, "ref-abc", 100, "private")
+
+		// Drain outgoing messages
+		for len(w.outgoingMsgCh) > 0 {
+			<-w.outgoingMsgCh
+		}
+
+		// Verify referral event was created with referrer
+		refCount := w.db.MustInt(`
+			select count(*) from referral_events
+			where referrer_chat_id = $1 and follower_chat_id = $2`, 20, 21)
+		if refCount != 1 {
+			t.Error("expected referral event")
+		}
+
+		// Verify follower got bonus subs
+		follower, exists := w.db.User(21)
+		if !exists {
+			t.Fatal("expected follower user to exist")
+		}
+		if follower.MaxSubs != w.cfg.MaxSubs+w.cfg.FollowerBonus {
+			t.Errorf("expected follower max_subs %d, got %d",
+				w.cfg.MaxSubs+w.cfg.FollowerBonus, follower.MaxSubs)
+		}
+
+		// Verify referrer got bonus subs
+		referrer, exists := w.db.User(20)
+		if !exists {
+			t.Fatal("expected referrer user to exist")
+		}
+		if referrer.MaxSubs != w.cfg.MaxSubs+w.cfg.ReferralBonus {
+			t.Errorf("expected referrer max_subs %d, got %d",
+				w.cfg.MaxSubs+w.cfg.ReferralBonus, referrer.MaxSubs)
+		}
+
+		// Verify referred_users counter incremented
+		referredUsers := w.db.MustInt(
+			"select referred_users from referrals where chat_id = $1", 20)
+		if referredUsers != 1 {
+			t.Errorf("expected referred_users=1, got %d", referredUsers)
+		}
+	})
+
+	t.Run("invalid referral ID", func(t *testing.T) {
+		w := newTestWorker()
+		defer w.terminate()
+		w.createDatabase(make(chan bool, 1))
+
+		w.start("test", 30, "nonexistent-ref", 100, "private")
+
+		// Drain outgoing messages
+		for len(w.outgoingMsgCh) > 0 {
+			<-w.outgoingMsgCh
+		}
+
+		// Verify no referral event
+		refCount := w.db.MustInt(
+			"select count(*) from referral_events where follower_chat_id = $1", 30)
+		if refCount != 0 {
+			t.Error("expected no referral event for invalid referral ID")
+		}
+	})
+
+	t.Run("existing user ignores referral", func(t *testing.T) {
+		w := newTestWorker()
+		defer w.terminate()
+		w.createDatabase(make(chan bool, 1))
+
+		// Create referrer with referral link
+		w.db.AddUser(40, w.cfg.MaxSubs, 0, "private")
+		w.db.AddReferral(40, "ref-xyz")
+
+		// Create follower who already exists
+		w.db.AddUser(41, w.cfg.MaxSubs, 0, "private")
+
+		w.start("test", 41, "ref-xyz", 100, "private")
+
+		// Drain outgoing messages
+		for len(w.outgoingMsgCh) > 0 {
+			<-w.outgoingMsgCh
+		}
+
+		// Verify no referral event
+		refCount := w.db.MustInt(
+			"select count(*) from referral_events where follower_chat_id = $1", 41)
+		if refCount != 0 {
+			t.Error("expected no referral event for existing user")
+		}
+
+		// Verify referrer max_subs unchanged
+		referrer, _ := w.db.User(40)
+		if referrer.MaxSubs != w.cfg.MaxSubs {
+			t.Errorf("expected referrer max_subs unchanged at %d, got %d",
+				w.cfg.MaxSubs, referrer.MaxSubs)
+		}
+	})
+
+	t.Run("own referral link is rejected", func(t *testing.T) {
+		w := newTestWorker()
+		defer w.terminate()
+		w.createDatabase(make(chan bool, 1))
+
+		// Create user with referral link
+		w.db.AddUser(50, w.cfg.MaxSubs, 0, "private")
+		w.db.AddReferral(50, "ref-own")
+
+		w.start("test", 50, "ref-own", 100, "private")
+
+		// Drain outgoing messages
+		for len(w.outgoingMsgCh) > 0 {
+			<-w.outgoingMsgCh
+		}
+
+		// Verify no referral event
+		refCount := w.db.MustInt(
+			"select count(*) from referral_events where follower_chat_id = $1", 50)
+		if refCount != 0 {
+			t.Error("expected no referral event for own link")
+		}
+	})
+}
+
+func TestStreamerReferral(t *testing.T) {
+	t.Run("known streamer creates referral event", func(t *testing.T) {
+		w := newTestWorker()
+		defer w.terminate()
+		w.createDatabase(make(chan bool, 1))
+
+		// Pre-create a known streamer
+		w.db.MustExec(
+			"insert into streamers (nickname, confirmed_status) values ($1, $2)",
+			"known_model", cmdlib.StatusOnline,
+		)
+
+		w.start("test", 10, "m-known_model", 100, "private")
+
+		// Drain outgoing messages
+		for len(w.outgoingMsgCh) > 0 {
+			<-w.outgoingMsgCh
+		}
+
+		// Verify subscription was created
+		subCount := w.db.MustInt(`
+			select count(*) from subscriptions sub
+			join streamers s on s.id = sub.streamer_id
+			where s.nickname = $1 and sub.chat_id = $2`, "known_model", 10)
+		if subCount != 1 {
+			t.Error("expected subscription for known_model")
+		}
+
+		// Verify referral event was created
+		refCount := w.db.MustInt(`
+			select count(*) from referral_events r
+			join streamers s on s.id = r.streamer_id
+			where s.nickname = $1 and r.follower_chat_id = $2`, "known_model", 10)
+		if refCount != 1 {
+			t.Error("expected referral event for known_model")
+		}
+	})
+
+	t.Run("unknown streamer defers referral to pending", func(t *testing.T) {
+		w := newTestWorker()
+		defer w.terminate()
+		w.createDatabase(make(chan bool, 1))
+
+		w.start("test", 11, "m-unknown_model", 100, "private")
+
+		// Drain outgoing messages
+		for len(w.outgoingMsgCh) > 0 {
+			<-w.outgoingMsgCh
+		}
+
+		// Verify pending subscription was created with referral flag
+		refFlag := w.db.MustInt(
+			"select referral::int from pending_subscriptions where nickname = $1 and chat_id = $2",
+			"unknown_model", 11)
+		if refFlag != 1 {
+			t.Error("expected pending subscription with referral=true")
+		}
+
+		// Verify no referral event yet
+		refCount := w.db.MustInt(`
+			select count(*) from referral_events r
+			join streamers s on s.id = r.streamer_id
+			where s.nickname = $1 and r.follower_chat_id = $2`, "unknown_model", 11)
+		if refCount != 0 {
+			t.Error("expected no referral event for unknown streamer")
+		}
+	})
+}
+
 func TestStatusConfirmations(t *testing.T) {
 	tests := []struct {
 		name        string

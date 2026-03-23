@@ -15,6 +15,8 @@ var testConfig = botconfig.Config{
 	MaxSubs:              3,
 	AdminID:              1,
 	HeavyUserRemainder:   1,
+	ReferralBonus:        1,
+	FollowerBonus:        1,
 	OfflineNotifications: true,
 	StatusConfirmationSeconds: botconfig.StatusConfirmationSeconds{
 		Offline: 5,
@@ -22,6 +24,7 @@ var testConfig = botconfig.Config{
 }
 
 var testTranslations = cmdlib.Translations{
+	Start:                  &cmdlib.Translation{Key: "start", Str: "Start", Parse: cmdlib.ParseRaw},
 	Help:                   &cmdlib.Translation{Key: "help", Str: "Help", Parse: cmdlib.ParseRaw},
 	Online:                 &cmdlib.Translation{Key: "online", Str: "Online %s", Parse: cmdlib.ParseRaw},
 	Offline:                &cmdlib.Translation{Key: "offline", Str: "Offline %s", Parse: cmdlib.ParseRaw},
@@ -45,6 +48,10 @@ var testTranslations = cmdlib.Translations{
 	NotEnoughSubscriptions: &cmdlib.Translation{Key: "not_enough_subscriptions", Str: "NotEnoughSubscriptions", Parse: cmdlib.ParseRaw},
 	SubscriptionUsage:      &cmdlib.Translation{Key: "subscription_usage", Str: "SubscriptionUsage", Parse: cmdlib.ParseRaw},
 	SubscriptionUsageAd:    &cmdlib.Translation{Key: "subscription_usage_ad", Str: "SubscriptionUsageAd", Parse: cmdlib.ParseRaw},
+	ReferralApplied:        &cmdlib.Translation{Key: "referral_applied", Str: "ReferralApplied", Parse: cmdlib.ParseRaw},
+	InvalidReferralLink:    &cmdlib.Translation{Key: "invalid_referral_link", Str: "InvalidReferralLink", Parse: cmdlib.ParseRaw},
+	FollowerExists:         &cmdlib.Translation{Key: "follower_exists", Str: "FollowerExists", Parse: cmdlib.ParseRaw},
+	OwnReferralLinkHit:     &cmdlib.Translation{Key: "own_referral_link_hit", Str: "OwnReferralLinkHit", Parse: cmdlib.ParseRaw},
 }
 
 type testWorker struct {
@@ -68,6 +75,7 @@ func newTestWorker() *testWorker {
 	checkErr(err)
 
 	tpl := template.New("")
+	template.Must(tpl.New("start").Parse("Start"))
 	template.Must(tpl.New("checking_streamer").Parse("CheckingStreamer"))
 	template.Must(tpl.New("streamer_added").Parse("StreamerAdded"))
 	template.Must(tpl.New("online").Parse("Online"))
@@ -75,6 +83,10 @@ func newTestWorker() *testWorker {
 	template.Must(tpl.New("subscription_usage").Parse("SubscriptionUsage"))
 	template.Must(tpl.New("subscription_usage_ad").Parse("SubscriptionUsageAd"))
 	template.Must(tpl.New("add_error").Parse("AddError"))
+	template.Must(tpl.New("referral_applied").Parse("ReferralApplied"))
+	template.Must(tpl.New("invalid_referral_link").Parse("InvalidReferralLink"))
+	template.Must(tpl.New("follower_exists").Parse("FollowerExists"))
+	template.Must(tpl.New("own_referral_link_hit").Parse("OwnReferralLinkHit"))
 
 	w := &testWorker{
 		worker: worker{
