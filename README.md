@@ -87,3 +87,5 @@ Telegram chat ID is just a number which we use to send you notifications.
 [Reddit](https://www.reddit.com/user/siren_tlg)
 
 [AmberCutie](https://www.ambercutie.com/forums/members/siren.53143/)
+
+[Tech blog](https://medium.com/@siren.chat)
