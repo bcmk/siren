@@ -3,12 +3,17 @@ package db
 import "github.com/bcmk/siren/v2/lib/cmdlib"
 
 // Notification represents a notification.
-// Nickname is only populated when joined with streamers.
 type Notification struct {
-	ID             int
-	Endpoint       string
-	ChatID         int64
-	Nickname       string
+	ID       int
+	Endpoint string
+	ChatID   int64
+
+	// Nil if the streamer is unknown (e.g. denied subscription replies)
+	StreamerID *int
+
+	// Only populated when joined with streamers
+	Nickname string
+
 	Status         cmdlib.StatusKind
 	TimeDiff       *int
 	ImageURL       string
@@ -102,6 +107,7 @@ type StatusChange struct {
 
 // ConfirmedStatusChange represents a confirmed status change with previous status
 type ConfirmedStatusChange struct {
+	StreamerID int
 	Nickname   string
 	Status     cmdlib.StatusKind
 	PrevStatus cmdlib.StatusKind

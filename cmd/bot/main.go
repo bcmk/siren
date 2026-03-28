@@ -725,7 +725,7 @@ func (w *worker) showWeek(endpoint string, chatID int64, nickname string) {
 	}
 }
 
-func (w *worker) addStreamer(endpoint string, chatID int64, nickname string, now int, referral bool) bool {
+func (w *worker) addStreamer(endpoint string, chatID int64, nickname string, now int, referral bool) *int {
 	if nickname == "" {
 		tr := w.tr[endpoint].SyntaxAdd
 		text := templateToString(w.tpl[endpoint], tr.Key, nil)
@@ -754,30 +754,30 @@ func (w *worker) addStreamer(endpoint string, chatID int64, nickname string, now
 			params.ParseMode = models.ParseModeMarkdown
 		}
 		w.enqueueMessage(db.PriorityHigh, endpoint, &messageParams{params}, db.ReplyPacket)
-		return false
+		return nil
 	}
 	nickname = w.nicknamePreprocessing(nickname)
 	if !w.nicknameRegexp.MatchString(nickname) {
 		w.sendTr(db.PriorityHigh, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"streamer": nickname}, db.ReplyPacket)
-		return false
+		return nil
 	}
 
 	if w.db.SubscribedOrPending(endpoint, chatID, nickname) {
 		w.sendTr(db.PriorityHigh, endpoint, chatID, false, w.tr[endpoint].AlreadyAdded, tplData{"streamer": nickname}, db.ReplyPacket)
-		return false
+		return nil
 	}
 	subscriptionsNumber := w.db.SubscribedOrPendingCount(endpoint, chatID)
 	user := w.mustUser(chatID)
 	if subscriptionsNumber >= user.MaxSubs {
 		w.sendTr(db.PriorityHigh, endpoint, chatID, false, w.tr[endpoint].NotEnoughSubscriptions, nil, db.ReplyPacket)
 		w.subscriptionUsage(endpoint, chatID, true)
-		return false
+		return nil
 	}
 	streamer := w.db.MaybeStreamer(nickname)
 	if streamer == nil {
 		w.db.AddPendingSubscription(chatID, nickname, endpoint, referral)
 		w.sendTr(db.PriorityHigh, endpoint, chatID, false, w.tr[endpoint].CheckingStreamer, nil, db.ReplyPacket)
-		return false
+		return nil
 	}
 	confirmedStatus := streamer.ConfirmedStatus
 	if confirmedStatus != cmdlib.StatusOnline {
@@ -787,19 +787,20 @@ func (w *worker) addStreamer(endpoint string, chatID int64, nickname string, now
 	subscriptionsNumber++
 	w.sendTr(db.PriorityHigh, endpoint, chatID, false, w.tr[endpoint].StreamerAdded, tplData{"streamer": nickname}, db.ReplyPacket)
 	nots := []db.Notification{{
-		Endpoint: endpoint,
-		ChatID:   chatID,
-		Nickname: nickname,
-		Status:   confirmedStatus,
-		TimeDiff: w.streamerDurationByNickname(nickname, now),
-		Social:   false,
-		Priority: db.PriorityHigh,
-		Kind:     db.ReplyPacket}}
+		Endpoint:   endpoint,
+		ChatID:     chatID,
+		StreamerID: &streamer.ID,
+		Nickname:   nickname,
+		Status:     confirmedStatus,
+		TimeDiff:   w.streamerDuration(*streamer, now),
+		Social:     false,
+		Priority:   db.PriorityHigh,
+		Kind:       db.ReplyPacket}}
 	if subscriptionsNumber >= user.MaxSubs-w.cfg.HeavyUserRemainder {
 		w.subscriptionUsage(endpoint, chatID, true)
 	}
 	w.db.StoreNotifications(nots)
-	return true
+	return &streamer.ID
 }
 
 func (w *worker) subscriptionUsage(endpoint string, chatID int64, ad bool) {
@@ -969,14 +970,6 @@ func (w *worker) streamerDuration(c db.Streamer, now int) *int {
 	return nil
 }
 
-func (w *worker) streamerDurationByNickname(nickname string, now int) *int {
-	c := w.db.MaybeStreamer(nickname)
-	if c == nil {
-		return nil
-	}
-	return w.streamerDuration(*c, now)
-}
-
 func (w *worker) streamerTimeDiff(c db.Streamer, now int) *timeDiff {
 	dur := w.streamerDuration(c, now)
 	if dur != nil {
@@ -1041,16 +1034,17 @@ func (w *worker) listOnlineStreamers(endpoint string, chatID int64, now int) {
 	for _, s := range online {
 		info := w.unconfirmedOnlineStreamers[s.Nickname]
 		not := db.Notification{
-			Priority: db.PriorityHigh,
-			Endpoint: endpoint,
-			ChatID:   chatID,
-			Nickname: s.Nickname,
-			Status:   cmdlib.StatusOnline,
-			ImageURL: info.ImageURL,
-			Viewers:  info.Viewers,
-			ShowKind: info.ShowKind,
-			TimeDiff: w.streamerDuration(s, now),
-			Kind:     db.ReplyPacket,
+			Priority:   db.PriorityHigh,
+			Endpoint:   endpoint,
+			ChatID:     chatID,
+			StreamerID: &s.ID,
+			Nickname:   s.Nickname,
+			Status:     cmdlib.StatusOnline,
+			ImageURL:   info.ImageURL,
+			Viewers:    info.Viewers,
+			ShowKind:   info.ShowKind,
+			TimeDiff:   w.streamerDuration(s, now),
+			Kind:       db.ReplyPacket,
 		}
 		if user.ShowSubject {
 			not.Subject = info.Subject
@@ -1542,8 +1536,8 @@ func (w *worker) start(endpoint string, chatID int64, referrer string, now int, 
 	}
 	w.db.AddUser(chatID, w.cfg.MaxSubs, now, chatType)
 	if nickname != "" {
-		if w.addStreamer(endpoint, chatID, nickname, now, true) {
-			w.db.AddReferralEvent(now, nil, chatID, &nickname)
+		if streamerID := w.addStreamer(endpoint, chatID, nickname, now, true); streamerID != nil {
+			w.db.AddReferralEvent(now, nil, chatID, streamerID)
 		}
 	}
 }
@@ -1804,33 +1798,34 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) pro
 func (w *worker) buildNotifications(
 	confirmedStatusChanges []db.ConfirmedStatusChange,
 ) []db.Notification {
-	confirmedNicknames := []string{}
-	for _, c := range confirmedStatusChanges {
-		confirmedNicknames = append(confirmedNicknames, c.Nickname)
+	streamerIDs := make([]int, len(confirmedStatusChanges))
+	for i, c := range confirmedStatusChanges {
+		streamerIDs[i] = c.StreamerID
 	}
 
 	var notifications []db.Notification
-	usersForStreamers, endpointsForStreamers := w.db.UsersForStreamers(confirmedNicknames)
+	usersForStreamers, endpointsForStreamers := w.db.UsersForStreamers(streamerIDs)
 	for _, c := range confirmedStatusChanges {
 		// Skip unknown -> offline transitions
 		// They don't represent meaningful events to users
 		if c.PrevStatus == cmdlib.StatusUnknown && c.Status == cmdlib.StatusOffline {
 			continue
 		}
-		users := usersForStreamers[c.Nickname]
-		endpoints := endpointsForStreamers[c.Nickname]
+		users := usersForStreamers[c.StreamerID]
+		endpoints := endpointsForStreamers[c.StreamerID]
 		info := w.unconfirmedOnlineStreamers[c.Nickname]
 		for i, user := range users {
 			if (w.cfg.OfflineNotifications && user.OfflineNotifications) || c.Status != cmdlib.StatusOffline {
 				n := db.Notification{
-					Endpoint: endpoints[i],
-					ChatID:   user.ChatID,
-					Nickname: c.Nickname,
-					Status:   c.Status,
-					Social:   user.ChatID > 0,
-					Sound:    c.Status == cmdlib.StatusOnline,
-					Priority: db.PriorityLow,
-					Kind:     db.NotificationPacket}
+					Endpoint:   endpoints[i],
+					ChatID:     user.ChatID,
+					StreamerID: &c.StreamerID,
+					Nickname:   c.Nickname,
+					Status:     c.Status,
+					Social:     user.ChatID > 0,
+					Sound:      c.Status == cmdlib.StatusOnline,
+					Priority:   db.PriorityLow,
+					Kind:       db.NotificationPacket}
 				if user.ShowImages {
 					n.ImageURL = info.ImageURL
 				}
@@ -2055,23 +2050,26 @@ func (w *worker) processSubsConfirmations(res *cmdlib.ExistenceListResults) {
 		for nickname, info := range res.Streamers {
 			for _, sub := range confirmationsInWork[nickname] {
 				confirmed := info.Status&(cmdlib.StatusOnline|cmdlib.StatusOffline|cmdlib.StatusDenied) != 0
+				var streamerID *int
 				if confirmed {
-					w.db.ConfirmSub(sub)
+					id := w.db.ConfirmSub(sub)
+					streamerID = &id
 					if sub.Referral {
 						now := int(time.Now().Unix())
-						w.db.AddReferralEvent(now, nil, sub.ChatID, &nickname)
+						w.db.AddReferralEvent(now, nil, sub.ChatID, streamerID)
 					}
 				} else {
 					w.db.DenySub(sub)
 				}
 				n := db.Notification{
-					Endpoint: sub.Endpoint,
-					ChatID:   sub.ChatID,
-					Nickname: nickname,
-					Status:   info.Status,
-					Social:   false,
-					Priority: db.PriorityHigh,
-					Kind:     db.ReplyPacket,
+					Endpoint:   sub.Endpoint,
+					ChatID:     sub.ChatID,
+					StreamerID: streamerID,
+					Nickname:   nickname,
+					Status:     info.Status,
+					Social:     false,
+					Priority:   db.PriorityHigh,
+					Kind:       db.ReplyPacket,
 				}
 				nots = append(nots, n)
 				if confirmed {

@@ -187,33 +187,6 @@ func TestUpdateNotifications(t *testing.T) {
 }
 
 func TestNotificationsStorage(t *testing.T) {
-	timeDiff := 2
-	nots := []db.Notification{
-		{
-			Endpoint: "endpoint_a",
-			ChatID:   1,
-			Nickname: "a",
-			Status:   cmdlib.StatusUnknown,
-			TimeDiff: nil,
-			ImageURL: "image_a",
-			Social:   false,
-			Priority: db.PriorityHigh,
-			Sound:    false,
-			Kind:     db.NotificationPacket,
-		},
-		{
-			Endpoint: "endpoint_b",
-			ChatID:   2,
-			Nickname: "b",
-			Status:   cmdlib.StatusOffline,
-			TimeDiff: &timeDiff,
-			ImageURL: "image_b",
-			Social:   true,
-			Priority: db.PriorityLow,
-			Sound:    true,
-			Kind:     db.ReplyPacket,
-		},
-	}
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
@@ -225,6 +198,39 @@ func TestNotificationsStorage(t *testing.T) {
 	w.db.MustExec("insert into streamers (nickname) values ($1)", "a")
 	w.db.MustExec("insert into streamers (nickname) values ($1)", "b")
 	w.db.MustExec("insert into streamers (nickname) values ($1)", "c")
+	idA := w.db.MaybeStreamer("a").ID
+	idB := w.db.MaybeStreamer("b").ID
+	idC := w.db.MaybeStreamer("c").ID
+
+	timeDiff := 2
+	nots := []db.Notification{
+		{
+			Endpoint:   "endpoint_a",
+			ChatID:     1,
+			StreamerID: &idA,
+			Nickname:   "a",
+			Status:     cmdlib.StatusUnknown,
+			TimeDiff:   nil,
+			ImageURL:   "image_a",
+			Social:     false,
+			Priority:   db.PriorityHigh,
+			Sound:      false,
+			Kind:       db.NotificationPacket,
+		},
+		{
+			Endpoint:   "endpoint_b",
+			ChatID:     2,
+			StreamerID: &idB,
+			Nickname:   "b",
+			Status:     cmdlib.StatusOffline,
+			TimeDiff:   &timeDiff,
+			ImageURL:   "image_b",
+			Social:     true,
+			Priority:   db.PriorityLow,
+			Sound:      true,
+			Kind:       db.ReplyPacket,
+		},
+	}
 
 	w.db.StoreNotifications(nots)
 	newNots := w.db.NewNotifications()
@@ -235,14 +241,15 @@ func TestNotificationsStorage(t *testing.T) {
 	}
 	nots = []db.Notification{
 		{
-			Endpoint: "endpoint_c",
-			ChatID:   3,
-			Nickname: "c",
-			Status:   cmdlib.StatusOnline,
-			TimeDiff: nil,
-			ImageURL: "image_c",
-			Social:   true,
-			Priority: db.PriorityLow,
+			Endpoint:   "endpoint_c",
+			ChatID:     3,
+			StreamerID: &idC,
+			Nickname:   "c",
+			Status:     cmdlib.StatusOnline,
+			TimeDiff:   nil,
+			ImageURL:   "image_c",
+			Social:     true,
+			Priority:   db.PriorityLow,
 		},
 	}
 	w.db.StoreNotifications(nots)
@@ -555,9 +562,9 @@ func TestAddStreamer(t *testing.T) {
 	w.createDatabase(make(chan bool, 1))
 	w.db.AddUser(1, 3, 0, "private")
 
-	// Add streamer that doesn't exist — should insert into pending_subscriptions and return false
-	if w.addStreamer("test", 1, "newmodel", 100, false) {
-		t.Error("expected addStreamer to return false for new streamer")
+	// Add streamer that doesn't exist — should insert into pending_subscriptions and return nil
+	if w.addStreamer("test", 1, "newmodel", 100, false) != nil {
+		t.Error("expected addStreamer to return nil when streamer is not in the database and subscription is pending verification")
 	}
 	if w.db.MustInt("select count(*) from pending_subscriptions where nickname = $1", "newmodel") != 1 {
 		t.Error("expected pending subscription for new streamer")
@@ -565,14 +572,14 @@ func TestAddStreamer(t *testing.T) {
 	// Drain the "checking streamer" message
 	<-w.outgoingMsgCh
 
-	// Add streamer that exists with online status — should return true
+	// Add streamer that exists with online status — should return non-nil
 	w.db.MustExec(
 		"insert into streamers (nickname, confirmed_status) values ($1, $2)",
 		"onlinemodel",
 		cmdlib.StatusOnline,
 	)
-	if !w.addStreamer("test", 1, "onlinemodel", 100, false) {
-		t.Error("expected addStreamer to return true for existing streamer")
+	if w.addStreamer("test", 1, "onlinemodel", 100, false) == nil {
+		t.Error("expected addStreamer to return non-nil for existing streamer")
 	}
 	if w.db.MustInt(`
 		select count(*) from subscriptions sub
@@ -587,14 +594,14 @@ func TestAddStreamer(t *testing.T) {
 		t.Errorf("expected online notification, got %+v", nots)
 	}
 
-	// Add streamer that exists with offline status — should return true
+	// Add streamer that exists with offline status — should return non-nil
 	w.db.MustExec(
 		"insert into streamers (nickname, confirmed_status) values ($1, $2)",
 		"offlinemodel",
 		cmdlib.StatusOffline,
 	)
-	if !w.addStreamer("test", 1, "offlinemodel", 100, false) {
-		t.Error("expected addStreamer to return true for existing offline streamer")
+	if w.addStreamer("test", 1, "offlinemodel", 100, false) == nil {
+		t.Error("expected addStreamer to return non-nil for existing offline streamer")
 	}
 	nots = w.db.NewNotifications()
 	if len(nots) != 1 || nots[0].Status != cmdlib.StatusOffline {
@@ -614,13 +621,17 @@ func TestConfirmSub(t *testing.T) {
 	)
 
 	// Confirm the subscription
-	w.db.ConfirmSub(db.PendingSubscription{Endpoint: "test", ChatID: 1, Nickname: "a"})
+	streamerID := w.db.ConfirmSub(db.PendingSubscription{Endpoint: "test", ChatID: 1, Nickname: "a"})
+
+	// Check returned streamer ID is valid
+	if streamerID == 0 {
+		t.Error("expected non-zero streamer ID from ConfirmSub")
+	}
 
 	// Check subscription was moved to subscriptions table
 	if w.db.MustInt(`
-		select count(*) from subscriptions sub
-		join streamers s on s.id = sub.streamer_id
-		where s.nickname = $1`, "a") != 1 {
+		select count(*) from subscriptions
+		where streamer_id = $1`, streamerID) != 1 {
 		t.Error("expected subscription after ConfirmSub")
 	}
 
@@ -1321,8 +1332,8 @@ func TestUnknownStreamerFirstOfflineSaved(t *testing.T) {
 
 	// 1. User subscribes to a streamer we don't know yet — creates unconfirmed subscription
 	// This simulates subscribing to a Twitch streamer or a new unknown model
-	if w.addStreamer("test", 1, "unknown_model", 100, false) {
-		t.Error("expected addStreamer to return false for unknown streamer")
+	if w.addStreamer("test", 1, "unknown_model", 100, false) != nil {
+		t.Error("expected addStreamer to return nil for unknown streamer")
 	}
 	// Drain the "checking streamer" message
 	<-w.outgoingMsgCh
