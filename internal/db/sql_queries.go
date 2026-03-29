@@ -688,8 +688,7 @@ func (d *Database) ResetBlock(endpoint string, chatID int64) {
 	d.MustExec("update block set block=0 where endpoint = $1 and chat_id = $2", endpoint, chatID)
 }
 
-// UpsertUnconfirmedTimings holds per-phase timing
-// for UpsertUnconfirmedStatusChanges.
+// UpsertUnconfirmedTimings holds per-phase timing for UpsertUnconfirmedStatusChanges.
 type UpsertUnconfirmedTimings struct {
 	UpsertStreamersMs     int
 	InsertStatusChangesMs int
