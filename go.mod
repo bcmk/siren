@@ -10,7 +10,7 @@ require (
 	github.com/spf13/pflag v1.0.6
 	github.com/spf13/viper v1.20.1
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.34.0
-	golang.org/x/image v0.18.0
+	golang.org/x/image v0.38.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -82,7 +82,7 @@ require (
 	go.uber.org/multierr v1.9.0 // indirect
 	golang.org/x/crypto v0.32.0 // indirect
 	golang.org/x/sys v0.29.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/text v0.35.0 // indirect
 )
 
-go 1.23
+go 1.25.0
