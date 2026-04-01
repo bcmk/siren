@@ -2228,6 +2228,7 @@ func main() {
 				"confirmed_count":                      cr.confirmedChangesCount,
 				"notifications_count":                  len(cr.notifications),
 				"upsert_unconfirmed_streamers_ms":      cr.upsertTimings.UpsertStreamersMs,
+				"insert_nicknames_ms":                  cr.upsertTimings.InsertNicknamesMs,
 				"insert_unconfirmed_status_changes_ms": cr.upsertTimings.InsertStatusChangesMs,
 				"commit_unconfirmed_ms":                cr.upsertTimings.CommitMs,
 				"confirm_changes_ms":                   cr.confirmChangesMs,

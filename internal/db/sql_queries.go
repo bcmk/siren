@@ -335,16 +335,22 @@ func (d *Database) ConfirmSub(sub PendingSubscription) int {
 	// "do nothing" suppresses returning on conflict,
 	// so we fall back to a plain select via union all.
 	// The outer query uses the pre-insert snapshot,
-	// so the two branches never overlap
+	// so the two branches never overlap.
+	// new_nickname inserts into the nicknames table
+	// only when a new streamer is created.
 	var streamerID int
 	err = tx.QueryRow(context.Background(), `
-		with ins as (
+		with new_streamer as (
 			insert into streamers (nickname)
 			values ($1)
 			on conflict(nickname) do nothing
 			returning id
+		),
+		new_nickname as (
+			insert into nicknames (nickname)
+			select $1 where exists (select 1 from new_streamer)
 		)
-		select id from ins
+		select id from new_streamer
 		union all
 		select id from streamers where nickname = $1
 		limit 1`,
@@ -527,7 +533,7 @@ func (d *Database) SearchStreamers(term string) []string {
 				set local enable_indexonlyscan = off;
 				set local enable_bitmapscan = on;
 				insert into _search_results
-				select nickname from streamers
+				select nickname from nicknames
 				where nickname like '%' || $1 || '%'
 				limit 100
 			`,
@@ -551,7 +557,7 @@ func (d *Database) SearchStreamers(term string) []string {
 				set local enable_bitmapscan = on;
 				set local pg_trgm.word_similarity_threshold = 0.5;
 				insert into _search_results
-				select nickname from streamers
+				select nickname from nicknames
 				where nickname %> $1
 				limit 100
 			`,
@@ -576,7 +582,7 @@ func (d *Database) SearchStreamers(term string) []string {
 				set local enable_indexonlyscan = off;
 				set local enable_bitmapscan = on;
 				insert into _search_results
-				select nickname from streamers
+				select nickname from nicknames
 				where max_repeated_alnum_run(nickname) >= $1
 				and nickname like '%' || $2 || '%'
 				limit 100
@@ -599,7 +605,7 @@ func (d *Database) SearchStreamers(term string) []string {
 				set local enable_indexonlyscan = on;
 				set local enable_bitmapscan = off;
 				insert into _search_results
-				select nickname from streamers
+				select nickname from nicknames
 				where max_nonalnum_run(nickname) >= $1
 				and nickname like '%' || $2 || '%'
 				limit 100
@@ -609,7 +615,7 @@ func (d *Database) SearchStreamers(term string) []string {
 		checkErr(err)
 	}
 
-	// Prefix match via btree text_pattern_ops —
+	// Prefix match via btree collate "C" on streamers —
 	// fallback for patterns with short alnum runs
 	// (aa, ab, b__, _a_, __) where GIN trigrams are too
 	// non-selective for infix and the functional index
@@ -691,6 +697,7 @@ func (d *Database) ResetBlock(endpoint string, chatID int64) {
 // UpsertUnconfirmedTimings holds per-phase timing for UpsertUnconfirmedStatusChanges.
 type UpsertUnconfirmedTimings struct {
 	UpsertStreamersMs     int
+	InsertNicknamesMs     int
 	InsertStatusChangesMs int
 	CommitMs              int
 }
@@ -730,22 +737,40 @@ func (d *Database) UpsertUnconfirmedStatusChanges(
 				prev_unconfirmed_timestamp = streamers.unconfirmed_timestamp,
 				unconfirmed_status = excluded.unconfirmed_status,
 				unconfirmed_timestamp = excluded.unconfirmed_timestamp
-			returning id, nickname
+			returning id, nickname, (xmax = 0) as is_new
 		`,
 		nicknames, statuses, timestamp,
 	)
 	checkErr(err)
 	idMap := make(map[string]int, len(changedStatuses))
+	var newNicknames []string
 	for rows.Next() {
 		var id int
 		var nickname string
-		checkErr(rows.Scan(&id, &nickname))
+		var isNew bool
+		checkErr(rows.Scan(&id, &nickname, &isNew))
 		idMap[nickname] = id
+		if isNew {
+			newNicknames = append(newNicknames, nickname)
+		}
 	}
 	checkErr(rows.Err())
 	rows.Close()
 	var timings UpsertUnconfirmedTimings
 	timings.UpsertStreamersMs = int(time.Since(upsertStart).Milliseconds())
+
+	// Insert only new nicknames into the nicknames table.
+	// The nicknames table holds search indexes (GIN trigram, etc.)
+	// separately from streamers to avoid GIN write overhead on upserts.
+	if len(newNicknames) > 0 {
+		insertNicknamesStart := time.Now()
+		_, err = tx.Exec(
+			context.Background(),
+			`insert into nicknames (nickname) select unnest($1::text[])`,
+			newNicknames)
+		checkErr(err)
+		timings.InsertNicknamesMs = int(time.Since(insertNicknamesStart).Milliseconds())
+	}
 
 	// Use CopyFrom for fast bulk insert into status_changes
 	insertStart := time.Now()
