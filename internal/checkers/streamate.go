@@ -125,7 +125,7 @@ func streamateShowKind(m performerResponse) cmdlib.ShowKind {
 }
 
 // CheckStatusSingle checks Streamate model status
-func (c *StreamateChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
+func (c *StreamateChecker) CheckStatusSingle(modelID string) (cmdlib.StatusKind, error) {
 	client := c.ClientsLoop.NextClient()
 	reqData := streamateRequest{
 		Options: optionsRequest{MaxResults: 1},
@@ -150,20 +150,20 @@ func (c *StreamateChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 	resp, err := client.Client.Do(req)
 	if err != nil {
 		cmdlib.Lerr("[%v] cannot send a query, %v", client.Addr, err)
-		return cmdlib.StatusUnknown
+		return cmdlib.StatusUnknown, nil
 	}
 	defer cmdlib.CloseBody(resp.Body)
 	if c.Dbg {
 		cmdlib.Ldbg("[%v] query status for %s: %d", client.Addr, modelID, resp.StatusCode)
 	}
 	if resp.StatusCode == 404 {
-		return cmdlib.StatusNotFound
+		return cmdlib.StatusNotFound, nil
 	}
 	buf := bytes.Buffer{}
 	_, err = buf.ReadFrom(resp.Body)
 	if err != nil {
 		cmdlib.Lerr("[%v] cannot read response for model %s, %v", client.Addr, modelID, err)
-		return cmdlib.StatusUnknown
+		return cmdlib.StatusUnknown, nil
 	}
 	decoder := xml.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	parsed := &streamateResponse{}
@@ -173,18 +173,18 @@ func (c *StreamateChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 	}
 	if err != nil {
 		cmdlib.Lerr("[%v] cannot parse response for model %s, %v", client.Addr, modelID, err)
-		return cmdlib.StatusUnknown
+		return cmdlib.StatusUnknown, nil
 	}
 	if parsed.AvailablePerformers.ExactMatches != 1 || len(parsed.AvailablePerformers.Performers) != 1 {
-		return cmdlib.StatusNotFound
+		return cmdlib.StatusNotFound, nil
 	}
 	switch parsed.AvailablePerformers.Performers[0].StreamType {
 	case "live":
-		return cmdlib.StatusOnline
+		return cmdlib.StatusOnline, nil
 	case "recorded", "offline":
-		return cmdlib.StatusOffline
+		return cmdlib.StatusOffline, nil
 	}
-	return cmdlib.StatusUnknown
+	return cmdlib.StatusUnknown, nil
 }
 
 // QueryOnlineStreamers returns Streamate online models

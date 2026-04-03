@@ -193,7 +193,7 @@ type CheckerConfig struct {
 
 // Checker is the interface for a checker for specific site
 type Checker interface {
-	CheckStatusSingle(nickname string) StatusKind
+	CheckStatusSingle(nickname string) (StatusKind, error)
 	QueryOnlineStreamers() (map[string]StreamerInfo, error)
 	QueryFixedListOnlineStreamers(streamers []string, checkMode CheckMode) (map[string]StreamerInfo, error)
 	QueryFixedListStatuses(streamers []string, checkMode CheckMode) (map[string]StreamerInfoWithStatus, error)

@@ -19,8 +19,8 @@ type testOnlineListChecker struct {
 
 var queueSize = 1000
 
-func (c *TestChecker) CheckStatusSingle(string) StatusKind {
-	return c.status
+func (c *TestChecker) CheckStatusSingle(string) (StatusKind, error) {
+	return c.status, nil
 }
 
 func (c *testOnlineListChecker) QueryOnlineStreamers() (map[string]StreamerInfo, error) {

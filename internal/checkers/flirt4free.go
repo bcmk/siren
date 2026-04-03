@@ -38,20 +38,20 @@ type flirt4FreeOnlineResponse struct {
 }
 
 // CheckStatusSingle checks Flirt4Free model status
-func (c *Flirt4FreeChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
+func (c *Flirt4FreeChecker) CheckStatusSingle(modelID string) (cmdlib.StatusKind, error) {
 	addr, resp := c.DoGetRequest(fmt.Sprintf("https://ws.vs3.com/rooms/check-model-status.php?model_name=%s", modelID))
 	if resp == nil {
-		return cmdlib.StatusUnknown
+		return cmdlib.StatusUnknown, nil
 	}
 	defer cmdlib.CloseBody(resp.Body)
 	if resp.StatusCode != 200 {
-		return cmdlib.StatusUnknown
+		return cmdlib.StatusUnknown, nil
 	}
 	buf := bytes.Buffer{}
 	_, err := buf.ReadFrom(resp.Body)
 	if err != nil {
 		cmdlib.Lerr("[%v] cannot read response for model %s, %v", addr, modelID, err)
-		return cmdlib.StatusUnknown
+		return cmdlib.StatusUnknown, nil
 	}
 	decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	parsed := &flirt4FreeCheckResponse{}
@@ -61,9 +61,9 @@ func (c *Flirt4FreeChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind 
 		if c.Dbg {
 			cmdlib.Ldbg("response: %s", buf.String())
 		}
-		return cmdlib.StatusUnknown
+		return cmdlib.StatusUnknown, nil
 	}
-	return flirt4FreeStatus(parsed.Status)
+	return flirt4FreeStatus(parsed.Status), nil
 }
 
 func flirt4FreeStatus(roomStatus string) cmdlib.StatusKind {

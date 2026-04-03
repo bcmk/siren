@@ -31,7 +31,7 @@ func (c *TwitchChecker) NicknameRegexp() *regexp.Regexp {
 }
 
 // CheckStatusSingle checks Twitch channel status
-func (c *TwitchChecker) CheckStatusSingle(channelID string) cmdlib.StatusKind {
+func (c *TwitchChecker) CheckStatusSingle(channelID string) (cmdlib.StatusKind, error) {
 	client := c.ClientsLoop.NextClient()
 	helixClient, err := helix.NewClient(&helix.Options{
 		ClientID:     string(c.SpecificConfig["client_id"]),
@@ -40,12 +40,12 @@ func (c *TwitchChecker) CheckStatusSingle(channelID string) cmdlib.StatusKind {
 	})
 	if err != nil {
 		cmdlib.Lerr("cannot create new twitch client, %v", err)
-		return cmdlib.StatusUnknown
+		return cmdlib.StatusUnknown, nil
 	}
 	accessResponse, err := requestAppAccessToken(helixClient)
 	if err != nil {
 		cmdlib.Lerr("%v", err)
-		return cmdlib.StatusUnknown
+		return cmdlib.StatusUnknown, nil
 	}
 
 	helixClient.SetAppAccessToken(accessResponse.Data.AccessToken)
@@ -53,14 +53,14 @@ func (c *TwitchChecker) CheckStatusSingle(channelID string) cmdlib.StatusKind {
 	streamsResponse, err := helixClient.GetStreams(&helix.StreamsParams{UserLogins: []string{channelID}})
 	if err != nil {
 		cmdlib.Lerr("negotiation error on getting streams, %v", err)
-		return cmdlib.StatusUnknown
+		return cmdlib.StatusUnknown, nil
 	}
 	if streamsResponse.ErrorMessage != "" {
 		cmdlib.Lerr("Twitch returns the error on getting streams, %s", streamsResponse.ErrorMessage)
-		return cmdlib.StatusUnknown
+		return cmdlib.StatusUnknown, nil
 	}
 	if len(streamsResponse.Data.Streams) == 1 {
-		return cmdlib.StatusOnline
+		return cmdlib.StatusOnline, nil
 	}
 
 	chanResponse, err := helixClient.GetUsers(&helix.UsersParams{
@@ -68,16 +68,16 @@ func (c *TwitchChecker) CheckStatusSingle(channelID string) cmdlib.StatusKind {
 	})
 	if err != nil {
 		cmdlib.Lerr("negotiation error on getting users, %v", err)
-		return cmdlib.StatusUnknown
+		return cmdlib.StatusUnknown, nil
 	}
 	if chanResponse.ErrorMessage != "" {
 		cmdlib.Lerr("Twitch returns the error on getting users, %s", streamsResponse.ErrorMessage)
-		return cmdlib.StatusUnknown
+		return cmdlib.StatusUnknown, nil
 	}
 	if len(chanResponse.Data.Users) == 1 {
-		return cmdlib.StatusOffline
+		return cmdlib.StatusOffline, nil
 	}
-	return cmdlib.StatusNotFound
+	return cmdlib.StatusNotFound, nil
 }
 
 // QueryOnlineStreamers returns all online Twitch channels

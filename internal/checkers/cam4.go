@@ -48,21 +48,21 @@ type cam4Response struct {
 }
 
 // CheckStatusSingle checks CAM4 model status
-func (c *Cam4Checker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
+func (c *Cam4Checker) CheckStatusSingle(modelID string) (cmdlib.StatusKind, error) {
 	url := fmt.Sprintf("https://api.pinklabel.com/api/v1/cams/profile/%s.json", modelID)
 	addr, resp := c.DoGetRequest(url)
 	if resp == nil {
-		return cmdlib.StatusUnknown
+		return cmdlib.StatusUnknown, nil
 	}
 	defer cmdlib.CloseBody(resp.Body)
 	if resp.StatusCode == 404 {
-		return cmdlib.StatusNotFound
+		return cmdlib.StatusNotFound, nil
 	}
 	buf := bytes.Buffer{}
 	_, err := buf.ReadFrom(resp.Body)
 	if err != nil {
 		cmdlib.Lerr("[%v] cannot read response for model %s, %v", addr, modelID, err)
-		return cmdlib.StatusUnknown
+		return cmdlib.StatusUnknown, nil
 	}
 	decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	parsed := &cam4Response{}
@@ -72,9 +72,9 @@ func (c *Cam4Checker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
 		if c.Dbg {
 			cmdlib.Ldbg("response: %s", buf.String())
 		}
-		return cmdlib.StatusUnknown
+		return cmdlib.StatusUnknown, nil
 	}
-	return cam4RoomStatus(parsed.Status)
+	return cam4RoomStatus(parsed.Status), nil
 }
 
 func cam4RoomStatus(roomStatus string) cmdlib.StatusKind {

@@ -2,7 +2,6 @@ package checkers
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,11 +10,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/bcmk/siren/v2/lib/cmdlib"
-	"github.com/chromedp/cdproto/cdp"
-	"github.com/chromedp/chromedp"
 )
 
 // StripchatChecker implements a checker for Stripchat
@@ -43,17 +39,6 @@ type onlineResponse struct {
 	Models map[string]onlineModel `json:"models"`
 }
 
-var statusesOffline = map[string]bool{
-	"status-off": true,
-}
-
-var statusesOnline = map[string]bool{
-	"status-p2p":       true,
-	"status-private":   true,
-	"status-groupShow": true,
-	"status-idle":      true,
-}
-
 func stripchatShowKind(status string) cmdlib.ShowKind {
 	switch status {
 	case "public":
@@ -66,69 +51,9 @@ func stripchatShowKind(status string) cmdlib.ShowKind {
 	return cmdlib.ShowUnknown
 }
 
-// CheckStatusSingle checks Stripchat model status
-func (c *StripchatChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
-	client := c.ClientsLoop.NextClient()
-	ctx, cancel := chromedp.NewContext(context.Background(), chromedp.WithLogf(cmdlib.Ldbg))
-	defer cancel()
-
-	ctx, cancel = context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-
-	var videoNode []*cdp.Node
-	var statusNode []*cdp.Node
-	var disabledNode []*cdp.Node
-	var notFoundNode []*cdp.Node
-	err := chromedp.Run(ctx,
-		chromedp.Navigate(fmt.Sprintf("https://stripchat.com/%s", modelID)),
-		chromedp.WaitVisible(`video, .vc-status, .account-disabled-page, .not-found-error`, chromedp.ByQuery),
-		chromedp.Nodes(`video`, &videoNode, chromedp.AtLeast(0), chromedp.ByQuery),
-		chromedp.Nodes(`.vc-status`, &statusNode, chromedp.AtLeast(0), chromedp.ByQuery),
-		chromedp.Nodes(`.account-disabled-page`, &disabledNode, chromedp.AtLeast(0), chromedp.ByQuery),
-		chromedp.Nodes(`.not-found-error`, &notFoundNode, chromedp.AtLeast(0), chromedp.ByQuery),
-	)
-	if err != nil {
-		cmdlib.Lerr("[%v] cannot open a page for model %s, %v", client.Addr, modelID, err)
-		return cmdlib.StatusUnknown
-	}
-	if len(videoNode) > 0 {
-		if c.Dbg {
-			cmdlib.Ldbg("video found")
-		}
-		return cmdlib.StatusOnline
-	}
-	if len(notFoundNode) > 0 {
-		if c.Dbg {
-			cmdlib.Ldbg(".not-found-error found")
-		}
-		return cmdlib.StatusNotFound
-	}
-	if len(disabledNode) > 0 {
-		if c.Dbg {
-			cmdlib.Ldbg(".account-disabled-page found")
-		}
-		return cmdlib.StatusDenied
-	}
-	if len(statusNode) > 0 {
-		classes := strings.Split(statusNode[0].AttributeValue("class"), " ")
-		for _, class := range classes {
-			if statusesOffline[class] {
-				if c.Dbg {
-					cmdlib.Ldbg("offline status found")
-				}
-				return cmdlib.StatusOffline
-			}
-			if statusesOnline[class] {
-				if c.Dbg {
-					cmdlib.Ldbg("online status found")
-				}
-				return cmdlib.StatusOnline
-			}
-		}
-		cmdlib.Lerr("[%v] unknown status for model %s, %v", client.Addr, modelID, classes)
-	}
-	cmdlib.Lerr("[%v] unknown status for model %s", client.Addr, modelID)
-	return cmdlib.StatusUnknown
+// CheckStatusSingle is not implemented for Stripchat
+func (c *StripchatChecker) CheckStatusSingle(_ string) (cmdlib.StatusKind, error) {
+	return cmdlib.StatusUnknown, cmdlib.ErrNotImplemented
 }
 
 func (c *StripchatChecker) checkOnlyOnline() (map[string]cmdlib.StreamerInfo, error) {

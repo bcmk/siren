@@ -33,28 +33,28 @@ type liveJasminResponse struct {
 }
 
 // CheckStatusSingle checks LiveJasmin model status
-func (c *LiveJasminChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
+func (c *LiveJasminChecker) CheckStatusSingle(modelID string) (cmdlib.StatusKind, error) {
 	psID := string(c.SpecificConfig["ps_id"])
 	accessKey := string(c.SpecificConfig["access_key"])
 	url := fmt.Sprintf("https://pt.potawe.com/api/model/status?performerId=%s&psId=%s&accessKey=%s&legacyRedirect=1", modelID, psID, accessKey)
 	addr, resp := c.DoGetRequest(url)
 	if resp == nil {
-		return cmdlib.StatusUnknown
+		return cmdlib.StatusUnknown, nil
 	}
 	defer cmdlib.CloseBody(resp.Body)
 	switch resp.StatusCode {
 	case 401:
-		return cmdlib.StatusDenied
+		return cmdlib.StatusDenied, nil
 	case 404:
-		return cmdlib.StatusNotFound
+		return cmdlib.StatusNotFound, nil
 	}
 	buf := bytes.Buffer{}
 	_, err := buf.ReadFrom(resp.Body)
 	if err != nil {
 		cmdlib.Lerr("[%v] cannot read response for model %s, %v", addr, modelID, err)
-		return cmdlib.StatusUnknown
+		return cmdlib.StatusUnknown, nil
 	}
-	return liveJasminStatus(buf.String())
+	return liveJasminStatus(buf.String()), nil
 }
 
 func liveJasminStatus(roomStatus string) cmdlib.StatusKind {

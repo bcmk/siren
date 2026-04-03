@@ -27,17 +27,17 @@ type bongacamsModel struct {
 }
 
 // CheckStatusSingle checks BongaCams model status
-func (c *BongaCamsChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
+func (c *BongaCamsChecker) CheckStatusSingle(modelID string) (cmdlib.StatusKind, error) {
 	code := c.QueryStatusCode(fmt.Sprintf("https://en.bongacams.com/%s", modelID))
 	switch code {
 	case 200:
-		return cmdlib.StatusOnline
+		return cmdlib.StatusOnline, nil
 	case 302:
-		return cmdlib.StatusOffline
+		return cmdlib.StatusOffline, nil
 	case 404:
-		return cmdlib.StatusNotFound
+		return cmdlib.StatusNotFound, nil
 	}
-	return cmdlib.StatusUnknown
+	return cmdlib.StatusUnknown, nil
 }
 
 // QueryOnlineStreamers returns BongaCams online models

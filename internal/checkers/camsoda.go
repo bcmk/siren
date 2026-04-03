@@ -40,15 +40,15 @@ func camSodaShowKind(status string) cmdlib.ShowKind {
 }
 
 // CheckStatusSingle checks CamSoda model status
-func (c *CamSodaChecker) CheckStatusSingle(modelID string) cmdlib.StatusKind {
+func (c *CamSodaChecker) CheckStatusSingle(modelID string) (cmdlib.StatusKind, error) {
 	code := c.QueryStatusCode(fmt.Sprintf("https://www.camsoda.com/%s", modelID))
 	switch code {
 	case 200:
-		return cmdlib.StatusOnline | cmdlib.StatusOffline
+		return cmdlib.StatusOnline | cmdlib.StatusOffline, nil
 	case 404:
-		return cmdlib.StatusNotFound
+		return cmdlib.StatusNotFound, nil
 	}
-	return cmdlib.StatusUnknown
+	return cmdlib.StatusUnknown, nil
 }
 
 // QueryOnlineStreamers returns CamSoda online models
