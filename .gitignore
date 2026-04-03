@@ -9,7 +9,6 @@ cmd/migrator/migrator
 cmd/schema-dump/schema-dump
 cmd/siren-check/siren-check
 cmd/siren-online-list/siren-online-list
-cmd/twitch-active-streams/twitch-active-streams
 cmd/twitch-specific-streams/twitch-specific-streams
 respond-examples
 __pycache__
