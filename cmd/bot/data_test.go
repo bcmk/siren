@@ -5,6 +5,7 @@ import (
 	"text/template"
 
 	"github.com/bcmk/siren/v2/internal/botconfig"
+	"github.com/bcmk/siren/v2/internal/checkers"
 	"github.com/bcmk/siren/v2/internal/db"
 	"github.com/bcmk/siren/v2/lib/cmdlib"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -90,15 +91,14 @@ func newTestWorker() *testWorker {
 
 	w := &testWorker{
 		worker: worker{
-			bots:                  nil,
-			db:                    db.NewDatabase(connStr, true),
-			cfg:                   &testConfig,
-			clients:               nil,
-			tr:                    map[string]*cmdlib.Translations{"test": &testTranslations},
-			tpl:                   map[string]*template.Template{"test": tpl},
-			outgoingMsgCh:         make(chan outgoingPacket, maxHeapLen),
-			nicknamePreprocessing: cmdlib.CanonicalNicknamePreprocessing,
-			nicknameRegexp:        cmdlib.CommonNicknameRegexp,
+			bots:          nil,
+			db:            db.NewDatabase(connStr, true),
+			cfg:           &testConfig,
+			clients:       nil,
+			tr:            map[string]*cmdlib.Translations{"test": &testTranslations},
+			tpl:           map[string]*template.Template{"test": tpl},
+			outgoingMsgCh: make(chan outgoingPacket, maxHeapLen),
+			checker:       &checkers.RandomChecker{},
 		},
 	}
 	w.terminate = func() {

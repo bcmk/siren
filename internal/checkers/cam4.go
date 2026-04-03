@@ -21,13 +21,18 @@ var Cam4ModelIDRegexp = regexp.MustCompile(`^[a-z0-9_]+$`)
 
 var cam4ModelOrLinkRegexp = regexp.MustCompile(`^(?:https?://)?cam4\.com/([A-Za-z0-9_]+)(?:[/?].*)?$`)
 
-// Cam4CanonicalModelID preprocesses model ID string to canonical for CAM4 form
-func Cam4CanonicalModelID(name string) string {
+// NicknamePreprocessing preprocesses nickname to canonical form
+func (c *Cam4Checker) NicknamePreprocessing(name string) string {
 	m := cam4ModelOrLinkRegexp.FindStringSubmatch(name)
 	if len(m) == 2 {
 		name = m[1]
 	}
 	return strings.ToLower(name)
+}
+
+// NicknameRegexp returns the regular expression to validate model IDs
+func (c *Cam4Checker) NicknameRegexp() *regexp.Regexp {
+	return Cam4ModelIDRegexp
 }
 
 type cam4Model struct {

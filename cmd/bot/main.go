@@ -20,7 +20,6 @@ import (
 	"os"
 	"os/signal"
 	"path"
-	"regexp"
 	"runtime"
 	"slices"
 	"sort"
@@ -72,7 +71,6 @@ type worker struct {
 	tpl                        map[string]*texttemplate.Template
 	trAds                      map[string]map[string]*cmdlib.Translation
 	tplAds                     map[string]*texttemplate.Template
-	nicknamePreprocessing      func(string) string
 	checker                    cmdlib.Checker
 	imageDownloadLogs          chan imageDownloadLog
 	unconfirmedOnlineStreamers map[string]cmdlib.StreamerInfo
@@ -84,7 +82,6 @@ type worker struct {
 	sendingNotifications       chan []db.Notification
 	sentNotifications          chan []db.Notification
 	ourIDs                     []int64
-	nicknameRegexp             *regexp.Regexp
 	searchHTML                 *htmltemplate.Template
 	searchRequests             chan searchRequest
 	addRequests                chan addRequest
@@ -223,44 +220,24 @@ func newWorker(cfg *botconfig.Config) *worker {
 	switch cfg.Website {
 	case "test":
 		w.checker = &checkers.RandomChecker{}
-		w.nicknamePreprocessing = cmdlib.CanonicalNicknamePreprocessing
-		w.nicknameRegexp = cmdlib.CommonNicknameRegexp
 	case "bongacams":
 		w.checker = &checkers.BongaCamsChecker{}
-		w.nicknamePreprocessing = cmdlib.CanonicalNicknamePreprocessing
-		w.nicknameRegexp = cmdlib.CommonNicknameRegexp
 	case "chaturbate":
 		w.checker = &checkers.ChaturbateChecker{}
-		w.nicknamePreprocessing = checkers.ChaturbateCanonicalModelID
-		w.nicknameRegexp = cmdlib.CommonNicknameRegexp
 	case "stripchat":
 		w.checker = &checkers.StripchatChecker{}
-		w.nicknamePreprocessing = cmdlib.CanonicalNicknamePreprocessing
-		w.nicknameRegexp = cmdlib.CommonNicknameRegexp
 	case "livejasmin":
 		w.checker = &checkers.LiveJasminChecker{}
-		w.nicknamePreprocessing = cmdlib.CanonicalNicknamePreprocessing
-		w.nicknameRegexp = cmdlib.CommonNicknameRegexp
 	case "camsoda":
 		w.checker = &checkers.CamSodaChecker{}
-		w.nicknamePreprocessing = cmdlib.CanonicalNicknamePreprocessing
-		w.nicknameRegexp = cmdlib.CommonNicknameRegexp
 	case "flirt4free":
 		w.checker = &checkers.Flirt4FreeChecker{}
-		w.nicknamePreprocessing = checkers.Flirt4FreeCanonicalModelID
-		w.nicknameRegexp = cmdlib.CommonNicknameRegexp
 	case "streamate":
 		w.checker = &checkers.StreamateChecker{}
-		w.nicknamePreprocessing = cmdlib.CanonicalNicknamePreprocessing
-		w.nicknameRegexp = cmdlib.CommonNicknameRegexp
 	case "twitch":
 		w.checker = &checkers.TwitchChecker{}
-		w.nicknamePreprocessing = checkers.TwitchCanonicalChannelID
-		w.nicknameRegexp = checkers.TwitchChannelIDRegexp
 	case "cam4":
 		w.checker = &checkers.Cam4Checker{}
-		w.nicknamePreprocessing = checkers.Cam4CanonicalModelID
-		w.nicknameRegexp = checkers.Cam4ModelIDRegexp
 	default:
 		panic("wrong website")
 	}
@@ -661,8 +638,8 @@ func (w *worker) mustUser(chatID int64) (user db.User) {
 
 func (w *worker) showWeek(endpoint string, chatID int64, nickname string) {
 	if nickname != "" {
-		nickname = w.nicknamePreprocessing(nickname)
-		if !w.nicknameRegexp.MatchString(nickname) {
+		nickname = w.checker.NicknamePreprocessing(nickname)
+		if !w.checker.NicknameRegexp().MatchString(nickname) {
 			w.sendTr(db.PriorityHigh, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"streamer": nickname}, db.ReplyPacket)
 			return
 		}
@@ -756,8 +733,8 @@ func (w *worker) addStreamer(endpoint string, chatID int64, nickname string, now
 		w.enqueueMessage(db.PriorityHigh, endpoint, &messageParams{params}, db.ReplyPacket)
 		return nil
 	}
-	nickname = w.nicknamePreprocessing(nickname)
-	if !w.nicknameRegexp.MatchString(nickname) {
+	nickname = w.checker.NicknamePreprocessing(nickname)
+	if !w.checker.NicknameRegexp().MatchString(nickname) {
 		w.sendTr(db.PriorityHigh, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"streamer": nickname}, db.ReplyPacket)
 		return nil
 	}
@@ -862,8 +839,8 @@ func (w *worker) removeStreamer(endpoint string, chatID int64, nickname string) 
 		w.sendTr(db.PriorityHigh, endpoint, chatID, false, w.tr[endpoint].SyntaxRemove, nil, db.ReplyPacket)
 		return
 	}
-	nickname = w.nicknamePreprocessing(nickname)
-	if !w.nicknameRegexp.MatchString(nickname) {
+	nickname = w.checker.NicknamePreprocessing(nickname)
+	if !w.checker.NicknameRegexp().MatchString(nickname) {
 		w.sendTr(db.PriorityHigh, endpoint, chatID, false, w.tr[endpoint].InvalidSymbols, tplData{"streamer": nickname}, db.ReplyPacket)
 		return
 	}
@@ -1511,7 +1488,7 @@ func (w *worker) start(endpoint string, chatID int64, referrer string, now int, 
 	switch {
 	case strings.HasPrefix(referrer, "m-"):
 		nickname = referrer[2:]
-		nickname = w.nicknamePreprocessing(nickname)
+		nickname = w.checker.NicknamePreprocessing(nickname)
 		referrer = ""
 	case referrer != "":
 		referralID := w.db.ReferralID(chatID)

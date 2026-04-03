@@ -18,8 +18,8 @@ var _ cmdlib.Checker = &ChaturbateChecker{}
 
 var chaturbateModelRegexp = regexp.MustCompile(`^(?:https?://)?(?:[A-Za-z]+\.)?chaturbate\.com(?:/p|/b)?/([A-Za-z0-9\-_@]+)/?(?:\?.*)?$`)
 
-// ChaturbateCanonicalModelID preprocesses model ID string to canonical for Chaturbate form
-func ChaturbateCanonicalModelID(name string) string {
+// NicknamePreprocessing preprocesses nickname to canonical form
+func (c *ChaturbateChecker) NicknamePreprocessing(name string) string {
 	m := chaturbateModelRegexp.FindStringSubmatch(name)
 	if len(m) == 2 {
 		name = m[1]

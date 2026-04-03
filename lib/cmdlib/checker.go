@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"regexp"
 	"time"
 )
 
@@ -203,6 +204,8 @@ type Checker interface {
 	RequestInterval() time.Duration
 	Debug() bool
 	SubjectSupported() bool
+	NicknamePreprocessing(name string) string
+	NicknameRegexp() *regexp.Regexp
 }
 
 // CheckerCommon contains common fields for all the checkers
@@ -259,6 +262,16 @@ func (c *CheckerCommon) Debug() bool { return c.Dbg }
 
 // SubjectSupported returns whether the checker supports room subjects
 func (c *CheckerCommon) SubjectSupported() bool { return false }
+
+// NicknamePreprocessing preprocesses nickname to canonical form
+func (c *CheckerCommon) NicknamePreprocessing(name string) string {
+	return CanonicalNicknamePreprocessing(name)
+}
+
+// NicknameRegexp returns the regular expression to validate nicknames
+func (c *CheckerCommon) NicknameRegexp() *regexp.Regexp {
+	return CommonNicknameRegexp
+}
 
 // StartCheckerDaemon starts a checker daemon
 func StartCheckerDaemon(checker Checker) {

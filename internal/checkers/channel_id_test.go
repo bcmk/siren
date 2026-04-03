@@ -15,7 +15,8 @@ func TestNickname(t *testing.T) {
 	if TwitchChannelIDRegexp.MatchString("test@test") {
 		t.Error("unexpected results")
 	}
-	if TwitchCanonicalChannelID("@test") != "test" {
+	tc := &TwitchChecker{}
+	if tc.NicknamePreprocessing("@test") != "test" {
 		t.Error("unexpected results")
 	}
 }

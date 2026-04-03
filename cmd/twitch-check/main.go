@@ -28,10 +28,6 @@ func main() {
 		return
 	}
 	channel := flag.Arg(0)
-	if !cmdlib.CommonNicknameRegexp.MatchString(channel) {
-		fmt.Println("invalid channel name")
-		return
-	}
 	client := cmdlib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
 	checker := &checkers.TwitchChecker{}
 	checker.Init(cmdlib.CheckerConfig{
@@ -41,5 +37,10 @@ func main() {
 			"client_id":     cmdlib.Secret(*clientID),
 			"client_secret": cmdlib.Secret(*secret),
 		}})
+	channel = checker.NicknamePreprocessing(channel)
+	if !checker.NicknameRegexp().MatchString(channel) {
+		fmt.Println("invalid channel name")
+		return
+	}
 	fmt.Println(checker.CheckStatusSingle(channel))
 }

@@ -100,8 +100,8 @@ func flirt4FreeCanonicalAPIModelID(name string) string {
 	return strings.ToLower(name)
 }
 
-// Flirt4FreeCanonicalModelID preprocesses model ID string to canonical for Flirt4Free form
-func Flirt4FreeCanonicalModelID(name string) string {
+// NicknamePreprocessing preprocesses nickname to canonical form
+func (c *Flirt4FreeChecker) NicknamePreprocessing(name string) string {
 	name = strings.ReplaceAll(name, "-", "_")
 	return strings.ToLower(name)
 }

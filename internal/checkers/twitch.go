@@ -20,9 +20,14 @@ var _ cmdlib.Checker = &TwitchChecker{}
 // TwitchChannelIDRegexp is a regular expression to check channel IDs
 var TwitchChannelIDRegexp = regexp.MustCompile(`^@?[a-z0-9][a-z0-9\-_]*$`)
 
-// TwitchCanonicalChannelID preprocesses channel name to canonical form
-func TwitchCanonicalChannelID(name string) string {
+// NicknamePreprocessing preprocesses nickname to canonical form
+func (c *TwitchChecker) NicknamePreprocessing(name string) string {
 	return strings.ToLower(strings.TrimPrefix(name, "@"))
+}
+
+// NicknameRegexp returns the regular expression to validate channel IDs
+func (c *TwitchChecker) NicknameRegexp() *regexp.Regexp {
+	return TwitchChannelIDRegexp
 }
 
 // CheckStatusSingle checks Twitch channel status

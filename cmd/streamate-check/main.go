@@ -26,12 +26,13 @@ func main() {
 		return
 	}
 	modelID := flag.Arg(0)
-	if !cmdlib.CommonNicknameRegexp.MatchString(modelID) {
-		fmt.Println("invalid model ID")
-		return
-	}
 	client := cmdlib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies)
 	checker := &checkers.StreamateChecker{}
 	checker.Init(cmdlib.CheckerConfig{Clients: []*cmdlib.Client{client}, Dbg: *verbose})
+	modelID = checker.NicknamePreprocessing(modelID)
+	if !checker.NicknameRegexp().MatchString(modelID) {
+		fmt.Println("invalid model ID")
+		return
+	}
 	fmt.Println(checker.CheckStatusSingle(modelID))
 }
