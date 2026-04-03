@@ -41,7 +41,7 @@ type Config struct {
 	Debug                           bool                      `mapstructure:"debug"`                              // debug mode
 	CheckGID                        bool                      `mapstructure:"check_gid"`                          // check goroutines ids
 	ListenAddress                   string                    `mapstructure:"listen_address"`                     // the address to listen to
-	Website                         string                    `mapstructure:"website"`                            // one of the following strings: "bongacams", "stripchat", "chaturbate", "livejasmin", "flirt4free", "streamate", "cam4"
+	Website                         string                    `mapstructure:"website"`                            // one of the following strings: "bongacams", "stripchat", "chaturbate", "livejasmin", "flirt4free", "streamate", "cam4", "twitch", "kick"
 	WebsiteLink                     string                    `mapstructure:"website_link"`                       // affiliate link to website
 	PeriodSeconds                   int                       `mapstructure:"period_seconds"`                     // the period of querying streamer statuses
 	MaintainDBPeriodSeconds         int                       `mapstructure:"maintain_db_period_seconds"`         // the maintain DB period
@@ -301,6 +301,14 @@ func checkConfig(cfg *Config) error {
 	if cfg.Website == "stripchat" {
 		if cfg.SpecificConfig["user_id"] == "" {
 			return errors.New("configure specific_config/user_id")
+		}
+	}
+	if cfg.Website == "twitch" || cfg.Website == "kick" {
+		if cfg.SpecificConfig["client_id"] == "" {
+			return errors.New("configure specific_config/client_id")
+		}
+		if cfg.SpecificConfig["client_secret"] == "" {
+			return errors.New("configure specific_config/client_secret")
 		}
 	}
 	if cfg.HeavyUserRemainder == 0 {

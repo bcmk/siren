@@ -1,0 +1,136 @@
+hello:
+  parse: html
+  str: The bot notifies you whenever your favorite <a href="{{ . }}">{{ template "site" }}</a> channels are online.
+site:
+  parse: html
+  str: Kick
+add_error:
+  parse: html
+  str: |-
+    Could not add the channel {{ .streamer }}
+    Check the channel name or try later
+    Syntax: /add <code>CHANNEL</code>
+checking_streamer:
+  parse: raw
+  str: Give us a second. We are checking this channel
+help:
+  parse: html
+  disable_preview: true
+  str: |-
+    {{ template "hello" .website_link }}
+
+    {{ template "commands" }}
+
+    {{ template "sites" }}
+
+    {{ template "social" }}
+sites:
+  parse: html
+  str: |-
+    <b>This bot for other sites</b>
+    Chaturbate: <a href="https://t.me/ChaturbateAlarmBot">ChaturbateAlarmBot</a>
+    Stripchat: <a href="https://t.me/StripchatOnlineBot">StripchatOnlineBot</a>
+    BongaCams: <a href="https://t.me/BongaCamsOnlineBot">BongaCamsOnlineBot</a>
+    LiveJasmin: <a href="https://t.me/LiveJasminSirenBot">LiveJasminSirenBot</a>
+    CamSoda: <a href="https://t.me/CamSodaSirenBot">CamSodaSirenBot</a>
+    Flirt4Free: <a href="https://t.me/Flirt4FreeSirenBot">Flirt4FreeSirenBot</a>
+    Streamate: <a href="https://t.me/StreamateSirenBot">StreamateSirenBot</a>
+    Twitch: <a href="https://t.me/TwitchSirenBot">TwitchSirenBot</a>
+add_example:
+  parse: html
+  str: /add morecrown
+syntax_add:
+  parse: html
+  str: |-
+    Specify a channel, e.g., <code>{{ template "add_example" }}</code>
+search_header:
+  parse: raw
+  str: Find and add a channel
+syntax_remove:
+  parse: html
+  str: |-
+    Enter
+
+    /remove <code>CHANNEL</code>
+unknown_command:
+  parse: html
+  str: |-
+    Unknown command. To subscribe to a channel enter
+
+    /add <code>CHANNEL</code>
+
+    Example
+
+    {{ template "add_example" }}
+zero_subscriptions:
+  parse: html
+  str: |-
+    You are not subscribed to any channel
+    To subscribe enter
+
+    /add <code>CHANNEL</code>
+faq:
+  parse: html
+  str: |-
+    {{ template "faq_pricing" . }}
+already_added:
+  parse: raw
+  str: "Channel {{ .streamer }} is already in your list"
+raw_commands:
+  parse: raw
+  str: |-
+    referral - Your referral link
+    add - Add a channel
+    remove - Remove a channel
+    remove_all - Remove all channels
+    list - Your subscriptions
+    pics - Thumbnails of your channels online
+    week - Online hours in the previous 7 days
+    help - Help
+    settings - Show settings
+    feedback - Send feedback
+commands:
+  parse: html
+  str: |-
+    <b>Commands</b>
+
+    <b>add</b> <code>CHANNEL</code> — Add a channel
+    <b>remove</b> <code>CHANNEL</code> — Remove a channel
+    <b>remove_all</b> — Remove all channels
+    <b>list</b> — Your subscriptions
+    <b>pics</b> — Thumbnails of your channels online
+    <b>week</b> <code>CHANNEL</code> — Online hours in the previous 7 days
+    <b>help</b> — Help
+    <b>settings</b> — Show settings
+    <b>feedback</b> <code>YOUR_MESSAGE</code> — Send feedback
+languages:
+  parse: raw
+  str: ""
+streamer_added:
+  parse: raw
+  str: |-
+    Channel {{ .streamer }} added successfully
+    Bot will notify you whenever it is online
+streamer_not_in_list:
+  parse: raw
+  str: "Channel {{ .streamer }} is not in your list"
+streamer_removed:
+  parse: raw
+  str: "Channel {{ .streamer }} removed successfully"
+no_online_streamers:
+  parse: raw
+  str: There are no online channels you subscribed to
+faq_pricing:
+  parse: html
+  str: >
+    <b>Pricing</b>
+
+    The basic service is free.
+    If you need to subscribe to more than {{ .max_subs }} channels you may earn additional subscriptions by sharing this service.
+invalid_symbols:
+  parse: raw
+  disable_preview: true
+  str: "The channel name {{ .streamer }} has invalid symbols"
+profile_removed:
+  parse: raw
+  str: "The channel {{ .streamer }} is probably removed"

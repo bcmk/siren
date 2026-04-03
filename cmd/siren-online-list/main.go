@@ -19,8 +19,8 @@ var address = flag.String("a", "", "source IP address")
 var cookies = flag.Bool("c", false, "use cookies")
 var endpoints = cmdlib.StringSetFlag{}
 var userID = flag.String("user_id", "", "Stripchat user_id")
-var clientID = flag.String("client_id", "", "Twitch client_id")
-var clientSecret = flag.String("client_secret", "", "Twitch client_secret")
+var clientID = flag.String("client_id", "", "Twitch/Kick client_id")
+var clientSecret = flag.String("client_secret", "", "Twitch/Kick client_secret")
 
 var sites = map[string]cmdlib.Checker{
 	"bongacams":  &checkers.BongaCamsChecker{},
@@ -32,6 +32,7 @@ var sites = map[string]cmdlib.Checker{
 	"streamate":  &checkers.StreamateChecker{},
 	"stripchat":  &checkers.StripchatChecker{},
 	"twitch":     &checkers.TwitchChecker{},
+	"kick":       &checkers.KickChecker{},
 }
 
 const streamateDefaultEndpoint = "http://affiliate.streamate.com/SMLive/SMLResult.xml"
@@ -66,7 +67,7 @@ func main() {
 		switch site {
 		case "streamate":
 			endpointSlice = []string{streamateDefaultEndpoint}
-		case "twitch":
+		case "twitch", "kick":
 			endpointSlice = []string{""}
 		default:
 			fmt.Fprintln(os.Stderr, "specify endpoint with -e")
@@ -91,7 +92,7 @@ func main() {
 		config.SpecificConfig = map[string]cmdlib.Secret{
 			"user_id": cmdlib.Secret(*userID),
 		}
-	case "twitch":
+	case "twitch", "kick":
 		if *clientID == "" || *clientSecret == "" {
 			fmt.Fprintln(os.Stderr, "specify client_id and client_secret")
 			os.Exit(1)

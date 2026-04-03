@@ -18,8 +18,8 @@ var verbose = flag.Bool("v", false, "verbose output")
 var timeout = flag.Int("t", 10, "timeout in seconds")
 var address = flag.String("a", "", "source IP address")
 var cookies = flag.Bool("c", false, "use cookies")
-var clientID = flag.String("id", "", "Twitch client id")
-var secret = flag.String("secret", "", "Twitch client secret")
+var clientID = flag.String("id", "", "Twitch/Kick client id")
+var secret = flag.String("secret", "", "Twitch/Kick client secret")
 var psID = flag.String("ps_id", "", "LiveJasmin ps_id")
 var accessKey = flag.String("access_key", "", "LiveJasmin access_key")
 
@@ -33,6 +33,7 @@ var sites = map[string]cmdlib.Checker{
 	"streamate":  &checkers.StreamateChecker{},
 	"stripchat":  &checkers.StripchatChecker{},
 	"twitch":     &checkers.TwitchChecker{},
+	"kick":       &checkers.KickChecker{},
 }
 
 func main() {
@@ -68,7 +69,7 @@ func main() {
 	}
 
 	switch site {
-	case "twitch":
+	case "twitch", "kick":
 		if *clientID == "" {
 			fmt.Println("specify id")
 			return

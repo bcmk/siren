@@ -238,6 +238,8 @@ func newWorker(cfg *botconfig.Config) *worker {
 		w.checker = &checkers.TwitchChecker{}
 	case "cam4":
 		w.checker = &checkers.Cam4Checker{}
+	case "kick":
+		w.checker = &checkers.KickChecker{}
 	default:
 		panic("wrong website")
 	}
