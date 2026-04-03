@@ -31,15 +31,7 @@ var sites = map[string]cmdlib.Checker{
 	"stripchat":  &checkers.StripchatChecker{},
 }
 
-var streamateDefaultEndpoint = "http://affiliate.streamate.com/SMLive/SMLResult.xml"
-
-func toSlice(xs map[string]bool) []string {
-	var result []string
-	for s := range xs {
-		result = append(result, s)
-	}
-	return result
-}
+const streamateDefaultEndpoint = "http://affiliate.streamate.com/SMLive/SMLResult.xml"
 
 func main() {
 	siteNames := strings.Join(slices.Sorted(maps.Keys(sites)), ", ")
@@ -66,7 +58,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	endpointSlice := toSlice(endpoints)
+	endpointSlice := slices.Collect(maps.Keys(endpoints))
 	if len(endpointSlice) == 0 {
 		switch site {
 		case "streamate":
@@ -88,8 +80,8 @@ func main() {
 	switch site {
 	case "stripchat":
 		if *userID == "" {
-			fmt.Println("specify user_id")
-			return
+			fmt.Fprintln(os.Stderr, "specify user_id")
+			os.Exit(1)
 		}
 		config.SpecificConfig = map[string]cmdlib.Secret{
 			"user_id": cmdlib.Secret(*userID),
