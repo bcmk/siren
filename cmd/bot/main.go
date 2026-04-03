@@ -2231,6 +2231,7 @@ func main() {
 				"insert_nicknames_ms":                  cr.upsertTimings.InsertNicknamesMs,
 				"insert_unconfirmed_status_changes_ms": cr.upsertTimings.InsertStatusChangesMs,
 				"commit_unconfirmed_ms":                cr.upsertTimings.CommitMs,
+				"summarize_brin_ms":                    cr.upsertTimings.SummarizeBrinMs,
 				"confirm_changes_ms":                   cr.confirmChangesMs,
 				"store_notifications_ms":               cr.storeNotificationsMs,
 			})
