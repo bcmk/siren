@@ -43,13 +43,12 @@ type cam4Model struct {
 }
 
 type cam4Response struct {
-	Username string `json:"username"`
-	Status   string `json:"status"`
+	Online bool `json:"online"`
 }
 
 // CheckStatusSingle checks CAM4 model status
 func (c *Cam4Checker) CheckStatusSingle(modelID string) (cmdlib.StatusKind, error) {
-	url := fmt.Sprintf("https://api.pinklabel.com/api/v1/cams/profile/%s.json", modelID)
+	url := fmt.Sprintf("https://www.cam4.com/rest/v1.0/profile/%s/info", modelID)
 	addr, resp := c.DoGetRequest(url)
 	if resp == nil {
 		return cmdlib.StatusUnknown, nil
@@ -74,18 +73,10 @@ func (c *Cam4Checker) CheckStatusSingle(modelID string) (cmdlib.StatusKind, erro
 		}
 		return cmdlib.StatusUnknown, nil
 	}
-	return cam4RoomStatus(parsed.Status), nil
-}
-
-func cam4RoomStatus(roomStatus string) cmdlib.StatusKind {
-	switch roomStatus {
-	case "online":
-		return cmdlib.StatusOnline
-	case "offline":
-		return cmdlib.StatusOffline
+	if parsed.Online {
+		return cmdlib.StatusOnline, nil
 	}
-	cmdlib.Lerr("cannot parse room status \"%s\"", roomStatus)
-	return cmdlib.StatusUnknown
+	return cmdlib.StatusOffline, nil
 }
 
 func cam4ShowKind(showType string) cmdlib.ShowKind {
