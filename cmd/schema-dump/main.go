@@ -47,6 +47,7 @@ func main() {
 type column struct {
 	name         string
 	dataType     string
+	collation    *string
 	isNullable   string
 	defaultValue *string
 }
@@ -72,13 +73,14 @@ func printSchema(database db.Database) {
 	var tableOrder []string
 
 	var tableName, columnName, dataType, isNullable string
-	var columnDefault *string
+	var collation, columnDefault *string
 	database.MustQuery(
 		`
 			select
 				c.table_name,
 				c.column_name,
 				c.data_type,
+				c.collation_name,
 				c.is_nullable,
 				c.column_default
 			from information_schema.columns c
@@ -90,7 +92,7 @@ func printSchema(database db.Database) {
 			order by c.table_name, c.ordinal_position
 		`,
 		nil,
-		db.ScanTo{&tableName, &columnName, &dataType, &isNullable, &columnDefault},
+		db.ScanTo{&tableName, &columnName, &dataType, &collation, &isNullable, &columnDefault},
 		func() {
 			if tables[tableName] == nil {
 				tables[tableName] = &table{}
@@ -99,6 +101,7 @@ func printSchema(database db.Database) {
 			tables[tableName].columns = append(tables[tableName].columns, column{
 				name:         columnName,
 				dataType:     dataType,
+				collation:    collation,
 				isNullable:   isNullable,
 				defaultValue: columnDefault,
 			})
@@ -156,12 +159,20 @@ func printSchema(database db.Database) {
 			if len(col.name) > maxName {
 				maxName = len(col.name)
 			}
-			if len(col.dataType) > maxType {
-				maxType = len(col.dataType)
+			typeStr := col.dataType
+			if col.collation != nil && *col.collation != "default" {
+				typeStr += fmt.Sprintf(" collate %q", *col.collation)
+			}
+			if len(typeStr) > maxType {
+				maxType = len(typeStr)
 			}
 		}
 
 		for _, col := range t.columns {
+			typeStr := col.dataType
+			if col.collation != nil && *col.collation != "default" {
+				typeStr += fmt.Sprintf(" collate %q", *col.collation)
+			}
 			nullable := ""
 			if col.isNullable == "NO" {
 				nullable = "not null"
@@ -172,7 +183,7 @@ func printSchema(database db.Database) {
 			}
 			fmt.Printf("    %-*s  %-*s  %-8s  %s\n",
 				maxName, col.name,
-				maxType, col.dataType,
+				maxType, typeStr,
 				nullable,
 				def)
 		}
