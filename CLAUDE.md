@@ -87,6 +87,8 @@
 
 ## Database
 
+- Run `cmd/schema-dump/schema-dump` to get the full database schema
+- BRIN indexes require explicit `brin_summarize_new_values` calls
 - Read `docs/testing-database.md` before working with the
   testing database environment
 - pgx caches prepared statements, which can cause
