@@ -63,9 +63,10 @@ type check struct {
 }
 
 type table struct {
-	columns []column
-	indexes []index
-	checks  []check
+	columns    []column
+	indexes    []index
+	checks     []check
+	reloptions []string
 }
 
 func printSchema(database db.Database) {
@@ -147,6 +148,25 @@ func printSchema(database db.Database) {
 			}
 		})
 
+	var optTable, opt string
+	database.MustQuery(
+		`
+			select relname, unnest(reloptions)
+			from pg_class c
+			join pg_namespace n on c.relnamespace = n.oid
+			where n.nspname = 'public'
+				and c.relkind = 'r'
+				and c.reloptions is not null
+			order by relname
+		`,
+		nil,
+		db.ScanTo{&optTable, &opt},
+		func() {
+			if tables[optTable] != nil {
+				tables[optTable].reloptions = append(tables[optTable].reloptions, opt)
+			}
+		})
+
 	for i, name := range tableOrder {
 		if i > 0 {
 			fmt.Println()
@@ -199,6 +219,13 @@ func printSchema(database db.Database) {
 			fmt.Println()
 			for _, chk := range t.checks {
 				fmt.Printf("    check %s: %s\n", chk.name, chk.def)
+			}
+		}
+
+		if len(t.reloptions) > 0 {
+			fmt.Println()
+			for _, opt := range t.reloptions {
+				fmt.Printf("    option %s\n", opt)
 			}
 		}
 	}
