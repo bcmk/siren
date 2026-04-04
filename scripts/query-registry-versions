@@ -3,7 +3,7 @@ set -euo pipefail
 
 manifest_list=$(doctl registry repository list-manifests bot --output json)
 
-get_old_digests() {
+get_digests() {
     jq -r "sort_by(.updated_at) | .[].digest" <<< "$manifest_list"
 }
 
@@ -18,6 +18,6 @@ print_manifest() {
     echo "tags: $tags, digest: $digest"
 }
 
-get_old_digests | while read -r digest; do
+get_digests | while read -r digest; do
     print_manifest "$digest"
 done
