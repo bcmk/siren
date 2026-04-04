@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/bcmk/siren/v2/lib/cmdlib"
-	"github.com/nicklaw5/helix"
+	"github.com/nicklaw5/helix/v2"
 )
 
 // TwitchChecker implements a checker for Twitch
