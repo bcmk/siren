@@ -15,6 +15,7 @@ The bot queries streamer statuses every minute.
 ## Open In Telegram
 
 - Twitch: [t.me/TwitchSirenBot](https://t.me/TwitchSirenBot)
+- Kick: [t.me/KickSirenBot](https://t.me/KickSirenBot)
 - Chaturbate #1: [t.me/ChaturbateAlarmBot](https://t.me/ChaturbateAlarmBot)
 - Chaturbate #2: [t.me/ChaturbateAlertsBot](https://t.me/ChaturbateAlertsBot)
 - Stripchat and xHamster Live: [t.me/StripchatOnlineBot](https://t.me/StripchatOnlineBot)

@@ -28,6 +28,7 @@ sites:
   parse: html
   str: |-
     <b>This bot for other sites</b>
+    Kick: <a href="https://t.me/KickSirenBot">KickSirenBot</a>
     Chaturbate: <a href="https://t.me/ChaturbateAlarmBot">ChaturbateAlarmBot</a>
     Stripchat: <a href="https://t.me/StripchatOnlineBot">StripchatOnlineBot</a>
     BongaCams: <a href="https://t.me/BongaCamsOnlineBot">BongaCamsOnlineBot</a>
@@ -35,6 +36,7 @@ sites:
     CamSoda: <a href="https://t.me/CamSodaSirenBot">CamSodaSirenBot</a>
     Flirt4Free: <a href="https://t.me/Flirt4FreeSirenBot">Flirt4FreeSirenBot</a>
     Streamate: <a href="https://t.me/StreamateSirenBot">StreamateSirenBot</a>
+    CAM4: <a href="https://t.me/C4SirenBot">C4SirenBot</a>
 add_example:
   parse: html
   str: /add xqcow

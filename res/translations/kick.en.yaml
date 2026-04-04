@@ -28,6 +28,7 @@ sites:
   parse: html
   str: |-
     <b>This bot for other sites</b>
+    Twitch: <a href="https://t.me/TwitchSirenBot">TwitchSirenBot</a>
     Chaturbate: <a href="https://t.me/ChaturbateAlarmBot">ChaturbateAlarmBot</a>
     Stripchat: <a href="https://t.me/StripchatOnlineBot">StripchatOnlineBot</a>
     BongaCams: <a href="https://t.me/BongaCamsOnlineBot">BongaCamsOnlineBot</a>
@@ -35,7 +36,7 @@ sites:
     CamSoda: <a href="https://t.me/CamSodaSirenBot">CamSodaSirenBot</a>
     Flirt4Free: <a href="https://t.me/Flirt4FreeSirenBot">Flirt4FreeSirenBot</a>
     Streamate: <a href="https://t.me/StreamateSirenBot">StreamateSirenBot</a>
-    Twitch: <a href="https://t.me/TwitchSirenBot">TwitchSirenBot</a>
+    CAM4: <a href="https://t.me/C4SirenBot">C4SirenBot</a>
 add_example:
   parse: html
   str: /add morecrown

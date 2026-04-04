@@ -31,6 +31,7 @@ sites:
     Flirt4Free: <a href="https://t.me/Flirt4FreeSirenBot">Flirt4FreeSirenBot</a>
     Streamate: <a href="https://t.me/StreamateSirenBot">StreamateSirenBot</a>
     Twitch: <a href="https://t.me/TwitchSirenBot">TwitchSirenBot</a>
+    Kick: <a href="https://t.me/KickSirenBot">KickSirenBot</a>
 add_example:
   parse: html
   str: /add eva_alson
