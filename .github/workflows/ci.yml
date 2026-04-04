@@ -24,6 +24,8 @@ jobs:
         run: go test -v ./...
 
       - name: Lint
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.1
+          version: v2.11.4
+          # Drop goinstall when golangci-lint supports Go 1.26
+          install-mode: goinstall
