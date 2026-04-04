@@ -3,6 +3,7 @@ package checkers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -149,6 +150,9 @@ func (c *ChaturbateChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerIn
 			ShowKind: chaturbateShowKind(m.CurrentShow),
 			Subject:  m.RoomSubject,
 		}
+	}
+	if len(streamers) == 0 {
+		return nil, errors.New("zero online models reported")
 	}
 	return streamers, nil
 }

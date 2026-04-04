@@ -3,6 +3,7 @@ package checkers
 import (
 	"bytes"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -252,6 +253,9 @@ func (c *StreamateChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInf
 				pages = 20
 			}
 		}
+	}
+	if len(streamers) == 0 {
+		return nil, errors.New("zero online models reported")
 	}
 	return streamers, nil
 }

@@ -3,6 +3,7 @@ package checkers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -135,6 +136,9 @@ func (c *LiveJasminChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerIn
 		for nickname, info := range endpointStreamers {
 			streamers[nickname] = info
 		}
+	}
+	if len(streamers) == 0 {
+		return nil, errors.New("zero online models reported")
 	}
 	return streamers, nil
 }

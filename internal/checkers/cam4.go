@@ -3,6 +3,7 @@ package checkers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -119,6 +120,9 @@ func (c *Cam4Checker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, er
 			Viewers:  &viewers,
 			ShowKind: cam4ShowKind(m.ShowType),
 		}
+	}
+	if len(streamers) == 0 {
+		return nil, errors.New("zero online models reported")
 	}
 	return streamers, nil
 }

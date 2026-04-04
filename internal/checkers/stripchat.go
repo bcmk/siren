@@ -3,6 +3,7 @@ package checkers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -161,6 +162,9 @@ func (c *StripchatChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInf
 				}
 			}
 		}
+	}
+	if len(streamers) == 0 {
+		return nil, errors.New("zero online models reported")
 	}
 	return streamers, nil
 }

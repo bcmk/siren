@@ -3,6 +3,7 @@ package checkers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -83,6 +84,9 @@ func (c *CamSodaChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo,
 			ShowKind: camSodaShowKind(m.Status),
 			Subject:  m.Subject,
 		}
+	}
+	if len(streamers) == 0 {
+		return nil, errors.New("zero online models reported")
 	}
 	return streamers, nil
 }
