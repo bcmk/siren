@@ -36,6 +36,7 @@
       "Bash(sed:*)",
       "Bash(grep:*)",
       "Bash(find:*)",
+      "Bash(head:*)",
       "Bash(printf:*)",
       "Bash(xxd:*)",
       "Bash(curl:*)",
