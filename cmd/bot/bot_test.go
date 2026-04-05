@@ -312,11 +312,9 @@ func TestCopyFromAndBatchInTransaction(t *testing.T) {
 
 	// SendBatch with invalid status (violates check constraint) should fail
 	batch := &pgx.Batch{}
-	batch.Queue(
-		`
-			insert into streamers (nickname, unconfirmed_status)
-			values ($1, $2)
-		`,
+	batch.Queue(`
+		insert into streamers (nickname, unconfirmed_status)
+		values ($1, $2)`,
 		"test_streamer", 999) // 999 violates check constraint
 	br := tx.SendBatch(context.Background(), batch)
 	err = br.Close()
@@ -498,16 +496,14 @@ func queryLastTwoChanges(d *db.Database) map[string]lastTwoChanges {
 func queryAllStreamers(d *db.Database) []db.Streamer {
 	var streamers []db.Streamer
 	var streamer db.Streamer
-	d.MustQuery(
-		`
+	d.MustQuery(`
 		select
 			nickname,
 			unconfirmed_status,
 			unconfirmed_timestamp,
 			prev_unconfirmed_status,
 			prev_unconfirmed_timestamp
-		from streamers
-		`,
+		from streamers`,
 		nil,
 		db.ScanTo{
 			&streamer.Nickname,
@@ -580,8 +576,7 @@ func checkNoConsecutiveSameStatuses(t *testing.T, d *db.Database) {
 	var nickname string
 	var status cmdlib.StatusKind
 	var results []entry
-	d.MustQuery(
-		`
+	d.MustQuery(`
 		with periods as (
 			select
 				s.nickname,
@@ -592,8 +587,7 @@ func checkNoConsecutiveSameStatuses(t *testing.T, d *db.Database) {
 		)
 		select nickname, status
 		from periods
-		where status = next_status
-		`,
+		where status = next_status`,
 		nil,
 		db.ScanTo{&nickname, &status},
 		func() { results = append(results, entry{nickname, status}) })
@@ -1132,27 +1126,27 @@ func TestStatusConfirmations(t *testing.T) {
 
 			// Set up background streamers that should remain unchanged
 			insertTestStreamer(&w.db, db.Streamer{
-				Nickname:            "always_online",
-				ConfirmedStatus:     cmdlib.StatusOnline,
-				UnconfirmedStatus:   cmdlib.StatusOnline,
+				Nickname:             "always_online",
+				ConfirmedStatus:      cmdlib.StatusOnline,
+				UnconfirmedStatus:    cmdlib.StatusOnline,
 				UnconfirmedTimestamp: 100,
 			})
 			insertTestStreamer(&w.db, db.Streamer{
-				Nickname:            "always_offline",
-				ConfirmedStatus:     cmdlib.StatusOffline,
-				UnconfirmedStatus:   cmdlib.StatusOffline,
+				Nickname:             "always_offline",
+				ConfirmedStatus:      cmdlib.StatusOffline,
+				UnconfirmedStatus:    cmdlib.StatusOffline,
 				UnconfirmedTimestamp: 100,
 			})
 			insertTestStreamer(&w.db, db.Streamer{
-				Nickname:            "always_unknown",
-				ConfirmedStatus:     cmdlib.StatusUnknown,
-				UnconfirmedStatus:   cmdlib.StatusUnknown,
+				Nickname:             "always_unknown",
+				ConfirmedStatus:      cmdlib.StatusUnknown,
+				UnconfirmedStatus:    cmdlib.StatusUnknown,
 				UnconfirmedTimestamp: 100,
 			})
 			insertTestStreamer(&w.db, db.Streamer{
-				Nickname:            "ch",
-				ConfirmedStatus:     tt.confirmed,
-				UnconfirmedStatus:   tt.unconfirmed,
+				Nickname:             "ch",
+				ConfirmedStatus:      tt.confirmed,
+				UnconfirmedStatus:    tt.unconfirmed,
 				UnconfirmedTimestamp: tt.timestamp,
 			})
 
@@ -1569,35 +1563,35 @@ func TestStatusTransitions(t *testing.T) {
 			w.createDatabase(make(chan bool, 1))
 			// Set up background streamers that should remain unchanged
 			insertTestStreamer(&w.db, db.Streamer{
-				Nickname:            "always_online",
-				UnconfirmedStatus:   cmdlib.StatusOnline,
+				Nickname:             "always_online",
+				UnconfirmedStatus:    cmdlib.StatusOnline,
 				UnconfirmedTimestamp: 1,
 			})
 			insertTestStreamer(&w.db, db.Streamer{
-				Nickname:            "always_offline",
-				UnconfirmedStatus:   cmdlib.StatusOffline,
+				Nickname:             "always_offline",
+				UnconfirmedStatus:    cmdlib.StatusOffline,
 				UnconfirmedTimestamp: 1,
 			})
 			insertTestStreamer(&w.db, db.Streamer{
-				Nickname:            "always_unknown",
-				UnconfirmedStatus:   cmdlib.StatusUnknown,
+				Nickname:             "always_unknown",
+				UnconfirmedStatus:    cmdlib.StatusUnknown,
 				UnconfirmedTimestamp: 1,
 			})
 			insertSubscription(&w.db, "ep", 1, "always_online")
 			insertSubscription(&w.db, "ep", 1, "always_offline")
 			insertSubscription(&w.db, "ep", 1, "always_unknown")
-			w.db.MustExec(
-				`insert into status_changes (streamer_id, status, timestamp)
+			w.db.MustExec(`
+				insert into status_changes (streamer_id, status, timestamp)
 				values ((select id from streamers where nickname = $1), $2, $3)`,
 				"always_online", cmdlib.StatusOnline, 1,
 			)
-			w.db.MustExec(
-				`insert into status_changes (streamer_id, status, timestamp)
+			w.db.MustExec(`
+				insert into status_changes (streamer_id, status, timestamp)
 				values ((select id from streamers where nickname = $1), $2, $3)`,
 				"always_offline", cmdlib.StatusOffline, 1,
 			)
-			w.db.MustExec(
-				`insert into status_changes (streamer_id, status, timestamp)
+			w.db.MustExec(`
+				insert into status_changes (streamer_id, status, timestamp)
 				values ((select id from streamers where nickname = $1), $2, $3)`,
 				"always_unknown", cmdlib.StatusUnknown, 1,
 			)

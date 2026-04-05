@@ -75,23 +75,21 @@ func printSchema(database db.Database) {
 
 	var tableName, columnName, dataType, isNullable string
 	var collation, columnDefault *string
-	database.MustQuery(
-		`
-			select
-				c.table_name,
-				c.column_name,
-				c.data_type,
-				c.collation_name,
-				c.is_nullable,
-				c.column_default
-			from information_schema.columns c
-			join information_schema.tables t
-				on c.table_name = t.table_name
-				and c.table_schema = t.table_schema
-			where c.table_schema = 'public'
-				and t.table_type = 'BASE TABLE'
-			order by c.table_name, c.ordinal_position
-		`,
+	database.MustQuery(`
+		select
+			c.table_name,
+			c.column_name,
+			c.data_type,
+			c.collation_name,
+			c.is_nullable,
+			c.column_default
+		from information_schema.columns c
+		join information_schema.tables t
+			on c.table_name = t.table_name
+			and c.table_schema = t.table_schema
+		where c.table_schema = 'public'
+			and t.table_type = 'BASE TABLE'
+		order by c.table_name, c.ordinal_position`,
 		nil,
 		db.ScanTo{&tableName, &columnName, &dataType, &collation, &isNullable, &columnDefault},
 		func() {
@@ -109,13 +107,11 @@ func printSchema(database db.Database) {
 		})
 
 	var indexName, indexTable, indexDef string
-	database.MustQuery(
-		`
-			select indexname, tablename, indexdef
-			from pg_indexes
-			where schemaname = 'public'
-			order by tablename, indexname
-		`,
+	database.MustQuery(`
+		select indexname, tablename, indexdef
+		from pg_indexes
+		where schemaname = 'public'
+		order by tablename, indexname`,
 		nil,
 		db.ScanTo{&indexName, &indexTable, &indexDef},
 		func() {
@@ -128,15 +124,13 @@ func printSchema(database db.Database) {
 		})
 
 	var checkName, checkTable, checkDef string
-	database.MustQuery(
-		`
-			select conname, relname, pg_get_constraintdef(c.oid)
-			from pg_constraint c
-			join pg_class r on c.conrelid = r.oid
-			join pg_namespace n on r.relnamespace = n.oid
-			where n.nspname = 'public' and c.contype = 'c'
-			order by relname, conname
-		`,
+	database.MustQuery(`
+		select conname, relname, pg_get_constraintdef(c.oid)
+		from pg_constraint c
+		join pg_class r on c.conrelid = r.oid
+		join pg_namespace n on r.relnamespace = n.oid
+		where n.nspname = 'public' and c.contype = 'c'
+		order by relname, conname`,
 		nil,
 		db.ScanTo{&checkName, &checkTable, &checkDef},
 		func() {
@@ -149,16 +143,14 @@ func printSchema(database db.Database) {
 		})
 
 	var optTable, opt string
-	database.MustQuery(
-		`
-			select relname, unnest(reloptions)
-			from pg_class c
-			join pg_namespace n on c.relnamespace = n.oid
-			where n.nspname = 'public'
-				and c.relkind = 'r'
-				and c.reloptions is not null
-			order by relname
-		`,
+	database.MustQuery(`
+		select relname, unnest(reloptions)
+		from pg_class c
+		join pg_namespace n on c.relnamespace = n.oid
+		where n.nspname = 'public'
+			and c.relkind = 'r'
+			and c.reloptions is not null
+		order by relname`,
 		nil,
 		db.ScanTo{&optTable, &opt},
 		func() {

@@ -125,14 +125,12 @@ func confirmedStatusesForChat(d *db.Database, endpoint string, chatID int64) (st
 func queryLastStatusChanges(d *db.Database) map[string]db.StatusChange {
 	statusChanges := map[string]db.StatusChange{}
 	var statusChange db.StatusChange
-	d.MustQuery(
-		`
-			select distinct on (sc.streamer_id)
-				s.nickname, sc.status, sc.timestamp
-			from status_changes sc
-			join streamers s on s.id = sc.streamer_id
-			order by sc.streamer_id, sc.timestamp desc
-		`,
+	d.MustQuery(`
+		select distinct on (sc.streamer_id)
+			s.nickname, sc.status, sc.timestamp
+		from status_changes sc
+		join streamers s on s.id = sc.streamer_id
+		order by sc.streamer_id, sc.timestamp desc`,
 		nil,
 		db.ScanTo{&statusChange.Nickname, &statusChange.Status, &statusChange.Timestamp},
 		func() { statusChanges[statusChange.Nickname] = statusChange })

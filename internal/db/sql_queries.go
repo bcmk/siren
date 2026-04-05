@@ -14,8 +14,7 @@ import (
 func (d *Database) NewNotifications() []Notification {
 	var nots []Notification
 	var iter Notification
-	d.MustQuery(
-		`
+	d.MustQuery(`
 		select
 			n.id, n.endpoint, n.chat_id, n.streamer_id, s.nickname, n.status,
 			n.time_diff, n.image_url, n.viewers, n.show_kind, n.social, n.priority,
@@ -24,8 +23,7 @@ func (d *Database) NewNotifications() []Notification {
 		join users u on u.chat_id = n.chat_id
 		join streamers s on s.id = n.streamer_id
 		where n.sending = 0
-		order by n.id
-		`,
+		order by n.id`,
 		nil,
 		ScanTo{
 			&iter.ID,
@@ -57,25 +55,23 @@ func (d *Database) StoreNotifications(nots []Notification) {
 	defer measureDone()
 	batch := &pgx.Batch{}
 	for _, n := range nots {
-		batch.Queue(
-			`
-				insert into notification_queue (
-					endpoint,
-					chat_id,
-					streamer_id,
-					status,
-					time_diff,
-					image_url,
-					viewers,
-					show_kind,
-					social,
-					priority,
-					sound,
-					kind,
-					subject
-				)
-				values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-			`,
+		batch.Queue(`
+			insert into notification_queue (
+				endpoint,
+				chat_id,
+				streamer_id,
+				status,
+				time_diff,
+				image_url,
+				viewers,
+				show_kind,
+				social,
+				priority,
+				sound,
+				kind,
+				subject
+			)
+			values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
 			n.Endpoint, n.ChatID, n.StreamerID, n.Status, n.TimeDiff, n.ImageURL, n.Viewers, n.ShowKind, n.Social, n.Priority, n.Sound, n.Kind, n.Subject,
 		)
 	}
@@ -247,8 +243,8 @@ func (d *Database) AddUser(chatID int64, maxSubs int, now int, chatType string) 
 // MaybeStreamer returns a streamer if exists
 func (d *Database) MaybeStreamer(nickname string) *Streamer {
 	var result Streamer
-	if d.MaybeRecord(
-		`select
+	if d.MaybeRecord(`
+		select
 			id,
 			nickname,
 			confirmed_status,
@@ -380,12 +376,10 @@ func (d *Database) DenySub(sub PendingSubscription) {
 func (d *Database) UnconfirmedStatusesForStreamers(nicknames []string) map[string]StatusChange {
 	statusChanges := map[string]StatusChange{}
 	var statusChange StatusChange
-	d.MustQuery(
-		`
-			select nickname, unconfirmed_status, unconfirmed_timestamp
-			from streamers
-			where nickname = any($1)
-		`,
+	d.MustQuery(`
+		select nickname, unconfirmed_status, unconfirmed_timestamp
+		from streamers
+		where nickname = any($1)`,
 		QueryParams{nicknames},
 		ScanTo{&statusChange.Nickname, &statusChange.Status, &statusChange.Timestamp},
 		func() { statusChanges[statusChange.Nickname] = statusChange })
