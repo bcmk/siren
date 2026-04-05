@@ -28,12 +28,23 @@
 ## Code Style
 
 - Put function arguments on separate lines if they don't fit on one line
-- Format multiline SQL with backticks on their own lines:
-  ```
-  `
+- Format multiline SQL with the opening backtick
+  on the preceding line and SQL indented one level:
+  ```go
+  d.MustExec(`
       select foo
-      from bar
-  `
+      from bar`,
+      args)
+  ```
+  When arguments are on separate lines, the backtick goes on its own line:
+  ```go
+  someFunc(
+      longArg1,
+      `
+          select foo
+          from bar
+      `,
+      longArg2)
   ```
 - ALWAYS use lowercase SQL keywords,
   including in documentation and conversations

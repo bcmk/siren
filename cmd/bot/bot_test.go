@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"reflect"
-	"runtime/debug"
 	"testing"
 
 	"github.com/bcmk/siren/v2/internal/db"
@@ -41,6 +40,9 @@ func TestSql(t *testing.T) {
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
 	w.initCache()
+	for _, n := range []string{"a", "b", "c", "c2", "c3", "d", "e", "f", "g"} {
+		insertTestStreamer(&w.db, db.Streamer{Nickname: n})
+	}
 	insertSubscription(&w.db, "ep1", 1, "a")
 	insertSubscription(&w.db, "ep1", 2, "b")
 	insertSubscription(&w.db, "ep1", 3, "c")
@@ -136,6 +138,9 @@ func TestUpdateNotifications(t *testing.T) {
 	w.createDatabase(make(chan bool, 1))
 	w.initCache()
 
+	for _, n := range []string{"a", "b", "c", "d"} {
+		insertTestStreamer(&w.db, db.Streamer{Nickname: n})
+	}
 	insertSubscription(&w.db, "ep1", 1, "a")
 	insertSubscription(&w.db, "ep1", 2, "b")
 	insertSubscription(&w.db, "ep1", 3, "a")
@@ -195,12 +200,9 @@ func TestNotificationsStorage(t *testing.T) {
 	w.db.AddUser(2, 3, 0, "private")
 	w.db.AddUser(3, 3, 0, "private")
 
-	w.db.MustExec("insert into streamers (nickname) values ($1)", "a")
-	w.db.MustExec("insert into streamers (nickname) values ($1)", "b")
-	w.db.MustExec("insert into streamers (nickname) values ($1)", "c")
-	idA := w.db.MaybeStreamer("a").ID
-	idB := w.db.MaybeStreamer("b").ID
-	idC := w.db.MaybeStreamer("c").ID
+	idA := insertTestStreamer(&w.db, db.Streamer{Nickname: "a"})
+	idB := insertTestStreamer(&w.db, db.Streamer{Nickname: "b"})
+	idC := insertTestStreamer(&w.db, db.Streamer{Nickname: "c"})
 
 	timeDiff := 2
 	nots := []db.Notification{
@@ -268,7 +270,7 @@ func TestStreamers(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase(make(chan bool, 1))
-	w.db.MustExec("insert into streamers (nickname, confirmed_status) values ($1, $2)", "a", cmdlib.StatusOffline)
+	insertTestStreamer(&w.db, db.Streamer{Nickname: "a", ConfirmedStatus: cmdlib.StatusOffline})
 	if w.db.MaybeStreamer("a") == nil {
 		t.Error("unexpected result")
 	}
@@ -286,8 +288,7 @@ func TestCopyFromAndBatchInTransaction(t *testing.T) {
 	// by making SendBatch fail and verifying CopyFrom data is rolled back
 
 	// Insert a streamer to get an integer ID for the CopyFrom test
-	w.db.MustExec("insert into streamers (nickname) values ($1)", "a")
-	streamerIntID := w.db.MustInt("select id from streamers where nickname = $1", "a")
+	streamerIntID := insertTestStreamer(&w.db, db.Streamer{Nickname: "a"})
 
 	tx, err := w.db.Begin()
 	if err != nil {
@@ -463,33 +464,15 @@ func TestUnconfirmedStatusConsistency(t *testing.T) {
 	}
 }
 
-func checkInv(w *worker, t *testing.T) {
-	a := map[string]db.StatusChange{}
-	var recStatus db.StatusChange
-	w.db.MustQuery(`
-		select s.nickname, sub.status, sub.timestamp
-		from (
-			select *, row_number() over (partition by streamer_id order by timestamp desc) as row
-			from status_changes
-		) sub
-		join streamers s on s.id = sub.streamer_id
-		where sub.row = 1`,
-		nil,
-		db.ScanTo{&recStatus.Nickname, &recStatus.Status, &recStatus.Timestamp},
-		func() { a[recStatus.Nickname] = recStatus })
+type lastTwoChanges struct {
+	unconfirmed, prev db.StatusChange
+}
 
-	if !reflect.DeepEqual(a, queryLastStatusChanges(&w.db)) {
-		t.Errorf("unexpected inv check result, statuses: %v, site statuses: %v", a, queryLastStatusChanges(&w.db))
-		t.Log(string(debug.Stack()))
-	}
-	// Check unconfirmed status consistency — streamers table must match last two status_changes
-	type lastTwo struct {
-		unconfirmed, prev db.StatusChange
-	}
-	fromStatusChanges := map[string]lastTwo{}
+func queryLastTwoChanges(d *db.Database) map[string]lastTwoChanges {
+	lastTwo := map[string]lastTwoChanges{}
 	var sc db.StatusChange
 	var row int
-	w.db.MustQuery(`
+	d.MustQuery(`
 		select s.nickname, sub.status, sub.timestamp, sub.row
 		from (
 			select *, row_number() over (partition by streamer_id order by timestamp desc) as row
@@ -501,40 +484,103 @@ func checkInv(w *worker, t *testing.T) {
 		nil,
 		db.ScanTo{&sc.Nickname, &sc.Status, &sc.Timestamp, &row},
 		func() {
-			entry := fromStatusChanges[sc.Nickname]
+			entry := lastTwo[sc.Nickname]
 			if row == 1 {
 				entry.unconfirmed = sc
 			} else {
 				entry.prev = sc
 			}
-			fromStatusChanges[sc.Nickname] = entry
+			lastTwo[sc.Nickname] = entry
 		})
+	return lastTwo
+}
 
+func queryAllStreamers(d *db.Database) []db.Streamer {
+	var streamers []db.Streamer
 	var streamer db.Streamer
-	w.db.MustQuery(`
-		select nickname, unconfirmed_status, unconfirmed_timestamp, prev_unconfirmed_status, prev_unconfirmed_timestamp
+	d.MustQuery(
+		`
+		select
+			nickname,
+			unconfirmed_status,
+			unconfirmed_timestamp,
+			prev_unconfirmed_status,
+			prev_unconfirmed_timestamp
 		from streamers
-		where unconfirmed_timestamp > 0`,
+		`,
 		nil,
-		db.ScanTo{&streamer.Nickname, &streamer.UnconfirmedStatus, &streamer.UnconfirmedTimestamp, &streamer.PrevUnconfirmedStatus, &streamer.PrevUnconfirmedTimestamp},
-		func() {
-			expected := fromStatusChanges[streamer.Nickname]
-			if streamer.UnconfirmedStatus != expected.unconfirmed.Status ||
-				streamer.UnconfirmedTimestamp != expected.unconfirmed.Timestamp {
-				t.Errorf("unconfirmed status mismatch for %s: streamer=%+v, expected=%+v", streamer.Nickname, streamer, expected)
-				t.Log(string(debug.Stack()))
-			}
-			if streamer.PrevUnconfirmedStatus != expected.prev.Status ||
-				streamer.PrevUnconfirmedTimestamp != expected.prev.Timestamp {
-				t.Errorf("prev unconfirmed status mismatch for %s: streamer=%+v, expected=%+v", streamer.Nickname, streamer, expected)
-				t.Log(string(debug.Stack()))
-			}
-		})
+		db.ScanTo{
+			&streamer.Nickname,
+			&streamer.UnconfirmedStatus,
+			&streamer.UnconfirmedTimestamp,
+			&streamer.PrevUnconfirmedStatus,
+			&streamer.PrevUnconfirmedTimestamp,
+		},
+		func() { streamers = append(streamers, streamer) })
+	return streamers
+}
 
-	// Check for consecutive same statuses — should never happen
-	var badNickname string
-	var badStatus cmdlib.StatusKind
-	w.db.MustQuery(
+func queryAllNicknames(d *db.Database) map[string]bool {
+	nicknames := map[string]bool{}
+	var nickname string
+	d.MustQuery(
+		"select nickname from nicknames",
+		nil,
+		db.ScanTo{&nickname},
+		func() { nicknames[nickname] = true })
+	return nicknames
+}
+
+func checkLatestStatusChanges(t *testing.T, d *db.Database, lastTwo map[string]lastTwoChanges) {
+	t.Helper()
+	latest := map[string]db.StatusChange{}
+	for nickname, pair := range lastTwo {
+		latest[nickname] = pair.unconfirmed
+	}
+	if !reflect.DeepEqual(latest, queryLastStatusChanges(d)) {
+		t.Errorf("latest status changes mismatch: %v vs %v", latest, queryLastStatusChanges(d))
+	}
+}
+
+func checkUnconfirmedConsistency(t *testing.T, streamers []db.Streamer, lastTwo map[string]lastTwoChanges) {
+	t.Helper()
+	for _, s := range streamers {
+		if s.UnconfirmedTimestamp == 0 {
+			continue
+		}
+		expected := lastTwo[s.Nickname]
+		if s.UnconfirmedStatus != expected.unconfirmed.Status ||
+			s.UnconfirmedTimestamp != expected.unconfirmed.Timestamp {
+			t.Errorf("unconfirmed status mismatch for %s: streamer=%+v, expected=%+v", s.Nickname, s, expected)
+		}
+		if s.PrevUnconfirmedStatus != expected.prev.Status ||
+			s.PrevUnconfirmedTimestamp != expected.prev.Timestamp {
+			t.Errorf("prev unconfirmed status mismatch for %s: streamer=%+v, expected=%+v", s.Nickname, s, expected)
+		}
+	}
+}
+
+func checkNicknamesMatch(t *testing.T, streamers []db.Streamer, dbNicknames map[string]bool) {
+	t.Helper()
+	streamerNicknames := map[string]bool{}
+	for _, s := range streamers {
+		streamerNicknames[s.Nickname] = true
+	}
+	if !reflect.DeepEqual(streamerNicknames, dbNicknames) {
+		t.Errorf("nicknames mismatch: streamers=%v, nicknames=%v", streamerNicknames, dbNicknames)
+	}
+}
+
+func checkNoConsecutiveSameStatuses(t *testing.T, d *db.Database) {
+	t.Helper()
+	type entry struct {
+		nickname string
+		status   cmdlib.StatusKind
+	}
+	var nickname string
+	var status cmdlib.StatusKind
+	var results []entry
+	d.MustQuery(
 		`
 		with periods as (
 			select
@@ -549,11 +595,23 @@ func checkInv(w *worker, t *testing.T) {
 		where status = next_status
 		`,
 		nil,
-		db.ScanTo{&badNickname, &badStatus},
-		func() {
-			t.Errorf("consecutive same status found for %s: %v", badNickname, badStatus)
-			t.Log(string(debug.Stack()))
-		})
+		db.ScanTo{&nickname, &status},
+		func() { results = append(results, entry{nickname, status}) })
+	for _, r := range results {
+		t.Errorf("consecutive same status found for %s: %v", r.nickname, r.status)
+	}
+}
+
+func checkInv(w *worker, t *testing.T) {
+	t.Helper()
+	lastTwoChanges := queryLastTwoChanges(&w.db)
+	streamers := queryAllStreamers(&w.db)
+	nicknames := queryAllNicknames(&w.db)
+
+	checkLatestStatusChanges(t, &w.db, lastTwoChanges)
+	checkUnconfirmedConsistency(t, streamers, lastTwoChanges)
+	checkNicknamesMatch(t, streamers, nicknames)
+	checkNoConsecutiveSameStatuses(t, &w.db)
 }
 
 func TestAddStreamer(t *testing.T) {
@@ -573,11 +631,7 @@ func TestAddStreamer(t *testing.T) {
 	<-w.outgoingMsgCh
 
 	// Add streamer that exists with online status — should return non-nil
-	w.db.MustExec(
-		"insert into streamers (nickname, confirmed_status) values ($1, $2)",
-		"onlinemodel",
-		cmdlib.StatusOnline,
-	)
+	insertTestStreamer(&w.db, db.Streamer{Nickname: "onlinemodel", ConfirmedStatus: cmdlib.StatusOnline})
 	if w.addStreamer("test", 1, "onlinemodel", 100, false) == nil {
 		t.Error("expected addStreamer to return non-nil for existing streamer")
 	}
@@ -595,11 +649,7 @@ func TestAddStreamer(t *testing.T) {
 	}
 
 	// Add streamer that exists with offline status — should return non-nil
-	w.db.MustExec(
-		"insert into streamers (nickname, confirmed_status) values ($1, $2)",
-		"offlinemodel",
-		cmdlib.StatusOffline,
-	)
+	insertTestStreamer(&w.db, db.Streamer{Nickname: "offlinemodel", ConfirmedStatus: cmdlib.StatusOffline})
 	if w.addStreamer("test", 1, "offlinemodel", 100, false) == nil {
 		t.Error("expected addStreamer to return non-nil for existing offline streamer")
 	}
@@ -644,6 +694,8 @@ func TestConfirmSub(t *testing.T) {
 	if w.db.MaybeStreamer("a") == nil {
 		t.Error("expected streamer to exist after ConfirmSub")
 	}
+
+	checkInv(&w.worker, t)
 }
 
 func TestDenySub(t *testing.T) {
@@ -946,10 +998,7 @@ func TestStreamerReferral(t *testing.T) {
 		w.createDatabase(make(chan bool, 1))
 
 		// Pre-create a known streamer
-		w.db.MustExec(
-			"insert into streamers (nickname, confirmed_status) values ($1, $2)",
-			"known_model", cmdlib.StatusOnline,
-		)
+		insertTestStreamer(&w.db, db.Streamer{Nickname: "known_model", ConfirmedStatus: cmdlib.StatusOnline})
 
 		w.start("test", 10, "m-known_model", 100, "private")
 
@@ -1082,39 +1131,30 @@ func TestStatusConfirmations(t *testing.T) {
 			w.createDatabase(make(chan bool, 1))
 
 			// Set up background streamers that should remain unchanged
-			w.db.MustExec(
-				`
-					insert into streamers
-					(nickname, confirmed_status, unconfirmed_status, unconfirmed_timestamp)
-					values ($1, $2, $3, $4)
-				`,
-				"always_online", cmdlib.StatusOnline, cmdlib.StatusOnline, 100,
-			)
-			w.db.MustExec(
-				`
-					insert into streamers
-					(nickname, confirmed_status, unconfirmed_status, unconfirmed_timestamp)
-					values ($1, $2, $3, $4)
-				`,
-				"always_offline", cmdlib.StatusOffline, cmdlib.StatusOffline, 100,
-			)
-			w.db.MustExec(
-				`
-					insert into streamers
-					(nickname, confirmed_status, unconfirmed_status, unconfirmed_timestamp)
-					values ($1, $2, $3, $4)
-				`,
-				"always_unknown", cmdlib.StatusUnknown, cmdlib.StatusUnknown, 100,
-			)
-
-			w.db.MustExec(
-				`
-					insert into streamers
-					(nickname, confirmed_status, unconfirmed_status, unconfirmed_timestamp)
-					values ($1, $2, $3, $4)
-				`,
-				"ch", tt.confirmed, tt.unconfirmed, tt.timestamp,
-			)
+			insertTestStreamer(&w.db, db.Streamer{
+				Nickname:            "always_online",
+				ConfirmedStatus:     cmdlib.StatusOnline,
+				UnconfirmedStatus:   cmdlib.StatusOnline,
+				UnconfirmedTimestamp: 100,
+			})
+			insertTestStreamer(&w.db, db.Streamer{
+				Nickname:            "always_offline",
+				ConfirmedStatus:     cmdlib.StatusOffline,
+				UnconfirmedStatus:   cmdlib.StatusOffline,
+				UnconfirmedTimestamp: 100,
+			})
+			insertTestStreamer(&w.db, db.Streamer{
+				Nickname:            "always_unknown",
+				ConfirmedStatus:     cmdlib.StatusUnknown,
+				UnconfirmedStatus:   cmdlib.StatusUnknown,
+				UnconfirmedTimestamp: 100,
+			})
+			insertTestStreamer(&w.db, db.Streamer{
+				Nickname:            "ch",
+				ConfirmedStatus:     tt.confirmed,
+				UnconfirmedStatus:   tt.unconfirmed,
+				UnconfirmedTimestamp: tt.timestamp,
+			})
 
 			changes := w.db.ConfirmStatusChanges(
 				tt.now,
@@ -1152,14 +1192,12 @@ func TestQueryLastSubscriptionStatuses(t *testing.T) {
 	w.createDatabase(make(chan bool, 1))
 
 	// Insert streamers and confirmed subscriptions
-	w.db.MustExec(
-		"insert into streamers (nickname, confirmed_status, unconfirmed_status) values ($1, $2, $3)",
-		"model_with_status", cmdlib.StatusOnline, cmdlib.StatusOnline,
-	)
-	w.db.MustExec(
-		"insert into streamers (nickname) values ($1)",
-		"model_without_status",
-	)
+	insertTestStreamer(&w.db, db.Streamer{
+		Nickname:          "model_with_status",
+		ConfirmedStatus:   cmdlib.StatusOnline,
+		UnconfirmedStatus: cmdlib.StatusOnline,
+	})
+	insertTestStreamer(&w.db, db.Streamer{Nickname: "model_without_status"})
 	w.db.MustExec(`
 		insert into subscriptions (endpoint, chat_id, streamer_id)
 		values ($1, $2, (select id from streamers where nickname = $3))`,
@@ -1191,6 +1229,7 @@ func TestHandleStatusUpdates(t *testing.T) {
 	w.initCache()
 
 	// Insert a subscription
+	insertTestStreamer(&w.db, db.Streamer{Nickname: "a"})
 	insertSubscription(&w.db, "test", 1, "a")
 
 	// Test with OnlineListResults
@@ -1263,6 +1302,14 @@ func TestHandleStatusUpdates(t *testing.T) {
 			"expected zero values on error with FixedListResults, got changes=%d, confirmedChanges=%d, nots=%d, elapsed=%d",
 			r.changesCount, r.confirmedChangesCount, len(r.notifications), r.elapsed)
 	}
+
+	// New streamer discovered via OnlineListResults —
+	// should insert into both streamers and nicknames
+	result5 := &cmdlib.OnlineListResults{
+		Streamers: map[string]cmdlib.StreamerInfo{"newmodel": {}},
+	}
+	w.handleCheckerResults(result5, 107)
+	checkInv(&w.worker, t)
 }
 
 func TestUnsubscribeBeforeRestart(t *testing.T) {
@@ -1272,6 +1319,8 @@ func TestUnsubscribeBeforeRestart(t *testing.T) {
 	w.initCache()
 
 	// Subscribe to "a" and "b"
+	insertTestStreamer(&w.db, db.Streamer{Nickname: "a"})
+	insertTestStreamer(&w.db, db.Streamer{Nickname: "b"})
 	insertSubscription(&w.db, "test", 1, "a")
 	insertSubscription(&w.db, "test", 1, "b")
 
@@ -1519,21 +1568,24 @@ func TestStatusTransitions(t *testing.T) {
 			defer w.terminate()
 			w.createDatabase(make(chan bool, 1))
 			// Set up background streamers that should remain unchanged
+			insertTestStreamer(&w.db, db.Streamer{
+				Nickname:            "always_online",
+				UnconfirmedStatus:   cmdlib.StatusOnline,
+				UnconfirmedTimestamp: 1,
+			})
+			insertTestStreamer(&w.db, db.Streamer{
+				Nickname:            "always_offline",
+				UnconfirmedStatus:   cmdlib.StatusOffline,
+				UnconfirmedTimestamp: 1,
+			})
+			insertTestStreamer(&w.db, db.Streamer{
+				Nickname:            "always_unknown",
+				UnconfirmedStatus:   cmdlib.StatusUnknown,
+				UnconfirmedTimestamp: 1,
+			})
 			insertSubscription(&w.db, "ep", 1, "always_online")
 			insertSubscription(&w.db, "ep", 1, "always_offline")
 			insertSubscription(&w.db, "ep", 1, "always_unknown")
-			w.db.MustExec(
-				"update streamers set unconfirmed_status = $2, unconfirmed_timestamp = $3 where nickname = $1",
-				"always_online", cmdlib.StatusOnline, 1,
-			)
-			w.db.MustExec(
-				"update streamers set unconfirmed_status = $2, unconfirmed_timestamp = $3 where nickname = $1",
-				"always_offline", cmdlib.StatusOffline, 1,
-			)
-			w.db.MustExec(
-				"update streamers set unconfirmed_status = $2, unconfirmed_timestamp = $3 where nickname = $1",
-				"always_unknown", cmdlib.StatusUnknown, 1,
-			)
 			w.db.MustExec(
 				`insert into status_changes (streamer_id, status, timestamp)
 				values ((select id from streamers where nickname = $1), $2, $3)`,
@@ -1556,6 +1608,7 @@ func TestStatusTransitions(t *testing.T) {
 			// Always subscribe during setup if we need to set initial state
 			// (subscription is needed to track the streamer)
 			if tt.dbBefore != nil || tt.subscribed {
+				insertTestStreamer(&w.db, db.Streamer{Nickname: "ch"})
 				insertSubscription(&w.db, "ep", 1, "ch")
 			}
 

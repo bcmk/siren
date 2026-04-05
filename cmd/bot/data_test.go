@@ -157,12 +157,27 @@ func (w *testWorker) chatsForStreamer(nickname string) (chats []int64, endpoints
 	return
 }
 
-// insertSubscription creates a streamer (if needed) and inserts
-// a confirmed subscription for tests
+func insertTestStreamer(d *db.Database, s db.Streamer) int {
+	d.MustExec("insert into nicknames (nickname) values ($1)", s.Nickname)
+	return d.MustInt(`
+		insert into streamers (
+			nickname,
+			confirmed_status,
+			unconfirmed_status,
+			unconfirmed_timestamp,
+			prev_unconfirmed_status,
+			prev_unconfirmed_timestamp)
+		values ($1, $2, $3, $4, $5, $6)
+		returning id`,
+		s.Nickname,
+		s.ConfirmedStatus,
+		s.UnconfirmedStatus,
+		s.UnconfirmedTimestamp,
+		s.PrevUnconfirmedStatus,
+		s.PrevUnconfirmedTimestamp)
+}
+
 func insertSubscription(d *db.Database, endpoint string, chatID int64, nickname string) {
-	d.MustExec(
-		"insert into streamers (nickname) values ($1) on conflict(nickname) do nothing",
-		nickname)
 	d.MustExec(`
 		insert into subscriptions (endpoint, chat_id, streamer_id)
 		values ($1, $2, (select id from streamers where nickname = $3))`,
