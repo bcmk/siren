@@ -1850,6 +1850,10 @@ func getCommandAndArgs(update *models.Update, mention string, ourIDs []int64) (i
 				}
 			}
 		}
+		chatType := update.Message.Chat.Type
+		if (chatType == "group" || chatType == "supergroup") && !strings.HasPrefix(text, "/") {
+			return 0, "", ""
+		}
 	} else if update.ChannelPost != nil {
 		text = update.ChannelPost.Text
 		chatID = update.ChannelPost.Chat.ID
