@@ -589,8 +589,25 @@ func (w *worker) ad(priority db.Priority, endpoint string, chatID int64) {
 	if len(trAds) == 0 {
 		return
 	}
-	adNum := rand.Intn(len(trAds))
-	w.sendAdsTr(priority, endpoint, chatID, false, trAds[adNum], nil)
+	totalWeight := 0
+	for _, a := range trAds {
+		totalWeight += adWeight(a)
+	}
+	r := rand.Intn(totalWeight)
+	for _, a := range trAds {
+		r -= adWeight(a)
+		if r < 0 {
+			w.sendAdsTr(priority, endpoint, chatID, false, a, nil)
+			return
+		}
+	}
+}
+
+func adWeight(tr *cmdlib.Translation) int {
+	if tr.Weight <= 0 {
+		return 1
+	}
+	return tr.Weight
 }
 
 func (w *worker) notifyOfStatus(priority db.Priority, n db.Notification, image []byte, social bool) {
@@ -625,7 +642,7 @@ func (w *worker) notifyOfStatus(priority db.Priority, n db.Notification, image [
 	case cmdlib.StatusDenied:
 		w.sendTr(priority, n.Endpoint, n.ChatID, false, w.tr[n.Endpoint].Denied, data, n.Kind)
 	}
-	if social && rand.Intn(5) == 0 {
+	if social && w.cfg.AdChancePercent > 0 && rand.Intn(100) < w.cfg.AdChancePercent {
 		w.ad(priority, n.Endpoint, n.ChatID)
 	}
 }

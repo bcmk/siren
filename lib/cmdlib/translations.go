@@ -44,6 +44,7 @@ type Translation struct {
 	DisablePreview bool      `yaml:"disable_preview"`
 	Image          string    `yaml:"image"`
 	ImageBytes     []byte    `yaml:"-"`
+	Weight         int       `yaml:"weight"`
 }
 
 // AllTranslations represents a collection of translated texts in all supported languages

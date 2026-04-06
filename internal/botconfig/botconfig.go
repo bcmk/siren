@@ -71,6 +71,7 @@ type Config struct {
 	SubsConfirmationPeriodSeconds   int                       `mapstructure:"subs_confirmation_period_seconds"`   // subscriptions confirmation period
 	NotificationsReadyPeriodSeconds int                       `mapstructure:"notifications_ready_period_seconds"` // notifications ready check period
 	ShowImages                      bool                      `mapstructure:"show_images"`                        // images support
+	AdChancePercent                 int                       `mapstructure:"ad_chance_percent"`                  // probability of showing an ad (0–100)
 	WhitelistChats                  []int64                   `mapstructure:"whitelist_chats"`                    // if set, only these chats are processed
 }
 
@@ -217,7 +218,7 @@ func ReadConfig() *Config {
 	v.SetEnvPrefix("XRN")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
-	cfg := &Config{ShowImages: true}
+	cfg := &Config{ShowImages: true, AdChancePercent: 20}
 	bindEnvForStructType(v, reflect.TypeOf(cfg), "", false)
 	checkErr(v.Unmarshal(&cfg, func(dc *mapstructure.DecoderConfig) {
 		dc.ErrorUnused = true

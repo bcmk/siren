@@ -1,11 +1,21 @@
 twitter:
-  str: Не забывайте подписываться на нашу страницу в X https://x.com/siren_tlg
+  str: Подписывайтесь на нас в X https://x.com/siren_tlg
+  weight: 10
 telegram_channel:
-  str: Не забывайте подписываться на наш канал в Telegram https://t.me/siren_telegram_bot
+  str: Подписывайтесь на наш канал в Telegram https://t.me/siren_telegram_bot
+  weight: 10
 other:
-  str: Этот бот доступен и для других сайтов! Наберите /help, чтобы увидеть ссылки
+  str: У нас есть боты и для других стриминговых сайтов! Наберите /help, чтобы увидеть полный список
+  weight: 10
 ukraine:
   str: >-
     Наша команда против ничем не спровоцированной российской агрессии в Украине.
     Мы против путинской фашистской риторики. Не молчи! Прекрати войну!
   image: flag-of-ukraine.png
+  weight: 5
+streamer:
+  str: Вы стример? Автоматически оповещайте свой Telegram-канал о выходе в эфир! Узнайте как https://siren.chat/streamer
+  weight: 5
+github:
+  str: Этот бот — проект с открытым исходным кодом! Мы на GitHub https://github.com/bcmk/siren
+  weight: 3

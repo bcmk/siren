@@ -1,11 +1,21 @@
 twitter:
-  str: Do not forget to subscribe to our X page https://x.com/siren_tlg
+  str: Follow us on X https://x.com/siren_tlg
+  weight: 10
 telegram_channel:
-  str: Do not forget to subscribe to our Telegram channel https://t.me/siren_telegram_bot
+  str: Subscribe to our Telegram channel https://t.me/siren_telegram_bot
+  weight: 10
 other:
-  str: Try this bot for other sites. Type /help to see the links
+  str: We have bots for other streaming sites too! Type /help for the full list
+  weight: 10
 ukraine:
   str: >-
     Our team is against unprovoked Russian aggression in Ukraine.
     We are against Putin's fascist rhetoric. Don't be silent! Stop the war!
   image: flag-of-ukraine.png
+  weight: 5
+streamer:
+  str: Are you a streamer? Automatically notify your Telegram channel when you go live! Here is how https://siren.chat/streamer
+  weight: 5
+github:
+  str: This bot is open source! Check it out on GitHub https://github.com/bcmk/siren
+  weight: 3
