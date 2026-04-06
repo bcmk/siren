@@ -20,7 +20,7 @@
 
 ## Refactoring
 
-- Use `gopls rename` for renaming Go identifiers, not `sed`.
+- Use `gopls rename -w` for renaming Go identifiers, not `sed`.
   Always verify line/column points to the right identifier
   before running, and check at least one occurrence after.
   Run `go fmt` after `gopls rename`

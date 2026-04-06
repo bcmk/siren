@@ -1667,13 +1667,15 @@ func (w *worker) pushExistenceRequest(streamers map[string]bool) error {
 }
 
 type processingResult struct {
-	changesCount          int
-	confirmedChangesCount int
-	notifications         []db.Notification
-	elapsed               time.Duration
-	upsertTimings         db.UpsertUnconfirmedTimings
-	confirmChangesMs      int
-	storeNotificationsMs  int
+	unconfirmedChangesCount int
+	unconfirmedOfflineCount int
+	unconfirmedOnlineCount  int
+	confirmedChangesCount   int
+	notifications           []db.Notification
+	elapsed                 time.Duration
+	upsertTimings           db.UpsertUnconfirmedTimings
+	confirmChangesMs        int
+	storeNotificationsMs    int
 }
 
 func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) processingResult {
@@ -1780,14 +1782,26 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) pro
 	w.db.StoreNotifications(notifications)
 	storeNotificationsMs := int(time.Since(storeNotificationsStart).Milliseconds())
 
+	var offlineCount, onlineCount int
+	for _, u := range updates {
+		switch u.Status {
+		case cmdlib.StatusOffline:
+			offlineCount++
+		case cmdlib.StatusOnline:
+			onlineCount++
+		}
+	}
+
 	return processingResult{
-		changesCount:          len(updates),
-		confirmedChangesCount: len(confirmedStatusChanges),
-		notifications:         notifications,
-		elapsed:               time.Since(start),
-		storeNotificationsMs:  storeNotificationsMs,
-		upsertTimings:         upsertTimings,
-		confirmChangesMs:      confirmChangesMs,
+		unconfirmedChangesCount: len(updates),
+		unconfirmedOfflineCount: offlineCount,
+		unconfirmedOnlineCount:  onlineCount,
+		confirmedChangesCount:   len(confirmedStatusChanges),
+		notifications:           notifications,
+		elapsed:                 time.Since(start),
+		storeNotificationsMs:    storeNotificationsMs,
+		upsertTimings:           upsertTimings,
+		confirmChangesMs:        confirmChangesMs,
 	}
 }
 
@@ -2224,7 +2238,9 @@ func main() {
 				"count":  result.Count(),
 			})
 			w.db.LogPerformance(now, db.PerformanceLogUpdateProcessing, int(cr.elapsed.Milliseconds()), map[string]any{
-				"unconfirmed_count":                    cr.changesCount,
+				"unconfirmed_count":                    cr.unconfirmedChangesCount,
+				"unconfirmed_offline_count":            cr.unconfirmedOfflineCount,
+				"unconfirmed_online_count":             cr.unconfirmedOnlineCount,
 				"confirmed_count":                      cr.confirmedChangesCount,
 				"notifications_count":                  len(cr.notifications),
 				"upsert_unconfirmed_streamers_ms":      cr.upsertTimings.UpsertStreamersMs,
