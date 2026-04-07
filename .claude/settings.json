@@ -23,6 +23,7 @@
       "Bash(go fmt:*)",
       "Bash(go doc:*)",
       "Bash(go env:*)",
+      "Bash(go vet:*)",
       "Bash(gopls:*)",
       "Bash(golangci-lint run:*)",
       "Bash(git add:*)",
