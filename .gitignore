@@ -11,4 +11,5 @@ cmd/siren-check/siren-check
 cmd/siren-online-list/siren-online-list
 cmd/twitch-specific-streams/twitch-specific-streams
 respond-examples
+api-docs
 __pycache__

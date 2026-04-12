@@ -125,7 +125,7 @@ func (c *StripchatChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInf
 		}
 
 		q := request.Query()
-		q.Set("userID", userID)
+		q.Set("userId", userID)
 		q.Set("modelsList", modelIDs)
 		q.Set("strict", "1")
 		q.Set("limit", strconv.Itoa(len(chunk)))
