@@ -112,7 +112,7 @@ func (c *StripchatChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInf
 		return nil, fmt.Errorf("cannot check online models, %v", err)
 	}
 	// This is the actual limit, although the documentation states 1000
-	limitK := 500
+	limitK := 400
 	chunkIter := slices.Chunk(slices.Collect(maps.Keys(streamers)), limitK)
 	userID := string(c.SpecificConfig["user_id"])
 	for chunk := range chunkIter {
