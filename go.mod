@@ -3,7 +3,7 @@ module github.com/bcmk/siren/v2
 require (
 	github.com/go-telegram/bot v1.18.0
 	github.com/go-viper/mapstructure/v2 v2.5.0
-	github.com/jackc/pgx/v5 v5.5.4
+	github.com/jackc/pgx/v5 v5.9.0
 	github.com/nicklaw5/helix/v2 v2.32.0
 	github.com/spf13/pflag v1.0.6
 	github.com/spf13/viper v1.20.1
@@ -36,7 +36,7 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
-	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
