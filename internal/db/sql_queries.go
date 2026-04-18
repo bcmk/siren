@@ -630,14 +630,18 @@ func (d *Database) SearchStreamers(term string) []string {
 		checkErr(err)
 	}
 
-	// Results are deduplicated and sorted by trigram distance.
+	// Results are deduplicated and sorted by a weighted sum of
+	// trigram and Levenshtein distances.
 	// No planner reset needed — _search_results has no indexes.
 	rows, err := tx.Query(context.Background(),
 		`
 			select nickname from (
 				select distinct nickname from _search_results
 			) sub
-			order by nickname <-> $1
+			order by
+				2 * (nickname <-> $1)
+				+ levenshtein(left(nickname, 255), left($1, 255))::float
+					/ greatest(length(nickname), length($1), 1)
 			limit 7
 		`,
 		pgx.QueryExecModeExec, term)
