@@ -3,7 +3,7 @@ module github.com/bcmk/siren/v2
 require (
 	github.com/go-telegram/bot v1.18.0
 	github.com/go-viper/mapstructure/v2 v2.5.0
-	github.com/jackc/pgx/v5 v5.9.0
+	github.com/jackc/pgx/v5 v5.9.2
 	github.com/nicklaw5/helix/v2 v2.32.0
 	github.com/spf13/pflag v1.0.6
 	github.com/spf13/viper v1.20.1
