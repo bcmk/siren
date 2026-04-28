@@ -49,7 +49,8 @@
 - ALWAYS use lowercase SQL keywords,
   including in documentation and conversations
 - Use 4 spaces to show code in comments
-- Use true em-dash (—) in comments when grammar requires
+- Use true em-dash (—) in comments when grammar requires.
+  Do not use em-dashes in log messages — prefer `:` or `,` there.
 - Wrap documentation and comments at 80 characters max,
   prefer breaking at full stops over commas over natural pauses over spaces
 - Keep lines no longer than 120 characters
@@ -71,10 +72,12 @@
   always place them in their main.go's directory,
   e.g. `go build -o cmd/bot/ ./cmd/bot`
 - To build a Docker image and publish to the registry,
-  run `scripts/publish` (uses `git describe --tags` as version)
+  run the matching `scripts/publish-<name>` script
+  (e.g. `scripts/publish-bot`, `scripts/publish-adapter-mfc`).
+  All publish scripts use `git describe --tags` as the version.
 - Only create tags for completed features ready to be published.
-  `scripts/publish` works without tagging —
-  it produces versions like `v2.9.0-2-gabcdef12`.
+  Publish scripts work without tagging —
+  they produce versions like `v2.9.0-2-gabcdef12`.
 - Run `scripts/query-registry-versions`
   to list images in the container registry.
 

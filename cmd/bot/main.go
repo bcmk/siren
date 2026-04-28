@@ -240,6 +240,8 @@ func newWorker(cfg *botconfig.Config) *worker {
 		w.checker = &checkers.Cam4Checker{}
 	case "kick":
 		w.checker = &checkers.KickChecker{}
+	case "myfreecams":
+		w.checker = checkers.NewMyFreeCamsAdapter()
 	default:
 		panic("wrong website")
 	}
@@ -2162,13 +2164,14 @@ func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacke
 func main() {
 	version := pflag.BoolP("version", "v", false, "prints current version")
 	printCfg := pflag.BoolP("print-config", "p", false, "print config and exit")
+	cfgPath := pflag.StringP("config", "c", "", "path to a config file (overrides default search)")
 	pflag.Parse()
 	if *version {
 		fmt.Println(cmdlib.Version)
 		os.Exit(0)
 	}
 
-	cfg := botconfig.ReadConfig()
+	cfg := botconfig.ReadConfig(*cfgPath)
 	if *printCfg {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetEscapeHTML(false)

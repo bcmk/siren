@@ -1,6 +1,7 @@
 package cmdlib
 
 import (
+	"encoding/json"
 	"errors"
 	"net"
 	"net/http"
@@ -36,6 +37,16 @@ type OnlineListResults struct {
 }
 
 func (r *OnlineListResults) isCheckerResults() {}
+
+// MarshalJSON serialises the result so consumers (e.g. adapter-mfc)
+// can return it over HTTP without exposing the unexported fields.
+func (r *OnlineListResults) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Streamers map[string]StreamerInfo `json:"streamers"`
+		Duration  time.Duration           `json:"duration"`
+		Failed    bool                    `json:"failed"`
+	}{r.Streamers, r.duration, r.failed})
+}
 
 // Duration returns the elapsed time for the request.
 func (r *OnlineListResults) Duration() time.Duration { return r.duration }
@@ -162,10 +173,10 @@ const (
 
 // StreamerInfo contains image URL for a streamer
 type StreamerInfo struct {
-	ImageURL string
-	Viewers  *int
-	ShowKind ShowKind
-	Subject  string
+	ImageURL string   `json:"image_url"`
+	Viewers  *int     `json:"viewers,omitempty"`
+	ShowKind ShowKind `json:"show_kind"`
+	Subject  string   `json:"subject,omitempty"`
 }
 
 // StreamerInfoWithStatus contains status and image URL for a streamer

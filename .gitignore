@@ -3,11 +3,13 @@
 ?*.ignore
 ?*.ignore.?*
 **/.claude/settings.local.json
+**/.claude/scheduled_tasks.lock
 cmd/bot/bot
 cmd/checktr/checktr
 cmd/migrator/migrator
 cmd/schema-dump/schema-dump
 cmd/siren-check/siren-check
+cmd/adapter-mfc/adapter-mfc
 cmd/siren-online-list/siren-online-list
 cmd/twitch-specific-streams/twitch-specific-streams
 respond-examples

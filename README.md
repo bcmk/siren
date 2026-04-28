@@ -25,6 +25,7 @@ The bot queries streamer statuses every minute.
 - Flirt4Free: [t.me/Flirt4FreeSirenBot](https://t.me/Flirt4FreeSirenBot)
 - Streamate: [t.me/StreamateSirenBot](https://t.me/StreamateSirenBot)
 - CAM4: [t.me/C4SirenBot](https://t.me/C4SirenBot)
+- MyFreeCams: [t.me/MyFreeCamsSirenBot](https://t.me/MyFreeCamsSirenBot)
 
 ## Commands
 

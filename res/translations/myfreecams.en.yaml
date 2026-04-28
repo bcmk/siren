@@ -1,11 +1,6 @@
 site:
   parse: html
-  str: LiveJasmin
-languages:
-  parse: html
-  str: |-
-    <b>This bot in other languages</b>
-    Русский: <a href="https://t.me/RuLiveJasminSirenBot">RuLiveJasminSirenBot</a>
+  str: MyFreeCams
 sites:
   parse: html
   str: |-
@@ -13,27 +8,32 @@ sites:
     Chaturbate: <a href="https://t.me/ChaturbateAlarmBot">ChaturbateAlarmBot</a>
     BongaCams: <a href="https://t.me/BongaCamsOnlineBot">BongaCamsOnlineBot</a>
     Stripchat: <a href="https://t.me/StripchatOnlineBot">StripchatOnlineBot</a>
+    LiveJasmin: <a href="https://t.me/LiveJasminSirenBot">LiveJasminSirenBot</a>
     CamSoda: <a href="https://t.me/CamSodaSirenBot">CamSodaSirenBot</a>
     Flirt4Free: <a href="https://t.me/Flirt4FreeSirenBot">Flirt4FreeSirenBot</a>
     Streamate: <a href="https://t.me/StreamateSirenBot">StreamateSirenBot</a>
     CAM4: <a href="https://t.me/C4SirenBot">C4SirenBot</a>
     Twitch: <a href="https://t.me/TwitchSirenBot">TwitchSirenBot</a>
     Kick: <a href="https://t.me/KickSirenBot">KickSirenBot</a>
-    MyFreeCams: <a href="https://t.me/MyFreeCamsSirenBot">MyFreeCamsSirenBot</a>
 add_example:
   parse: html
-  str: /add maiaferre
+  str: /add ohbabykelly
 faq_no_notifications:
   parse: html
   str: >
     <b>I've subscribed to a model but I don't receive notifications</b>
 
-    We use the same list of online models as affiliate sites use for advertisements.
-    Some models decided to not appear there so we cannot know when they are online.
-    You can tell a model about this bot and a model may probably change their mind on this setting.
+    We use a list of online models to detect when they are broadcasting.
+    Some models may not appear in this list.
+    Please let us know if you don't receive notifications
+    for some models and we will try to fix it.
+    However, there is no guarantee that this will work.
 faq:
   parse: html
   str: |-
     {{ template "faq_no_notifications" }}
 
     {{ template "faq_pricing" . }}
+languages:
+  parse: raw
+  str: ""

@@ -14,7 +14,6 @@ import (
 
 	"github.com/bcmk/siren/v2/lib/cmdlib"
 	"github.com/go-viper/mapstructure/v2"
-	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
@@ -41,7 +40,7 @@ type Config struct {
 	Debug                           bool                      `mapstructure:"debug"`                              // debug mode
 	CheckGID                        bool                      `mapstructure:"check_gid"`                          // check goroutines ids
 	ListenAddress                   string                    `mapstructure:"listen_address"`                     // the address to listen to
-	Website                         string                    `mapstructure:"website"`                            // one of the following strings: "bongacams", "stripchat", "chaturbate", "livejasmin", "flirt4free", "streamate", "cam4", "twitch", "kick"
+	Website                         string                    `mapstructure:"website"`                            // one of the following strings: "bongacams", "stripchat", "chaturbate", "livejasmin", "flirt4free", "streamate", "cam4", "twitch", "kick", "myfreecams"
 	WebsiteLink                     string                    `mapstructure:"website_link"`                       // affiliate link to website
 	PeriodSeconds                   int                       `mapstructure:"period_seconds"`                     // the period of querying streamer statuses
 	MaintainDBPeriodSeconds         int                       `mapstructure:"maintain_db_period_seconds"`         // the maintain DB period
@@ -80,6 +79,13 @@ type configFile struct {
 	required bool
 }
 
+// BindEnvForConfig walks cfg's mapstructure tags and binds each resulting
+// dotted key to v so AutomaticEnv picks up env overrides without an explicit
+// list.
+func BindEnvForConfig(v *viper.Viper, cfg any) {
+	bindEnvForStructType(v, reflect.TypeOf(cfg), "", false)
+}
+
 func bindEnvForStructType(v *viper.Viper, t reflect.Type, prefix string, bindPrimitiveMaps bool) {
 	for t.Kind() == reflect.Ptr {
 		t = t.Elem()
@@ -87,7 +93,7 @@ func bindEnvForStructType(v *viper.Viper, t reflect.Type, prefix string, bindPri
 
 	switch t.Kind() {
 	case reflect.Struct:
-		for i := 0; i < t.NumField(); i++ {
+		for i := range t.NumField() {
 			f := t.Field(i)
 			if f.PkgPath != "" {
 				continue
@@ -184,15 +190,13 @@ func stringToSliceHookFunc(sep string) mapstructure.DecodeHookFunc {
 	}
 }
 
-var cfgPath = pflag.StringP("config", "c", "", "path to a config file (overrides default search)")
-
-// ReadConfig reads config
-func ReadConfig() *Config {
-	pflag.Parse()
-
+// ReadConfig reads config from cfgPath (when non-empty) or from the default
+// search list (config.json plus the optional config.dev.ignore.json override).
+// pflag must already be Parsed by the caller.
+func ReadConfig(cfgPath string) *Config {
 	var configFiles []configFile
-	if *cfgPath != "" {
-		configFiles = []configFile{{*cfgPath, true}}
+	if cfgPath != "" {
+		configFiles = []configFile{{cfgPath, true}}
 	} else {
 		configFiles = []configFile{
 			{"config.json", true},
@@ -219,7 +223,7 @@ func ReadConfig() *Config {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 	cfg := &Config{ShowImages: true, AdChancePercent: 20}
-	bindEnvForStructType(v, reflect.TypeOf(cfg), "", false)
+	BindEnvForConfig(v, cfg)
 	checkErr(v.Unmarshal(&cfg, func(dc *mapstructure.DecoderConfig) {
 		dc.ErrorUnused = true
 		dc.DecodeHook = mapstructure.ComposeDecodeHookFunc(

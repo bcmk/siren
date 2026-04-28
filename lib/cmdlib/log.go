@@ -11,6 +11,7 @@ const (
 	ErrVerbosity    = 1
 	InfVerbosity    = 2
 	DbgVerbosity    = 3
+	TraceVerbosity  = 4
 )
 
 // Verbosity is the current logging verbosity
@@ -34,5 +35,13 @@ func Linf(format string, v ...interface{}) {
 func Ldbg(format string, v ...interface{}) {
 	if Verbosity >= DbgVerbosity {
 		log.Printf("[DEBUG] "+format, v...)
+	}
+}
+
+// Ltrace logs a trace message — finest-grained level, intended for raw
+// protocol payloads and similar high-volume diagnostic data.
+func Ltrace(format string, v ...interface{}) {
+	if Verbosity >= TraceVerbosity {
+		log.Printf("[TRACE] "+format, v...)
 	}
 }

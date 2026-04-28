@@ -37,6 +37,7 @@ sites:
     Flirt4Free: <a href="https://t.me/Flirt4FreeSirenBot">Flirt4FreeSirenBot</a>
     Streamate: <a href="https://t.me/StreamateSirenBot">StreamateSirenBot</a>
     CAM4: <a href="https://t.me/C4SirenBot">C4SirenBot</a>
+    MyFreeCams: <a href="https://t.me/MyFreeCamsSirenBot">MyFreeCamsSirenBot</a>
 add_example:
   parse: html
   str: /add morecrown

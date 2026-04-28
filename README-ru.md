@@ -24,6 +24,7 @@ Telegram-бот для оповещений о вебкастах
 - Flirt4Free: [t.me/RuFlirt4FreeSirenBot](https://t.me/RuFlirt4FreeSirenBot)
 - Streamate: [t.me/RuStreamateSirenBot](https://t.me/RuStreamateSirenBot)
 - CAM4: [t.me/C4SirenBot](https://t.me/C4SirenBot)
+- MyFreeCams: [t.me/MyFreeCamsSirenBot](https://t.me/MyFreeCamsSirenBot)
 
 Здесь перечислены преимущественно русскоязычные боты. Англоязычные боты можно посмотреть тут [English](README.md)
 

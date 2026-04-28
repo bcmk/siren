@@ -1,0 +1,472 @@
+// FCS websocket parsing: turns raw frame bytes into typed application
+// messages. The dispatcher in main.go does a type switch on the result.
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/url"
+	"strconv"
+
+	"github.com/bcmk/siren/v2/lib/cmdlib"
+)
+
+// FCS frame type constants and protocol values.
+const (
+	mfcFCTypeLogin          = 1
+	mfcFCTypeUsernameLookup = 10
+	mfcFCTypeManageList     = 14
+	mfcFCTypeSessionState   = 20
+	mfcFCTypeRoomData       = 44
+	mfcFCTypeExtData        = 81
+
+	mfcFCLCams         = 21
+	mfcFCWOptRedisJSON = 256
+	mfcFCVideoOffline  = 127
+
+	mfcFrameLenDigits = 6 // width of FCS frame length prefix
+)
+
+// frame is one parsed FCS frame body, before decoding into a typed message.
+// Use decodeFrame to interpret a frame's payload.
+type frame struct {
+	fcType, from, to, arg1, arg2 int
+	payload                      []byte
+}
+
+// parseFrame parses one FCS frame body of the form
+// "<type> <from> <to> <arg1> <arg2> <url-encoded-payload>".
+// The leading 6-digit length prefix must already be stripped.
+func parseFrame(body []byte) (frame, bool) {
+	parts := bytes.SplitN(body, []byte(" "), 6)
+	if len(parts) < 5 {
+		return frame{}, false
+	}
+	nums := [5]int{}
+	for i := range 5 {
+		n, err := strconv.Atoi(string(parts[i]))
+		if err != nil {
+			return frame{}, false
+		}
+		nums[i] = n
+	}
+	f := frame{
+		fcType: nums[0], from: nums[1], to: nums[2],
+		arg1: nums[3], arg2: nums[4],
+	}
+	if len(parts) == 6 && len(parts[5]) > 0 {
+		decoded, err := url.QueryUnescape(string(parts[5]))
+		if err != nil {
+			return frame{}, false
+		}
+		f.payload = []byte(decoded)
+	}
+	return f, true
+}
+
+// walkFrames extracts each length-prefixed FCS frame from data and invokes
+// visit on it. It stops early when visit returns true. Returns a non-nil
+// error when data has trailing bytes that don't form a valid frame —
+// either a truncated/junk length prefix mid-stream or stray bytes after
+// the last frame. Both indicate parser desync within a single websocket
+// message, so the caller should end the session and reconnect for a fresh
+// stream.
+//
+// A frame body that fails to parse (length prefix valid but content
+// malformed) is logged at debug and skipped: the length prefix tells us
+// where the next frame starts, so recovery is local to that frame.
+func walkFrames(data []byte, visit func(f frame) (stop bool)) error {
+	for len(data) >= mfcFrameLenDigits {
+		bodyLen, err := strconv.Atoi(string(data[:mfcFrameLenDigits]))
+		if err != nil || bodyLen < 0 ||
+			bodyLen > len(data)-mfcFrameLenDigits {
+			return fmt.Errorf("truncated or invalid frame prefix, %d bytes left", len(data))
+		}
+		body := data[mfcFrameLenDigits : mfcFrameLenDigits+bodyLen]
+		data = data[mfcFrameLenDigits+bodyLen:]
+		f, ok := parseFrame(body)
+		if !ok {
+			return fmt.Errorf("malformed frame body, %d bytes", len(body))
+		}
+		if visit(f) {
+			return nil
+		}
+	}
+	if len(data) != 0 {
+		return fmt.Errorf("trailing bytes after last frame, %d bytes left", len(data))
+	}
+	return nil
+}
+
+// mfcMessage is one typed application-level FCS message decoded from a frame.
+// Use a type switch on the concrete types below to dispatch.
+type mfcMessage interface {
+	isMFCMessage()
+}
+
+// bulkRefMsg is an EXTDATA pointer to a deferred MANAGELIST/CAMS bulk dump
+// fetched separately over HTTP.
+type bulkRefMsg struct {
+	ext *mfcExtData
+}
+
+func (*bulkRefMsg) isMFCMessage() {}
+
+// sessionStateMsg is one server-pushed SESSIONSTATE update.
+type sessionStateMsg struct {
+	update sessionUpdate
+}
+
+func (*sessionStateMsg) isMFCMessage() {}
+
+// lookupResponseMsg is the answer to a USERNAMELOOKUP request.
+type lookupResponseMsg struct {
+	qid    int
+	update sessionUpdate
+}
+
+func (*lookupResponseMsg) isMFCMessage() {}
+
+// roomDataMsg is a batched viewer-count update keyed by uid.
+type roomDataMsg struct {
+	counts map[int]int
+}
+
+func (*roomDataMsg) isMFCMessage() {}
+
+// decodeFrame turns a raw frame into a typed message. Returns (nil, nil)
+// for unknown fctypes and for extdata frames that aren't a CAMS bulk
+// pointer (both are intentionally skipped). Returns a non-nil error when
+// a known FCType has a malformed payload — the caller treats this as
+// fatal so the session reconnects: silently dropping a bad SESSIONSTATE
+// could leave a model "forever online" if its vs=127 event was the one
+// we lost.
+func decodeFrame(f frame) (mfcMessage, error) {
+	switch f.fcType {
+	case mfcFCTypeSessionState:
+		u, err := parseSessionState(f.payload)
+		if err != nil {
+			return nil, err
+		}
+		return &sessionStateMsg{update: u}, nil
+	case mfcFCTypeUsernameLookup:
+		u, err := parseSessionState(f.payload)
+		if err != nil {
+			return nil, fmt.Errorf("lookup response (qid=%d), %w", f.arg1, err)
+		}
+		return &lookupResponseMsg{qid: f.arg1, update: u}, nil
+	case mfcFCTypeRoomData:
+		counts, err := parseRoomData(f.payload)
+		if err != nil {
+			return nil, err
+		}
+		return &roomDataMsg{counts: counts}, nil
+	case mfcFCTypeExtData:
+		return decodeBulkRef(f)
+	}
+	return nil, nil
+}
+
+// decodeBulkRef returns a bulkRefMsg if f is a MANAGELIST/CAMS bulk-dump
+// pointer, (nil, nil) when f is an extdata frame we don't care about, or
+// (nil, error) when the envelope JSON is malformed. Caller has already
+// checked f.fcType == mfcFCTypeExtData.
+func decodeBulkRef(f frame) (mfcMessage, error) {
+	if f.arg2 != mfcFCWOptRedisJSON {
+		return nil, nil
+	}
+	var ext mfcExtData
+	if err := json.Unmarshal(f.payload, &ext); err != nil {
+		return nil, fmt.Errorf("extdata, %w", err)
+	}
+	if ext.Msg.Type != mfcFCTypeManageList || ext.Msg.Arg2 != mfcFCLCams {
+		return nil, nil
+	}
+	return &bulkRefMsg{ext: &ext}, nil
+}
+
+// mfcExtDataMsg is the inner header describing the message the EXTDATA
+// envelope refers to.
+type mfcExtDataMsg struct {
+	Type int `json:"type"`
+	From int `json:"from"`
+	To   int `json:"to"`
+	Arg1 int `json:"arg1"`
+	Arg2 int `json:"arg2"`
+}
+
+// mfcExtData is the EXTDATA envelope that points to a deferred payload to be
+// fetched over HTTP.
+type mfcExtData struct {
+	Msg     mfcExtDataMsg `json:"msg"`
+	MsgLen  int           `json:"msglen"`
+	Opts    int           `json:"opts"`
+	RespKey int           `json:"respkey"`
+	Serv    int           `json:"serv"`
+	Type    int           `json:"type"`
+}
+
+// bulkRow is one row of a MANAGELIST/CAMS bulk dump.
+type bulkRow struct {
+	name    string
+	uid     int
+	vs      int
+	rc      int
+	topic   string
+	camserv int
+}
+
+// bulk is a freshly parsed MANAGELIST/CAMS dump. The named type lets us hang
+// validation and summary methods off it.
+type bulk []bulkRow
+
+// sessionUpdateMeta is the nested "m" group of a SESSIONSTATE message.
+type sessionUpdateMeta struct {
+	RC    *int    `json:"rc"`
+	Topic *string `json:"topic"`
+}
+
+// sessionUpdateUser is the nested "u" group of a SESSIONSTATE message.
+type sessionUpdateUser struct {
+	Camserv *int `json:"camserv"`
+}
+
+// sessionUpdate is one SESSIONSTATE message.
+// Pointer fields distinguish "absent" from "zero" so we can merge partial
+// updates.
+type sessionUpdate struct {
+	Name *string            `json:"nm"`
+	UID  *int               `json:"uid"`
+	VS   *int               `json:"vs"`
+	M    *sessionUpdateMeta `json:"m"`
+	U    *sessionUpdateUser `json:"u"`
+}
+
+// rc returns the inner room-count pointer, walking through M.
+func (u sessionUpdate) rc() *int {
+	if u.M == nil {
+		return nil
+	}
+	return u.M.RC
+}
+
+// topic returns the inner topic pointer, walking through M.
+func (u sessionUpdate) topic() *string {
+	if u.M == nil {
+		return nil
+	}
+	return u.M.Topic
+}
+
+// camserv returns the inner camserv pointer, walking through U.
+func (u sessionUpdate) camserv() *int {
+	if u.U == nil {
+		return nil
+	}
+	return u.U.Camserv
+}
+
+// parseSessionState decodes a SESSIONSTATE/USERNAMELOOKUP payload.
+func parseSessionState(payload []byte) (sessionUpdate, error) {
+	cmdlib.Ltrace("sessionstate raw: %s", payload)
+	var u sessionUpdate
+	if err := json.Unmarshal(payload, &u); err != nil {
+		return sessionUpdate{}, fmt.Errorf("sessionstate, %w", err)
+	}
+	return u, nil
+}
+
+// parseRoomData decodes a ROOMDATA payload (`{uid: rc, ...}`) into a uid → rc
+// map.
+func parseRoomData(payload []byte) (map[int]int, error) {
+	var raw map[string]int
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		return nil, fmt.Errorf("roomdata, %w", err)
+	}
+	parsed := make(map[int]int, len(raw))
+	for k, v := range raw {
+		uid, err := strconv.Atoi(k)
+		if err != nil {
+			continue
+		}
+		parsed[uid] = v
+	}
+	return parsed, nil
+}
+
+// parseBulkRData decodes the positional [schema, row, row, ...] format that
+// MFC uses for bulk MANAGELIST payloads.
+//
+// rdata[0] is a schema, e.g. ["uid", "nm", {"m": ["rc", "topic"]}].
+// Each subsequent element is a row with values in the same positional order.
+func parseBulkRData(rdata []any) (bulk, error) {
+	// expectedFields lists every dotted path the daemon reads from a row.
+	// We log an error for any missing field so an upstream schema change is
+	// visible immediately.
+	expectedFields := []string{"uid", "nm", "vs", "m.rc", "m.topic", "u.camserv"}
+	if len(rdata) == 0 {
+		return nil, nil
+	}
+	schema, ok := rdata[0].([]any)
+	if !ok {
+		return nil, errors.New("missing schema")
+	}
+	paths := make([]string, 0, len(schema))
+	for _, item := range schema {
+		switch v := item.(type) {
+		case string:
+			paths = append(paths, v)
+		case map[string]any:
+			// json.Unmarshal into map[string]any loses object-key order,
+			// so multi-key items would silently misalign positions. MFC
+			// only ever ships single-key items in practice; reject the
+			// rest so a schema change ends the session and we reconnect.
+			// If MFC ever does start shipping multi-key items, swap this
+			// in for json.Decoder.Token() to walk the schema in source
+			// order — straightforward, just not needed today.
+			if len(v) != 1 {
+				return nil, fmt.Errorf("bulk schema: nested item has %d keys, expected 1", len(v))
+			}
+			for k, sub := range v {
+				subs, ok := sub.([]any)
+				if !ok {
+					continue
+				}
+				for _, s := range subs {
+					if name, ok := s.(string); ok {
+						paths = append(paths, k+"."+name)
+					}
+				}
+			}
+		}
+	}
+	idx := map[string]int{}
+	for i, p := range paths {
+		idx[p] = i
+	}
+	// uid is the row's primary key; without it every row would collapse to
+	// uid=0 and overwrite each other in the snapshot. Bail so the session
+	// ends and we reconnect for a fresh bulk.
+	if _, ok := idx["uid"]; !ok {
+		return nil, fmt.Errorf("bulk schema missing uid (have %v)", paths)
+	}
+	var missing []string
+	for _, exp := range expectedFields {
+		if _, ok := idx[exp]; !ok {
+			missing = append(missing, exp)
+		}
+	}
+	if len(missing) > 0 {
+		cmdlib.Lerr("bulk schema missing expected fields %v (have %v)", missing, paths)
+	}
+	get := func(row []any, key string) any {
+		i, ok := idx[key]
+		if !ok || i >= len(row) {
+			return nil
+		}
+		return row[i]
+	}
+	toInt := func(v any) int {
+		if n, ok := v.(float64); ok {
+			return int(n)
+		}
+		return 0
+	}
+	toStr := func(v any) string {
+		if s, ok := v.(string); ok {
+			return s
+		}
+		return ""
+	}
+	out := make(bulk, 0, len(rdata)-1)
+	for _, rec := range rdata[1:] {
+		row, ok := rec.([]any)
+		if !ok {
+			continue
+		}
+		out = append(out, bulkRow{
+			name:    toStr(get(row, "nm")),
+			uid:     toInt(get(row, "uid")),
+			vs:      toInt(get(row, "vs")),
+			rc:      toInt(get(row, "m.rc")),
+			topic:   toStr(get(row, "m.topic")),
+			camserv: toInt(get(row, "u.camserv")),
+		})
+	}
+	return out, nil
+}
+
+// decodeMFCTopic URL-decodes an MFC topic string. MFC stores topics inside
+// SESSIONSTATE/bulk payloads url-encoded (e.g. "%20" for spaces, "%E2%99%A5"
+// for hearts), even though the surrounding frame payload was already
+// url-decoded once. Decoding once more yields plain text. On failure (rare;
+// only on malformed encoding) we return the raw string.
+func decodeMFCTopic(s string) string {
+	if s == "" {
+		return s
+	}
+	if decoded, err := url.QueryUnescape(s); err == nil {
+		return decoded
+	}
+	return s
+}
+
+// mfcStateName returns a fine-grained human-readable name for an MFC video
+// state. Unlike showName, it distinguishes vs values that the bot's ShowKind
+// lumps together (e.g., 0 "free" vs 90 "idle"); intended for diagnostic logs.
+func mfcStateName(vs int) string {
+	switch vs {
+	case 0:
+		return "free"
+	case 2:
+		return "away"
+	case 12:
+		return "private (tx)"
+	case 13:
+		return "group (tx)"
+	case 14:
+		return "club (tx)"
+	case 90:
+		return "idle"
+	case 91:
+		return "private (rx)"
+	case 93:
+		return "group (rx)"
+	case 94:
+		return "club (rx)"
+	case mfcFCVideoOffline:
+		return "offline"
+	}
+	return fmt.Sprintf("vs=%d", vs)
+}
+
+// mfcShowKind maps an MFC video state to a cmdlib ShowKind.
+//
+// Video state values:
+//
+//	0  — free chat (public)
+//	2  — away
+//	12 — private show (TX)
+//	13 — group show (TX)
+//	14 — club show (TX)
+//	90 — idle (RX)
+//	91 — private show (RX)
+//	93 — group show (RX)
+//	94 — club show (RX)
+func mfcShowKind(vs int) cmdlib.ShowKind {
+	switch vs {
+	case 0, 90:
+		return cmdlib.ShowPublic
+	case 12, 91:
+		return cmdlib.ShowPrivate
+	case 13, 93:
+		return cmdlib.ShowGroup
+	case 14, 94:
+		return cmdlib.ShowTicket
+	case 2:
+		return cmdlib.ShowAway
+	}
+	return cmdlib.ShowUnknown
+}

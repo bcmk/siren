@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SIREN_VERSION="$(git describe --tags)"
+
+docker buildx build --platform linux/amd64 -f Dockerfile.bot --build-arg SIREN_VERSION="$SIREN_VERSION" -t "bot:$SIREN_VERSION" -t "registry.digitalocean.com/reg-xiren/bot:$SIREN_VERSION" --progress=plain .
+docker push "registry.digitalocean.com/reg-xiren/bot:$SIREN_VERSION"
+./scripts/registry-cleanup bot

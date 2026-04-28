@@ -32,6 +32,7 @@ sites:
     Streamate: <a href="https://t.me/StreamateSirenBot">StreamateSirenBot</a>
     Twitch: <a href="https://t.me/TwitchSirenBot">TwitchSirenBot</a>
     Kick: <a href="https://t.me/KickSirenBot">KickSirenBot</a>
+    MyFreeCams: <a href="https://t.me/MyFreeCamsSirenBot">MyFreeCamsSirenBot</a>
 add_example:
   parse: html
   str: /add eva_alson

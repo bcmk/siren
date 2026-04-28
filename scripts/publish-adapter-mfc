@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SIREN_VERSION="$(git describe --tags)"
+
+docker buildx build --platform linux/amd64 -f Dockerfile.adapter-mfc --build-arg SIREN_VERSION="$SIREN_VERSION" -t "adapter-mfc:$SIREN_VERSION" -t "registry.digitalocean.com/reg-xiren/adapter-mfc:$SIREN_VERSION" --progress=plain .
+docker push "registry.digitalocean.com/reg-xiren/adapter-mfc:$SIREN_VERSION"
+./scripts/registry-cleanup adapter-mfc

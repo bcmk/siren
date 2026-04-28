@@ -1,0 +1,23 @@
+FROM golang:1.26.1-alpine AS gobuilder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+RUN apk add --no-cache bash
+COPY cmd/adapter-mfc/ cmd/adapter-mfc/
+COPY internal/ internal/
+COPY lib/ lib/
+COPY scripts/build-adapter-mfc scripts/build-adapter-mfc
+ARG SIREN_VERSION=devel
+ENV CGO_ENABLED=0
+ENV GOFLAGS=-trimpath
+RUN ./scripts/build-adapter-mfc "$SIREN_VERSION"
+
+FROM alpine:3.22
+WORKDIR /app
+RUN apk add --no-cache ca-certificates
+COPY --from=gobuilder /app/cmd/adapter-mfc/adapter-mfc ./adapter-mfc
+# Healthcheck assumes the daemon was configured to listen on :80. If you
+# override XRN_LISTEN_ADDRESS to something else, override the healthcheck too.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD wget -qO- http://localhost/healthz >/dev/null || exit 1
+ENTRYPOINT ["./adapter-mfc"]
