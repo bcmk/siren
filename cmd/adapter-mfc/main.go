@@ -307,7 +307,7 @@ func runVideoHostsRefresher(ctx context.Context, snap *snapshot, cfg *config, cl
 				if ctx.Err() != nil {
 					return
 				}
-				cmdlib.Lerr("refresh video hosts: %v", err)
+				cmdlib.Linf("refresh video hosts: %v", err)
 				continue
 			}
 			snap.setVideoHosts(sc.videoHosts)
@@ -687,7 +687,7 @@ func runKeepAlive(ctx context.Context, sess *wsSession) {
 				if ctx.Err() != nil {
 					return
 				}
-				cmdlib.Lerr("keepalive write failed: %v, closing for reconnect", err)
+				cmdlib.Linf("keepalive write failed: %v, closing for reconnect", err)
 				closeAndLog(sess.conn, websocket.StatusInternalError, "keepalive write failed", "keepalive close")
 				return
 			}
