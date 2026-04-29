@@ -39,6 +39,7 @@ type config struct {
 	ExtDataFetchTimeout    time.Duration `mapstructure:"extdata_fetch_timeout"`
 	LookupTTL              time.Duration `mapstructure:"lookup_ttl"`
 	NameCacheTTL           time.Duration `mapstructure:"name_cache_ttl"`
+	SnapshotCountsLogEvery time.Duration `mapstructure:"snapshot_counts_log_every"`
 }
 
 var (
@@ -89,6 +90,7 @@ func readConfig() *config {
 		ExtDataFetchTimeout:    30 * time.Second,
 		LookupTTL:              5 * time.Minute,
 		NameCacheTTL:           24 * time.Hour,
+		SnapshotCountsLogEvery: 10 * time.Minute,
 	}
 	botconfig.BindEnvForConfig(v, cfg)
 	cmdlib.CheckErr(v.Unmarshal(cfg, func(dc *mapstructure.DecoderConfig) {
@@ -128,6 +130,9 @@ func readConfig() *config {
 	}
 	if cfg.NameCacheTTL <= 0 {
 		log.Fatal("configure name_cache_ttl")
+	}
+	if cfg.SnapshotCountsLogEvery <= 0 {
+		log.Fatal("configure snapshot_counts_log_every")
 	}
 	return cfg
 }

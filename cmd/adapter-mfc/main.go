@@ -155,6 +155,9 @@ func runOnceMode(ctx context.Context, cfg *config, client *cmdlib.Client) {
 //     incoming frames to snap.
 //   - runNameCachePruner: drops nameCache entries older than cfg.NameCacheTTL.
 //   - runVideoHostsRefresher: re-fetches the camserv → video host map.
+//   - runSnapshotCountsLogger: emits the snapshot-counts line at info level
+//     every snapshotCountsLogEvery so production logs carry it regardless
+//     of verbosity.
 //   - http shutdown watcher: blocks on ctx.Done() then calls srv.Shutdown.
 func runDaemonMode(parentCtx context.Context, cfg *config, client *cmdlib.Client) error {
 	ctx, cancel := context.WithCancel(parentCtx)
@@ -184,6 +187,11 @@ func runDaemonMode(parentCtx context.Context, cfg *config, client *cmdlib.Client
 	go func() {
 		defer wg.Done()
 		runVideoHostsRefresher(ctx, snap, cfg, client)
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runSnapshotCountsLogger(ctx, snap, cfg)
 	}()
 	wg.Add(1)
 	go func() {
@@ -304,6 +312,25 @@ func runVideoHostsRefresher(ctx context.Context, snap *snapshot, cfg *config, cl
 			}
 			snap.setVideoHosts(sc.videoHosts)
 			cmdlib.Linf("refreshed video hosts: %d entries", len(sc.videoHosts))
+		}
+	}
+}
+
+// runSnapshotCountsLogger emits the snapshot-counts line at info level on a
+// fixed interval. The same line is logged after every event at debug level
+// by snapshot.logCounts; this runner duplicates it at info so production
+// logs (which run at info verbosity) carry a periodic heartbeat of online,
+// name cache, pending lookups, and lifetime disconnect/serverconfig
+// failure counters.
+func runSnapshotCountsLogger(ctx context.Context, snap *snapshot, cfg *config) {
+	t := time.NewTicker(cfg.SnapshotCountsLogEvery)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			snap.logCountsInfo()
 		}
 	}
 }

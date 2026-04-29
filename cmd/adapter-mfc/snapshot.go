@@ -368,23 +368,40 @@ func (s *snapshot) pruneNameCache(resolvedTTL, pendingTTL time.Duration) int {
 	return removed
 }
 
-// logCounts emits a snapshot-counts line. Called after each event log so the
-// per-event line can stay terse and the counts get their own readable line.
-// Caller must hold s.mu (any kind). Skipped at non-debug verbosity so the
-// O(online) placeholder walk is paid only when it would actually log.
-func (s *snapshot) logCounts() {
-	if cmdlib.Verbosity < cmdlib.DbgVerbosity {
-		return
-	}
+// countsLineLocked formats the snapshot-counts line. Caller must hold s.mu
+// (any kind). Walks online to count nameless entries, so callers that emit
+// at debug level should gate on verbosity to avoid the O(online) cost.
+func (s *snapshot) countsLineLocked() string {
 	pending := 0
 	for _, cur := range s.online {
 		if cur.name == "" {
 			pending++
 		}
 	}
-	cmdlib.Ldbg("snapshot: online = %d, name cache = %d, pending lookups = %d, disconnects = %d, server config failures = %d",
+	return fmt.Sprintf("snapshot: online = %d, name cache = %d, pending lookups = %d, disconnects = %d, server config failures = %d",
 		len(s.online), len(s.nameCache), pending,
 		s.lifetimeDisconnects.Load(), s.lifetimeServerConfigFailures.Load())
+}
+
+// logCounts emits a snapshot-counts line at debug level. Called after each
+// event log so the per-event line can stay terse and the counts get their
+// own readable line. Caller must hold s.mu (any kind). Skipped at
+// non-debug verbosity so the O(online) walk in countsLineLocked is paid
+// only when it would actually log.
+func (s *snapshot) logCounts() {
+	if cmdlib.Verbosity < cmdlib.DbgVerbosity {
+		return
+	}
+	cmdlib.Ldbg("%s", s.countsLineLocked())
+}
+
+// logCountsInfo emits the same line at info level so it shows up in
+// production logs regardless of verbosity. Acquires its own read lock;
+// called on a fixed interval by runSnapshotCountsLogger.
+func (s *snapshot) logCountsInfo() {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	cmdlib.Linf("%s", s.countsLineLocked())
 }
 
 // collectIfReady returns the streamers map and a readiness flag in one
