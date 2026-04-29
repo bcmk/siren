@@ -54,16 +54,16 @@ const (
 	mfcLoginVersion = "20080910"
 	mfcLoginCreds   = "guest:guest"
 
-	wsReadLimit            = 8 * 1024 * 1024
-	wsKeepAliveEvery       = 15 * time.Second
-	reconnectBackoffMin    = time.Second
-	httpReadTimeout        = 10 * time.Second
-	httpWriteTimeout       = 30 * time.Second
-	httpShutdownTimeout    = 5 * time.Second
-	wsWriteTimeout         = 10 * time.Second
-	pendingLookupTTL       = time.Hour
-	nameCachePruneEvery    = time.Hour
-	videoHostsRefreshEvery = 10 * time.Minute
+	wsReadLimit             = 8 * 1024 * 1024
+	wsKeepAliveEvery        = 15 * time.Second
+	reconnectBackoffInitial = time.Second
+	httpReadTimeout         = 10 * time.Second
+	httpWriteTimeout        = 30 * time.Second
+	httpShutdownTimeout     = 5 * time.Second
+	wsWriteTimeout          = 10 * time.Second
+	pendingLookupTTL        = time.Hour
+	nameCachePruneEvery     = time.Hour
+	videoHostsRefreshEvery  = 10 * time.Minute
 )
 
 func main() {
@@ -374,7 +374,7 @@ func dispatchFrame(
 // manageWebsocketSessions keeps a websocket connected for the lifetime of ctx,
 // applying frames to snap. It reconnects with exponential backoff on errors.
 func manageWebsocketSessions(ctx context.Context, snap *snapshot, cfg *config, client *cmdlib.Client) {
-	backoff := reconnectBackoffMin
+	backoff := reconnectBackoffInitial
 	for ctx.Err() == nil {
 		err := runWebsocketSession(ctx, snap, cfg, client, func(sessCtx context.Context, sess *wsSession, f frame) (bool, error) {
 			return false, dispatchFrame(sessCtx, snap, cfg, client, sess, f)
@@ -386,7 +386,7 @@ func manageWebsocketSessions(ctx context.Context, snap *snapshot, cfg *config, c
 		// reconnect retries promptly instead of inheriting the previous
 		// attempt's cap.
 		if snap.markDisconnected() {
-			backoff = reconnectBackoffMin
+			backoff = reconnectBackoffInitial
 		}
 		if ctx.Err() != nil {
 			return
