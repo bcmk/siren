@@ -349,6 +349,10 @@ func dispatchFrame(
 	sess *wsSession,
 	f frame,
 ) error {
+	if f.fcType == mfcFCTypeNull {
+		cmdlib.Ltrace("heartbeat")
+		return nil
+	}
 	msg, err := decodeFrame(f)
 	if err != nil {
 		return fmt.Errorf("decode @fctype = %d, %w", f.fcType, err)
@@ -670,7 +674,9 @@ func dialMFC(ctx context.Context, snap *snapshot, client *cmdlib.Client, cfg *co
 // write fails. A failed write means the connection is effectively dead; close
 // it so the reader errors out and reconnects. A failure caused by ctx being
 // cancelled (graceful shutdown) is silent — the surrounding session teardown
-// will close the conn anyway.
+// will close the conn anyway. The exchange is bidirectional: MFC also sends
+// NULL frames to us on roughly the same cadence, which keeps the read-side
+// idle timer fed even on accounts with no organic traffic.
 func runKeepAlive(ctx context.Context, sess *wsSession) {
 	const nullFrame = "0 0 0 0 0\n\x00"
 	t := time.NewTicker(wsKeepAliveEvery)

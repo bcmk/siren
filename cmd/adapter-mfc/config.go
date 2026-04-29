@@ -85,7 +85,7 @@ func readConfig() *config {
 		MaxSnapshotSize:        defaultMaxSnapshotSize,
 		HTTPResponseLimitBytes: defaultHTTPResponseLimitBytes,
 		WSConnectTimeout:       30 * time.Second,
-		WSIdleTimeout:          90 * time.Second,
+		WSIdleTimeout:          30 * time.Second,
 		ReconnectBackoffMax:    time.Minute,
 		ExtDataFetchTimeout:    30 * time.Second,
 		LookupTTL:              5 * time.Minute,

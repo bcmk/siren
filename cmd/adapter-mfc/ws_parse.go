@@ -15,6 +15,7 @@ import (
 
 // FCS frame type constants and protocol values.
 const (
+	mfcFCTypeNull           = 0
 	mfcFCTypeLogin          = 1
 	mfcFCTypeUsernameLookup = 10
 	mfcFCTypeManageList     = 14
