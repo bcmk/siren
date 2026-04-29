@@ -27,6 +27,7 @@ import (
 	"io"
 	"maps"
 	"math/rand/v2"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -587,6 +588,22 @@ func runFrameLoop(
 	}
 }
 
+// translateHTTPError converts an http.Client.Do error into a human label.
+// net.Error.Timeout() is the canonical timeout predicate and covers dial
+// timeouts, read deadlines, and Client.Timeout uniformly. Cancelled
+// contexts (graceful shutdown) get a separate label. Other errors pass
+// through.
+func translateHTTPError(err error) error {
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
+		return errors.New("timeout")
+	}
+	if errors.Is(err, context.Canceled) {
+		return errors.New("shutdown in progress")
+	}
+	return err
+}
+
 // translateWSError converts a coder/websocket read error into a human
 // description of the actual cause: server-initiated close, idle timeout, or
 // the raw error if we can't classify it.
@@ -601,7 +618,7 @@ func translateWSError(err error, idleTimeout time.Duration) error {
 		return fmt.Errorf("idle timeout: no frames in %s", idleTimeout)
 	}
 	if errors.Is(err, context.Canceled) {
-		return errors.New("context cancelled")
+		return errors.New("shutdown in progress")
 	}
 	return err
 }
@@ -644,7 +661,7 @@ func wsCloseStatusName(s websocket.StatusCode) string {
 func dialMFC(ctx context.Context, snap *snapshot, client *cmdlib.Client, cfg *config) (*websocket.Conn, map[int]string, error) {
 	sc, err := fetchMFCServerConfig(ctx, snap, client, cfg)
 	if err != nil {
-		return nil, nil, fmt.Errorf("server config, %w", err)
+		return nil, nil, err
 	}
 	wsURL := fmt.Sprintf("wss://%s.myfreecams.com/fcsl", sc.wsServer)
 	conn, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
@@ -775,7 +792,7 @@ type mfcServerConfig struct {
 func fetchBounded(req *http.Request, client *cmdlib.Client, limit int) ([]byte, error) {
 	resp, err := client.Client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("send request, %w", err)
+		return nil, translateHTTPError(err)
 	}
 	defer cmdlib.CloseBody(resp.Body)
 	if resp.StatusCode != http.StatusOK {
@@ -814,7 +831,7 @@ func fetchMFCServerConfig(
 	}
 	body, err := fetchBounded(req, client, cfg.HTTPResponseLimitBytes)
 	if err != nil {
-		return nil, fmt.Errorf("fetch serverconfig, %w", err)
+		return nil, fmt.Errorf("fetch serverconfig: %w", err)
 	}
 	var raw struct {
 		WebSocketServers map[string]string `json:"websocket_servers"`
@@ -871,7 +888,7 @@ func fetchExtData(
 	}
 	body, err := fetchBounded(req, client, cfg.HTTPResponseLimitBytes)
 	if err != nil {
-		return nil, fmt.Errorf("fetch extdata, %w", err)
+		return nil, fmt.Errorf("fetch extdata: %w", err)
 	}
 	var list struct {
 		RData []any `json:"rdata"`
