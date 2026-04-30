@@ -601,10 +601,14 @@ func runFrameLoop(
 const dumpHeadBytes = 256
 
 // dumpBytes renders b for a single-line diagnostic log: printable ASCII
-// passes through verbatim (including quotes), backslash is escaped to
-// \\, common control chars use \n/\r/\t shortcuts, and any other byte
-// becomes \xNN. The format is uniquely decodable so the original bytes
-// can be recovered if needed.
+// passes through verbatim, \\ for backslash, \n/\r/\t for common control
+// chars, \xNN for the rest.
+//
+// Decode with bash `printf '%b'` via a quoted heredoc, e.g.
+//
+//     ( printf '%b' "$(cat)" ) <<'EOF'
+//     <paste head value>
+//     EOF
 func dumpBytes(b []byte) string {
 	if len(b) > dumpHeadBytes {
 		b = b[:dumpHeadBytes]
