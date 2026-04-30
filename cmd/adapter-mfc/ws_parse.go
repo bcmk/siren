@@ -68,37 +68,43 @@ func parseFrame(body []byte) (frame, bool) {
 }
 
 // walkFrames extracts each length-prefixed FCS frame from data and invokes
-// visit on it. It stops early when visit returns true. Returns a non-nil
-// error when data has trailing bytes that don't form a valid frame —
-// either a truncated/junk length prefix mid-stream or stray bytes after
-// the last frame. Both indicate parser desync within a single websocket
-// message, so the caller should end the session and reconnect for a fresh
-// stream.
+// visit on it. It stops early when visit returns true. Returns the number
+// of frames successfully visited along with a non-nil error when data has
+// trailing bytes that don't form a valid frame — either a truncated/junk
+// length prefix mid-stream or stray bytes after the last frame. Both
+// indicate parser desync within a single websocket message, so the caller
+// should end the session and reconnect for a fresh stream. The error
+// includes the failure offset within the original message so callers can
+// produce a targeted diagnostic dump.
 //
 // A frame body that fails to parse (length prefix valid but content
 // malformed) is logged at debug and skipped: the length prefix tells us
 // where the next frame starts, so recovery is local to that frame.
-func walkFrames(data []byte, visit func(f frame) (stop bool)) error {
+func walkFrames(data []byte, visit func(f frame) (stop bool)) (framesWalked int, err error) {
+	origLen := len(data)
 	for len(data) >= mfcFrameLenDigits {
-		bodyLen, err := strconv.Atoi(string(data[:mfcFrameLenDigits]))
-		if err != nil || bodyLen < 0 ||
+		bodyLen, atoErr := strconv.Atoi(string(data[:mfcFrameLenDigits]))
+		if atoErr != nil || bodyLen < 0 ||
 			bodyLen > len(data)-mfcFrameLenDigits {
-			return fmt.Errorf("truncated or invalid frame prefix, %d bytes left", len(data))
+			return framesWalked, fmt.Errorf("truncated or invalid frame prefix at byte %d of %d",
+				origLen-len(data), origLen)
 		}
 		body := data[mfcFrameLenDigits : mfcFrameLenDigits+bodyLen]
 		data = data[mfcFrameLenDigits+bodyLen:]
 		f, ok := parseFrame(body)
 		if !ok {
-			return fmt.Errorf("malformed frame body, %d bytes", len(body))
+			return framesWalked, fmt.Errorf("malformed frame body, %d bytes", len(body))
 		}
 		if visit(f) {
-			return nil
+			return framesWalked + 1, nil
 		}
+		framesWalked++
 	}
 	if len(data) != 0 {
-		return fmt.Errorf("trailing bytes after last frame, %d bytes left", len(data))
+		return framesWalked, fmt.Errorf("trailing bytes after last frame at byte %d of %d",
+			origLen-len(data), origLen)
 	}
-	return nil
+	return framesWalked, nil
 }
 
 // mfcMessage is one typed application-level FCS message decoded from a frame.

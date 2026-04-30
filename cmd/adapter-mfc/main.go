@@ -487,7 +487,7 @@ func runWebsocketSession(
 			stopErr error
 			stopOK  bool
 		)
-		walkErr := walkFrames(data, func(f frame) bool {
+		framesWalked, walkErr := walkFrames(data, func(f frame) bool {
 			stop, err := handle(connCtx, sess, f)
 			if err != nil {
 				stopErr = err
@@ -506,6 +506,14 @@ func runWebsocketSession(
 			return false, stopErr
 		}
 		if walkErr != nil {
+			// Dump the message head so we can tell whether the failure
+			// was a non-FCS payload (head won't start with 6 ASCII
+			// digits), a misalignment from an earlier wrong-length
+			// frame (framesWalked > 0, head looks like normal FCS),
+			// or some new framing variant. %q escapes non-printable
+			// bytes so a single log line stays readable.
+			cmdlib.Lerr("frame walk failed: %v after %d ok frames; head = %s",
+				walkErr, framesWalked, dumpBytes(data))
 			return false, walkErr
 		}
 		if stopOK {
@@ -586,6 +594,40 @@ func runFrameLoop(
 			return nil
 		}
 	}
+}
+
+// dumpHeadBytes bounds the diagnostic-dump head so a maximally-large
+// websocket message can't blow up the log line.
+const dumpHeadBytes = 256
+
+// dumpBytes renders b for a single-line diagnostic log: printable ASCII
+// passes through verbatim (including quotes), backslash is escaped to
+// \\, common control chars use \n/\r/\t shortcuts, and any other byte
+// becomes \xNN. The format is uniquely decodable so the original bytes
+// can be recovered if needed.
+func dumpBytes(b []byte) string {
+	if len(b) > dumpHeadBytes {
+		b = b[:dumpHeadBytes]
+	}
+	var sb strings.Builder
+	sb.Grow(len(b))
+	for _, c := range b {
+		switch {
+		case c == '\\':
+			sb.WriteString(`\\`)
+		case c == '\n':
+			sb.WriteString(`\n`)
+		case c == '\r':
+			sb.WriteString(`\r`)
+		case c == '\t':
+			sb.WriteString(`\t`)
+		case c >= 0x20 && c < 0x7f:
+			sb.WriteByte(c)
+		default:
+			fmt.Fprintf(&sb, `\x%02x`, c)
+		}
+	}
+	return sb.String()
 }
 
 // translateHTTPError converts an http.Client.Do error into a human label.
