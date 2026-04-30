@@ -51,6 +51,8 @@
 - Use 4 spaces to show code in comments
 - Use true em-dash (—) in comments when grammar requires.
   Do not use em-dashes in log messages — prefer `:` or `,` there.
+- In log messages, write `key = value` with spaces around `=`
+  (e.g., `@uid = %d`, `head = %s`), not `key=%s`.
 - Wrap documentation and comments at 80 characters max,
   prefer breaking at full stops over commas over natural pauses over spaces
 - Keep lines no longer than 120 characters
