@@ -895,7 +895,7 @@ func (d *Database) AddFeedback(endpoint string, chatID int64, text string, times
 
 // BlacklistUser sets the blacklist flag for a user
 func (d *Database) BlacklistUser(chatID int64) {
-	d.MustExec("update users set blacklist=1 where chat_id = $1", chatID)
+	d.MustExec("update users set blacklist = true where chat_id = $1", chatID)
 }
 
 // AddUserWithBonus inserts a user with a specific max_subs value
