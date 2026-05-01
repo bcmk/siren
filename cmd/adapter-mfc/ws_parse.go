@@ -449,19 +449,21 @@ func mfcStateName(vs int) string {
 	return fmt.Sprintf("vs=%d", vs)
 }
 
-// mfcShowKind maps an MFC video state to a cmdlib ShowKind.
-//
-// Video state values:
-//
-//	0  — free chat (public)
-//	2  — away
-//	12 — private show (TX)
-//	13 — group show (TX)
-//	14 — club show (TX)
-//	90 — idle (RX)
-//	91 — private show (RX)
-//	93 — group show (RX)
-//	94 — club show (RX)
+/*
+mfcShowKind maps an MFC video state to a cmdlib ShowKind.
+
+Video state values:
+
+	0  — free chat (public)
+	2  — away
+	12 — private show (TX)
+	13 — group show (TX)
+	14 — club show (TX)
+	90 — idle (RX)
+	91 — private show (RX)
+	93 — group show (RX)
+	94 — club show (RX)
+*/
 func mfcShowKind(vs int) cmdlib.ShowKind {
 	switch vs {
 	case 0, 90:

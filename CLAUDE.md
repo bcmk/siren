@@ -48,7 +48,8 @@
   ```
 - ALWAYS use lowercase SQL keywords,
   including in documentation and conversations
-- Use 4 spaces to show code in comments
+- For doc comments containing code blocks, use `/* */` instead of `//`
+  so gofmt's tab indent renders cleanly without the `//` eating columns
 - Use true em-dash (—) in comments when grammar requires.
   Do not use em-dashes in log messages — prefer `:` or `,` there.
 - In log messages, write `key = value` with spaces around `=`

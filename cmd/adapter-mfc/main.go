@@ -600,15 +600,19 @@ func runFrameLoop(
 // websocket message can't blow up the log line.
 const dumpHeadBytes = 256
 
-// dumpBytes renders b for a single-line diagnostic log: printable ASCII
-// passes through verbatim, \\ for backslash, \n/\r/\t for common control
-// chars, \xNN for the rest.
-//
-// Decode with bash `printf '%b'` via a quoted heredoc, e.g.
-//
-//     ( printf '%b' "$(cat)" ) <<'EOF'
-//     <paste head value>
-//     EOF
+/*
+dumpBytes renders b for a single-line diagnostic log:
+printable ASCII passes through verbatim,
+\\ for backslash,
+\n, \r, \t for common control chars,
+\xNN for the rest.
+
+Decode with:
+
+	( printf '%b' "$(cat)" ) <<'EOF'
+	<paste head value>
+	EOF
+*/
 func dumpBytes(b []byte) string {
 	if len(b) > dumpHeadBytes {
 		b = b[:dumpHeadBytes]

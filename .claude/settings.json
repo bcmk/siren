@@ -26,6 +26,7 @@
       "Bash(go vet:*)",
       "Bash(go version:*)",
       "Bash(gopls:*)",
+      "Bash(gofmt:*)",
       "Bash(golangci-lint run:*)",
       "Bash(git add:*)",
       "Bash(git diff:*)",
