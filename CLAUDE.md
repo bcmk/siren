@@ -100,6 +100,9 @@
 - Never store personal info (usernames, credentials, connection strings)
   in memory files
 - Use WebFetch/WebSearch freely without asking permission
+- Never chain shell commands with `&&` —
+  chained commands trigger extra permission prompts.
+  Run commands one after another instead.
 
 ## Database
 
