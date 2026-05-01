@@ -48,7 +48,8 @@
       "Bash(psql:*)",
       "Bash(rm:*)",
       "Bash(cmd/schema-dump/schema-dump)",
-      "Bash(scripts/publish)"
+      "Bash(scripts/publish-bot)",
+      "Bash(scripts/publish-adapter-mfc)"
     ]
   }
 }
