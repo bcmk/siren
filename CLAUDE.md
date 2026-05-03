@@ -74,6 +74,8 @@
 - When building binaries for whatever reason, e.g. to check if code compiles,
   always place them in their main.go's directory,
   e.g. `go build -o cmd/bot/ ./cmd/bot`
+- Do not clean up binaries you built while they sit in their correct
+  directories — the project's `.gitignore` already excludes them.
 - To build a Docker image and publish to the registry,
   run the matching `scripts/publish-<name>` script
   (e.g. `scripts/publish-bot`, `scripts/publish-adapter-mfc`).
