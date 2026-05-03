@@ -34,6 +34,7 @@
       "Bash(git show:*)",
       "Bash(git status:*)",
       "Bash(git ls-tree:*)",
+      "Bash(git mv *)",
       "Bash(ls:*)",
       "Bash(cat:*)",
       "Bash(sed:*)",
@@ -49,7 +50,9 @@
       "Bash(rm:*)",
       "Bash(cmd/schema-dump/schema-dump)",
       "Bash(scripts/publish-bot)",
-      "Bash(scripts/publish-adapter-mfc)"
+      "Bash(scripts/publish-adapter-mfc)",
+      "Bash(pkill -f cmd/adapter-mfc/adapter-mfc)",
+      "Bash(./adapter-mfc *)"
     ]
   }
 }
