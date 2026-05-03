@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -19,6 +20,8 @@ import (
 // implementation can serve any site that has a backing daemon.
 type OnlineListAdapter struct {
 	cmdlib.CheckerCommon
+	// OnlineURL is the daemon's base URL, e.g. "http://adapter-mfc:8080".
+	// The adapter appends /online and /status itself.
 	OnlineURL string
 	// NicknameRegex extracts the model nickname from a URL (used by
 	// NicknamePreprocessing). Optional — if nil, input is used as-is.
@@ -33,8 +36,8 @@ type OnlineListAdapter struct {
 var _ cmdlib.Checker = &OnlineListAdapter{}
 
 // Init forwards to CheckerCommon.Init and pulls OnlineURL from
-// config.UsersOnlineEndpoints[0] when not already set, so the bot config and
-// CLI `-e` flag both flow naturally.
+// config.UsersOnlineEndpoints[0] when not already set, so the bot config
+// and CLI `-e` flag both flow naturally.
 func (c *OnlineListAdapter) Init(config cmdlib.CheckerConfig) {
 	c.CheckerCommon.Init(config)
 	if c.OnlineURL == "" && len(config.UsersOnlineEndpoints) > 0 {
@@ -71,9 +74,10 @@ func (c *OnlineListAdapter) QueryOnlineStreamers() (
 	error,
 ) {
 	client := c.ClientsLoop.NextClient()
-	resp, buf, err := cmdlib.OnlineQuery(c.OnlineURL, client, c.Headers)
+	endpoint := c.OnlineURL + "/online"
+	resp, buf, err := cmdlib.OnlineQuery(endpoint, client, c.Headers)
 	if err != nil {
-		return nil, fmt.Errorf("cannot query %s, %v", c.OnlineURL, err)
+		return nil, fmt.Errorf("cannot query %s, %v", endpoint, err)
 	}
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("query status, %d", resp.StatusCode)
@@ -99,10 +103,36 @@ func (c *OnlineListAdapter) QueryOnlineStreamers() (
 	return result.Streamers, nil
 }
 
-// CheckStatusSingle is not supported for online-list adapters and is not
-// planned in the near future.
-func (c *OnlineListAdapter) CheckStatusSingle(_ string) (cmdlib.StatusKind, error) {
-	return cmdlib.StatusUnknown, cmdlib.ErrNotImplemented
+// CheckStatusSingle queries the daemon's /status?name=<nickname> route and
+// returns the StatusKind it reports. Per checker convention any transport
+// or parse failure is logged and surfaced as StatusUnknown rather than an
+// error so the bot's status loop keeps running.
+func (c *OnlineListAdapter) CheckStatusSingle(nickname string) (cmdlib.StatusKind, error) {
+	if c.OnlineURL == "" {
+		return cmdlib.StatusUnknown, cmdlib.ErrNotImplemented
+	}
+	client := c.ClientsLoop.NextClient()
+	endpoint := c.OnlineURL + "/status?name=" + url.QueryEscape(nickname)
+	resp, buf, err := cmdlib.OnlineQuery(endpoint, client, c.Headers)
+	if err != nil {
+		cmdlib.Lerr("[%v] cannot query %s, %v", client.Addr, endpoint, err)
+		return cmdlib.StatusUnknown, nil
+	}
+	if resp.StatusCode != 200 {
+		cmdlib.Lerr("[%v] %s returned %d", client.Addr, endpoint, resp.StatusCode)
+		return cmdlib.StatusUnknown, nil
+	}
+	var result struct {
+		Status cmdlib.StatusKind `json:"status"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		cmdlib.Lerr("[%v] cannot parse %s response, %v", client.Addr, endpoint, err)
+		if c.Dbg {
+			cmdlib.Ldbg("response: %s", buf.String())
+		}
+		return cmdlib.StatusUnknown, nil
+	}
+	return result.Status, nil
 }
 
 // QueryFixedListOnlineStreamers is not implemented for online-list adapters.

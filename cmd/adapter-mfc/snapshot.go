@@ -50,6 +50,11 @@ type snapshot struct {
 	bulkApplied                  bool
 	lifetimeDisconnects          atomic.Int32
 	lifetimeServerConfigFailures atomic.Int32
+	// currentSession is the live wsSession, set by runWebsocketSession on
+	// dial and cleared on teardown. Nil between sessions; HTTP handlers
+	// that need to drive outbound websocket requests (e.g. /status)
+	// should treat nil as "service unavailable".
+	currentSession atomic.Pointer[wsSession]
 }
 
 // nameEntry is the per-uid state we keep in nameCache. A non-empty name

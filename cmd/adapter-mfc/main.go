@@ -11,6 +11,8 @@
 //   - GET /online   — current snapshot as OnlineListResults JSON. Always 200;
 //     when no bulk has been applied yet, the body has failed=true so the
 //     caller distinguishes daemon-level failure from transport failure (5xx).
+//   - GET /status?name=<name> — backs the bot's CheckStatusSingle for MFC.
+//     Returns {"status": <int>} using cmdlib.StatusKind. See handleStatus.
 //   - GET /healthz  — liveness probe; always 200 "ok" while the process is
 //     responsive. Readiness is signalled by /online's failed flag.
 //   - GET /version  — the build's cmdlib.Version string.
@@ -31,6 +33,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -49,11 +52,7 @@ const (
 	mfcServerConfigURL = "https://www.myfreecams.com/_js/serverconfig.js"
 	mfcExtDataURL      = "https://www.myfreecams.com/php/FcwExtResp.php?respkey=%d&type=%d&opts=%d&serv=%d"
 
-	mfcWSOrigin    = "https://m.myfreecams.com"
-	mfcWSHandshake = "fcsws_20180422\n\x00"
-
-	mfcLoginVersion = "20080910"
-	mfcLoginCreds   = "guest:guest"
+	mfcWSOrigin = "https://m.myfreecams.com"
 
 	wsReadLimit             = 8 * 1024 * 1024
 	wsKeepAliveEvery        = 15 * time.Second
@@ -65,6 +64,10 @@ const (
 	pendingLookupTTL        = time.Hour
 	nameCachePruneEvery     = time.Hour
 	videoHostsRefreshEvery  = 10 * time.Minute
+	// statusLookupTimeout caps how long /status waits for an MFC reply
+	// before returning 504. MFC normally answers in well under a second;
+	// the cap protects the handler from a silently-dropping upstream.
+	statusLookupTimeout = 5 * time.Second
 )
 
 func main() {
@@ -221,6 +224,7 @@ func buildMux(snap *snapshot) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(snap.marshalOnline())
 	}))
+	mux.HandleFunc("/status", getOnly(handleStatus(snap)))
 	mux.HandleFunc("/healthz", getOnly(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("ok\n"))
 	}))
@@ -230,6 +234,96 @@ func buildMux(snap *snapshot) http.Handler {
 	}))
 	return mux
 }
+
+// statusResult is the JSON body of /status. The Status field carries a
+// cmdlib.StatusKind value so the bot's OnlineListAdapter.CheckStatusSingle
+// can decode without translation.
+type statusResult struct {
+	Status cmdlib.StatusKind `json:"status"`
+}
+
+// handleStatus answers GET /status?name=<name> by sending an
+// FCTYPE.USERNAMELOOKUP on the live websocket and mapping the reply to a
+// cmdlib.StatusKind: Online when the reply has a uid and vs != 127,
+// Offline when uid present but vs == 127, NotFound when no uid. Returns
+// 503 when no session is connected, 504 when MFC does not reply within
+// statusLookupTimeout, and 400 on a missing or malformed name. Transport
+// failures surface as 5xx so the caller can map them to StatusUnknown.
+func handleStatus(snap *snapshot) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := r.URL.Query().Get("name")
+		if name == "" {
+			http.Error(w, "missing name", http.StatusBadRequest)
+			return
+		}
+		if !mfcUsernameRegexp.MatchString(name) {
+			http.Error(w, "invalid name", http.StatusBadRequest)
+			return
+		}
+		sess := snap.currentSession.Load()
+		if sess == nil {
+			http.Error(w, "no live mfc session", http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), statusLookupTimeout)
+		defer cancel()
+		reply, err := sess.lookupByName(ctx, name)
+		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				http.Error(w, "lookup timeout", http.StatusGatewayTimeout)
+				return
+			}
+			if errors.Is(err, context.Canceled) {
+				// 499: nginx's Client Closed Request (no stdlib constant).
+				http.Error(w, "client cancelled", 499)
+				return
+			}
+			cmdlib.Linf("/status lookup failed: name = %s, %v", name, err)
+			http.Error(w, "lookup failed", http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(statusResult{Status: mfcLookupStatus(reply, name)})
+	}
+}
+
+// mfcLookupStatus maps a USERNAMELOOKUP reply to a cmdlib.StatusKind.
+// MFC has two not-found shapes — a raw-string echo of the queried name,
+// and a JSON object missing uid — both collapse to StatusNotFound here.
+// The echo case is detected by exact byte-equality with queriedName so
+// the test is strict (the JSON-shape sniff in decodeFrame is just a
+// parser-safety guard, not the not-found signal).
+func mfcLookupStatus(m *lookupResponseMsg, queriedName string) cmdlib.StatusKind {
+	if string(m.payload) == queriedName {
+		return cmdlib.StatusNotFound
+	}
+	if m.update.UID == nil || *m.update.UID == 0 {
+		return cmdlib.StatusNotFound
+	}
+	if m.update.VS != nil && *m.update.VS == mfcFCVideoOffline {
+		return cmdlib.StatusOffline
+	}
+	return cmdlib.StatusOnline
+}
+
+// lookupReplyDesc renders a one-liner describing a USERNAMELOOKUP reply
+// for the dispatcher's debug log. Shows the parsed uid/name when the
+// payload was JSON, or a dump of the raw bytes otherwise so the two
+// cases stop looking identical.
+func lookupReplyDesc(m *lookupResponseMsg) string {
+	if m.update.UID == nil && m.update.Name == nil {
+		return fmt.Sprintf("payload = %s", dumpBytes(m.payload))
+	}
+	return fmt.Sprintf("@uid = %s, @nm = %s",
+		displayWireInt(m.update.UID), displayWireStr(m.update.Name))
+}
+
+// mfcUsernameRegexp restricts /status's name parameter to the character
+// class MFC actually uses (ASCII letters, digits, underscore) plus a
+// length bound. The narrow set keeps the URL-encoded payload predictable
+// and prevents a caller from sneaking in spaces or control bytes that
+// would desync the FCS frame.
+var mfcUsernameRegexp = regexp.MustCompile(`^[A-Za-z0-9_]{1,64}$`)
 
 // getOnly rejects requests with methods other than GET or HEAD, advertising
 // the allowed set per RFC 9110 § 10.2.1.
@@ -385,15 +479,19 @@ func dispatchFrame(
 		}
 		return nil
 	case *lookupResponseMsg:
+		// HTTP-driven lookups (e.g. /status) registered their qid; hand the
+		// reply straight to the waiter and skip the snapshot apply so an
+		// existence check for an offline model does not fold into the
+		// online list.
+		if sess.deliverLookup(m.qid, m) {
+			cmdlib.Ldbg("lookup response (delivered): @qid = %d, %s",
+				m.qid, lookupReplyDesc(m))
+			return nil
+		}
 		if err := snap.applyUpdate(m.update, cfg); err != nil {
 			return err
 		}
-		uid := 0
-		if m.update.UID != nil {
-			uid = *m.update.UID
-		}
-		cmdlib.Ldbg("lookup response: @qid = %d, @uid = %d, @nm = %s",
-			m.qid, uid, displayWireStr(m.update.Name))
+		cmdlib.Ldbg("lookup response: @qid = %d, %s", m.qid, lookupReplyDesc(m))
 		return nil
 	case *roomDataMsg:
 		matched, unknown := snap.applyRoomData(m.counts)
@@ -459,13 +557,17 @@ func runWebsocketSession(
 	}
 	snap.setVideoHosts(videoHosts)
 	sess := newWSSession(conn)
+	snap.currentSession.Store(sess)
 
 	// Keepalive: MFC drops the session if it does not see periodic NULL
 	// frames from the client. Run for the connection's lifetime. Cleanup
 	// order matters: cancel the context (so keepalive exits its select),
 	// wait for it to acknowledge, then close the conn. Close status
 	// reflects the outcome: normal closure on a clean stop or parent-ctx
-	// cancellation (graceful shutdown), internal error otherwise.
+	// cancellation (graceful shutdown), internal error otherwise. Clearing
+	// snap.currentSession and draining pending lookups happens before the
+	// physical close so HTTP handlers see "no session" rather than a stale
+	// pointer to a closed connection.
 	connCtx, connCancel := context.WithCancel(ctx)
 	keepAliveDone := make(chan struct{})
 	go func() {
@@ -473,6 +575,8 @@ func runWebsocketSession(
 		runKeepAlive(connCtx, sess)
 	}()
 	defer func() {
+		snap.currentSession.CompareAndSwap(sess, nil)
+		sess.closePendingLookups()
 		connCancel()
 		<-keepAliveDone
 		status := websocket.StatusNormalClosure
@@ -525,15 +629,71 @@ func runWebsocketSession(
 
 // wsSession owns a single MFC websocket connection plus the per-connection
 // state we need for outbound requests (write serialisation, query-id counter).
-// USERNAMELOOKUP dedupe lives on the snapshot via nameEntry.lookupAt.
+// USERNAMELOOKUP dedupe for snapshot-fill traffic lives on the snapshot via
+// nameEntry.lookupAt; pending tracks qids of HTTP-driven lookups so the
+// frame dispatcher can hand the response to the waiting caller instead of
+// folding it into the snapshot.
 type wsSession struct {
 	conn        *websocket.Conn
 	writeMu     sync.Mutex
 	nextQueryID atomic.Int64
+	pendingMu   sync.Mutex
+	pending     map[int64]chan *lookupResponseMsg
 }
 
 func newWSSession(conn *websocket.Conn) *wsSession {
-	return &wsSession{conn: conn}
+	return &wsSession{
+		conn:    conn,
+		pending: map[int64]chan *lookupResponseMsg{},
+	}
+}
+
+// registerPendingLookup reserves qid as a HTTP-driven lookup and returns the
+// reply channel. The channel is buffered so deliverLookup never blocks on a
+// caller that has already given up.
+func (s *wsSession) registerPendingLookup(qid int64) chan *lookupResponseMsg {
+	ch := make(chan *lookupResponseMsg, 1)
+	s.pendingMu.Lock()
+	s.pending[qid] = ch
+	s.pendingMu.Unlock()
+	return ch
+}
+
+// cancelPendingLookup drops the qid registration; used when the caller's
+// context fires before a response arrives, or when the write itself failed.
+func (s *wsSession) cancelPendingLookup(qid int64) {
+	s.pendingMu.Lock()
+	delete(s.pending, qid)
+	s.pendingMu.Unlock()
+}
+
+// deliverLookup hands msg to the waiter registered for qid, returning true on
+// hit. The dispatcher uses this to route HTTP-driven lookup replies; misses
+// fall through to the snapshot-apply path.
+func (s *wsSession) deliverLookup(qid int, msg *lookupResponseMsg) bool {
+	s.pendingMu.Lock()
+	ch, ok := s.pending[int64(qid)]
+	if ok {
+		delete(s.pending, int64(qid))
+	}
+	s.pendingMu.Unlock()
+	if !ok {
+		return false
+	}
+	ch <- msg
+	return true
+}
+
+// closePendingLookups closes every pending reply channel; waiters see a
+// zero-value receive and return a "session ended" error. Called from the
+// session teardown path.
+func (s *wsSession) closePendingLookups() {
+	s.pendingMu.Lock()
+	defer s.pendingMu.Unlock()
+	for qid, ch := range s.pending {
+		close(ch)
+		delete(s.pending, qid)
+	}
 }
 
 // write serialises writes on the websocket. coder/websocket allows reads to
@@ -560,7 +720,7 @@ func closeAndLog(conn *websocket.Conn, code websocket.StatusCode, reason, op str
 // which our normal dispatcher applies to fill in the placeholder.
 func (s *wsSession) requestNameLookup(ctx context.Context, uid int) error {
 	qid := s.nextQueryID.Add(1)
-	frame := fmt.Sprintf("%d 0 0 %d %d\n\x00", mfcFCTypeUsernameLookup, qid, uid)
+	frame := encodeUsernameLookupByUID(qid, uid)
 	writeCtx, cancel := context.WithTimeout(ctx, wsWriteTimeout)
 	defer cancel()
 	if err := s.write(writeCtx, frame); err != nil {
@@ -568,6 +728,37 @@ func (s *wsSession) requestNameLookup(ctx context.Context, uid int) error {
 	}
 	cmdlib.Ldbg("lookup requested: @uid = %d, @qid = %d", uid, qid)
 	return nil
+}
+
+// lookupByName sends an FCTYPE.USERNAMELOOKUP whose payload is a username
+// (MFC accepts either uid or name in that slot) and waits for the matching
+// reply. Unlike requestNameLookup, the response is delivered straight to
+// this caller via the pending-qid registry; the snapshot is left untouched
+// so HTTP existence checks for offline models do not pollute the online
+// list. Returns the full reply message (including the notFound flag) so
+// the caller can distinguish MFC's two not-found shapes.
+func (s *wsSession) lookupByName(ctx context.Context, name string) (*lookupResponseMsg, error) {
+	qid := s.nextQueryID.Add(1)
+	ch := s.registerPendingLookup(qid)
+	frame := encodeUsernameLookupByName(qid, name)
+	writeCtx, cancel := context.WithTimeout(ctx, wsWriteTimeout)
+	err := s.write(writeCtx, frame)
+	cancel()
+	if err != nil {
+		s.cancelPendingLookup(qid)
+		return nil, fmt.Errorf("lookup write failed for name %s, %w", name, err)
+	}
+	cmdlib.Ldbg("lookup by name requested: name = %s, @qid = %d", name, qid)
+	select {
+	case <-ctx.Done():
+		s.cancelPendingLookup(qid)
+		return nil, ctx.Err()
+	case msg, ok := <-ch:
+		if !ok {
+			return nil, errors.New("session ended before lookup reply")
+		}
+		return msg, nil
+	}
 }
 
 // runFrameLoop reads frames from conn with an idle timeout and invokes
@@ -723,13 +914,11 @@ func dialMFC(ctx context.Context, snap *snapshot, client *cmdlib.Client, cfg *co
 	}
 	conn.SetReadLimit(wsReadLimit)
 
-	if err := conn.Write(ctx, websocket.MessageText, []byte(mfcWSHandshake)); err != nil {
+	if err := conn.Write(ctx, websocket.MessageText, []byte(mfcWSHandshakeFrame)); err != nil {
 		closeAndLog(conn, websocket.StatusInternalError, "", "handshake close")
 		return nil, nil, fmt.Errorf("ws handshake, %w", err)
 	}
-	login := fmt.Sprintf("%d 0 0 %s 0 %s\n\x00",
-		mfcFCTypeLogin, mfcLoginVersion, mfcLoginCreds)
-	if err := conn.Write(ctx, websocket.MessageText, []byte(login)); err != nil {
+	if err := conn.Write(ctx, websocket.MessageText, []byte(encodeLogin())); err != nil {
 		closeAndLog(conn, websocket.StatusInternalError, "", "login close")
 		return nil, nil, fmt.Errorf("ws login, %w", err)
 	}
@@ -745,7 +934,6 @@ func dialMFC(ctx context.Context, snap *snapshot, client *cmdlib.Client, cfg *co
 // NULL frames to us on roughly the same cadence, which keeps the read-side
 // idle timer fed even on accounts with no organic traffic.
 func runKeepAlive(ctx context.Context, sess *wsSession) {
-	const nullFrame = "0 0 0 0 0\n\x00"
 	t := time.NewTicker(wsKeepAliveEvery)
 	defer t.Stop()
 	for {
@@ -754,7 +942,7 @@ func runKeepAlive(ctx context.Context, sess *wsSession) {
 			return
 		case <-t.C:
 			writeCtx, cancel := context.WithTimeout(ctx, wsWriteTimeout)
-			err := sess.write(writeCtx, nullFrame)
+			err := sess.write(writeCtx, mfcNullFrame)
 			cancel()
 			if err != nil {
 				if ctx.Err() != nil {

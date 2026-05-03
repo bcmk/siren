@@ -1,5 +1,6 @@
-// FCS websocket parsing: turns raw frame bytes into typed application
-// messages. The dispatcher in main.go does a type switch on the result.
+// FCS websocket wire format: parses raw frame bytes into typed application
+// messages and builds outbound frames for the requests we send. The
+// dispatcher in main.go does a type switch on the parsed result.
 package main
 
 import (
@@ -29,6 +30,52 @@ const (
 
 	mfcFrameLenDigits = 6 // width of FCS frame length prefix
 )
+
+// FCS handshake/keepalive constants used by the encoders below.
+const (
+	mfcWSHandshakeFrame = "fcsws_20180422\n\x00"
+	mfcNullFrame        = "0 0 0 0 0\n\x00"
+
+	mfcLoginVersion = "20080910"
+	mfcLoginCreds   = "guest:guest"
+)
+
+// encodeLogin builds an FCTYPE.LOGIN frame for the guest credentials we
+// connect with.
+func encodeLogin() string {
+	return fmt.Sprintf("%d 0 0 %s 0 %s\n\x00",
+		mfcFCTypeLogin, mfcLoginVersion, mfcLoginCreds)
+}
+
+// encodeUsernameLookupByUID builds an FCTYPE.USERNAMELOOKUP frame whose
+// payload is a numeric uid. MFC replies with a SESSIONSTATE-shaped frame
+// tagged with the same qid.
+func encodeUsernameLookupByUID(qid int64, uid int) string {
+	return fmt.Sprintf("%d 0 0 %d %d\n\x00", mfcFCTypeUsernameLookup, qid, uid)
+}
+
+// encodeUsernameLookupByName builds an FCTYPE.USERNAMELOOKUP frame whose
+// payload is a username. arg2 is a literal 0 (placeholder where the uid
+// goes in the by-uid form), and the name lives in the URL-encoded payload
+// slot — the format mfcauto/MFCAuto reference clients use. The qid is
+// echoed back in arg1 of the reply so deliverLookup can route it.
+func encodeUsernameLookupByName(qid int64, name string) string {
+	return fmt.Sprintf("%d 0 0 %d 0 %s\n\x00",
+		mfcFCTypeUsernameLookup, qid, url.QueryEscape(name))
+}
+
+// looksLikeJSONObject reports whether b's first non-whitespace byte is `{`.
+// Used to distinguish a SESSIONSTATE payload from MFC's not-found echo
+// (the raw query string) on a USERNAMELOOKUP reply.
+func looksLikeJSONObject(b []byte) bool {
+	for _, c := range b {
+		if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+			continue
+		}
+		return c == '{'
+	}
+	return false
+}
 
 // frame is one parsed FCS frame body, before decoding into a typed message.
 // Use decodeFrame to interpret a frame's payload.
@@ -128,10 +175,15 @@ type sessionStateMsg struct {
 
 func (*sessionStateMsg) isMFCMessage() {}
 
-// lookupResponseMsg is the answer to a USERNAMELOOKUP request.
+// lookupResponseMsg is the answer to a USERNAMELOOKUP request. payload
+// is the raw URL-decoded body so a caller that knows the queried name can
+// strictly detect MFC's "no such user" marker (the query string echoed
+// back) by comparison; update holds the parsed SESSIONSTATE when the
+// payload looked like a JSON object, zero otherwise.
 type lookupResponseMsg struct {
-	qid    int
-	update sessionUpdate
+	qid     int
+	payload []byte
+	update  sessionUpdate
 }
 
 func (*lookupResponseMsg) isMFCMessage() {}
@@ -155,19 +207,29 @@ func decodeFrame(f frame) (mfcMessage, error) {
 	case mfcFCTypeSessionState:
 		u, err := parseSessionState(f.payload)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%w; payload head = %s", err, dumpBytes(f.payload))
 		}
 		return &sessionStateMsg{update: u}, nil
 	case mfcFCTypeUsernameLookup:
-		u, err := parseSessionState(f.payload)
-		if err != nil {
-			return nil, fmt.Errorf("lookup response (qid=%d), %w", f.arg1, err)
+		// MFC's "username not found" reply has the raw query string as
+		// payload instead of a SESSIONSTATE JSON object. Always carry
+		// the raw payload so the caller can strictly compare it to the
+		// queried name; only attempt JSON parse when the shape looks
+		// right, so a non-JSON echo doesn't tear down the session.
+		msg := &lookupResponseMsg{qid: f.arg1, payload: f.payload}
+		if looksLikeJSONObject(f.payload) {
+			u, err := parseSessionState(f.payload)
+			if err != nil {
+				return nil, fmt.Errorf("lookup response (qid=%d), %w; payload head = %s",
+					f.arg1, err, dumpBytes(f.payload))
+			}
+			msg.update = u
 		}
-		return &lookupResponseMsg{qid: f.arg1, update: u}, nil
+		return msg, nil
 	case mfcFCTypeRoomData:
 		counts, err := parseRoomData(f.payload)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%w; payload head = %s", err, dumpBytes(f.payload))
 		}
 		return &roomDataMsg{counts: counts}, nil
 	case mfcFCTypeExtData:
@@ -186,7 +248,7 @@ func decodeBulkRef(f frame) (mfcMessage, error) {
 	}
 	var ext mfcExtData
 	if err := json.Unmarshal(f.payload, &ext); err != nil {
-		return nil, fmt.Errorf("extdata, %w", err)
+		return nil, fmt.Errorf("extdata, %w; payload head = %s", err, dumpBytes(f.payload))
 	}
 	if ext.Msg.Type != mfcFCTypeManageList || ext.Msg.Arg2 != mfcFCLCams {
 		return nil, nil
