@@ -33,8 +33,8 @@ type liveJasminResponse struct {
 	} `json:"data"`
 }
 
-// CheckStatusSingle checks LiveJasmin model status
-func (c *LiveJasminChecker) CheckStatusSingle(modelID string) (cmdlib.StatusKind, error) {
+// QueryStatus checks LiveJasmin model status
+func (c *LiveJasminChecker) QueryStatus(modelID string) (cmdlib.StatusKind, error) {
 	psID := string(c.SpecificConfig["ps_id"])
 	accessKey := string(c.SpecificConfig["access_key"])
 	url := fmt.Sprintf("https://pt.potawe.com/api/model/status?performerId=%s&psId=%s&accessKey=%s&legacyRedirect=1", modelID, psID, accessKey)
@@ -148,8 +148,15 @@ func (c *LiveJasminChecker) QueryFixedListOnlineStreamers([]string, cmdlib.Check
 	return nil, cmdlib.ErrNotImplemented
 }
 
-// UsesFixedList returns false for online list checkers
-func (c *LiveJasminChecker) UsesFixedList() bool { return false }
-
 // SubjectSupported returns true for LiveJasmin
 func (c *LiveJasminChecker) SubjectSupported() bool { return true }
+
+// Capabilities reports the status surfaces LiveJasmin implements.
+func (*LiveJasminChecker) Capabilities() cmdlib.Capabilities {
+	return cmdlib.Capabilities{
+		QueryOnlineStreamers:          true,
+		QueryFixedListOnlineStreamers: false,
+		QueryFixedListStatuses:        false,
+		QueryStatus:                   true,
+	}
+}

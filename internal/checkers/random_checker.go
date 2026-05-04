@@ -12,8 +12,8 @@ type RandomChecker struct{ cmdlib.CheckerCommon }
 
 var _ cmdlib.Checker = &RandomChecker{}
 
-// CheckStatusSingle mimics checker
-func (c *RandomChecker) CheckStatusSingle(_ string) (cmdlib.StatusKind, error) {
+// QueryStatus mimics checker
+func (c *RandomChecker) QueryStatus(_ string) (cmdlib.StatusKind, error) {
 	return cmdlib.StatusOnline, nil
 }
 
@@ -48,5 +48,12 @@ func (c *RandomChecker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckMode
 	return nil, cmdlib.ErrNotImplemented
 }
 
-// UsesFixedList returns false for online list checkers
-func (c *RandomChecker) UsesFixedList() bool { return false }
+// Capabilities reports the status surfaces RandomChecker implements.
+func (*RandomChecker) Capabilities() cmdlib.Capabilities {
+	return cmdlib.Capabilities{
+		QueryOnlineStreamers:          true,
+		QueryFixedListOnlineStreamers: false,
+		QueryFixedListStatuses:        false,
+		QueryStatus:                   true,
+	}
+}

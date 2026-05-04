@@ -11,7 +11,7 @@
 //   - GET /online   — current snapshot as OnlineListResults JSON. Always 200;
 //     when no bulk has been applied yet, the body has failed=true so the
 //     caller distinguishes daemon-level failure from transport failure (5xx).
-//   - GET /status?name=<name> — backs the bot's CheckStatusSingle for MFC.
+//   - GET /status?name=<name> — backs the bot's QueryStatus for MFC.
 //     Returns {"status": <int>} using cmdlib.StatusKind. See handleStatus.
 //   - GET /healthz  — liveness probe; always 200 "ok" while the process is
 //     responsive. Readiness is signalled by /online's failed flag.
@@ -236,7 +236,7 @@ func buildMux(snap *snapshot) http.Handler {
 }
 
 // statusResult is the JSON body of /status. The Status field carries a
-// cmdlib.StatusKind value so the bot's OnlineListAdapter.CheckStatusSingle
+// cmdlib.StatusKind value so the bot's OnlineListAdapter.QueryStatus
 // can decode without translation.
 type statusResult struct {
 	Status cmdlib.StatusKind `json:"status"`

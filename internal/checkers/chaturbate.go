@@ -42,8 +42,8 @@ type chaturbateResponse struct {
 	Code       string `json:"code"`
 }
 
-// CheckStatusSingle checks Chaturbate model status
-func (c *ChaturbateChecker) CheckStatusSingle(modelID string) (cmdlib.StatusKind, error) {
+// QueryStatus checks Chaturbate model status
+func (c *ChaturbateChecker) QueryStatus(modelID string) (cmdlib.StatusKind, error) {
 	addr, resp := c.DoGetRequest(fmt.Sprintf("https://chaturbate.com/api/biocontext/%s/?", modelID))
 	if resp == nil {
 		return cmdlib.StatusUnknown, nil
@@ -162,8 +162,17 @@ func (c *ChaturbateChecker) QueryFixedListOnlineStreamers([]string, cmdlib.Check
 	return nil, cmdlib.ErrNotImplemented
 }
 
-// UsesFixedList returns false for online list checkers
-func (c *ChaturbateChecker) UsesFixedList() bool { return false }
-
 // SubjectSupported returns true for Chaturbate
 func (c *ChaturbateChecker) SubjectSupported() bool { return true }
+
+// Capabilities reports the status surfaces Chaturbate implements.
+// QueryStatus is intentionally false: the biocontext endpoint needs
+// a proxy we don't have.
+func (*ChaturbateChecker) Capabilities() cmdlib.Capabilities {
+	return cmdlib.Capabilities{
+		QueryOnlineStreamers:          true,
+		QueryFixedListOnlineStreamers: false,
+		QueryFixedListStatuses:        false,
+		QueryStatus:                   false,
+	}
+}

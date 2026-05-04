@@ -852,6 +852,69 @@ func TestProcessSubsConfirmations(t *testing.T) {
 	}
 }
 
+// Mirrors the SingleStatusRequest fan-out shape: the bot pushes one
+// request per pending name, each result carries one entry, and the
+// other still-checking rows must be left alone for their own future
+// result instead of being denied prematurely.
+func TestProcessSubsConfirmationsPartialList(t *testing.T) {
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase(make(chan bool, 1))
+
+	w.db.MustExec(
+		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking) values ($1, $2, $3, $4)",
+		"test", 1, "answered_model", true,
+	)
+	w.db.MustExec(
+		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking) values ($1, $2, $3, $4)",
+		"test", 2, "still_pending_model", true,
+	)
+	w.db.MustExec(
+		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking) values ($1, $2, $3, $4)",
+		"test", 3, "also_still_pending_model", true,
+	)
+
+	w.processSubsConfirmations(&cmdlib.ExistenceListResults{
+		Streamers: map[string]cmdlib.StreamerInfoWithStatus{
+			"answered_model": {Status: cmdlib.StatusOnline},
+		},
+	})
+
+	subCount := func(nickname string) int {
+		return w.db.MustInt(`
+			select count(*) from subscriptions sub
+			join streamers s on s.id = sub.streamer_id
+			where s.nickname = $1`, nickname)
+	}
+	pendingCheckingCount := func(nickname string) int {
+		return w.db.MustInt(
+			"select count(*) from pending_subscriptions where nickname = $1 and checking",
+			nickname)
+	}
+
+	if subCount("answered_model") != 1 {
+		t.Error("expected answered_model to be confirmed into subscriptions")
+	}
+	if pendingCheckingCount("answered_model") != 0 {
+		t.Error("expected answered_model to be removed from pending")
+	}
+
+	// The two unanswered rows must still be checking — they belong to
+	// other in-flight SingleStatusRequests, not this result.
+	if pendingCheckingCount("still_pending_model") != 1 {
+		t.Error("expected still_pending_model to remain in pending and checking")
+	}
+	if subCount("still_pending_model") != 0 {
+		t.Error("expected still_pending_model not to be confirmed yet")
+	}
+	if pendingCheckingCount("also_still_pending_model") != 1 {
+		t.Error("expected also_still_pending_model to remain in pending and checking")
+	}
+	if subCount("also_still_pending_model") != 0 {
+		t.Error("expected also_still_pending_model not to be confirmed yet")
+	}
+}
+
 func TestUserReferral(t *testing.T) {
 	t.Run("valid referral creates event and bonuses", func(t *testing.T) {
 		w := newTestWorker()

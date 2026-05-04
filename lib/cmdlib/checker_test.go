@@ -19,8 +19,17 @@ type testOnlineListChecker struct {
 
 var queueSize = 1000
 
-func (c *TestChecker) CheckStatusSingle(string) (StatusKind, error) {
+func (c *TestChecker) QueryStatus(string) (StatusKind, error) {
 	return c.status, nil
+}
+
+func (*TestChecker) Capabilities() Capabilities {
+	return Capabilities{
+		QueryOnlineStreamers:          true,
+		QueryFixedListOnlineStreamers: false,
+		QueryFixedListStatuses:        false,
+		QueryStatus:                   true,
+	}
 }
 
 func (c *testOnlineListChecker) QueryOnlineStreamers() (map[string]StreamerInfo, error) {
@@ -47,8 +56,14 @@ func (c *testOnlineListChecker) QueryFixedListOnlineStreamers(streamers []string
 	return result, nil
 }
 
-// UsesFixedList returns false for online list checkers
-func (c *testOnlineListChecker) UsesFixedList() bool { return false }
+func (*testOnlineListChecker) Capabilities() Capabilities {
+	return Capabilities{
+		QueryOnlineStreamers:          true,
+		QueryFixedListOnlineStreamers: true,
+		QueryFixedListStatuses:        false,
+		QueryStatus:                   true,
+	}
+}
 
 func TestOnlineListCheckerHandlesFixedList(t *testing.T) {
 	checker := &testOnlineListChecker{}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"regexp"
 	"strings"
@@ -36,12 +37,15 @@ type OnlineListAdapter struct {
 var _ cmdlib.Checker = &OnlineListAdapter{}
 
 // Init forwards to CheckerCommon.Init and pulls OnlineURL from
-// config.UsersOnlineEndpoints[0] when not already set, so the bot config
-// and CLI `-e` flag both flow naturally.
+// config.UsersOnlineEndpoints[0] when not already set. Fails fast if
+// neither source supplies a URL — running without one is a deploy bug.
 func (c *OnlineListAdapter) Init(config cmdlib.CheckerConfig) {
 	c.CheckerCommon.Init(config)
 	if c.OnlineURL == "" && len(config.UsersOnlineEndpoints) > 0 {
 		c.OnlineURL = config.UsersOnlineEndpoints[0]
+	}
+	if c.OnlineURL == "" {
+		log.Fatal("OnlineListAdapter requires users_online_endpoint")
 	}
 }
 
@@ -65,8 +69,15 @@ func (c *OnlineListAdapter) NicknameRegexp() *regexp.Regexp {
 // SubjectSupported reflects the per-site config flag.
 func (c *OnlineListAdapter) SubjectSupported() bool { return c.SubjectIsSupported }
 
-// UsesFixedList is always false — this adapter is for online-list daemons.
-func (c *OnlineListAdapter) UsesFixedList() bool { return false }
+// Capabilities reports the status surfaces the adapter implements.
+func (*OnlineListAdapter) Capabilities() cmdlib.Capabilities {
+	return cmdlib.Capabilities{
+		QueryOnlineStreamers:          true,
+		QueryFixedListOnlineStreamers: false,
+		QueryFixedListStatuses:        false,
+		QueryStatus:                   true,
+	}
+}
 
 // QueryOnlineStreamers fetches the online list from the daemon.
 func (c *OnlineListAdapter) QueryOnlineStreamers() (
@@ -103,14 +114,11 @@ func (c *OnlineListAdapter) QueryOnlineStreamers() (
 	return result.Streamers, nil
 }
 
-// CheckStatusSingle queries the daemon's /status?name=<nickname> route and
+// QueryStatus queries the daemon's /status?name=<nickname> route and
 // returns the StatusKind it reports. Per checker convention any transport
 // or parse failure is logged and surfaced as StatusUnknown rather than an
 // error so the bot's status loop keeps running.
-func (c *OnlineListAdapter) CheckStatusSingle(nickname string) (cmdlib.StatusKind, error) {
-	if c.OnlineURL == "" {
-		return cmdlib.StatusUnknown, cmdlib.ErrNotImplemented
-	}
+func (c *OnlineListAdapter) QueryStatus(nickname string) (cmdlib.StatusKind, error) {
 	client := c.ClientsLoop.NextClient()
 	endpoint := c.OnlineURL + "/status?name=" + url.QueryEscape(nickname)
 	resp, buf, err := cmdlib.OnlineQuery(endpoint, client, c.Headers)

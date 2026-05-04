@@ -103,7 +103,7 @@ func main() {
 		fmt.Println("invalid model ID")
 		return
 	}
-	status, err := checker.CheckStatusSingle(modelID)
+	status, err := checker.QueryStatus(modelID)
 	if errors.Is(err, cmdlib.ErrNotImplemented) {
 		fmt.Fprintf(os.Stderr, "single check is not supported for %s\n", site)
 		os.Exit(1)

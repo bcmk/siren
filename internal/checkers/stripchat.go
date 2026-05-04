@@ -52,8 +52,8 @@ func stripchatShowKind(status string) cmdlib.ShowKind {
 	return cmdlib.ShowUnknown
 }
 
-// CheckStatusSingle is not implemented for Stripchat
-func (c *StripchatChecker) CheckStatusSingle(_ string) (cmdlib.StatusKind, error) {
+// QueryStatus is not implemented for Stripchat
+func (c *StripchatChecker) QueryStatus(_ string) (cmdlib.StatusKind, error) {
 	return cmdlib.StatusUnknown, cmdlib.ErrNotImplemented
 }
 
@@ -174,5 +174,12 @@ func (c *StripchatChecker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckM
 	return nil, cmdlib.ErrNotImplemented
 }
 
-// UsesFixedList returns false for online list checkers
-func (c *StripchatChecker) UsesFixedList() bool { return false }
+// Capabilities reports the status surfaces Stripchat implements.
+func (*StripchatChecker) Capabilities() cmdlib.Capabilities {
+	return cmdlib.Capabilities{
+		QueryOnlineStreamers:          true,
+		QueryFixedListOnlineStreamers: false,
+		QueryFixedListStatuses:        false,
+		QueryStatus:                   false,
+	}
+}

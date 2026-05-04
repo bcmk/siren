@@ -47,8 +47,8 @@ type cam4Response struct {
 	Online bool `json:"online"`
 }
 
-// CheckStatusSingle checks CAM4 model status
-func (c *Cam4Checker) CheckStatusSingle(modelID string) (cmdlib.StatusKind, error) {
+// QueryStatus checks CAM4 model status
+func (c *Cam4Checker) QueryStatus(modelID string) (cmdlib.StatusKind, error) {
 	url := fmt.Sprintf("https://www.cam4.com/rest/v1.0/profile/%s/info", modelID)
 	addr, resp := c.DoGetRequest(url)
 	if resp == nil {
@@ -132,5 +132,12 @@ func (c *Cam4Checker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckMode) 
 	return nil, cmdlib.ErrNotImplemented
 }
 
-// UsesFixedList returns false for online list checkers
-func (c *Cam4Checker) UsesFixedList() bool { return false }
+// Capabilities reports the status surfaces CAM4 implements.
+func (*Cam4Checker) Capabilities() cmdlib.Capabilities {
+	return cmdlib.Capabilities{
+		QueryOnlineStreamers:          true,
+		QueryFixedListOnlineStreamers: false,
+		QueryFixedListStatuses:        false,
+		QueryStatus:                   true,
+	}
+}

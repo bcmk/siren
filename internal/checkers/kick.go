@@ -106,8 +106,8 @@ func (c *KickChecker) queryChannels(
 	return channelsResp.Data, nil
 }
 
-// CheckStatusSingle checks Kick channel status
-func (c *KickChecker) CheckStatusSingle(channelID string) (cmdlib.StatusKind, error) {
+// QueryStatus checks Kick channel status
+func (c *KickChecker) QueryStatus(channelID string) (cmdlib.StatusKind, error) {
 	client := c.ClientsLoop.NextClient()
 	token, err := c.requestAccessToken(client.Client)
 	if err != nil {
@@ -196,8 +196,15 @@ func (c *KickChecker) QueryFixedListStatuses(
 	return result, nil
 }
 
-// UsesFixedList returns true for fixed list checkers
-func (c *KickChecker) UsesFixedList() bool { return true }
-
 // SubjectSupported returns true for Kick
 func (c *KickChecker) SubjectSupported() bool { return true }
+
+// Capabilities reports the status surfaces Kick implements.
+func (*KickChecker) Capabilities() cmdlib.Capabilities {
+	return cmdlib.Capabilities{
+		QueryOnlineStreamers:          false,
+		QueryFixedListOnlineStreamers: true,
+		QueryFixedListStatuses:        true,
+		QueryStatus:                   true,
+	}
+}

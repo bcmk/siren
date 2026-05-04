@@ -120,6 +120,15 @@ type FixedListStatusRequest struct {
 
 func (r *FixedListStatusRequest) isStatusRequest() {}
 
+// SingleStatusRequest is FixedListStatusRequest dispatched via QueryStatus
+// for one streamer; used when the checker has no batched surface.
+type SingleStatusRequest struct {
+	Streamer  string
+	ResultsCh chan<- *ExistenceListResults
+}
+
+func (r *SingleStatusRequest) isStatusRequest() {}
+
 // ExistenceListResults contains results for ExistenceListRequest
 type ExistenceListResults struct {
 	Streamers map[string]StreamerInfoWithStatus
@@ -202,15 +211,36 @@ type CheckerConfig struct {
 	IntervalMs           int
 }
 
+// Capabilities reports which optional checker entry points are
+// implemented (i.e. don't return ErrNotImplemented).
+type Capabilities struct {
+	QueryOnlineStreamers          bool
+	QueryFixedListOnlineStreamers bool
+	QueryFixedListStatuses        bool
+	QueryStatus                   bool
+}
+
+// UsesFixedListOnline picks the online-poll request type, preferring
+// QueryOnlineStreamers when both are set; panics if neither is set.
+func (c Capabilities) UsesFixedListOnline() bool {
+	if c.QueryOnlineStreamers {
+		return false
+	}
+	if c.QueryFixedListOnlineStreamers {
+		return true
+	}
+	panic("checker capabilities: at least one of QueryOnlineStreamers / QueryFixedListOnlineStreamers must be true")
+}
+
 // Checker is the interface for a checker for specific site
 type Checker interface {
-	CheckStatusSingle(nickname string) (StatusKind, error)
+	QueryStatus(nickname string) (StatusKind, error)
 	QueryOnlineStreamers() (map[string]StreamerInfo, error)
 	QueryFixedListOnlineStreamers(streamers []string, checkMode CheckMode) (map[string]StreamerInfo, error)
 	QueryFixedListStatuses(streamers []string, checkMode CheckMode) (map[string]StreamerInfoWithStatus, error)
+	Capabilities() Capabilities
 	Init(config CheckerConfig)
 	PushStatusRequest(request StatusRequest) error
-	UsesFixedList() bool
 	StatusRequestsQueue() chan StatusRequest
 	RequestInterval() time.Duration
 	Debug() bool
@@ -325,13 +355,7 @@ func StartCheckerDaemon(checker Checker) {
 				req.ResultsCh <- NewFixedListOnlineResults(req.Streamers, filtered, elapsed)
 			case *FixedListStatusRequest:
 				streamers, err := checker.QueryFixedListStatuses(setToSlice(req.Streamers), CheckStatuses)
-				if errors.Is(err, ErrNotImplemented) {
-					// Checker does not support status queries — deny all as unknown
-					streamers = make(map[string]StreamerInfoWithStatus, len(req.Streamers))
-					for nickname := range req.Streamers {
-						streamers[nickname] = StreamerInfoWithStatus{Status: StatusUnknown}
-					}
-				} else if err != nil {
+				if err != nil {
 					Lerr("%v", err)
 					req.ResultsCh <- NewExistenceListResultsFailed()
 					continue
@@ -348,6 +372,20 @@ func StartCheckerDaemon(checker Checker) {
 					Ldbg("got statuses: %d", len(streamers))
 				}
 				req.ResultsCh <- NewExistenceListResults(filtered, elapsed)
+			case *SingleStatusRequest:
+				status, err := checker.QueryStatus(req.Streamer)
+				if err != nil {
+					Lerr("%v", err)
+					status = StatusUnknown
+				}
+				elapsed := time.Since(start)
+				if checker.Debug() {
+					Ldbg("got status: %s = %s", req.Streamer, status)
+				}
+				req.ResultsCh <- NewExistenceListResults(
+					map[string]StreamerInfoWithStatus{req.Streamer: {Status: status}},
+					elapsed,
+				)
 			}
 			time.Sleep(checker.RequestInterval())
 		}

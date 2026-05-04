@@ -125,8 +125,8 @@ func streamateShowKind(m performerResponse) cmdlib.ShowKind {
 	return cmdlib.ShowUnknown
 }
 
-// CheckStatusSingle checks Streamate model status
-func (c *StreamateChecker) CheckStatusSingle(modelID string) (cmdlib.StatusKind, error) {
+// QueryStatus checks Streamate model status
+func (c *StreamateChecker) QueryStatus(modelID string) (cmdlib.StatusKind, error) {
 	client := c.ClientsLoop.NextClient()
 	reqData := streamateRequest{
 		Options: optionsRequest{MaxResults: 1},
@@ -265,5 +265,12 @@ func (c *StreamateChecker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckM
 	return nil, cmdlib.ErrNotImplemented
 }
 
-// UsesFixedList returns false for online list checkers
-func (c *StreamateChecker) UsesFixedList() bool { return false }
+// Capabilities reports the status surfaces Streamate implements.
+func (*StreamateChecker) Capabilities() cmdlib.Capabilities {
+	return cmdlib.Capabilities{
+		QueryOnlineStreamers:          true,
+		QueryFixedListOnlineStreamers: false,
+		QueryFixedListStatuses:        false,
+		QueryStatus:                   true,
+	}
+}

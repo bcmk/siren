@@ -56,6 +56,8 @@
   (e.g., `@uid = %d`, `head = %s`), not `key=%s`.
 - Wrap documentation and comments at 80 characters max,
   prefer breaking at full stops over commas over natural pauses over spaces
+- Prefer short comments: one line is the default.
+  Add more lines only when required to understand the code.
 - Keep lines no longer than 120 characters
 - Never hardcode user-facing strings — always use
   the translation system (`res/translations/`)

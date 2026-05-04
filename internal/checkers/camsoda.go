@@ -40,8 +40,8 @@ func camSodaShowKind(status string) cmdlib.ShowKind {
 	return cmdlib.ShowUnknown
 }
 
-// CheckStatusSingle checks CamSoda model status
-func (c *CamSodaChecker) CheckStatusSingle(modelID string) (cmdlib.StatusKind, error) {
+// QueryStatus checks CamSoda model status
+func (c *CamSodaChecker) QueryStatus(modelID string) (cmdlib.StatusKind, error) {
 	code := c.QueryStatusCode(fmt.Sprintf("https://www.camsoda.com/%s", modelID))
 	switch code {
 	case 200:
@@ -96,8 +96,15 @@ func (c *CamSodaChecker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckMod
 	return nil, cmdlib.ErrNotImplemented
 }
 
-// UsesFixedList returns false for online list checkers
-func (c *CamSodaChecker) UsesFixedList() bool { return false }
-
 // SubjectSupported returns true for CamSoda
 func (c *CamSodaChecker) SubjectSupported() bool { return true }
+
+// Capabilities reports the status surfaces CamSoda implements.
+func (*CamSodaChecker) Capabilities() cmdlib.Capabilities {
+	return cmdlib.Capabilities{
+		QueryOnlineStreamers:          true,
+		QueryFixedListOnlineStreamers: false,
+		QueryFixedListStatuses:        false,
+		QueryStatus:                   true,
+	}
+}

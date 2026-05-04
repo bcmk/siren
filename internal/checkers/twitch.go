@@ -30,8 +30,8 @@ func (c *TwitchChecker) NicknameRegexp() *regexp.Regexp {
 	return TwitchChannelIDRegexp
 }
 
-// CheckStatusSingle checks Twitch channel status
-func (c *TwitchChecker) CheckStatusSingle(channelID string) (cmdlib.StatusKind, error) {
+// QueryStatus checks Twitch channel status
+func (c *TwitchChecker) QueryStatus(channelID string) (cmdlib.StatusKind, error) {
 	client := c.ClientsLoop.NextClient()
 	helixClient, err := helix.NewClient(&helix.Options{
 		ClientID:     string(c.SpecificConfig["client_id"]),
@@ -240,8 +240,15 @@ func requestAppAccessToken(helixClient *helix.Client) (*helix.AppAccessTokenResp
 	return accessResponse, nil
 }
 
-// UsesFixedList returns true for fixed list checkers
-func (c *TwitchChecker) UsesFixedList() bool { return true }
-
 // SubjectSupported returns true for Twitch
 func (c *TwitchChecker) SubjectSupported() bool { return true }
+
+// Capabilities reports the status surfaces Twitch implements.
+func (*TwitchChecker) Capabilities() cmdlib.Capabilities {
+	return cmdlib.Capabilities{
+		QueryOnlineStreamers:          false,
+		QueryFixedListOnlineStreamers: true,
+		QueryFixedListStatuses:        true,
+		QueryStatus:                   true,
+	}
+}

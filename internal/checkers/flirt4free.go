@@ -37,8 +37,8 @@ type flirt4FreeOnlineResponse struct {
 	Trans map[int]flirt4FreeOnlineModel
 }
 
-// CheckStatusSingle checks Flirt4Free model status
-func (c *Flirt4FreeChecker) CheckStatusSingle(modelID string) (cmdlib.StatusKind, error) {
+// QueryStatus checks Flirt4Free model status
+func (c *Flirt4FreeChecker) QueryStatus(modelID string) (cmdlib.StatusKind, error) {
 	addr, resp := c.DoGetRequest(fmt.Sprintf("https://ws.vs3.com/rooms/check-model-status.php?model_name=%s", modelID))
 	if resp == nil {
 		return cmdlib.StatusUnknown, nil
@@ -161,5 +161,12 @@ func (c *Flirt4FreeChecker) QueryFixedListOnlineStreamers([]string, cmdlib.Check
 	return nil, cmdlib.ErrNotImplemented
 }
 
-// UsesFixedList returns false for online list checkers
-func (c *Flirt4FreeChecker) UsesFixedList() bool { return false }
+// Capabilities reports the status surfaces Flirt4Free implements.
+func (*Flirt4FreeChecker) Capabilities() cmdlib.Capabilities {
+	return cmdlib.Capabilities{
+		QueryOnlineStreamers:          true,
+		QueryFixedListOnlineStreamers: false,
+		QueryFixedListStatuses:        false,
+		QueryStatus:                   true,
+	}
+}

@@ -731,7 +731,7 @@ func (w *worker) addStreamer(endpoint string, chatID int64, nickname string, now
 			ChatID: chatID,
 			Text:   text,
 		}
-		if chatID > 0 && !w.checker.UsesFixedList() {
+		if chatID > 0 && !w.checker.Capabilities().UsesFixedListOnline() {
 			params.ReplyMarkup = &models.InlineKeyboardMarkup{
 				InlineKeyboard: [][]models.InlineKeyboardButton{{
 					{
@@ -773,6 +773,11 @@ func (w *worker) addStreamer(endpoint string, chatID int64, nickname string, now
 	}
 	streamer := w.db.MaybeStreamer(nickname)
 	if streamer == nil {
+		caps := w.checker.Capabilities()
+		if !caps.QueryStatus && !caps.QueryFixedListStatuses {
+			w.sendTr(db.PriorityHigh, endpoint, chatID, false, w.tr[endpoint].AddError, tplData{"streamer": nickname}, db.ReplyPacket)
+			return nil
+		}
 		w.db.AddPendingSubscription(chatID, nickname, endpoint, referral)
 		w.sendTr(db.PriorityHigh, endpoint, chatID, false, w.tr[endpoint].CheckingStreamer, nil, db.ReplyPacket)
 		return nil
@@ -1642,7 +1647,7 @@ func (w *worker) periodic() {
 
 func (w *worker) pushOnlineRequest() {
 	var request cmdlib.StatusRequest
-	if w.checker.UsesFixedList() {
+	if w.checker.Capabilities().UsesFixedListOnline() {
 		request = &cmdlib.FixedListOnlineRequest{
 			ResultsCh: w.checkerResults,
 			Streamers: w.db.SubscribedStreamers(),
@@ -1658,14 +1663,32 @@ func (w *worker) pushOnlineRequest() {
 }
 
 func (w *worker) pushExistenceRequest(streamers map[string]bool) error {
-	err := w.checker.PushStatusRequest(&cmdlib.FixedListStatusRequest{
-		ResultsCh: w.existenceListResults,
-		Streamers: streamers,
-	})
-	if err != nil {
-		lerr("%v", err)
+	caps := w.checker.Capabilities()
+	switch {
+	case caps.QueryFixedListStatuses:
+		err := w.checker.PushStatusRequest(&cmdlib.FixedListStatusRequest{
+			ResultsCh: w.existenceListResults,
+			Streamers: streamers,
+		})
+		if err != nil {
+			lerr("%v", err)
+		}
+		return err
+	case caps.QueryStatus:
+		for name := range streamers {
+			err := w.checker.PushStatusRequest(&cmdlib.SingleStatusRequest{
+				ResultsCh: w.existenceListResults,
+				Streamer:  name,
+			})
+			if err != nil {
+				lerr("%v", err)
+				return err
+			}
+		}
+		return nil
 	}
-	return err
+	lerr("pushExistenceRequest called with no status capability")
+	return nil
 }
 
 type processingResult struct {
@@ -2038,6 +2061,10 @@ func (w *worker) fuzzySearchDaemon() {
 }
 
 func (w *worker) queryUnconfirmedSubs() {
+	caps := w.checker.Capabilities()
+	if !caps.QueryStatus && !caps.QueryFixedListStatuses {
+		return
+	}
 	unconfirmed := map[string]bool{}
 	var nickname string
 	w.db.MustQuery("select nickname from pending_subscriptions where not checking", nil, db.ScanTo{&nickname}, func() { unconfirmed[nickname] = true })
@@ -2053,11 +2080,19 @@ func (w *worker) queryUnconfirmedSubs() {
 func (w *worker) processSubsConfirmations(res *cmdlib.ExistenceListResults) {
 	streamersNumber := len(res.Streamers)
 	ldbg("processing subscription confirmations for %d streamers", streamersNumber)
+	nicknames := make([]string, 0, len(res.Streamers))
+	for n := range res.Streamers {
+		nicknames = append(nicknames, n)
+	}
 	confirmationsInWork := map[string][]db.PendingSubscription{}
 	var iter db.PendingSubscription
 	w.db.MustQuery(
-		"select endpoint, nickname, chat_id, referral from pending_subscriptions where checking",
-		nil,
+		`
+			select endpoint, nickname, chat_id, referral
+			from pending_subscriptions
+			where checking and nickname = any($1)
+		`,
+		db.QueryParams{nicknames},
 		db.ScanTo{&iter.Endpoint, &iter.Nickname, &iter.ChatID, &iter.Referral},
 		func() { confirmationsInWork[iter.Nickname] = append(confirmationsInWork[iter.Nickname], iter) })
 	var nots []db.Notification
@@ -2214,7 +2249,7 @@ func main() {
 		Headers:              w.cfg.Headers,
 		Dbg:                  w.cfg.Debug,
 		SpecificConfig:       w.cfg.SpecificConfig,
-		QueueSize:            5,
+		QueueSize:            1000,
 		IntervalMs:           w.cfg.IntervalMs,
 	})
 	cmdlib.StartCheckerDaemon(w.checker)
