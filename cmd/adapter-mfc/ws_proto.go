@@ -134,32 +134,48 @@ func (e *frameWalkError) Error() string {
 }
 
 // walkFrames extracts each length-prefixed FCS frame from data and invokes
-// visit on it. It stops early when visit returns true. On parser desync
-// within a single websocket message — a truncated/junk length prefix
-// mid-stream, a malformed frame body, or stray bytes after the last
-// frame — it returns a *frameWalkError carrying the failure offset and
-// frame index so the caller can dump a targeted diagnostic window. The
-// caller should end the session and reconnect for a fresh stream.
-func walkFrames(data []byte, visit func(f frame) (stop bool)) error {
+// visit on it. It stops early when visit returns true. The websocket
+// transport sometimes flushes a message mid-frame (MFC caps writes around
+// 22 KiB regardless of FCS frame alignment), so the parser distinguishes
+// two outcomes:
+//
+//   - Clean partial frame: a valid 6-digit prefix that promises more body
+//     than is present, or fewer than 6 trailing bytes after the last
+//     complete frame. Returns (consumed, nil) where consumed is the
+//     offset of the incomplete frame's start. The caller should buffer
+//     data[consumed:] and prepend it to the next websocket read.
+//
+//   - Desync: a junk prefix (non-numeric or negative) or a malformed frame
+//     body. Returns a *frameWalkError; the caller should end the session
+//     and reconnect for a fresh stream.
+//
+// On a clean visit-stop or full consumption the returned error is nil and
+// consumed equals len(data) up to the last complete frame.
+func walkFrames(data []byte, visit func(f frame) (stop bool)) (consumed int, err error) {
 	origLen := len(data)
 	framesWalked := 0
 	for len(data) >= mfcFrameLenDigits {
 		offset := origLen - len(data)
 		bodyLen, atoErr := strconv.Atoi(string(data[:mfcFrameLenDigits]))
-		if atoErr != nil || bodyLen < 0 ||
-			bodyLen > len(data)-mfcFrameLenDigits {
-			return &frameWalkError{
+		if atoErr != nil || bodyLen < 0 {
+			return offset, &frameWalkError{
 				failFrame:  framesWalked,
 				failOffset: offset,
 				origLen:    origLen,
-				kind:       "truncated or invalid frame prefix",
+				kind:       "invalid frame prefix",
 			}
+		}
+		if bodyLen > len(data)-mfcFrameLenDigits {
+			// Valid prefix but the body extends past the buffer end:
+			// the websocket message ended mid-frame. Caller buffers
+			// the partial frame and reads more.
+			return offset, nil
 		}
 		body := data[mfcFrameLenDigits : mfcFrameLenDigits+bodyLen]
 		data = data[mfcFrameLenDigits+bodyLen:]
 		f, ok := parseFrame(body)
 		if !ok {
-			return &frameWalkError{
+			return offset, &frameWalkError{
 				failFrame:  framesWalked,
 				failOffset: offset,
 				origLen:    origLen,
@@ -167,20 +183,14 @@ func walkFrames(data []byte, visit func(f frame) (stop bool)) error {
 			}
 		}
 		if visit(f) {
-			return nil
+			return origLen - len(data), nil
 		}
 		framesWalked++
 	}
-	if len(data) != 0 {
-		offset := origLen - len(data)
-		return &frameWalkError{
-			failFrame:  framesWalked,
-			failOffset: offset,
-			origLen:    origLen,
-			kind:       "trailing bytes after last frame",
-		}
-	}
-	return nil
+	// 0 ≤ len(data) < mfcFrameLenDigits: a partial prefix at the tail.
+	// Treat as an incomplete frame for the caller to buffer; if data is
+	// empty, consumed == origLen and the caller has nothing to carry.
+	return origLen - len(data), nil
 }
 
 // mfcMessage is one typed application-level FCS message decoded from a frame.

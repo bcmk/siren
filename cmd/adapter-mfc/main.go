@@ -22,6 +22,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -586,12 +587,19 @@ func runWebsocketSession(
 		closeAndLog(conn, status, "", "session close")
 	}()
 
+	// MFC's server flushes websocket text messages on a fixed-size
+	// boundary (~22 KiB) without regard for FCS frame alignment, so a
+	// frame occasionally straddles two messages. Accumulate reads in
+	// buf and discard the consumed prefix after each parse so the
+	// partial tail rolls into the next read.
+	var buf bytes.Buffer
 	return runFrameLoop(connCtx, conn, cfg.WSIdleTimeout, func(data []byte) (bool, error) {
+		buf.Write(data)
 		var (
 			stopErr error
 			stopOK  bool
 		)
-		walkErr := walkFrames(data, func(f frame) bool {
+		consumed, walkErr := walkFrames(buf.Bytes(), func(f frame) bool {
 			stop, err := handle(connCtx, sess, f)
 			if err != nil {
 				stopErr = err
@@ -619,12 +627,18 @@ func runWebsocketSession(
 			var fwe *frameWalkError
 			if errors.As(walkErr, &fwe) {
 				cmdlib.Lerr("frame walk failed: %v; near fail = %s",
-					walkErr, dumpBytes(failWindow(data, fwe.failOffset)))
+					walkErr, dumpBytes(failWindow(buf.Bytes(), fwe.failOffset)))
 			} else {
 				cmdlib.Lerr("frame walk failed: %v", walkErr)
 			}
 			return false, walkErr
 		}
+		if consumed < buf.Len() {
+			carry := buf.Len() - consumed
+			n := snap.lifetimeIncompleteFrames.Add(1)
+			cmdlib.Ldbg("incomplete frame: %d bytes carried over (lifetime = %d)", carry, n)
+		}
+		buf.Next(consumed)
 		if stopOK {
 			return true, nil
 		}

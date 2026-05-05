@@ -50,6 +50,7 @@ type snapshot struct {
 	bulkApplied                  bool
 	lifetimeDisconnects          atomic.Int32
 	lifetimeServerConfigFailures atomic.Int32
+	lifetimeIncompleteFrames     atomic.Int32
 	// currentSession is the live wsSession, set by runWebsocketSession on
 	// dial and cleared on teardown. Nil between sessions; HTTP handlers
 	// that need to drive outbound websocket requests (e.g. /status)
@@ -383,9 +384,10 @@ func (s *snapshot) countsLineLocked() string {
 			pending++
 		}
 	}
-	return fmt.Sprintf("snapshot: online = %d, name cache = %d, pending lookups = %d, disconnects = %d, server config failures = %d",
+	return fmt.Sprintf("snapshot: online = %d, name cache = %d, pending lookups = %d, disconnects = %d, server config failures = %d, incomplete frames = %d",
 		len(s.online), len(s.nameCache), pending,
-		s.lifetimeDisconnects.Load(), s.lifetimeServerConfigFailures.Load())
+		s.lifetimeDisconnects.Load(), s.lifetimeServerConfigFailures.Load(),
+		s.lifetimeIncompleteFrames.Load())
 }
 
 // logCounts emits a snapshot-counts line at debug level. Called after each
