@@ -12,7 +12,8 @@
 //     when no bulk has been applied yet, the body has failed=true so the
 //     caller distinguishes daemon-level failure from transport failure (5xx).
 //   - GET /status?name=<name> — backs the bot's QueryStatus for MFC.
-//     Returns {"status": <int>} using cmdlib.StatusKind. See handleStatus.
+//     Returns a cmdlib.StreamerInfoWithStatus JSON document; only the
+//     status field is populated for MFC. See handleStatus.
 //   - GET /healthz  — liveness probe; always 200 "ok" while the process is
 //     responsive. Readiness is signalled by /online's failed flag.
 //   - GET /version  — the build's cmdlib.Version string.
@@ -236,13 +237,6 @@ func buildMux(snap *snapshot) http.Handler {
 	return mux
 }
 
-// statusResult is the JSON body of /status. The Status field carries a
-// cmdlib.StatusKind value so the bot's OnlineListAdapter.QueryStatus
-// can decode without translation.
-type statusResult struct {
-	Status cmdlib.StatusKind `json:"status"`
-}
-
 // handleStatus answers GET /status?name=<name> by sending an
 // FCTYPE.USERNAMELOOKUP on the live websocket and mapping the reply to a
 // cmdlib.StatusKind: Online when the reply has a uid and vs != 127,
@@ -284,7 +278,7 @@ func handleStatus(snap *snapshot) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(statusResult{Status: mfcLookupStatus(reply, name)})
+		_ = json.NewEncoder(w).Encode(cmdlib.StreamerInfoWithStatus{Status: mfcLookupStatus(reply, name)})
 	}
 }
 

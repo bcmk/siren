@@ -43,20 +43,20 @@ type chaturbateResponse struct {
 }
 
 // QueryStatus checks Chaturbate model status
-func (c *ChaturbateChecker) QueryStatus(modelID string) (cmdlib.StatusKind, error) {
+func (c *ChaturbateChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
 	addr, resp := c.DoGetRequest(fmt.Sprintf("https://chaturbate.com/api/biocontext/%s/?", modelID))
 	if resp == nil {
-		return cmdlib.StatusUnknown, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	defer cmdlib.CloseBody(resp.Body)
 	if resp.StatusCode == 404 {
-		return cmdlib.StatusNotFound, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusNotFound}, nil
 	}
 	buf := bytes.Buffer{}
 	_, err := buf.ReadFrom(resp.Body)
 	if err != nil {
 		cmdlib.Lerr("[%v] cannot read response for model %s, %v", addr, modelID, err)
-		return cmdlib.StatusUnknown, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	parsed := &chaturbateResponse{}
@@ -66,12 +66,12 @@ func (c *ChaturbateChecker) QueryStatus(modelID string) (cmdlib.StatusKind, erro
 		if c.Dbg {
 			cmdlib.Ldbg("response: %s", buf.String())
 		}
-		return cmdlib.StatusUnknown, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	if parsed.Status != nil {
-		return chaturbateStatus(parsed.Code), nil
+		return cmdlib.StreamerInfoWithStatus{Status: chaturbateStatus(parsed.Code)}, nil
 	}
-	return chaturbateRoomStatus(parsed.RoomStatus), nil
+	return cmdlib.StreamerInfoWithStatus{Status: chaturbateRoomStatus(parsed.RoomStatus)}, nil
 }
 
 func chaturbateStatus(status string) cmdlib.StatusKind {

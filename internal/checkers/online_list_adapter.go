@@ -115,32 +115,30 @@ func (c *OnlineListAdapter) QueryOnlineStreamers() (
 }
 
 // QueryStatus queries the daemon's /status?name=<nickname> route and
-// returns the StatusKind it reports. Per checker convention any transport
-// or parse failure is logged and surfaced as StatusUnknown rather than an
-// error so the bot's status loop keeps running.
-func (c *OnlineListAdapter) QueryStatus(nickname string) (cmdlib.StatusKind, error) {
+// returns the StreamerInfoWithStatus it reports. Per checker convention
+// any transport or parse failure is logged and surfaced as StatusUnknown
+// rather than an error so the bot's status loop keeps running.
+func (c *OnlineListAdapter) QueryStatus(nickname string) (cmdlib.StreamerInfoWithStatus, error) {
 	client := c.ClientsLoop.NextClient()
 	endpoint := c.OnlineURL + "/status?name=" + url.QueryEscape(nickname)
 	resp, buf, err := cmdlib.OnlineQuery(endpoint, client, c.Headers)
 	if err != nil {
 		cmdlib.Lerr("[%v] cannot query %s, %v", client.Addr, endpoint, err)
-		return cmdlib.StatusUnknown, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	if resp.StatusCode != 200 {
 		cmdlib.Lerr("[%v] %s returned %d", client.Addr, endpoint, resp.StatusCode)
-		return cmdlib.StatusUnknown, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
-	var result struct {
-		Status cmdlib.StatusKind `json:"status"`
-	}
+	var result cmdlib.StreamerInfoWithStatus
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
 		cmdlib.Lerr("[%v] cannot parse %s response, %v", client.Addr, endpoint, err)
 		if c.Dbg {
 			cmdlib.Ldbg("response: %s", buf.String())
 		}
-		return cmdlib.StatusUnknown, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
-	return result.Status, nil
+	return result, nil
 }
 
 // QueryFixedListOnlineStreamers is not implemented for online-list adapters.

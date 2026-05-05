@@ -14,6 +14,23 @@ import (
 	"github.com/bcmk/siren/v2/lib/cmdlib"
 )
 
+type headerFlag [][2]string
+
+func (h *headerFlag) String() string { return "" }
+
+func (h *headerFlag) Set(s string) error {
+	i := strings.Index(s, ":")
+	if i < 0 {
+		return fmt.Errorf("expected Name: Value, got %q", s)
+	}
+	name := strings.TrimSpace(s[:i])
+	if name == "" {
+		return fmt.Errorf("empty header name in %q", s)
+	}
+	*h = append(*h, [2]string{name, strings.TrimSpace(s[i+1:])})
+	return nil
+}
+
 var verbose = flag.Bool("v", false, "verbose output")
 var timeout = flag.Int("t", 10, "timeout in seconds")
 var address = flag.String("a", "", "source IP address")
@@ -22,6 +39,11 @@ var clientID = flag.String("id", "", "Twitch/Kick client id")
 var secret = flag.String("secret", "", "Twitch/Kick client secret")
 var psID = flag.String("ps_id", "", "LiveJasmin ps_id")
 var accessKey = flag.String("access_key", "", "LiveJasmin access_key")
+var headers headerFlag
+
+func init() {
+	flag.Var(&headers, "H", "extra HTTP header (Name: Value), repeatable")
+}
 
 var sites = map[string]cmdlib.Checker{
 	"bongacams":  &checkers.BongaCamsChecker{},
@@ -65,7 +87,8 @@ func main() {
 		Clients: []*cmdlib.Client{
 			cmdlib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies),
 		},
-		Dbg: *verbose,
+		Headers: headers,
+		Dbg:     *verbose,
 	}
 
 	switch site {
@@ -103,7 +126,7 @@ func main() {
 		fmt.Println("invalid model ID")
 		return
 	}
-	status, err := checker.QueryStatus(modelID)
+	info, err := checker.QueryStatus(modelID)
 	if errors.Is(err, cmdlib.ErrNotImplemented) {
 		fmt.Fprintf(os.Stderr, "single check is not supported for %s\n", site)
 		os.Exit(1)
@@ -112,5 +135,17 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println(status)
+	fmt.Println(info.Status)
+	if info.ImageURL != "" {
+		fmt.Println(info.ImageURL)
+	}
+	if info.ShowKind != cmdlib.ShowUnknown {
+		fmt.Printf("show: %s\n", info.ShowKind)
+	}
+	if info.Viewers != nil {
+		fmt.Printf("viewers: %d\n", *info.Viewers)
+	}
+	if info.Subject != "" {
+		fmt.Printf("subject: %s\n", info.Subject)
+	}
 }

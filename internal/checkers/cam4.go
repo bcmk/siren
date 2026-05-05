@@ -48,21 +48,21 @@ type cam4Response struct {
 }
 
 // QueryStatus checks CAM4 model status
-func (c *Cam4Checker) QueryStatus(modelID string) (cmdlib.StatusKind, error) {
+func (c *Cam4Checker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
 	url := fmt.Sprintf("https://www.cam4.com/rest/v1.0/profile/%s/info", modelID)
 	addr, resp := c.DoGetRequest(url)
 	if resp == nil {
-		return cmdlib.StatusUnknown, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	defer cmdlib.CloseBody(resp.Body)
 	if resp.StatusCode == 404 {
-		return cmdlib.StatusNotFound, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusNotFound}, nil
 	}
 	buf := bytes.Buffer{}
 	_, err := buf.ReadFrom(resp.Body)
 	if err != nil {
 		cmdlib.Lerr("[%v] cannot read response for model %s, %v", addr, modelID, err)
-		return cmdlib.StatusUnknown, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	parsed := &cam4Response{}
@@ -72,12 +72,12 @@ func (c *Cam4Checker) QueryStatus(modelID string) (cmdlib.StatusKind, error) {
 		if c.Dbg {
 			cmdlib.Ldbg("response: %s", buf.String())
 		}
-		return cmdlib.StatusUnknown, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	if parsed.Online {
-		return cmdlib.StatusOnline, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOnline}, nil
 	}
-	return cmdlib.StatusOffline, nil
+	return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOffline}, nil
 }
 
 func cam4ShowKind(showType string) cmdlib.ShowKind {

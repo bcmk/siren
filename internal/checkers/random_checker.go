@@ -13,8 +13,8 @@ type RandomChecker struct{ cmdlib.CheckerCommon }
 var _ cmdlib.Checker = &RandomChecker{}
 
 // QueryStatus mimics checker
-func (c *RandomChecker) QueryStatus(_ string) (cmdlib.StatusKind, error) {
-	return cmdlib.StatusOnline, nil
+func (c *RandomChecker) QueryStatus(_ string) (cmdlib.StreamerInfoWithStatus, error) {
+	return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOnline}, nil
 }
 
 //goland:noinspection SpellCheckingInspection

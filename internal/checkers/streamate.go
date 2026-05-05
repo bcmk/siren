@@ -126,7 +126,7 @@ func streamateShowKind(m performerResponse) cmdlib.ShowKind {
 }
 
 // QueryStatus checks Streamate model status
-func (c *StreamateChecker) QueryStatus(modelID string) (cmdlib.StatusKind, error) {
+func (c *StreamateChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
 	client := c.ClientsLoop.NextClient()
 	reqData := streamateRequest{
 		Options: optionsRequest{MaxResults: 1},
@@ -151,20 +151,20 @@ func (c *StreamateChecker) QueryStatus(modelID string) (cmdlib.StatusKind, error
 	resp, err := client.Client.Do(req)
 	if err != nil {
 		cmdlib.Lerr("[%v] cannot send a query, %v", client.Addr, err)
-		return cmdlib.StatusUnknown, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	defer cmdlib.CloseBody(resp.Body)
 	if c.Dbg {
 		cmdlib.Ldbg("[%v] query status for %s: %d", client.Addr, modelID, resp.StatusCode)
 	}
 	if resp.StatusCode == 404 {
-		return cmdlib.StatusNotFound, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusNotFound}, nil
 	}
 	buf := bytes.Buffer{}
 	_, err = buf.ReadFrom(resp.Body)
 	if err != nil {
 		cmdlib.Lerr("[%v] cannot read response for model %s, %v", client.Addr, modelID, err)
-		return cmdlib.StatusUnknown, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	decoder := xml.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	parsed := &streamateResponse{}
@@ -174,18 +174,18 @@ func (c *StreamateChecker) QueryStatus(modelID string) (cmdlib.StatusKind, error
 	}
 	if err != nil {
 		cmdlib.Lerr("[%v] cannot parse response for model %s, %v", client.Addr, modelID, err)
-		return cmdlib.StatusUnknown, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	if parsed.AvailablePerformers.ExactMatches != 1 || len(parsed.AvailablePerformers.Performers) != 1 {
-		return cmdlib.StatusNotFound, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusNotFound}, nil
 	}
 	switch parsed.AvailablePerformers.Performers[0].StreamType {
 	case "live":
-		return cmdlib.StatusOnline, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOnline}, nil
 	case "recorded", "offline":
-		return cmdlib.StatusOffline, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOffline}, nil
 	}
-	return cmdlib.StatusUnknown, nil
+	return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 }
 
 // QueryOnlineStreamers returns Streamate online models

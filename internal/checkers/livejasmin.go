@@ -34,28 +34,28 @@ type liveJasminResponse struct {
 }
 
 // QueryStatus checks LiveJasmin model status
-func (c *LiveJasminChecker) QueryStatus(modelID string) (cmdlib.StatusKind, error) {
+func (c *LiveJasminChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
 	psID := string(c.SpecificConfig["ps_id"])
 	accessKey := string(c.SpecificConfig["access_key"])
 	url := fmt.Sprintf("https://pt.potawe.com/api/model/status?performerId=%s&psId=%s&accessKey=%s&legacyRedirect=1", modelID, psID, accessKey)
 	addr, resp := c.DoGetRequest(url)
 	if resp == nil {
-		return cmdlib.StatusUnknown, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	defer cmdlib.CloseBody(resp.Body)
 	switch resp.StatusCode {
 	case 401:
-		return cmdlib.StatusDenied, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusDenied}, nil
 	case 404:
-		return cmdlib.StatusNotFound, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusNotFound}, nil
 	}
 	buf := bytes.Buffer{}
 	_, err := buf.ReadFrom(resp.Body)
 	if err != nil {
 		cmdlib.Lerr("[%v] cannot read response for model %s, %v", addr, modelID, err)
-		return cmdlib.StatusUnknown, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
-	return liveJasminStatus(buf.String()), nil
+	return cmdlib.StreamerInfoWithStatus{Status: liveJasminStatus(buf.String())}, nil
 }
 
 func liveJasminStatus(roomStatus string) cmdlib.StatusKind {

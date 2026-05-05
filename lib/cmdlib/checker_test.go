@@ -9,6 +9,7 @@ import (
 type TestChecker struct {
 	CheckerCommon
 	status StatusKind
+	info   StreamerInfo
 	online map[string]bool //nolint:structcheck
 	err    error           //nolint:structcheck
 }
@@ -19,8 +20,8 @@ type testOnlineListChecker struct {
 
 var queueSize = 1000
 
-func (c *TestChecker) QueryStatus(string) (StatusKind, error) {
-	return c.status, nil
+func (c *TestChecker) QueryStatus(string) (StreamerInfoWithStatus, error) {
+	return StreamerInfoWithStatus{StreamerInfo: c.info, Status: c.status}, nil
 }
 
 func (*TestChecker) Capabilities() Capabilities {
@@ -93,6 +94,51 @@ func TestOnlineListCheckerHandlesFixedList(t *testing.T) {
 	// b was online but not queried, should not be in the results
 	if _, ok := result.Streamers["b"]; ok {
 		t.Error("expected b to not be in streamers (not queried)")
+	}
+}
+
+func TestSingleStatusRequestPropagatesInfo(t *testing.T) {
+	checker := &testOnlineListChecker{}
+	checker.Init(CheckerConfig{UsersOnlineEndpoints: []string{""}, QueueSize: queueSize})
+	viewers := 42
+	checker.info = StreamerInfo{
+		ImageURL: "https://example/img.jpg",
+		Viewers:  &viewers,
+		ShowKind: ShowGroup,
+		Subject:  "subject",
+	}
+	checker.status = StatusOnline
+	resultsCh := make(chan *ExistenceListResults, 1)
+	StartCheckerDaemon(checker)
+
+	if err := checker.PushStatusRequest(&SingleStatusRequest{
+		Streamer:  "alice",
+		ResultsCh: resultsCh,
+	}); err != nil {
+		t.Fatalf("cannot push request, %v", err)
+	}
+	result := <-resultsCh
+	if result.Failed() {
+		t.Fatal("unexpected failure")
+	}
+	got, ok := result.Streamers["alice"]
+	if !ok {
+		t.Fatal("alice missing from results")
+	}
+	if got.Status != StatusOnline {
+		t.Errorf("status: got %v, want %v", got.Status, StatusOnline)
+	}
+	if got.ImageURL != "https://example/img.jpg" {
+		t.Errorf("image_url: got %q", got.ImageURL)
+	}
+	if got.Viewers == nil || *got.Viewers != 42 {
+		t.Errorf("viewers: got %v", got.Viewers)
+	}
+	if got.ShowKind != ShowGroup {
+		t.Errorf("show_kind: got %v", got.ShowKind)
+	}
+	if got.Subject != "subject" {
+		t.Errorf("subject: got %q", got.Subject)
 	}
 }
 

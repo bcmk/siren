@@ -107,25 +107,34 @@ func (c *KickChecker) queryChannels(
 }
 
 // QueryStatus checks Kick channel status
-func (c *KickChecker) QueryStatus(channelID string) (cmdlib.StatusKind, error) {
+func (c *KickChecker) QueryStatus(channelID string) (cmdlib.StreamerInfoWithStatus, error) {
 	client := c.ClientsLoop.NextClient()
 	token, err := c.requestAccessToken(client.Client)
 	if err != nil {
 		cmdlib.Lerr("%v", err)
-		return cmdlib.StatusUnknown, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	channels, err := c.queryChannels(client.Client, token, []string{channelID})
 	if err != nil {
 		cmdlib.Lerr("%v", err)
-		return cmdlib.StatusUnknown, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	if len(channels) == 0 {
-		return cmdlib.StatusNotFound, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusNotFound}, nil
 	}
-	if channels[0].Stream != nil && channels[0].Stream.IsLive {
-		return cmdlib.StatusOnline, nil
+	ch := channels[0]
+	if ch.Stream != nil && ch.Stream.IsLive {
+		viewers := ch.Stream.ViewerCount
+		return cmdlib.StreamerInfoWithStatus{
+			StreamerInfo: cmdlib.StreamerInfo{
+				ImageURL: ch.Stream.Thumbnail,
+				Viewers:  &viewers,
+				Subject:  ch.StreamTitle,
+			},
+			Status: cmdlib.StatusOnline,
+		}, nil
 	}
-	return cmdlib.StatusOffline, nil
+	return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOffline}, nil
 }
 
 // QueryOnlineStreamers returns all online Kick channels

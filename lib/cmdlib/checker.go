@@ -3,6 +3,7 @@ package cmdlib
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"regexp"
@@ -180,18 +181,40 @@ const (
 	ShowAway ShowKind = 6
 )
 
-// StreamerInfo contains image URL for a streamer
+// String returns the symbolic name of the show kind.
+func (s ShowKind) String() string {
+	switch s {
+	case ShowUnknown:
+		return "unknown"
+	case ShowPublic:
+		return "public"
+	case ShowGroup:
+		return "group"
+	case ShowTicket:
+		return "ticket"
+	case ShowHidden:
+		return "hidden"
+	case ShowPrivate:
+		return "private"
+	case ShowAway:
+		return "away"
+	}
+	return fmt.Sprintf("ShowKind(%d)", int(s))
+}
+
+// StreamerInfo carries presentation data for a streamer: cover image,
+// viewer count, current show kind, and the room subject when supported.
 type StreamerInfo struct {
-	ImageURL string   `json:"image_url"`
+	ImageURL string   `json:"image_url,omitempty"`
 	Viewers  *int     `json:"viewers,omitempty"`
-	ShowKind ShowKind `json:"show_kind"`
+	ShowKind ShowKind `json:"show_kind,omitempty"`
 	Subject  string   `json:"subject,omitempty"`
 }
 
-// StreamerInfoWithStatus contains status and image URL for a streamer
+// StreamerInfoWithStatus is StreamerInfo plus a StatusKind verdict.
 type StreamerInfoWithStatus struct {
-	Status   StatusKind
-	ImageURL string
+	StreamerInfo
+	Status StatusKind `json:"status"`
 }
 
 // StatusUpdate represents an update of streamer status
@@ -234,7 +257,7 @@ func (c Capabilities) UsesFixedListOnline() bool {
 
 // Checker is the interface for a checker for specific site
 type Checker interface {
-	QueryStatus(nickname string) (StatusKind, error)
+	QueryStatus(nickname string) (StreamerInfoWithStatus, error)
 	QueryOnlineStreamers() (map[string]StreamerInfo, error)
 	QueryFixedListOnlineStreamers(streamers []string, checkMode CheckMode) (map[string]StreamerInfo, error)
 	QueryFixedListStatuses(streamers []string, checkMode CheckMode) (map[string]StreamerInfoWithStatus, error)
@@ -373,17 +396,17 @@ func StartCheckerDaemon(checker Checker) {
 				}
 				req.ResultsCh <- NewExistenceListResults(filtered, elapsed)
 			case *SingleStatusRequest:
-				status, err := checker.QueryStatus(req.Streamer)
+				info, err := checker.QueryStatus(req.Streamer)
 				if err != nil {
 					Lerr("%v", err)
-					status = StatusUnknown
+					info = StreamerInfoWithStatus{Status: StatusUnknown}
 				}
 				elapsed := time.Since(start)
 				if checker.Debug() {
-					Ldbg("got status: %s = %s", req.Streamer, status)
+					Ldbg("got status: %s = %s", req.Streamer, info.Status)
 				}
 				req.ResultsCh <- NewExistenceListResults(
-					map[string]StreamerInfoWithStatus{req.Streamer: {Status: status}},
+					map[string]StreamerInfoWithStatus{req.Streamer: info},
 					elapsed,
 				)
 			}
