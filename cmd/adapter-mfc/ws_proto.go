@@ -114,44 +114,73 @@ func parseFrame(body []byte) (frame, bool) {
 	return f, true
 }
 
+// frameWalkError describes a parser-desync failure inside walkFrames.
+// failFrame is the 0-based index of the frame that failed (equivalently,
+// the count of frames that parsed cleanly before the failure). failOffset
+// is the byte index in the original buffer where parsing failed. origLen
+// is the total buffer size, included so log messages can report the
+// failure relative to the whole batch. kind is a short description of the
+// failure mode.
+type frameWalkError struct {
+	failFrame  int
+	failOffset int
+	origLen    int
+	kind       string
+}
+
+func (e *frameWalkError) Error() string {
+	return fmt.Sprintf("%s at byte %d of %d (frame %d)",
+		e.kind, e.failOffset, e.origLen, e.failFrame)
+}
+
 // walkFrames extracts each length-prefixed FCS frame from data and invokes
-// visit on it. It stops early when visit returns true. Returns the number
-// of frames successfully visited along with a non-nil error when data has
-// trailing bytes that don't form a valid frame — either a truncated/junk
-// length prefix mid-stream or stray bytes after the last frame. Both
-// indicate parser desync within a single websocket message, so the caller
-// should end the session and reconnect for a fresh stream. The error
-// includes the failure offset within the original message so callers can
-// produce a targeted diagnostic dump.
-//
-// A frame body that fails to parse (length prefix valid but content
-// malformed) is logged at debug and skipped: the length prefix tells us
-// where the next frame starts, so recovery is local to that frame.
-func walkFrames(data []byte, visit func(f frame) (stop bool)) (framesWalked int, err error) {
+// visit on it. It stops early when visit returns true. On parser desync
+// within a single websocket message — a truncated/junk length prefix
+// mid-stream, a malformed frame body, or stray bytes after the last
+// frame — it returns a *frameWalkError carrying the failure offset and
+// frame index so the caller can dump a targeted diagnostic window. The
+// caller should end the session and reconnect for a fresh stream.
+func walkFrames(data []byte, visit func(f frame) (stop bool)) error {
 	origLen := len(data)
+	framesWalked := 0
 	for len(data) >= mfcFrameLenDigits {
+		offset := origLen - len(data)
 		bodyLen, atoErr := strconv.Atoi(string(data[:mfcFrameLenDigits]))
 		if atoErr != nil || bodyLen < 0 ||
 			bodyLen > len(data)-mfcFrameLenDigits {
-			return framesWalked, fmt.Errorf("truncated or invalid frame prefix at byte %d of %d",
-				origLen-len(data), origLen)
+			return &frameWalkError{
+				failFrame:  framesWalked,
+				failOffset: offset,
+				origLen:    origLen,
+				kind:       "truncated or invalid frame prefix",
+			}
 		}
 		body := data[mfcFrameLenDigits : mfcFrameLenDigits+bodyLen]
 		data = data[mfcFrameLenDigits+bodyLen:]
 		f, ok := parseFrame(body)
 		if !ok {
-			return framesWalked, fmt.Errorf("malformed frame body, %d bytes", len(body))
+			return &frameWalkError{
+				failFrame:  framesWalked,
+				failOffset: offset,
+				origLen:    origLen,
+				kind:       fmt.Sprintf("malformed frame body, %d bytes", len(body)),
+			}
 		}
 		if visit(f) {
-			return framesWalked + 1, nil
+			return nil
 		}
 		framesWalked++
 	}
 	if len(data) != 0 {
-		return framesWalked, fmt.Errorf("trailing bytes after last frame at byte %d of %d",
-			origLen-len(data), origLen)
+		offset := origLen - len(data)
+		return &frameWalkError{
+			failFrame:  framesWalked,
+			failOffset: offset,
+			origLen:    origLen,
+			kind:       "trailing bytes after last frame",
+		}
 	}
-	return framesWalked, nil
+	return nil
 }
 
 // mfcMessage is one typed application-level FCS message decoded from a frame.

@@ -591,7 +591,7 @@ func runWebsocketSession(
 			stopErr error
 			stopOK  bool
 		)
-		framesWalked, walkErr := walkFrames(data, func(f frame) bool {
+		walkErr := walkFrames(data, func(f frame) bool {
 			stop, err := handle(connCtx, sess, f)
 			if err != nil {
 				stopErr = err
@@ -610,14 +610,19 @@ func runWebsocketSession(
 			return false, stopErr
 		}
 		if walkErr != nil {
-			// Dump the message head so we can tell whether the failure
-			// was a non-FCS payload (head won't start with 6 ASCII
-			// digits), a misalignment from an earlier wrong-length
-			// frame (framesWalked > 0, head looks like normal FCS),
-			// or some new framing variant. %q escapes non-printable
-			// bytes so a single log line stays readable.
-			cmdlib.Lerr("frame walk failed: %v after %d ok frames; head = %s",
-				walkErr, framesWalked, dumpBytes(data))
+			// Dump a window centred on the failure offset: the bytes
+			// just before are the tail of the last good frame, the
+			// bytes just after are the bad prefix and what follows.
+			// Combined with the frame index in walkErr this tells
+			// apart non-FCS payloads from a misalignment caused by
+			// an earlier wrong-length frame.
+			var fwe *frameWalkError
+			if errors.As(walkErr, &fwe) {
+				cmdlib.Lerr("frame walk failed: %v; near fail = %s",
+					walkErr, dumpBytes(failWindow(data, fwe.failOffset)))
+			} else {
+				cmdlib.Lerr("frame walk failed: %v", walkErr)
+			}
 			return false, walkErr
 		}
 		if stopOK {
@@ -790,6 +795,29 @@ func runFrameLoop(
 // dumpHeadBytes bounds the diagnostic-dump head so a maximally-large
 // websocket message can't blow up the log line.
 const dumpHeadBytes = 256
+
+// failWindowBefore and failWindowAfter bound the per-side context dumped
+// around a frame-walk failure offset. Together they cap at dumpHeadBytes.
+const (
+	failWindowBefore = 128
+	failWindowAfter  = 128
+)
+
+// failWindow returns the slice of data centred on offset, bounded by
+// failWindowBefore/After on each side and clamped to data's bounds.
+// Used to log the tail of the last good frame plus the bad prefix on a
+// frame-walk failure.
+func failWindow(data []byte, offset int) []byte {
+	start := offset - failWindowBefore
+	if start < 0 {
+		start = 0
+	}
+	end := offset + failWindowAfter
+	if end > len(data) {
+		end = len(data)
+	}
+	return data[start:end]
+}
 
 /*
 dumpBytes renders b for a single-line diagnostic log:
