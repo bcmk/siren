@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-manifest_list=$(doctl registry repository list-manifests bot --output json)
+if [ $# -ne 1 ]; then
+    echo "usage: $0 <repo>" >&2
+    exit 2
+fi
+repo="$1"
+
+manifest_list=$(doctl registry repository list-manifests "$repo" --output json)
 
 get_digests() {
     jq -r "sort_by(.updated_at) | .[].digest" <<< "$manifest_list"

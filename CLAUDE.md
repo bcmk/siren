@@ -85,8 +85,9 @@
 - Only create tags for completed features ready to be published.
   Publish scripts work without tagging —
   they produce versions like `v2.9.0-2-gabcdef12`.
-- Run `scripts/query-registry-versions`
-  to list images in the container registry.
+- Run `scripts/query-registry-versions <repo>`
+  (e.g. `scripts/query-registry-versions bot`) to list images
+  in the container registry.
 
 ## Communication
 
