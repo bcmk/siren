@@ -40,6 +40,19 @@ type onlineResponse struct {
 	Models map[string]onlineModel `json:"models"`
 }
 
+type stripchatCamUser struct {
+	IsLive               bool `json:"isLive"`
+	IsBlocked            bool `json:"isBlocked"`
+	IsPermanentlyBlocked bool `json:"isPermanentlyBlocked"`
+	IsDeleted            bool `json:"isDeleted"`
+}
+
+type stripchatCamResponse struct {
+	User struct {
+		User stripchatCamUser `json:"user"`
+	} `json:"user"`
+}
+
 func stripchatShowKind(status string) cmdlib.ShowKind {
 	switch status {
 	case "public":
@@ -52,9 +65,42 @@ func stripchatShowKind(status string) cmdlib.ShowKind {
 	return cmdlib.ShowUnknown
 }
 
-// QueryStatus is not implemented for Stripchat
-func (c *StripchatChecker) QueryStatus(_ string) (cmdlib.StatusKind, error) {
-	return cmdlib.StatusUnknown, cmdlib.ErrNotImplemented
+// QueryStatus checks Stripchat model status via the per-model cam endpoint.
+func (c *StripchatChecker) QueryStatus(modelID string) (cmdlib.StatusKind, error) {
+	endpoint := fmt.Sprintf("https://stripchat.com/api/front/v2/models/username/%s/cam", url.PathEscape(modelID))
+	addr, resp := c.DoGetRequest(endpoint)
+	if resp == nil {
+		return cmdlib.StatusUnknown, nil
+	}
+	defer cmdlib.CloseBody(resp.Body)
+	switch resp.StatusCode {
+	case 404:
+		return cmdlib.StatusNotFound, nil
+	case 200:
+	default:
+		return cmdlib.StatusUnknown, nil
+	}
+	buf := bytes.Buffer{}
+	if _, err := buf.ReadFrom(resp.Body); err != nil {
+		cmdlib.Lerr("[%v] cannot read response for model %s, %v", addr, modelID, err)
+		return cmdlib.StatusUnknown, nil
+	}
+	parsed := &stripchatCamResponse{}
+	if err := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes()))).Decode(parsed); err != nil {
+		cmdlib.Lerr("[%v] cannot parse response for model %s, %v", addr, modelID, err)
+		if c.Dbg {
+			cmdlib.Ldbg("response: %s", buf.String())
+		}
+		return cmdlib.StatusUnknown, nil
+	}
+	u := parsed.User.User
+	if u.IsDeleted || u.IsBlocked || u.IsPermanentlyBlocked {
+		return cmdlib.StatusNotFound, nil
+	}
+	if u.IsLive {
+		return cmdlib.StatusOnline, nil
+	}
+	return cmdlib.StatusOffline, nil
 }
 
 func (c *StripchatChecker) checkOnlyOnline() (map[string]cmdlib.StreamerInfo, error) {
@@ -180,6 +226,6 @@ func (*StripchatChecker) Capabilities() cmdlib.Capabilities {
 		QueryOnlineStreamers:          true,
 		QueryFixedListOnlineStreamers: false,
 		QueryFixedListStatuses:        false,
-		QueryStatus:                   false,
+		QueryStatus:                   true,
 	}
 }
