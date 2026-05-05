@@ -124,12 +124,13 @@ input.addEventListener("input", function() {
 
 input.addEventListener("keydown", function(e) {
     var items = resultsList.children;
-    if (items.length === 0) return;
     if (e.key === "ArrowDown") {
+        if (items.length === 0) return;
         e.preventDefault();
         if (selectedIdx < items.length - 1) selectedIdx++;
         updateSelection();
     } else if (e.key === "ArrowUp") {
+        if (items.length === 0) return;
         e.preventDefault();
         if (selectedIdx > -1) selectedIdx--;
         updateSelection();
@@ -137,6 +138,12 @@ input.addEventListener("keydown", function(e) {
         if (selectedIdx >= 0 && selectedIdx < items.length) {
             e.preventDefault();
             addStreamer(items[selectedIdx].textContent);
+            return;
+        }
+        var raw = input.value.trim().toLowerCase();
+        if (/^[a-z0-9\-_@]+$/.test(raw)) {
+            e.preventDefault();
+            addStreamer(raw);
         }
     }
 });
