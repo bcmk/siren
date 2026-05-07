@@ -398,6 +398,37 @@ func (d *Database) StreamersToPoll() []string {
 	return streamers
 }
 
+// PolledStreamersWithStatus returns full streamer rows flagged for
+// per-streamer polling, ordered by nickname.
+func (d *Database) PolledStreamersWithStatus() []Streamer {
+	var out []Streamer
+	var iter Streamer
+	d.MustQuery(`
+		select
+			id,
+			nickname,
+			confirmed_status,
+			unconfirmed_status,
+			unconfirmed_timestamp,
+			prev_unconfirmed_status,
+			prev_unconfirmed_timestamp
+		from streamers
+		where poll
+		order by nickname`,
+		nil,
+		ScanTo{
+			&iter.ID,
+			&iter.Nickname,
+			&iter.ConfirmedStatus,
+			&iter.UnconfirmedStatus,
+			&iter.UnconfirmedTimestamp,
+			&iter.PrevUnconfirmedStatus,
+			&iter.PrevUnconfirmedTimestamp,
+		},
+		func() { out = append(out, iter) })
+	return out
+}
+
 // IncrementPollErrors bumps poll_error_count for the given nicknames.
 // Used by the bot to surface streamers whose polled checks fail
 // repeatedly so admins can spot typos or sites that block them.

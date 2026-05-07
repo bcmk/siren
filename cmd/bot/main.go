@@ -62,6 +62,12 @@ type timeDiff struct {
 	Nanoseconds int
 }
 
+// streamerListEntry is the per-row payload consumed by the tr.List template.
+type streamerListEntry struct {
+	Streamer string
+	TimeDiff *timeDiff
+}
+
 type worker struct {
 	db                         db.Database
 	fuzzySearchDB              db.Database
@@ -929,10 +935,6 @@ func listStreamersSortWeight(s cmdlib.StatusKind) int {
 }
 
 func (w *worker) listStreamers(endpoint string, chatID int64, now int) {
-	type data struct {
-		Streamer string
-		TimeDiff *timeDiff
-	}
 	statuses := w.db.UnconfirmedStatusesForChat(endpoint, chatID)
 	if len(statuses) == 0 {
 		w.sendTr(db.PriorityHigh, endpoint, chatID, false, w.tr[endpoint].ZeroSubscriptions, nil, db.ReplyPacket)
@@ -943,17 +945,17 @@ func (w *worker) listStreamers(endpoint string, chatID int64, now int) {
 	})
 	chunks := chunkStreamers(statuses, 50)
 	for _, chunk := range chunks {
-		var online, offline []data
+		var online, offline []streamerListEntry
 		for _, s := range chunk {
-			data := data{
+			entry := streamerListEntry{
 				Streamer: s.Nickname,
 				TimeDiff: w.streamerTimeDiff(s, now),
 			}
 			switch s.UnconfirmedStatus {
 			case cmdlib.StatusOnline:
-				online = append(online, data)
+				online = append(online, entry)
 			default:
-				offline = append(offline, data)
+				offline = append(offline, entry)
 			}
 		}
 		tplData := tplData{"online": online, "offline": offline}
@@ -1205,6 +1207,31 @@ func (w *worker) blacklist(endpoint string, arguments string) {
 	w.sendText(db.PriorityHigh, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
 }
 
+func (w *worker) sendPolledList(endpoint string, now int) {
+	polled := w.db.PolledStreamersWithStatus()
+	if len(polled) == 0 {
+		w.sendText(db.PriorityHigh, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "no polled streamers", db.ReplyPacket)
+		return
+	}
+	chunks := chunkStreamers(polled, 50)
+	for _, chunk := range chunks {
+		var online, offline []streamerListEntry
+		for _, s := range chunk {
+			entry := streamerListEntry{
+				Streamer: s.Nickname,
+				TimeDiff: w.streamerTimeDiff(s, now),
+			}
+			switch s.UnconfirmedStatus {
+			case cmdlib.StatusOnline:
+				online = append(online, entry)
+			default:
+				offline = append(offline, entry)
+			}
+		}
+		w.sendTr(db.PriorityHigh, endpoint, w.cfg.AdminID, false, w.tr[endpoint].List, tplData{"online": online, "offline": offline}, db.ReplyPacket)
+	}
+}
+
 func (w *worker) poll(endpoint string, arguments string) {
 	caps := w.checker.Capabilities()
 	if caps.UsesFixedListOnline() || !caps.QueryStatus {
@@ -1214,6 +1241,9 @@ func (w *worker) poll(endpoint string, arguments string) {
 	parts := strings.Fields(arguments)
 	if len(parts) != 2 {
 		w.sendText(db.PriorityHigh, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "expecting <streamer> <on|off>", db.ReplyPacket)
+		if len(parts) == 0 {
+			w.sendPolledList(endpoint, int(time.Now().Unix()))
+		}
 		return
 	}
 	nickname := w.checker.NicknamePreprocessing(parts[0])
