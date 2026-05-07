@@ -1423,47 +1423,44 @@ func (w *worker) logConfig() {
 	}
 }
 
-func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arguments string) (processed bool, maintenance bool) {
+func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arguments string) bool {
 	switch command {
 	case "performance":
 		w.performanceStat(endpoint, arguments)
-		return true, false
+		return true
 	case "broadcast":
 		w.broadcast(endpoint, arguments)
-		return true, false
+		return true
 	case "direct":
 		w.direct(endpoint, arguments)
-		return true, false
+		return true
 	case "blacklist":
 		w.blacklist(endpoint, arguments)
-		return true, false
+		return true
 	case "poll":
 		w.poll(endpoint, arguments)
-		return true, false
+		return true
 	case "set_max_subs":
 		parts := strings.Fields(arguments)
 		if len(parts) != 2 {
 			w.sendText(db.PriorityHigh, endpoint, chatID, false, true, cmdlib.ParseRaw, "expecting two arguments", db.ReplyPacket)
-			return true, false
+			return true
 		}
 		who, err := strconv.ParseInt(parts[0], 10, 64)
 		if err != nil {
 			w.sendText(db.PriorityHigh, endpoint, chatID, false, true, cmdlib.ParseRaw, "first argument is invalid", db.ReplyPacket)
-			return true, false
+			return true
 		}
 		maxSubs, err := strconv.Atoi(parts[1])
 		if err != nil {
 			w.sendText(db.PriorityHigh, endpoint, chatID, false, true, cmdlib.ParseRaw, "second argument is invalid", db.ReplyPacket)
-			return true, false
+			return true
 		}
 		w.db.SetLimit(who, maxSubs)
 		w.sendText(db.PriorityHigh, endpoint, chatID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
-		return true, false
-	case "maintenance":
-		w.sendText(db.PriorityHigh, endpoint, chatID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
-		return true, true
+		return true
 	}
-	return false, false
+	return false
 }
 
 // noinspection SpellCheckingInspection
@@ -1576,7 +1573,7 @@ func (w *worker) help(endpoint string, chatID int64) {
 	}, db.ReplyPacket)
 }
 
-func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, arguments string, now int, chatType string) bool {
+func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, arguments string, now int, chatType string) {
 	w.db.ResetBlock(endpoint, chatID)
 	command = strings.ToLower(command)
 	if command != "start" {
@@ -1585,8 +1582,8 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	linf("chat: %d, command: %s %s", chatID, command, arguments)
 
 	if chatID == w.cfg.AdminID {
-		if proc, maintenance := w.processAdminMessage(endpoint, chatID, command, arguments); proc {
-			return maintenance
+		if w.processAdminMessage(endpoint, chatID, command, arguments) {
+			return
 		}
 	}
 
@@ -1657,13 +1654,12 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 	case "week":
 		if !w.cfg.EnableWeek {
 			unknown()
-			return false
+			return
 		}
 		w.showWeek(endpoint, chatID, arguments)
 	default:
 		unknown()
 	}
-	return false
 }
 
 func (w *worker) periodic() {
@@ -1976,34 +1972,33 @@ var loggedCommands = map[string]bool{
 	"week":                          true,
 }
 
-func (w *worker) processTGUpdate(p incomingPacket) bool {
+func (w *worker) processTGUpdate(p incomingPacket) {
 	now := int(time.Now().Unix())
 	u := p.message
 	mention := "@" + w.botNames[p.endpoint]
 	chatID, command, args := getCommandAndArgs(u, mention, w.ourIDs)
 	if !w.cfg.ChatWhitelisted(chatID) {
 		linf("message from chat %d ignored, not in whitelist", chatID)
-		return false
+		return
 	}
-	if command != "" {
-		var loggedCommand *string
-		if loggedCommands[command] {
-			loggedCommand = &command
-		}
-		w.db.LogReceivedMessage(now, p.endpoint, chatID, loggedCommand)
-		var chatType string
-		if u.Message != nil {
-			chatType = string(u.Message.Chat.Type)
-		} else if u.ChannelPost != nil {
-			chatType = string(u.ChannelPost.Chat.Type)
-		}
-		result := w.processIncomingCommand(p.endpoint, chatID, command, args, now, chatType)
-		if memberCount := w.getChatMemberCount(p.endpoint, chatID); memberCount != nil {
-			w.db.UpdateMemberCount(chatID, *memberCount)
-		}
-		return result
+	if command == "" {
+		return
 	}
-	return false
+	var loggedCommand *string
+	if loggedCommands[command] {
+		loggedCommand = &command
+	}
+	w.db.LogReceivedMessage(now, p.endpoint, chatID, loggedCommand)
+	var chatType string
+	if u.Message != nil {
+		chatType = string(u.Message.Chat.Type)
+	} else if u.ChannelPost != nil {
+		chatType = string(u.ChannelPost.Chat.Type)
+	}
+	w.processIncomingCommand(p.endpoint, chatID, command, args, now, chatType)
+	if memberCount := w.getChatMemberCount(p.endpoint, chatID); memberCount != nil {
+		w.db.UpdateMemberCount(chatID, *memberCount)
+	}
 }
 
 func (w *worker) incoming() chan incomingPacket {
@@ -2032,15 +2027,6 @@ func getOurIDs(c *botconfig.Config) []int64 {
 
 func (w *worker) maintainDB() {
 	w.db.MaintainBrinIndexes()
-}
-
-func (w *worker) adminSQL(query string) time.Duration {
-	start := time.Now()
-	var result string
-	if w.db.MaybeRecord(query, nil, db.ScanTo{&result}) {
-		w.sendText(db.PriorityHigh, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, result, db.ReplyPacket)
-	}
-	return time.Since(start)
 }
 
 func (w *worker) maintenanceStartupReply(incoming chan incomingPacket, done chan bool) {
@@ -2163,66 +2149,6 @@ func (w *worker) processSubsConfirmations(res *cmdlib.ExistenceListResults) {
 	w.db.StoreNotifications(confirmedNots)
 }
 
-func (w *worker) maintenance(signals chan os.Signal, incoming chan incomingPacket) bool {
-	processingDone := make(chan time.Duration)
-	processing := false
-	users := map[waitingUser]bool{}
-	for {
-		select {
-		case n := <-signals:
-			linf("got signal %v", n)
-			if n == syscall.SIGINT || n == syscall.SIGTERM || n == syscall.SIGABRT {
-				w.removeWebhook()
-				return false
-			}
-			if n == syscall.SIGCONT {
-				return true
-			}
-		case u := <-incoming:
-			mention := "@" + w.botNames[u.endpoint]
-			chatID, command, args := getCommandAndArgs(u.message, mention, w.ourIDs)
-			if chatID == w.cfg.AdminID {
-				switch command {
-				case "continue":
-					if processing {
-						w.sendText(db.PriorityHigh, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "still processing", db.ReplyPacket)
-					} else {
-						w.sendText(db.PriorityHigh, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
-						for user := range users {
-							w.sendTr(db.PriorityHigh, user.endpoint, chatID, false, w.tr[user.endpoint].WeAreUp, nil, db.MessagePacket)
-						}
-						return true
-					}
-				case "sql":
-					if processing {
-						w.sendText(db.PriorityHigh, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "still processing", db.ReplyPacket)
-					} else {
-						processing = true
-						w.sendText(db.PriorityHigh, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
-						go func() {
-							processingDone <- w.adminSQL(args)
-						}()
-					}
-				case "":
-				default:
-					w.sendText(db.PriorityHigh, u.endpoint, chatID, false, true, cmdlib.ParseRaw, w.cfg.Endpoints[u.endpoint].MaintenanceResponse, db.ReplyPacket)
-				}
-			} else {
-				if command != "" {
-					users[waitingUser{chatID: chatID, endpoint: u.endpoint}] = true
-					w.sendText(db.PriorityHigh, u.endpoint, chatID, false, true, cmdlib.ParseRaw, w.cfg.Endpoints[u.endpoint].MaintenanceResponse, db.ReplyPacket)
-					linf("ignoring command %s %s", command, args)
-				}
-			}
-		case elapsed := <-processingDone:
-			processing = false
-			text := fmt.Sprintf("processing done in %v", elapsed)
-			w.sendText(db.PriorityHigh, w.cfg.AdminEndpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, text, db.MessagePacket)
-		case <-w.outgoingMsgResults:
-		}
-	}
-}
-
 func main() {
 	version := pflag.BoolP("version", "v", false, "prints current version")
 	printCfg := pflag.BoolP("print-config", "p", false, "print config and exit")
@@ -2281,7 +2207,7 @@ func main() {
 	})
 	cmdlib.StartCheckerDaemon(w.checker)
 	signals := make(chan os.Signal, 16)
-	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT, syscall.SIGTSTP, syscall.SIGCONT)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT)
 	w.sendText(db.PriorityHigh, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, "bot is up", db.MessagePacket)
 	w.pushOnlineRequest()
 	for {
@@ -2326,21 +2252,12 @@ func main() {
 			w.addStreamer(req.endpoint, req.chatID, req.nickname, now, false)
 			req.doneCh <- struct{}{}
 		case u := <-incoming:
-			if w.processTGUpdate(u) {
-				if !w.maintenance(signals, incoming) {
-					return
-				}
-			}
+			w.processTGUpdate(u)
 		case s := <-signals:
 			linf("got signal %v", s)
 			if s == syscall.SIGINT || s == syscall.SIGTERM || s == syscall.SIGABRT {
 				w.removeWebhook()
 				return
-			}
-			if s == syscall.SIGTSTP {
-				if !w.maintenance(signals, incoming) {
-					return
-				}
 			}
 		case r := <-w.outgoingMsgResults:
 			switch r.result {
