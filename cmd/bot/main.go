@@ -1500,18 +1500,6 @@ func (w *worker) getChatMemberCount(endpoint string, chatID int64) *int {
 	return &count
 }
 
-// TODO: remove after 2026-05-01,
-// we need to backfill chat_type for users who joined before we started storing it.
-func (w *worker) getChatType(endpoint string, chatID int64) string {
-	ctx := context.Background()
-	chat, err := w.bots[endpoint].GetChat(ctx, &bot.GetChatParams{ChatID: chatID})
-	if err != nil {
-		linf("cannot get chat type, %v", err)
-		return ""
-	}
-	return string(chat.Type)
-}
-
 func (w *worker) refer(followerChatID int64, referrer string, now int, chatType string) (applied appliedKind) {
 	referrerChatID := w.db.ChatForReferralID(referrer)
 	if referrerChatID == nil {
@@ -2013,13 +2001,6 @@ func (w *worker) processTGUpdate(p incomingPacket) bool {
 		if memberCount := w.getChatMemberCount(p.endpoint, chatID); memberCount != nil {
 			w.db.UpdateMemberCount(chatID, *memberCount)
 		}
-		// TODO: remove after 2026-05-01,
-		// we need to backfill chat_type for users who joined before we started storing it.
-		if now < 1777593600 {
-			if user, exists := w.db.User(chatID); exists && user.ChatType == nil {
-				w.db.UpdateChatType(chatID, chatType)
-			}
-		}
 		return result
 	}
 	return false
@@ -2367,15 +2348,6 @@ func main() {
 				w.db.IncrementBlock(r.endpoint, r.chatID)
 			case messageSent:
 				w.db.ResetBlock(r.endpoint, r.chatID)
-				// TODO: remove after 2026-05-01,
-				// we need to backfill chat_type for users who joined before we started storing it.
-				if r.timestamp < 1777593600 {
-					if user, exists := w.db.User(r.chatID); exists && user.ChatType == nil {
-						if chatType := w.getChatType(r.endpoint, r.chatID); chatType != "" {
-							w.db.UpdateChatType(r.chatID, chatType)
-						}
-					}
-				}
 				if memberCount := w.getChatMemberCount(r.endpoint, r.chatID); memberCount != nil {
 					w.db.UpdateMemberCount(r.chatID, *memberCount)
 				}
