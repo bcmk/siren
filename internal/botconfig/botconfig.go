@@ -50,7 +50,7 @@ type Config struct {
 	AdminEndpoint                   string                    `mapstructure:"admin_endpoint"`                     // admin endpoint
 	DBConnectionString              cmdlib.Secret             `mapstructure:"db_connection_string"`               // database connection string
 	BlockThreshold                  int                       `mapstructure:"block_threshold"`                    // do not send a message to the user after being blocked by him this number of times
-	IntervalMs                      int                       `mapstructure:"interval_ms"`                        // queries interval per IP address for rate limited access
+	MinRequestIntervalMs            int                       `mapstructure:"min_request_interval_ms"`            // minimum interval between requests per IP for rate-limited upstreams
 	SourceIPAddresses               []string                  `mapstructure:"source_ip_addresses"`                // source IP addresses for rate limited access
 	EnableCookies                   bool                      `mapstructure:"enable_cookies"`                     // enable cookies, it can be useful to mitigate rate limits
 	Headers                         [][2]string               `mapstructure:"headers"`                            // HTTP headers to make queries with

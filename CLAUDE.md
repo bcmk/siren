@@ -46,6 +46,8 @@
       `,
       longArg2)
   ```
+- Use tabs for SQL indentation inside Go backtick strings —
+  match the surrounding Go indentation
 - ALWAYS use lowercase SQL keywords,
   including in documentation and conversations
 - For doc comments containing code blocks, use `/* */` instead of `//`

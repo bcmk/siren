@@ -21,10 +21,13 @@ type CheckerResults interface {
 	Duration() time.Duration
 	Failed() bool
 	Count() int
+	ExtraLogFields() map[string]any
 }
 
-// OnlineListRequest requests statuses for all online streamers
+// OnlineListRequest requests statuses for all online streamers.
+// Names in Poll fall back to QueryStatus when not in the bulk result.
 type OnlineListRequest struct {
+	Poll      []string
 	ResultsCh chan<- CheckerResults
 }
 
@@ -32,9 +35,11 @@ func (r *OnlineListRequest) isStatusRequest() {}
 
 // OnlineListResults contains results for OnlineListRequest
 type OnlineListResults struct {
-	Streamers map[string]StreamerInfo
-	duration  time.Duration
-	failed    bool
+	Streamers  map[string]StreamerInfo
+	PollCount  int
+	PollErrors []string
+	duration   time.Duration
+	failed     bool
 }
 
 func (r *OnlineListResults) isCheckerResults() {}
@@ -43,10 +48,12 @@ func (r *OnlineListResults) isCheckerResults() {}
 // can return it over HTTP without exposing the unexported fields.
 func (r *OnlineListResults) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		Streamers map[string]StreamerInfo `json:"streamers"`
-		Duration  time.Duration           `json:"duration"`
-		Failed    bool                    `json:"failed"`
-	}{r.Streamers, r.duration, r.failed})
+		Streamers  map[string]StreamerInfo `json:"streamers"`
+		PollCount  int                     `json:"poll_count,omitempty"`
+		PollErrors []string                `json:"poll_errors,omitempty"`
+		Duration   time.Duration           `json:"duration"`
+		Failed     bool                    `json:"failed"`
+	}{r.Streamers, r.PollCount, r.PollErrors, r.duration, r.failed})
 }
 
 // Duration returns the elapsed time for the request.
@@ -57,6 +64,14 @@ func (r *OnlineListResults) Failed() bool { return r.failed }
 
 // Count returns the number of streamers in the result.
 func (r *OnlineListResults) Count() int { return len(r.Streamers) }
+
+// ExtraLogFields returns extra fields for performance logging.
+func (r *OnlineListResults) ExtraLogFields() map[string]any {
+	return map[string]any{
+		"poll_count":  r.PollCount,
+		"poll_errors": len(r.PollErrors),
+	}
+}
 
 // NewOnlineListResults creates a successful OnlineListResults.
 func NewOnlineListResults(streamers map[string]StreamerInfo, duration time.Duration) *OnlineListResults {
@@ -94,6 +109,9 @@ func (r *FixedListOnlineResults) Failed() bool { return r.failed }
 
 // Count returns the number of streamers in the result.
 func (r *FixedListOnlineResults) Count() int { return len(r.Streamers) }
+
+// ExtraLogFields returns extra fields for performance logging.
+func (r *FixedListOnlineResults) ExtraLogFields() map[string]any { return nil }
 
 // NewFixedListOnlineResults creates a successful FixedListOnlineResults.
 func NewFixedListOnlineResults(
@@ -147,6 +165,9 @@ func (r *ExistenceListResults) Failed() bool { return r.failed }
 
 // Count returns the number of streamers in the result.
 func (r *ExistenceListResults) Count() int { return len(r.Streamers) }
+
+// ExtraLogFields returns extra fields for performance logging.
+func (r *ExistenceListResults) ExtraLogFields() map[string]any { return nil }
 
 // NewExistenceListResults creates a successful ExistenceListResults.
 func NewExistenceListResults(
@@ -231,7 +252,7 @@ type CheckerConfig struct {
 	Dbg                  bool
 	SpecificConfig       map[string]Secret
 	QueueSize            int
-	IntervalMs           int
+	MinRequestIntervalMs int
 }
 
 // Capabilities reports which optional checker entry points are
@@ -265,7 +286,7 @@ type Checker interface {
 	Init(config CheckerConfig)
 	PushStatusRequest(request StatusRequest) error
 	StatusRequestsQueue() chan StatusRequest
-	RequestInterval() time.Duration
+	MinRequestInterval() time.Duration
 	Debug() bool
 	SubjectSupported() bool
 	NicknamePreprocessing(name string) string
@@ -308,7 +329,7 @@ func (c *CheckerCommon) Init(config CheckerConfig) {
 	c.Dbg = config.Dbg
 	c.SpecificConfig = config.SpecificConfig
 	c.QueueSize = config.QueueSize
-	c.IntervalMs = config.IntervalMs
+	c.MinRequestIntervalMs = config.MinRequestIntervalMs
 	c.ClientsLoop = clientsLoop{clients: config.Clients}
 	c.statusRequests = make(chan StatusRequest, config.QueueSize)
 }
@@ -316,9 +337,9 @@ func (c *CheckerCommon) Init(config CheckerConfig) {
 // StatusRequestsQueue returns the channel for status requests
 func (c *CheckerCommon) StatusRequestsQueue() chan StatusRequest { return c.statusRequests }
 
-// RequestInterval returns the interval between requests
-func (c *CheckerCommon) RequestInterval() time.Duration {
-	return time.Duration(c.IntervalMs) * time.Millisecond
+// MinRequestInterval returns the interval between requests
+func (c *CheckerCommon) MinRequestInterval() time.Duration {
+	return time.Duration(c.MinRequestIntervalMs) * time.Millisecond
 }
 
 // Debug returns whether debug mode is enabled
@@ -352,11 +373,32 @@ func StartCheckerDaemon(checker Checker) {
 					continue
 				}
 				delete(onlineStreamers, "")
+				var pollErrors []string
+				for _, nickname := range req.Poll {
+					if _, inBulk := onlineStreamers[nickname]; inBulk {
+						continue
+					}
+					time.Sleep(checker.MinRequestInterval())
+					info, err := checker.QueryStatus(nickname)
+					if err != nil {
+						Lerr("%v", err)
+					}
+					if err != nil || info.Status == StatusUnknown {
+						pollErrors = append(pollErrors, nickname)
+						continue
+					}
+					if info.Status == StatusOnline {
+						onlineStreamers[nickname] = info.StreamerInfo
+					}
+				}
 				elapsed := time.Since(start)
 				if checker.Debug() {
 					Ldbg("got statuses: %d", len(onlineStreamers))
 				}
-				req.ResultsCh <- NewOnlineListResults(onlineStreamers, elapsed)
+				result := NewOnlineListResults(onlineStreamers, elapsed)
+				result.PollCount = len(req.Poll)
+				result.PollErrors = pollErrors
+				req.ResultsCh <- result
 			case *FixedListOnlineRequest:
 				streamers, err := checker.QueryFixedListOnlineStreamers(setToSlice(req.Streamers), CheckOnline)
 				if err != nil {
@@ -410,7 +452,7 @@ func StartCheckerDaemon(checker Checker) {
 					elapsed,
 				)
 			}
-			time.Sleep(checker.RequestInterval())
+			time.Sleep(checker.MinRequestInterval())
 		}
 	}()
 }

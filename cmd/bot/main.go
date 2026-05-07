@@ -13,6 +13,7 @@ import (
 	"html"
 	htmltemplate "html/template"
 	"image"
+	"maps"
 	"math/rand"
 	"net"
 	"net/http"
@@ -1204,6 +1205,39 @@ func (w *worker) blacklist(endpoint string, arguments string) {
 	w.sendText(db.PriorityHigh, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
 }
 
+func (w *worker) poll(endpoint string, arguments string) {
+	caps := w.checker.Capabilities()
+	if caps.UsesFixedListOnline() || !caps.QueryStatus {
+		w.sendText(db.PriorityHigh, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "checker does not support per-streamer polling", db.ReplyPacket)
+		return
+	}
+	parts := strings.Fields(arguments)
+	if len(parts) != 2 {
+		w.sendText(db.PriorityHigh, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "expecting <streamer> <on|off>", db.ReplyPacket)
+		return
+	}
+	nickname := w.checker.NicknamePreprocessing(parts[0])
+	if !w.checker.NicknameRegexp().MatchString(nickname) {
+		w.sendText(db.PriorityHigh, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "invalid nickname", db.ReplyPacket)
+		return
+	}
+	var on bool
+	switch parts[1] {
+	case "on":
+		on = true
+	case "off":
+		on = false
+	default:
+		w.sendText(db.PriorityHigh, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "second argument must be on or off", db.ReplyPacket)
+		return
+	}
+	if !w.db.SetPoll(nickname, on) {
+		w.sendText(db.PriorityHigh, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "no such streamer", db.ReplyPacket)
+		return
+	}
+	w.sendText(db.PriorityHigh, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
+}
+
 func (w *worker) webAppURL(endpoint string) string {
 	return "https://" + w.cfg.Endpoints[endpoint].WebhookDomain +
 		"/apps/add?endpoint=" + endpoint
@@ -1402,6 +1436,9 @@ func (w *worker) processAdminMessage(endpoint string, chatID int64, command, arg
 		return true, false
 	case "blacklist":
 		w.blacklist(endpoint, arguments)
+		return true, false
+	case "poll":
+		w.poll(endpoint, arguments)
 		return true, false
 	case "set_max_subs":
 		parts := strings.Fields(arguments)
@@ -1646,15 +1683,21 @@ func (w *worker) periodic() {
 }
 
 func (w *worker) pushOnlineRequest() {
+	caps := w.checker.Capabilities()
 	var request cmdlib.StatusRequest
-	if w.checker.Capabilities().UsesFixedListOnline() {
+	if caps.UsesFixedListOnline() {
 		request = &cmdlib.FixedListOnlineRequest{
 			ResultsCh: w.checkerResults,
 			Streamers: w.db.SubscribedStreamers(),
 		}
 	} else {
+		var poll []string
+		if caps.QueryStatus {
+			poll = w.db.StreamersToPoll()
+		}
 		request = &cmdlib.OnlineListRequest{
 			ResultsCh: w.checkerResults,
+			Poll:      poll,
 		}
 	}
 	if err := w.checker.PushStatusRequest(request); err != nil {
@@ -1713,6 +1756,9 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) pro
 
 	switch r := result.(type) {
 	case *cmdlib.OnlineListResults:
+		if len(r.PollErrors) > 0 {
+			w.db.IncrementPollErrors(r.PollErrors)
+		}
 		// Went offline: was online but not in result
 		for nickname := range w.unconfirmedOnlineStreamers {
 			if _, inResult := r.Streamers[nickname]; !inResult {
@@ -2250,7 +2296,7 @@ func main() {
 		Dbg:                  w.cfg.Debug,
 		SpecificConfig:       w.cfg.SpecificConfig,
 		QueueSize:            1000,
-		IntervalMs:           w.cfg.IntervalMs,
+		MinRequestIntervalMs: w.cfg.MinRequestIntervalMs,
 	})
 	cmdlib.StartCheckerDaemon(w.checker)
 	signals := make(chan os.Signal, 16)
@@ -2270,27 +2316,29 @@ func main() {
 			w.sendReadyNotifications()
 		case result := <-w.checkerResults:
 			now := int(time.Now().Unix())
-			cr := w.handleCheckerResults(result, now)
-			w.db.LogPerformance(now, db.PerformanceLogUpdateQuery, int(result.Duration().Milliseconds()), map[string]any{
+			processed := w.handleCheckerResults(result, now)
+			updateQueryFields := map[string]any{
 				"failed": result.Failed(),
 				"count":  result.Count(),
-			})
-			w.db.LogPerformance(now, db.PerformanceLogUpdateProcessing, int(cr.elapsed.Milliseconds()), map[string]any{
-				"unconfirmed_count":                    cr.unconfirmedChangesCount,
-				"unconfirmed_offline_count":            cr.unconfirmedOfflineCount,
-				"unconfirmed_online_count":             cr.unconfirmedOnlineCount,
-				"confirmed_count":                      cr.confirmedChangesCount,
-				"notifications_count":                  len(cr.notifications),
-				"upsert_unconfirmed_streamers_ms":      cr.upsertTimings.UpsertStreamersMs,
-				"insert_nicknames_ms":                  cr.upsertTimings.InsertNicknamesMs,
-				"insert_unconfirmed_status_changes_ms": cr.upsertTimings.InsertStatusChangesMs,
-				"commit_unconfirmed_ms":                cr.upsertTimings.CommitMs,
-				"summarize_brin_ms":                    cr.upsertTimings.SummarizeBrinMs,
-				"confirm_changes_ms":                   cr.confirmChangesMs,
-				"store_notifications_ms":               cr.storeNotificationsMs,
+			}
+			maps.Copy(updateQueryFields, result.ExtraLogFields())
+			w.db.LogPerformance(now, db.PerformanceLogUpdateQuery, int(result.Duration().Milliseconds()), updateQueryFields)
+			w.db.LogPerformance(now, db.PerformanceLogUpdateProcessing, int(processed.elapsed.Milliseconds()), map[string]any{
+				"unconfirmed_count":                    processed.unconfirmedChangesCount,
+				"unconfirmed_offline_count":            processed.unconfirmedOfflineCount,
+				"unconfirmed_online_count":             processed.unconfirmedOnlineCount,
+				"confirmed_count":                      processed.confirmedChangesCount,
+				"notifications_count":                  len(processed.notifications),
+				"upsert_unconfirmed_streamers_ms":      processed.upsertTimings.UpsertStreamersMs,
+				"insert_nicknames_ms":                  processed.upsertTimings.InsertNicknamesMs,
+				"insert_unconfirmed_status_changes_ms": processed.upsertTimings.InsertStatusChangesMs,
+				"commit_unconfirmed_ms":                processed.upsertTimings.CommitMs,
+				"summarize_brin_ms":                    processed.upsertTimings.SummarizeBrinMs,
+				"confirm_changes_ms":                   processed.confirmChangesMs,
+				"store_notifications_ms":               processed.storeNotificationsMs,
 			})
 			if w.cfg.Debug {
-				ldbg("status updates processed in %v", cr.elapsed)
+				ldbg("status updates processed in %v", processed.elapsed)
 			}
 		case req := <-w.addRequests:
 			now := int(time.Now().Unix())

@@ -84,11 +84,12 @@ func (d *Database) Measure(query string) func() {
 	}
 }
 
-// MustExec executes the query
-func (d *Database) MustExec(query string, args ...interface{}) {
+// MustExec executes the query and returns rows affected.
+func (d *Database) MustExec(query string, args ...interface{}) int64 {
 	defer d.Measure("db: " + query)()
-	_, err := d.db.Exec(context.Background(), query, args...)
+	tag, err := d.db.Exec(context.Background(), query, args...)
 	checkErr(err)
+	return tag.RowsAffected()
 }
 
 // MustExecScript executes a SQL script using simple protocol.

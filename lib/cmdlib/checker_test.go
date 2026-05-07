@@ -3,6 +3,7 @@ package cmdlib
 import (
 	"errors"
 	"os"
+	"reflect"
 	"testing"
 )
 
@@ -139,6 +140,113 @@ func TestSingleStatusRequestPropagatesInfo(t *testing.T) {
 	}
 	if got.Subject != "subject" {
 		t.Errorf("subject: got %q", got.Subject)
+	}
+}
+
+type testPolledChecker struct {
+	CheckerCommon
+	online     map[string]bool
+	individual map[string]StatusKind
+	queryCalls []string
+}
+
+func (c *testPolledChecker) QueryStatus(nickname string) (StreamerInfoWithStatus, error) {
+	c.queryCalls = append(c.queryCalls, nickname)
+	status, ok := c.individual[nickname]
+	if !ok {
+		return StreamerInfoWithStatus{Status: StatusOffline}, nil
+	}
+	return StreamerInfoWithStatus{Status: status}, nil
+}
+
+func (c *testPolledChecker) QueryOnlineStreamers() (map[string]StreamerInfo, error) {
+	out := map[string]StreamerInfo{}
+	for k := range c.online {
+		out[k] = StreamerInfo{}
+	}
+	return out, nil
+}
+
+func (*testPolledChecker) QueryFixedListOnlineStreamers([]string, CheckMode) (map[string]StreamerInfo, error) {
+	return nil, ErrNotImplemented
+}
+
+func (*testPolledChecker) Capabilities() Capabilities {
+	return Capabilities{QueryOnlineStreamers: true, QueryStatus: true}
+}
+
+func TestOnlineListCheckerPollsAdditionalStreamers(t *testing.T) {
+	cases := []struct {
+		name       string
+		online     map[string]bool
+		individual map[string]StatusKind
+		poll       []string
+		wantOnline map[string]bool
+		wantCalls  map[string]bool
+	}{
+		{
+			name:       "polled-only online appears in result",
+			online:     toSet("a"),
+			individual: map[string]StatusKind{"b": StatusOnline},
+			poll:       []string{"a", "b"},
+			wantOnline: toSet("a", "b"),
+			wantCalls:  toSet("b"),
+		},
+		{
+			name:       "polled-only offline does not appear",
+			online:     toSet("a"),
+			individual: map[string]StatusKind{"b": StatusOffline},
+			poll:       []string{"a", "b"},
+			wantOnline: toSet("a"),
+			wantCalls:  toSet("b"),
+		},
+		{
+			name:       "no poll set means no individual queries",
+			online:     toSet("a"),
+			poll:       nil,
+			wantOnline: toSet("a"),
+			wantCalls:  toSet(),
+		},
+		{
+			name:       "polled streamer already in bulk is not re-queried",
+			online:     toSet("a", "b"),
+			poll:       []string{"a", "b"},
+			wantOnline: toSet("a", "b"),
+			wantCalls:  toSet(),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			checker := &testPolledChecker{online: tc.online, individual: tc.individual}
+			checker.Init(CheckerConfig{UsersOnlineEndpoints: []string{""}, QueueSize: queueSize})
+			resultsCh := make(chan CheckerResults, 1)
+			StartCheckerDaemon(checker)
+
+			if err := checker.PushStatusRequest(&OnlineListRequest{
+				ResultsCh: resultsCh,
+				Poll:      tc.poll,
+			}); err != nil {
+				t.Fatalf("cannot push request: %v", err)
+			}
+			result := (<-resultsCh).(*OnlineListResults)
+			if result.Failed() {
+				t.Fatal("unexpected failure")
+			}
+			gotOnline := map[string]bool{}
+			for k := range result.Streamers {
+				gotOnline[k] = true
+			}
+			if !reflect.DeepEqual(gotOnline, tc.wantOnline) {
+				t.Errorf("online: got %v, want %v", gotOnline, tc.wantOnline)
+			}
+			gotCalls := map[string]bool{}
+			for _, n := range checker.queryCalls {
+				gotCalls[n] = true
+			}
+			if !reflect.DeepEqual(gotCalls, tc.wantCalls) {
+				t.Errorf("query calls: got %v, want %v", gotCalls, tc.wantCalls)
+			}
+		})
 	}
 }
 

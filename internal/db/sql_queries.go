@@ -386,6 +386,45 @@ func (d *Database) UnconfirmedStatusesForStreamers(nicknames []string) map[strin
 	return statusChanges
 }
 
+// StreamersToPoll returns nicknames flagged for per-streamer polling.
+func (d *Database) StreamersToPoll() []string {
+	var streamers []string
+	var nickname string
+	d.MustQuery(
+		`select nickname from streamers where poll`,
+		nil,
+		ScanTo{&nickname},
+		func() { streamers = append(streamers, nickname) })
+	return streamers
+}
+
+// IncrementPollErrors bumps poll_error_count for the given nicknames.
+// Used by the bot to surface streamers whose polled checks fail
+// repeatedly so admins can spot typos or sites that block them.
+func (d *Database) IncrementPollErrors(nicknames []string) {
+	d.MustExec(
+		`update streamers set poll_error_count = poll_error_count + 1 where nickname = any($1)`,
+		nicknames)
+}
+
+// SetPoll toggles the poll flag, upserting the streamer when on=true.
+// Disabling a missing streamer returns false so admins catch typos.
+func (d *Database) SetPoll(nickname string, on bool) bool {
+	if !on {
+		return d.MustExec(`update streamers set poll = false where nickname = $1`, nickname) > 0
+	}
+	d.MustExec(`
+		with new_streamer as (
+			insert into streamers (nickname, poll) values ($1, true)
+			on conflict(nickname) do update set poll = true
+			returning (xmax = 0) as is_new
+		)
+		insert into nicknames (nickname)
+		select $1 from new_streamer where is_new`,
+		nickname)
+	return true
+}
+
 // SubscribedStreamers returns all subscribed streamers
 func (d *Database) SubscribedStreamers() map[string]bool {
 	streamers := map[string]bool{}
