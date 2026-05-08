@@ -2,7 +2,9 @@
 
 ## Git
 
-- Never use `git -C` — the working directory is already the repo root
+- Never use `git -C` — the working directory is already the repo root,
+  and `-C` triggers an extra permission prompt.
+  If the wrong cwd is in effect, run a bare `cd /path` first (no `&&`, no chain)
 - Prefer modern git commands, e.g. `switch` over `checkout` for branches
 - Don't use slashes in branch names
 - Use one-line commit messages only
