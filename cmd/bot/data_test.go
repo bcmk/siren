@@ -94,11 +94,11 @@ func newTestWorker() *testWorker {
 			bots:          nil,
 			db:            db.NewDatabase(connStr, true),
 			cfg:           &testConfig,
-			clients:       nil,
+			client:        nil,
 			tr:            map[string]*cmdlib.Translations{"test": &testTranslations},
 			tpl:           map[string]*template.Template{"test": tpl},
 			outgoingMsgCh: make(chan outgoingPacket, maxHeapLen),
-			checker:       &checkers.RandomChecker{},
+			checker:       &checkers.RandomChecker{BaseChecker: checkers.NewBaseChecker(&checkers.TestCheckerConfig{}, false)},
 		},
 	}
 	w.terminate = func() {

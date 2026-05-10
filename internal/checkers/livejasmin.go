@@ -5,16 +5,64 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/bcmk/siren/v2/lib/cmdlib"
 )
 
-// LiveJasminChecker implements a checker for LiveJasmin
-type LiveJasminChecker struct{ cmdlib.CheckerCommon }
+// LiveJasminCheckerConfig holds API credentials and per-category
+// online endpoints (LiveJasmin's API exposes multiple online URLs).
+type LiveJasminCheckerConfig struct {
+	BaseCheckerConfig    `mapstructure:",squash"`
+	UsersOnlineEndpoints []string      `mapstructure:"users_online_endpoints"`
+	PsID                 cmdlib.Secret `mapstructure:"ps_id"`
+	AccessKey            cmdlib.Secret `mapstructure:"access_key"`
+	Headers              [][2]string   `mapstructure:"headers"`
+}
 
-var _ cmdlib.Checker = &LiveJasminChecker{}
+func (c *LiveJasminCheckerConfig) validate() error {
+	if err := c.validateBase(); err != nil {
+		return err
+	}
+	if c.PsID == "" {
+		return errors.New("configure ps_id")
+	}
+	if c.AccessKey == "" {
+		return errors.New("configure access_key")
+	}
+	if len(c.UsersOnlineEndpoints) == 0 {
+		return errors.New("configure users_online_endpoints")
+	}
+	for _, ep := range c.UsersOnlineEndpoints {
+		if ep == "" {
+			return errors.New("users_online_endpoints contains an empty entry")
+		}
+	}
+	return nil
+}
+
+// LiveJasminChecker implements a checker for LiveJasmin
+type LiveJasminChecker struct {
+	BaseChecker[*LiveJasminCheckerConfig]
+}
+
+var _ Checker = &LiveJasminChecker{}
+
+// Site returns the site name.
+func (*LiveJasminChecker) Site() string { return "livejasmin" }
+
+// Init loads livejasmin-checker.json.
+func (c *LiveJasminChecker) Init(checkerCfgPath string, dbg bool) error {
+	if err := c.ensureUninitialised(); err != nil {
+		return err
+	}
+	cfg := &LiveJasminCheckerConfig{}
+	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
+		return err
+	}
+	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	return nil
+}
 
 type liveJasminModel struct {
 	PerformerID       string `json:"performerId"`
@@ -35,10 +83,10 @@ type liveJasminResponse struct {
 
 // QueryStatus checks LiveJasmin model status
 func (c *LiveJasminChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
-	psID := string(c.SpecificConfig["ps_id"])
-	accessKey := string(c.SpecificConfig["access_key"])
+	psID := string(c.Cfg.PsID)
+	accessKey := string(c.Cfg.AccessKey)
 	url := fmt.Sprintf("https://pt.potawe.com/api/model/status?performerId=%s&psId=%s&accessKey=%s&legacyRedirect=1", modelID, psID, accessKey)
-	addr, resp := c.DoGetRequest(url)
+	resp := c.DoGetRequest(url, c.Cfg.Headers)
 	if resp == nil {
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
@@ -52,7 +100,7 @@ func (c *LiveJasminChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWith
 	buf := bytes.Buffer{}
 	_, err := buf.ReadFrom(resp.Body)
 	if err != nil {
-		cmdlib.Lerr("[%v] cannot read response for model %s, %v", addr, modelID, err)
+		cmdlib.Lerr("cannot read response for model %s, %v", modelID, err)
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	return cmdlib.StreamerInfoWithStatus{Status: liveJasminStatus(buf.String())}, nil
@@ -85,20 +133,18 @@ func liveJasminShowKind(status string) cmdlib.ShowKind {
 	return cmdlib.ShowUnknown
 }
 
-// CheckEndpoint returns LiveJasmin online models
-func (c *LiveJasminChecker) CheckEndpoint(endpoint string) (map[string]cmdlib.StreamerInfo, error) {
-	client := c.ClientsLoop.NextClient()
+// checkEndpoint returns LiveJasmin online models
+func (c *LiveJasminChecker) checkEndpoint(endpoint string) (map[string]cmdlib.StreamerInfo, error) {
 	streamers := map[string]cmdlib.StreamerInfo{}
-	resp, buf, err := cmdlib.OnlineQuery(endpoint, client, c.Headers)
+	resp, buf, err := cmdlib.OnlineQuery(endpoint, c.Client, c.Cfg.Headers)
 	if err != nil {
 		return nil, fmt.Errorf("cannot send a query, %v", err)
 	}
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("query status, %d", resp.StatusCode)
 	}
-	decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	var parsed liveJasminResponse
-	err = decoder.Decode(&parsed)
+	err = json.Unmarshal(buf.Bytes(), &parsed)
 	if err != nil {
 		if c.Dbg {
 			cmdlib.Ldbg("response: %s", buf.String())
@@ -125,8 +171,8 @@ func (c *LiveJasminChecker) CheckEndpoint(endpoint string) (map[string]cmdlib.St
 // QueryOnlineStreamers returns LiveJasmin online models
 func (c *LiveJasminChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
 	streamers := map[string]cmdlib.StreamerInfo{}
-	for _, endpoint := range c.UsersOnlineEndpoints {
-		endpointStreamers, err := c.CheckEndpoint(endpoint)
+	for _, endpoint := range c.Cfg.UsersOnlineEndpoints {
+		endpointStreamers, err := c.checkEndpoint(endpoint)
 		if err != nil {
 			return nil, err
 		}
@@ -145,18 +191,17 @@ func (c *LiveJasminChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerIn
 
 // QueryFixedListOnlineStreamers is not implemented for online list checkers
 func (c *LiveJasminChecker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckMode) (map[string]cmdlib.StreamerInfo, error) {
-	return nil, cmdlib.ErrNotImplemented
+	return nil, ErrNotImplemented
 }
 
-// SubjectSupported returns true for LiveJasmin
-func (c *LiveJasminChecker) SubjectSupported() bool { return true }
-
-// Capabilities reports the status surfaces LiveJasmin implements.
-func (*LiveJasminChecker) Capabilities() cmdlib.Capabilities {
-	return cmdlib.Capabilities{
-		QueryOnlineStreamers:          true,
-		QueryFixedListOnlineStreamers: false,
-		QueryFixedListStatuses:        false,
-		QueryStatus:                   true,
+// Capabilities lists the surfaces LiveJasmin exposes for dispatch.
+func (*LiveJasminChecker) Capabilities() Capabilities {
+	return Capabilities{
+		SupportsQueryOnlineStreamers:          true,
+		SupportsQueryFixedListOnlineStreamers: false,
+		SupportsQueryFixedListStatuses:        false,
+		SupportsQueryStatus:                   true,
+		SupportsCLI:                           true,
+		SupportsSubject:                       true,
 	}
 }

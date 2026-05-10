@@ -1,20 +1,36 @@
 package checkers
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/bcmk/siren/v2/lib/cmdlib"
 )
 
 // BongaCamsChecker implements a checker for BongaCams
-type BongaCamsChecker struct{ cmdlib.CheckerCommon }
+type BongaCamsChecker struct {
+	BaseChecker[*SimpleCheckerConfig]
+}
 
-var _ cmdlib.Checker = &BongaCamsChecker{}
+var _ Checker = &BongaCamsChecker{}
+
+// Site returns the site name.
+func (*BongaCamsChecker) Site() string { return "bongacams" }
+
+// Init loads bongacams-checker.json.
+func (c *BongaCamsChecker) Init(checkerCfgPath string, dbg bool) error {
+	if err := c.ensureUninitialised(); err != nil {
+		return err
+	}
+	cfg := &SimpleCheckerConfig{}
+	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
+		return err
+	}
+	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	return nil
+}
 
 type bongacamsModel struct {
 	Username     string `json:"username"`
@@ -28,7 +44,7 @@ type bongacamsModel struct {
 
 // QueryStatus checks BongaCams model status
 func (c *BongaCamsChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
-	code := c.QueryStatusCode(fmt.Sprintf("https://en.bongacams.com/%s", modelID))
+	code := c.QueryStatusCode(fmt.Sprintf("https://en.bongacams.com/%s", modelID), c.Cfg.Headers)
 	switch code {
 	case 200:
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOnline}, nil
@@ -42,19 +58,17 @@ func (c *BongaCamsChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithS
 
 // QueryOnlineStreamers returns BongaCams online models
 func (c *BongaCamsChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
-	client := c.ClientsLoop.NextClient()
 	streamers := map[string]cmdlib.StreamerInfo{}
 
-	resp, buf, err := cmdlib.OnlineQuery(c.UsersOnlineEndpoints[0], client, c.Headers)
+	resp, buf, err := cmdlib.OnlineQuery(c.Cfg.UsersOnlineEndpoint, c.Client, c.Cfg.Headers)
 	if err != nil {
 		return nil, fmt.Errorf("cannot send a query, %v", err)
 	}
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("query status, %d", resp.StatusCode)
 	}
-	decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	var parsed []bongacamsModel
-	err = decoder.Decode(&parsed)
+	err = json.Unmarshal(buf.Bytes(), &parsed)
 	if err != nil {
 		if c.Dbg {
 			cmdlib.Ldbg("response: %s", buf.String())
@@ -80,18 +94,17 @@ func (c *BongaCamsChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInf
 
 // QueryFixedListOnlineStreamers is not implemented for online list checkers
 func (c *BongaCamsChecker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckMode) (map[string]cmdlib.StreamerInfo, error) {
-	return nil, cmdlib.ErrNotImplemented
+	return nil, ErrNotImplemented
 }
 
-// SubjectSupported returns true for BongaCams
-func (c *BongaCamsChecker) SubjectSupported() bool { return true }
-
-// Capabilities reports the status surfaces BongaCams implements.
-func (*BongaCamsChecker) Capabilities() cmdlib.Capabilities {
-	return cmdlib.Capabilities{
-		QueryOnlineStreamers:          true,
-		QueryFixedListOnlineStreamers: false,
-		QueryFixedListStatuses:        false,
-		QueryStatus:                   true,
+// Capabilities lists the surfaces BongaCams exposes for dispatch.
+func (*BongaCamsChecker) Capabilities() Capabilities {
+	return Capabilities{
+		SupportsQueryOnlineStreamers:          true,
+		SupportsQueryFixedListOnlineStreamers: false,
+		SupportsQueryFixedListStatuses:        false,
+		SupportsQueryStatus:                   true,
+		SupportsCLI:                           true,
+		SupportsSubject:                       true,
 	}
 }

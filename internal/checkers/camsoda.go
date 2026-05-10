@@ -1,20 +1,36 @@
 package checkers
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/bcmk/siren/v2/lib/cmdlib"
 )
 
 // CamSodaChecker implements a checker for CamSoda
-type CamSodaChecker struct{ cmdlib.CheckerCommon }
+type CamSodaChecker struct {
+	BaseChecker[*SimpleCheckerConfig]
+}
 
-var _ cmdlib.Checker = &CamSodaChecker{}
+var _ Checker = &CamSodaChecker{}
+
+// Site returns the site name.
+func (*CamSodaChecker) Site() string { return "camsoda" }
+
+// Init loads camsoda-checker.json.
+func (c *CamSodaChecker) Init(checkerCfgPath string, dbg bool) error {
+	if err := c.ensureUninitialised(); err != nil {
+		return err
+	}
+	cfg := &SimpleCheckerConfig{}
+	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
+		return err
+	}
+	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	return nil
+}
 
 type camSodaOnlineResponse struct {
 	Status  bool
@@ -42,7 +58,7 @@ func camSodaShowKind(status string) cmdlib.ShowKind {
 
 // QueryStatus checks CamSoda model status
 func (c *CamSodaChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
-	code := c.QueryStatusCode(fmt.Sprintf("https://www.camsoda.com/%s", modelID))
+	code := c.QueryStatusCode(fmt.Sprintf("https://www.camsoda.com/%s", modelID), c.Cfg.Headers)
 	switch code {
 	case 200:
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOnline | cmdlib.StatusOffline}, nil
@@ -54,18 +70,16 @@ func (c *CamSodaChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithSta
 
 // QueryOnlineStreamers returns CamSoda online models
 func (c *CamSodaChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
-	client := c.ClientsLoop.NextClient()
 	streamers := map[string]cmdlib.StreamerInfo{}
-	resp, buf, err := cmdlib.OnlineQuery(c.UsersOnlineEndpoints[0], client, c.Headers)
+	resp, buf, err := cmdlib.OnlineQuery(c.Cfg.UsersOnlineEndpoint, c.Client, c.Cfg.Headers)
 	if err != nil {
 		return nil, fmt.Errorf("cannot send a query, %v", err)
 	}
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("query status, %d", resp.StatusCode)
 	}
-	decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	var parsed camSodaOnlineResponse
-	err = decoder.Decode(&parsed)
+	err = json.Unmarshal(buf.Bytes(), &parsed)
 	if err != nil {
 		if c.Dbg {
 			cmdlib.Ldbg("response: %s", buf.String())
@@ -93,18 +107,17 @@ func (c *CamSodaChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo,
 
 // QueryFixedListOnlineStreamers is not implemented for online list checkers
 func (c *CamSodaChecker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckMode) (map[string]cmdlib.StreamerInfo, error) {
-	return nil, cmdlib.ErrNotImplemented
+	return nil, ErrNotImplemented
 }
 
-// SubjectSupported returns true for CamSoda
-func (c *CamSodaChecker) SubjectSupported() bool { return true }
-
-// Capabilities reports the status surfaces CamSoda implements.
-func (*CamSodaChecker) Capabilities() cmdlib.Capabilities {
-	return cmdlib.Capabilities{
-		QueryOnlineStreamers:          true,
-		QueryFixedListOnlineStreamers: false,
-		QueryFixedListStatuses:        false,
-		QueryStatus:                   true,
+// Capabilities lists the surfaces CamSoda exposes for dispatch.
+func (*CamSodaChecker) Capabilities() Capabilities {
+	return Capabilities{
+		SupportsQueryOnlineStreamers:          true,
+		SupportsQueryFixedListOnlineStreamers: false,
+		SupportsQueryFixedListStatuses:        false,
+		SupportsQueryStatus:                   true,
+		SupportsCLI:                           true,
+		SupportsSubject:                       true,
 	}
 }

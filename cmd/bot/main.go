@@ -71,14 +71,14 @@ type streamerListEntry struct {
 type worker struct {
 	db                         db.Database
 	fuzzySearchDB              db.Database
-	clients                    []*cmdlib.Client
+	client                     *http.Client
 	bots                       map[string]*bot.Bot
 	cfg                        *botconfig.Config
 	tr                         map[string]*cmdlib.Translations
 	tpl                        map[string]*texttemplate.Template
 	trAds                      map[string]map[string]*cmdlib.Translation
 	tplAds                     map[string]*texttemplate.Template
-	checker                    cmdlib.Checker
+	checker                    checkers.Checker
 	imageDownloadLogs          chan imageDownloadLog
 	unconfirmedOnlineStreamers map[string]cmdlib.StreamerInfo
 	botNames                   map[string]string
@@ -166,21 +166,18 @@ type imageDownloadLog struct {
 	durationMs int
 }
 
-func newWorker(cfg *botconfig.Config) *worker {
-	var clients []*cmdlib.Client
-	for _, address := range cfg.SourceIPAddresses {
-		clients = append(clients, cmdlib.HTTPClientWithTimeoutAndAddress(cfg.TimeoutSeconds, address, cfg.EnableCookies))
-	}
+func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
+	client := cmdlib.HTTPClientWithTimeout(checker.Config().Timeout())
 
 	incomingPackets := make(chan incomingPacket)
-	telegramClient := cmdlib.HTTPClientWithTimeoutAndAddress(cfg.TelegramTimeoutSeconds, "", false)
+	telegramClient := cmdlib.HTTPClientWithTimeout(cfg.TelegramTimeout())
 	bots := make(map[string]*bot.Bot)
 	for n, p := range cfg.Endpoints {
 		endpointName := n
 		handler := func(_ context.Context, _ *bot.Bot, update *models.Update) {
 			incomingPackets <- incomingPacket{message: update, endpoint: endpointName}
 		}
-		b, err := bot.New(string(p.BotToken), bot.WithHTTPClient(0, telegramClient.Client), bot.WithDefaultHandler(handler))
+		b, err := bot.New(string(p.BotToken), bot.WithHTTPClient(0, telegramClient), bot.WithDefaultHandler(handler))
 		checkErr(err)
 		bots[n] = b
 	}
@@ -194,7 +191,7 @@ func newWorker(cfg *botconfig.Config) *worker {
 		db:                         db.NewDatabase(string(cfg.DBConnectionString), cfg.CheckGID),
 		fuzzySearchDB:              db.NewDatabase(string(cfg.DBConnectionString), false),
 		cfg:                        cfg,
-		clients:                    clients,
+		client:                     client,
 		tr:                         tr,
 		tpl:                        tpl,
 		trAds:                      trAds,
@@ -224,34 +221,7 @@ func newWorker(cfg *botconfig.Config) *worker {
 		}
 	}
 
-	switch cfg.Website {
-	case "test":
-		w.checker = &checkers.RandomChecker{}
-	case "bongacams":
-		w.checker = &checkers.BongaCamsChecker{}
-	case "chaturbate":
-		w.checker = &checkers.ChaturbateChecker{}
-	case "stripchat":
-		w.checker = &checkers.StripchatChecker{}
-	case "livejasmin":
-		w.checker = &checkers.LiveJasminChecker{}
-	case "camsoda":
-		w.checker = &checkers.CamSodaChecker{}
-	case "flirt4free":
-		w.checker = &checkers.Flirt4FreeChecker{}
-	case "streamate":
-		w.checker = &checkers.StreamateChecker{}
-	case "twitch":
-		w.checker = &checkers.TwitchChecker{}
-	case "cam4":
-		w.checker = &checkers.Cam4Checker{}
-	case "kick":
-		w.checker = &checkers.KickChecker{}
-	case "myfreecams":
-		w.checker = checkers.NewMyFreeCamsAdapter()
-	default:
-		panic("wrong website")
-	}
+	w.checker = checker
 
 	searchHTMLBytes, err := os.ReadFile("res/webapp/search.html")
 	checkErr(err)
@@ -781,7 +751,7 @@ func (w *worker) addStreamer(endpoint string, chatID int64, nickname string, now
 	streamer := w.db.MaybeStreamer(nickname)
 	if streamer == nil {
 		caps := w.checker.Capabilities()
-		if !caps.QueryStatus && !caps.QueryFixedListStatuses {
+		if !caps.SupportsQueryStatus && !caps.SupportsQueryFixedListStatuses {
 			w.sendTr(db.PriorityHigh, endpoint, chatID, false, w.tr[endpoint].AddError, tplData{"streamer": nickname}, db.ReplyPacket)
 			return nil
 		}
@@ -841,7 +811,7 @@ func (w *worker) settings(endpoint string, chatID int64) {
 		"show_images":                     user.ShowImages,
 		"offline_notifications_supported": w.cfg.OfflineNotifications,
 		"offline_notifications":           user.OfflineNotifications,
-		"subject_supported":               w.checker.SubjectSupported(),
+		"subject_supported":               w.checker.Capabilities().SupportsSubject,
 		"show_subject":                    user.ShowSubject,
 		"silent_messages":                 user.SilentMessages,
 	}, db.ReplyPacket)
@@ -997,7 +967,7 @@ func (w *worker) downloadImage(url string) []byte {
 }
 
 func (w *worker) downloadImageInternal(url string) ([]byte, error) {
-	resp, err := w.clients[0].Client.Get(url)
+	resp, err := w.client.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("cannot query the image %s, %v", url, err)
 	}
@@ -1234,7 +1204,7 @@ func (w *worker) sendPolledList(endpoint string, now int) {
 
 func (w *worker) poll(endpoint string, arguments string) {
 	caps := w.checker.Capabilities()
-	if caps.UsesFixedListOnline() || !caps.QueryStatus {
+	if caps.UsesFixedListOnline() || !caps.SupportsQueryStatus {
 		w.sendText(db.PriorityHigh, endpoint, w.cfg.AdminID, false, true, cmdlib.ParseRaw, "checker does not support per-streamer polling", db.ReplyPacket)
 		return
 	}
@@ -1445,9 +1415,14 @@ func (w *worker) registerWebApp() {
 }
 
 func (w *worker) logConfig() {
+	// Two separate log lines on purpose —
+	// easier to grep "bot config" or "checker config" out of the journal.
 	cfgString, err := json.MarshalIndent(w.cfg, "", "    ")
 	checkErr(err)
-	linf("config: " + string(cfgString))
+	linf("bot config: " + string(cfgString))
+	checkerCfgString, err := json.MarshalIndent(w.checker.Config(), "", "    ")
+	checkErr(err)
+	linf("checker config: " + string(checkerCfgString))
 	for k, v := range w.trAds {
 		linf("ads for %s: %d", k, len(v))
 	}
@@ -1706,7 +1681,7 @@ func (w *worker) pushOnlineRequest() {
 		}
 	} else {
 		var poll []string
-		if caps.QueryStatus {
+		if caps.SupportsQueryStatus {
 			poll = w.db.StreamersToPoll()
 		}
 		request = &cmdlib.OnlineListRequest{
@@ -1722,7 +1697,7 @@ func (w *worker) pushOnlineRequest() {
 func (w *worker) pushExistenceRequest(streamers map[string]bool) error {
 	caps := w.checker.Capabilities()
 	switch {
-	case caps.QueryFixedListStatuses:
+	case caps.SupportsQueryFixedListStatuses:
 		err := w.checker.PushStatusRequest(&cmdlib.FixedListStatusRequest{
 			ResultsCh: w.existenceListResults,
 			Streamers: streamers,
@@ -1731,7 +1706,7 @@ func (w *worker) pushExistenceRequest(streamers map[string]bool) error {
 			lerr("%v", err)
 		}
 		return err
-	case caps.QueryStatus:
+	case caps.SupportsQueryStatus:
 		for name := range streamers {
 			err := w.checker.PushStatusRequest(&cmdlib.SingleStatusRequest{
 				ResultsCh: w.existenceListResults,
@@ -2105,7 +2080,7 @@ func (w *worker) fuzzySearchDaemon() {
 
 func (w *worker) queryUnconfirmedSubs() {
 	caps := w.checker.Capabilities()
-	if !caps.QueryStatus && !caps.QueryFixedListStatuses {
+	if !caps.SupportsQueryStatus && !caps.SupportsQueryFixedListStatuses {
 		return
 	}
 	unconfirmed := map[string]bool{}
@@ -2182,23 +2157,34 @@ func (w *worker) processSubsConfirmations(res *cmdlib.ExistenceListResults) {
 func main() {
 	version := pflag.BoolP("version", "v", false, "prints current version")
 	printCfg := pflag.BoolP("print-config", "p", false, "print config and exit")
-	cfgPath := pflag.StringP("config", "c", "", "path to a config file (overrides default search)")
+	botCfgPath := pflag.String("bot-config", "", "path to the bot config file (required)")
+	checkerCfgPath := pflag.String("checker-config", "", "path to the checker config file (required)")
 	pflag.Parse()
 	if *version {
 		fmt.Println(cmdlib.Version)
 		os.Exit(0)
 	}
+	if *botCfgPath == "" || *checkerCfgPath == "" {
+		fmt.Fprintln(os.Stderr, "both --bot-config and --checker-config are required")
+		pflag.Usage()
+		os.Exit(2)
+	}
 
-	cfg := botconfig.ReadConfig(*cfgPath)
+	cfg := botconfig.ReadConfig(*botCfgPath)
+	checker, err := checkers.Build(cfg.Website, *checkerCfgPath, cfg.Debug)
+	checkErr(err)
 	if *printCfg {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetEscapeHTML(false)
 		enc.SetIndent("", "  ")
+		fmt.Println("bot config:")
 		checkErr(enc.Encode(cfg))
+		fmt.Println("checker config:")
+		checkErr(enc.Encode(checker.Config()))
 		os.Exit(0)
 	}
 
-	w := newWorker(cfg)
+	w := newWorker(cfg, checker)
 	w.logConfig()
 	w.setWebhook()
 	w.setCommands()
@@ -2226,16 +2212,9 @@ func main() {
 	var subsConfirmTimer = time.NewTicker(time.Duration(w.cfg.SubsConfirmationPeriodSeconds) * time.Second)
 	var notificationSenderTimer = time.NewTicker(time.Duration(w.cfg.NotificationsReadyPeriodSeconds) * time.Second)
 
-	w.checker.Init(cmdlib.CheckerConfig{
-		UsersOnlineEndpoints: w.cfg.UsersOnlineEndpoint,
-		Clients:              w.clients,
-		Headers:              w.cfg.Headers,
-		Dbg:                  w.cfg.Debug,
-		SpecificConfig:       w.cfg.SpecificConfig,
-		QueueSize:            1000,
-		MinRequestIntervalMs: w.cfg.MinRequestIntervalMs,
-	})
-	cmdlib.StartCheckerDaemon(w.checker)
+	checkerCtx, cancelCheckerCtx := context.WithCancel(context.Background())
+	defer cancelCheckerCtx()
+	checkers.StartCheckerDaemon(checkerCtx, w.checker)
 	signals := make(chan os.Signal, 16)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT)
 	w.sendText(db.PriorityHigh, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, "bot is up", db.MessagePacket)

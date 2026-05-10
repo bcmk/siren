@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"regexp"
 	"strings"
 
@@ -13,9 +12,27 @@ import (
 )
 
 // Cam4Checker implements a checker for CAM4
-type Cam4Checker struct{ cmdlib.CheckerCommon }
+type Cam4Checker struct {
+	BaseChecker[*SimpleCheckerConfig]
+}
 
-var _ cmdlib.Checker = &Cam4Checker{}
+var _ Checker = &Cam4Checker{}
+
+// Site returns the site name.
+func (*Cam4Checker) Site() string { return "cam4" }
+
+// Init loads cam4-checker.json.
+func (c *Cam4Checker) Init(checkerCfgPath string, dbg bool) error {
+	if err := c.ensureUninitialised(); err != nil {
+		return err
+	}
+	cfg := &SimpleCheckerConfig{}
+	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
+		return err
+	}
+	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	return nil
+}
 
 // Cam4ModelIDRegexp is a regular expression to check model IDs
 var Cam4ModelIDRegexp = regexp.MustCompile(`^[a-z0-9_]+$`)
@@ -50,7 +67,7 @@ type cam4Response struct {
 // QueryStatus checks CAM4 model status
 func (c *Cam4Checker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
 	url := fmt.Sprintf("https://www.cam4.com/rest/v1.0/profile/%s/info", modelID)
-	addr, resp := c.DoGetRequest(url)
+	resp := c.DoGetRequest(url, c.Cfg.Headers)
 	if resp == nil {
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
@@ -61,14 +78,13 @@ func (c *Cam4Checker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithStatus
 	buf := bytes.Buffer{}
 	_, err := buf.ReadFrom(resp.Body)
 	if err != nil {
-		cmdlib.Lerr("[%v] cannot read response for model %s, %v", addr, modelID, err)
+		cmdlib.Lerr("cannot read response for model %s, %v", modelID, err)
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
-	decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	parsed := &cam4Response{}
-	err = decoder.Decode(parsed)
+	err = json.Unmarshal(buf.Bytes(), parsed)
 	if err != nil {
-		cmdlib.Lerr("[%v] cannot parse response for model %s, %v", addr, modelID, err)
+		cmdlib.Lerr("cannot parse response for model %s, %v", modelID, err)
 		if c.Dbg {
 			cmdlib.Ldbg("response: %s", buf.String())
 		}
@@ -94,18 +110,16 @@ func cam4ShowKind(showType string) cmdlib.ShowKind {
 
 // QueryOnlineStreamers returns CAM4 online models
 func (c *Cam4Checker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
-	client := c.ClientsLoop.NextClient()
 	streamers := map[string]cmdlib.StreamerInfo{}
-	resp, buf, err := cmdlib.OnlineQuery(c.UsersOnlineEndpoints[0], client, c.Headers)
+	resp, buf, err := cmdlib.OnlineQuery(c.Cfg.UsersOnlineEndpoint, c.Client, c.Cfg.Headers)
 	if err != nil {
 		return nil, fmt.Errorf("cannot send a query, %v", err)
 	}
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("query status, %d", resp.StatusCode)
 	}
-	decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	var parsed []cam4Model
-	err = decoder.Decode(&parsed)
+	err = json.Unmarshal(buf.Bytes(), &parsed)
 	if err != nil {
 		if c.Dbg {
 			cmdlib.Ldbg("response: %s", buf.String())
@@ -129,15 +143,16 @@ func (c *Cam4Checker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, er
 
 // QueryFixedListOnlineStreamers is not implemented for online list checkers
 func (c *Cam4Checker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckMode) (map[string]cmdlib.StreamerInfo, error) {
-	return nil, cmdlib.ErrNotImplemented
+	return nil, ErrNotImplemented
 }
 
-// Capabilities reports the status surfaces CAM4 implements.
-func (*Cam4Checker) Capabilities() cmdlib.Capabilities {
-	return cmdlib.Capabilities{
-		QueryOnlineStreamers:          true,
-		QueryFixedListOnlineStreamers: false,
-		QueryFixedListStatuses:        false,
-		QueryStatus:                   true,
+// Capabilities lists the surfaces CAM4 exposes for dispatch.
+func (*Cam4Checker) Capabilities() Capabilities {
+	return Capabilities{
+		SupportsQueryOnlineStreamers:          true,
+		SupportsQueryFixedListOnlineStreamers: false,
+		SupportsQueryFixedListStatuses:        false,
+		SupportsQueryStatus:                   true,
+		SupportsCLI:                           true,
 	}
 }

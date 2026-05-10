@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"net/url"
 	"slices"
@@ -15,10 +14,49 @@ import (
 	"github.com/bcmk/siren/v2/lib/cmdlib"
 )
 
-// StripchatChecker implements a checker for Stripchat
-type StripchatChecker struct{ cmdlib.CheckerCommon }
+// StripchatCheckerConfig holds the user_id and online URL.
+type StripchatCheckerConfig struct {
+	BaseCheckerConfig   `mapstructure:",squash"`
+	UsersOnlineEndpoint string        `mapstructure:"users_online_endpoint"`
+	UserID              cmdlib.Secret `mapstructure:"user_id"`
+	Headers             [][2]string   `mapstructure:"headers"`
+}
 
-var _ cmdlib.Checker = &StripchatChecker{}
+func (c *StripchatCheckerConfig) validate() error {
+	if err := c.validateBase(); err != nil {
+		return err
+	}
+	if c.UserID == "" {
+		return errors.New("configure user_id")
+	}
+	if c.UsersOnlineEndpoint == "" {
+		return errors.New("configure users_online_endpoint")
+	}
+	return nil
+}
+
+// StripchatChecker implements a checker for Stripchat
+type StripchatChecker struct {
+	BaseChecker[*StripchatCheckerConfig]
+}
+
+var _ Checker = &StripchatChecker{}
+
+// Site returns the site name.
+func (*StripchatChecker) Site() string { return "stripchat" }
+
+// Init loads stripchat-checker.json.
+func (c *StripchatChecker) Init(checkerCfgPath string, dbg bool) error {
+	if err := c.ensureUninitialised(); err != nil {
+		return err
+	}
+	cfg := &StripchatCheckerConfig{}
+	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
+		return err
+	}
+	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	return nil
+}
 
 type stripchatModel struct {
 	Username     string `json:"username"`
@@ -70,7 +108,7 @@ type stripchatCamResponse struct {
 // QueryStatus checks Stripchat model status via the per-model cam endpoint.
 func (c *StripchatChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
 	endpoint := fmt.Sprintf("https://stripchat.com/api/front/v2/models/username/%s/cam", url.PathEscape(modelID))
-	addr, resp := c.DoGetRequest(endpoint)
+	resp := c.DoGetRequest(endpoint, c.Cfg.Headers)
 	if resp == nil {
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
@@ -84,12 +122,12 @@ func (c *StripchatChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithS
 	}
 	buf := bytes.Buffer{}
 	if _, err := buf.ReadFrom(resp.Body); err != nil {
-		cmdlib.Lerr("[%v] cannot read response for model %s, %v", addr, modelID, err)
+		cmdlib.Lerr("cannot read response for model %s, %v", modelID, err)
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	parsed := &stripchatCamResponse{}
-	if err := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes()))).Decode(parsed); err != nil {
-		cmdlib.Lerr("[%v] cannot parse response for model %s, %v", addr, modelID, err)
+	if err := json.Unmarshal(buf.Bytes(), parsed); err != nil {
+		cmdlib.Lerr("cannot parse response for model %s, %v", modelID, err)
 		if c.Dbg {
 			cmdlib.Ldbg("response: %s", buf.String())
 		}
@@ -112,11 +150,9 @@ func (c *StripchatChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithS
 }
 
 func (c *StripchatChecker) checkOnlyOnline() (map[string]cmdlib.StreamerInfo, error) {
-	endpoint := c.UsersOnlineEndpoints[0]
-	userID := string(c.SpecificConfig["user_id"])
+	endpoint := c.Cfg.UsersOnlineEndpoint
+	userID := string(c.Cfg.UserID)
 	streamers := map[string]cmdlib.StreamerInfo{}
-
-	client := c.ClientsLoop.NextClient()
 
 	request, err := url.Parse(endpoint + "/online")
 	if err != nil {
@@ -128,16 +164,15 @@ func (c *StripchatChecker) checkOnlyOnline() (map[string]cmdlib.StreamerInfo, er
 
 	request.RawQuery = q.Encode()
 
-	resp, buf, err := cmdlib.OnlineQuery(request.String(), client, c.Headers)
+	resp, buf, err := cmdlib.OnlineQuery(request.String(), c.Client, c.Cfg.Headers)
 	if err != nil {
 		return nil, fmt.Errorf("cannot send a query, %v", err)
 	}
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("query status %d", resp.StatusCode)
 	}
-	decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	parsed := &onlineResponse{}
-	err = decoder.Decode(parsed)
+	err = json.Unmarshal(buf.Bytes(), parsed)
 	if err != nil {
 		if c.Dbg {
 			cmdlib.Ldbg("response: %s", buf.String())
@@ -160,7 +195,7 @@ func (c *StripchatChecker) checkOnlyOnline() (map[string]cmdlib.StreamerInfo, er
 
 // QueryOnlineStreamers returns Stripchat online models
 func (c *StripchatChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
-	endpoint := c.UsersOnlineEndpoints[0]
+	endpoint := c.Cfg.UsersOnlineEndpoint
 	streamers, err := c.checkOnlyOnline()
 	if err != nil {
 		return nil, fmt.Errorf("cannot check online models, %v", err)
@@ -168,10 +203,9 @@ func (c *StripchatChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInf
 	// This is the actual limit, although the documentation states 1000
 	limitK := 400
 	chunkIter := slices.Chunk(slices.Collect(maps.Keys(streamers)), limitK)
-	userID := string(c.SpecificConfig["user_id"])
+	userID := string(c.Cfg.UserID)
 	for chunk := range chunkIter {
 		modelIDs := strings.Join(chunk, ",")
-		client := c.ClientsLoop.NextClient()
 
 		request, err := url.Parse(endpoint)
 		if err != nil {
@@ -186,16 +220,15 @@ func (c *StripchatChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInf
 
 		request.RawQuery = q.Encode()
 
-		resp, buf, err := cmdlib.OnlineQuery(request.String(), client, c.Headers)
+		resp, buf, err := cmdlib.OnlineQuery(request.String(), c.Client, c.Cfg.Headers)
 		if err != nil {
 			return nil, fmt.Errorf("cannot send a query, %v", err)
 		}
 		if resp.StatusCode != 200 {
 			return nil, fmt.Errorf("query status %d", resp.StatusCode)
 		}
-		decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 		parsed := &stripchatResponse{}
-		err = decoder.Decode(parsed)
+		err = json.Unmarshal(buf.Bytes(), parsed)
 		if err != nil {
 			if c.Dbg {
 				cmdlib.Ldbg("response: %s", buf.String())
@@ -225,15 +258,16 @@ func (c *StripchatChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInf
 
 // QueryFixedListOnlineStreamers is not implemented for online list checkers
 func (c *StripchatChecker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckMode) (map[string]cmdlib.StreamerInfo, error) {
-	return nil, cmdlib.ErrNotImplemented
+	return nil, ErrNotImplemented
 }
 
-// Capabilities reports the status surfaces Stripchat implements.
-func (*StripchatChecker) Capabilities() cmdlib.Capabilities {
-	return cmdlib.Capabilities{
-		QueryOnlineStreamers:          true,
-		QueryFixedListOnlineStreamers: false,
-		QueryFixedListStatuses:        false,
-		QueryStatus:                   true,
+// Capabilities lists the surfaces Stripchat exposes for dispatch.
+func (*StripchatChecker) Capabilities() Capabilities {
+	return Capabilities{
+		SupportsQueryOnlineStreamers:          true,
+		SupportsQueryFixedListOnlineStreamers: false,
+		SupportsQueryFixedListStatuses:        false,
+		SupportsQueryStatus:                   true,
+		SupportsCLI:                           true,
 	}
 }

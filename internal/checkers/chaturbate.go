@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"regexp"
 	"strings"
 
@@ -13,9 +12,27 @@ import (
 )
 
 // ChaturbateChecker implements a checker for Chaturbate
-type ChaturbateChecker struct{ cmdlib.CheckerCommon }
+type ChaturbateChecker struct {
+	BaseChecker[*SimpleCheckerConfig]
+}
 
-var _ cmdlib.Checker = &ChaturbateChecker{}
+var _ Checker = &ChaturbateChecker{}
+
+// Site returns the site name.
+func (*ChaturbateChecker) Site() string { return "chaturbate" }
+
+// Init loads chaturbate-checker.json.
+func (c *ChaturbateChecker) Init(checkerCfgPath string, dbg bool) error {
+	if err := c.ensureUninitialised(); err != nil {
+		return err
+	}
+	cfg := &SimpleCheckerConfig{}
+	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
+		return err
+	}
+	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	return nil
+}
 
 var chaturbateModelRegexp = regexp.MustCompile(`^(?:https?://)?(?:[A-Za-z]+\.)?chaturbate\.com(?:/p|/b)?/([A-Za-z0-9\-_@]+)/?(?:\?.*)?$`)
 
@@ -44,7 +61,7 @@ type chaturbateResponse struct {
 
 // QueryStatus checks Chaturbate model status
 func (c *ChaturbateChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
-	addr, resp := c.DoGetRequest(fmt.Sprintf("https://chaturbate.com/api/biocontext/%s/?", modelID))
+	resp := c.DoGetRequest(fmt.Sprintf("https://chaturbate.com/api/biocontext/%s/?", modelID), c.Cfg.Headers)
 	if resp == nil {
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
@@ -55,14 +72,13 @@ func (c *ChaturbateChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWith
 	buf := bytes.Buffer{}
 	_, err := buf.ReadFrom(resp.Body)
 	if err != nil {
-		cmdlib.Lerr("[%v] cannot read response for model %s, %v", addr, modelID, err)
+		cmdlib.Lerr("cannot read response for model %s, %v", modelID, err)
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
-	decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	parsed := &chaturbateResponse{}
-	err = decoder.Decode(parsed)
+	err = json.Unmarshal(buf.Bytes(), parsed)
 	if err != nil {
-		cmdlib.Lerr("[%v] cannot parse response for model %s, %v", addr, modelID, err)
+		cmdlib.Lerr("cannot parse response for model %s, %v", modelID, err)
 		if c.Dbg {
 			cmdlib.Ldbg("response: %s", buf.String())
 		}
@@ -123,18 +139,16 @@ func chaturbateShowKind(currentShow string) cmdlib.ShowKind {
 
 // QueryOnlineStreamers returns Chaturbate online models
 func (c *ChaturbateChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
-	client := c.ClientsLoop.NextClient()
 	streamers := map[string]cmdlib.StreamerInfo{}
-	resp, buf, err := cmdlib.OnlineQuery(c.UsersOnlineEndpoints[0], client, c.Headers)
+	resp, buf, err := cmdlib.OnlineQuery(c.Cfg.UsersOnlineEndpoint, c.Client, c.Cfg.Headers)
 	if err != nil {
 		return nil, fmt.Errorf("cannot send a query, %v", err)
 	}
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("query status, %d", resp.StatusCode)
 	}
-	decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	var parsed []chaturbateModel
-	err = decoder.Decode(&parsed)
+	err = json.Unmarshal(buf.Bytes(), &parsed)
 	if err != nil {
 		if c.Dbg {
 			cmdlib.Ldbg("response: %s", buf.String())
@@ -159,20 +173,19 @@ func (c *ChaturbateChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerIn
 
 // QueryFixedListOnlineStreamers is not implemented for online list checkers
 func (c *ChaturbateChecker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckMode) (map[string]cmdlib.StreamerInfo, error) {
-	return nil, cmdlib.ErrNotImplemented
+	return nil, ErrNotImplemented
 }
 
-// SubjectSupported returns true for Chaturbate
-func (c *ChaturbateChecker) SubjectSupported() bool { return true }
-
-// Capabilities reports the status surfaces Chaturbate implements.
+// Capabilities lists the surfaces Chaturbate exposes for dispatch.
 // QueryStatus is intentionally false: the biocontext endpoint needs
 // a proxy we don't have.
-func (*ChaturbateChecker) Capabilities() cmdlib.Capabilities {
-	return cmdlib.Capabilities{
-		QueryOnlineStreamers:          true,
-		QueryFixedListOnlineStreamers: false,
-		QueryFixedListStatuses:        false,
-		QueryStatus:                   false,
+func (*ChaturbateChecker) Capabilities() Capabilities {
+	return Capabilities{
+		SupportsQueryOnlineStreamers:          true,
+		SupportsQueryFixedListOnlineStreamers: false,
+		SupportsQueryFixedListStatuses:        false,
+		SupportsQueryStatus:                   false,
+		SupportsCLI:                           true,
+		SupportsSubject:                       true,
 	}
 }

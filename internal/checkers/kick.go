@@ -2,6 +2,7 @@ package checkers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -11,12 +12,48 @@ import (
 	"github.com/bcmk/siren/v2/lib/cmdlib"
 )
 
-// KickChecker implements a checker for Kick
-type KickChecker struct {
-	cmdlib.CheckerCommon
+// KickCheckerConfig holds Kick OAuth credentials.
+type KickCheckerConfig struct {
+	BaseCheckerConfig `mapstructure:",squash"`
+	ClientID          cmdlib.Secret `mapstructure:"client_id"`
+	ClientSecret      cmdlib.Secret `mapstructure:"client_secret"`
 }
 
-var _ cmdlib.Checker = &KickChecker{}
+func (c *KickCheckerConfig) validate() error {
+	if err := c.validateBase(); err != nil {
+		return err
+	}
+	if c.ClientID == "" {
+		return errors.New("configure client_id")
+	}
+	if c.ClientSecret == "" {
+		return errors.New("configure client_secret")
+	}
+	return nil
+}
+
+// KickChecker implements a checker for Kick
+type KickChecker struct {
+	BaseChecker[*KickCheckerConfig]
+}
+
+var _ Checker = &KickChecker{}
+
+// Site returns the site name.
+func (*KickChecker) Site() string { return "kick" }
+
+// Init loads kick-checker.json.
+func (c *KickChecker) Init(checkerCfgPath string, dbg bool) error {
+	if err := c.ensureUninitialised(); err != nil {
+		return err
+	}
+	cfg := &KickCheckerConfig{}
+	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
+		return err
+	}
+	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	return nil
+}
 
 // KickChannelIDRegexp is a regular expression to check channel IDs
 var KickChannelIDRegexp = regexp.MustCompile(`^@?[a-z0-9][a-z0-9\-_]*$`)
@@ -54,8 +91,8 @@ func (c *KickChecker) NicknameRegexp() *regexp.Regexp {
 func (c *KickChecker) requestAccessToken(httpClient *http.Client) (string, error) {
 	data := url.Values{
 		"grant_type":    {"client_credentials"},
-		"client_id":     {string(c.SpecificConfig["client_id"])},
-		"client_secret": {string(c.SpecificConfig["client_secret"])},
+		"client_id":     {string(c.Cfg.ClientID)},
+		"client_secret": {string(c.Cfg.ClientSecret)},
 	}
 	resp, err := httpClient.Post(
 		"https://id.kick.com/oauth/token",
@@ -108,13 +145,12 @@ func (c *KickChecker) queryChannels(
 
 // QueryStatus checks Kick channel status
 func (c *KickChecker) QueryStatus(channelID string) (cmdlib.StreamerInfoWithStatus, error) {
-	client := c.ClientsLoop.NextClient()
-	token, err := c.requestAccessToken(client.Client)
+	token, err := c.requestAccessToken(c.Client)
 	if err != nil {
 		cmdlib.Lerr("%v", err)
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
-	channels, err := c.queryChannels(client.Client, token, []string{channelID})
+	channels, err := c.queryChannels(c.Client, token, []string{channelID})
 	if err != nil {
 		cmdlib.Lerr("%v", err)
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
@@ -139,7 +175,7 @@ func (c *KickChecker) QueryStatus(channelID string) (cmdlib.StreamerInfoWithStat
 
 // QueryOnlineStreamers returns all online Kick channels
 func (c *KickChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
-	return nil, cmdlib.ErrNotImplemented
+	return nil, ErrNotImplemented
 }
 
 // QueryFixedListOnlineStreamers returns statuses for specific Kick channels
@@ -147,15 +183,14 @@ func (c *KickChecker) QueryFixedListOnlineStreamers(
 	channelIDs []string,
 	_ cmdlib.CheckMode,
 ) (map[string]cmdlib.StreamerInfo, error) {
-	client := c.ClientsLoop.NextClient()
-	token, err := c.requestAccessToken(client.Client)
+	token, err := c.requestAccessToken(c.Client)
 	if err != nil {
 		return nil, err
 	}
 	result := map[string]cmdlib.StreamerInfo{}
 	// Kick API allows up to 50 slugs per request
 	for _, chunk := range chunks(channelIDs, 50) {
-		channels, err := c.queryChannels(client.Client, token, chunk)
+		channels, err := c.queryChannels(c.Client, token, chunk)
 		if err != nil {
 			return nil, err
 		}
@@ -180,8 +215,7 @@ func (c *KickChecker) QueryFixedListStatuses(
 	channelIDs []string,
 	_ cmdlib.CheckMode,
 ) (map[string]cmdlib.StreamerInfoWithStatus, error) {
-	client := c.ClientsLoop.NextClient()
-	token, err := c.requestAccessToken(client.Client)
+	token, err := c.requestAccessToken(c.Client)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +225,7 @@ func (c *KickChecker) QueryFixedListStatuses(
 	}
 	// Kick API allows up to 50 slugs per request
 	for _, chunk := range chunks(channelIDs, 50) {
-		channels, err := c.queryChannels(client.Client, token, chunk)
+		channels, err := c.queryChannels(c.Client, token, chunk)
 		if err != nil {
 			return nil, err
 		}
@@ -205,15 +239,14 @@ func (c *KickChecker) QueryFixedListStatuses(
 	return result, nil
 }
 
-// SubjectSupported returns true for Kick
-func (c *KickChecker) SubjectSupported() bool { return true }
-
-// Capabilities reports the status surfaces Kick implements.
-func (*KickChecker) Capabilities() cmdlib.Capabilities {
-	return cmdlib.Capabilities{
-		QueryOnlineStreamers:          false,
-		QueryFixedListOnlineStreamers: true,
-		QueryFixedListStatuses:        true,
-		QueryStatus:                   true,
+// Capabilities lists the surfaces Kick exposes for dispatch.
+func (*KickChecker) Capabilities() Capabilities {
+	return Capabilities{
+		SupportsQueryOnlineStreamers:          false,
+		SupportsQueryFixedListOnlineStreamers: true,
+		SupportsQueryFixedListStatuses:        true,
+		SupportsQueryStatus:                   true,
+		SupportsCLI:                           true,
+		SupportsSubject:                       true,
 	}
 }

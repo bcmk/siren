@@ -5,16 +5,33 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/bcmk/siren/v2/lib/cmdlib"
 )
 
 // Flirt4FreeChecker implements a checker for Flirt4Free
-type Flirt4FreeChecker struct{ cmdlib.CheckerCommon }
+type Flirt4FreeChecker struct {
+	BaseChecker[*SimpleCheckerConfig]
+}
 
-var _ cmdlib.Checker = &Flirt4FreeChecker{}
+var _ Checker = &Flirt4FreeChecker{}
+
+// Site returns the site name.
+func (*Flirt4FreeChecker) Site() string { return "flirt4free" }
+
+// Init loads flirt4free-checker.json.
+func (c *Flirt4FreeChecker) Init(checkerCfgPath string, dbg bool) error {
+	if err := c.ensureUninitialised(); err != nil {
+		return err
+	}
+	cfg := &SimpleCheckerConfig{}
+	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
+		return err
+	}
+	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	return nil
+}
 
 type flirt4FreeCheckResponse struct {
 	Status string `json:"status"`
@@ -39,7 +56,7 @@ type flirt4FreeOnlineResponse struct {
 
 // QueryStatus checks Flirt4Free model status
 func (c *Flirt4FreeChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
-	addr, resp := c.DoGetRequest(fmt.Sprintf("https://ws.vs3.com/rooms/check-model-status.php?model_name=%s", modelID))
+	resp := c.DoGetRequest(fmt.Sprintf("https://ws.vs3.com/rooms/check-model-status.php?model_name=%s", modelID), c.Cfg.Headers)
 	if resp == nil {
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
@@ -50,14 +67,13 @@ func (c *Flirt4FreeChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWith
 	buf := bytes.Buffer{}
 	_, err := buf.ReadFrom(resp.Body)
 	if err != nil {
-		cmdlib.Lerr("[%v] cannot read response for model %s, %v", addr, modelID, err)
+		cmdlib.Lerr("cannot read response for model %s, %v", modelID, err)
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
-	decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	parsed := &flirt4FreeCheckResponse{}
-	err = decoder.Decode(parsed)
+	err = json.Unmarshal(buf.Bytes(), parsed)
 	if err != nil {
-		cmdlib.Lerr("[%v] cannot parse response for model %s, %v", addr, modelID, err)
+		cmdlib.Lerr("cannot parse response for model %s, %v", modelID, err)
 		if c.Dbg {
 			cmdlib.Ldbg("response: %s", buf.String())
 		}
@@ -108,18 +124,16 @@ func (c *Flirt4FreeChecker) NicknamePreprocessing(name string) string {
 
 // QueryOnlineStreamers returns Flirt4Free online models
 func (c *Flirt4FreeChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
-	client := c.ClientsLoop.NextClient()
 	streamers := map[string]cmdlib.StreamerInfo{}
-	resp, buf, err := cmdlib.OnlineQuery(c.UsersOnlineEndpoints[0], client, c.Headers)
+	resp, buf, err := cmdlib.OnlineQuery(c.Cfg.UsersOnlineEndpoint, c.Client, c.Cfg.Headers)
 	if err != nil {
 		return nil, fmt.Errorf("cannot send a query, %v", err)
 	}
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("query status, %d", resp.StatusCode)
 	}
-	decoder := json.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	var parsed flirt4FreeOnlineResponse
-	err = decoder.Decode(&parsed)
+	err = json.Unmarshal(buf.Bytes(), &parsed)
 	if err != nil {
 		if c.Dbg {
 			cmdlib.Ldbg("response: %s", buf.String())
@@ -158,15 +172,16 @@ func (c *Flirt4FreeChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerIn
 
 // QueryFixedListOnlineStreamers is not implemented for online list checkers
 func (c *Flirt4FreeChecker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckMode) (map[string]cmdlib.StreamerInfo, error) {
-	return nil, cmdlib.ErrNotImplemented
+	return nil, ErrNotImplemented
 }
 
-// Capabilities reports the status surfaces Flirt4Free implements.
-func (*Flirt4FreeChecker) Capabilities() cmdlib.Capabilities {
-	return cmdlib.Capabilities{
-		QueryOnlineStreamers:          true,
-		QueryFixedListOnlineStreamers: false,
-		QueryFixedListStatuses:        false,
-		QueryStatus:                   true,
+// Capabilities lists the surfaces Flirt4Free exposes for dispatch.
+func (*Flirt4FreeChecker) Capabilities() Capabilities {
+	return Capabilities{
+		SupportsQueryOnlineStreamers:          true,
+		SupportsQueryFixedListOnlineStreamers: false,
+		SupportsQueryFixedListStatuses:        false,
+		SupportsQueryStatus:                   true,
+		SupportsCLI:                           true,
 	}
 }

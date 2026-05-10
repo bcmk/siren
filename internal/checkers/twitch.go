@@ -10,12 +10,48 @@ import (
 	"github.com/nicklaw5/helix/v2"
 )
 
-// TwitchChecker implements a checker for Twitch
-type TwitchChecker struct {
-	cmdlib.CheckerCommon
+// TwitchCheckerConfig holds Twitch OAuth credentials.
+type TwitchCheckerConfig struct {
+	BaseCheckerConfig `mapstructure:",squash"`
+	ClientID          cmdlib.Secret `mapstructure:"client_id"`
+	ClientSecret      cmdlib.Secret `mapstructure:"client_secret"`
 }
 
-var _ cmdlib.Checker = &TwitchChecker{}
+func (c *TwitchCheckerConfig) validate() error {
+	if err := c.validateBase(); err != nil {
+		return err
+	}
+	if c.ClientID == "" {
+		return errors.New("configure client_id")
+	}
+	if c.ClientSecret == "" {
+		return errors.New("configure client_secret")
+	}
+	return nil
+}
+
+// TwitchChecker implements a checker for Twitch
+type TwitchChecker struct {
+	BaseChecker[*TwitchCheckerConfig]
+}
+
+var _ Checker = &TwitchChecker{}
+
+// Site returns the site name.
+func (*TwitchChecker) Site() string { return "twitch" }
+
+// Init loads twitch-checker.json.
+func (c *TwitchChecker) Init(checkerCfgPath string, dbg bool) error {
+	if err := c.ensureUninitialised(); err != nil {
+		return err
+	}
+	cfg := &TwitchCheckerConfig{}
+	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
+		return err
+	}
+	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	return nil
+}
 
 // TwitchChannelIDRegexp is a regular expression to check channel IDs
 var TwitchChannelIDRegexp = regexp.MustCompile(`^@?[a-z0-9][a-z0-9\-_]*$`)
@@ -32,11 +68,10 @@ func (c *TwitchChecker) NicknameRegexp() *regexp.Regexp {
 
 // QueryStatus checks Twitch channel status
 func (c *TwitchChecker) QueryStatus(channelID string) (cmdlib.StreamerInfoWithStatus, error) {
-	client := c.ClientsLoop.NextClient()
 	helixClient, err := helix.NewClient(&helix.Options{
-		ClientID:     string(c.SpecificConfig["client_id"]),
-		ClientSecret: string(c.SpecificConfig["client_secret"]),
-		HTTPClient:   client.Client,
+		ClientID:     string(c.Cfg.ClientID),
+		ClientSecret: string(c.Cfg.ClientSecret),
+		HTTPClient:   c.Client,
 	})
 	if err != nil {
 		cmdlib.Lerr("cannot create new twitch client, %v", err)
@@ -91,11 +126,10 @@ func (c *TwitchChecker) QueryStatus(channelID string) (cmdlib.StreamerInfoWithSt
 
 // QueryOnlineStreamers returns all online Twitch channels
 func (c *TwitchChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
-	client := c.ClientsLoop.NextClient()
 	helixClient, err := helix.NewClient(&helix.Options{
-		ClientID:     string(c.SpecificConfig["client_id"]),
-		ClientSecret: string(c.SpecificConfig["client_secret"]),
-		HTTPClient:   client.Client,
+		ClientID:     string(c.Cfg.ClientID),
+		ClientSecret: string(c.Cfg.ClientSecret),
+		HTTPClient:   c.Client,
 	})
 	if err != nil {
 		return nil, err
@@ -115,11 +149,10 @@ func (c *TwitchChecker) QueryFixedListOnlineStreamers(
 	channelIDs []string,
 	_ cmdlib.CheckMode,
 ) (map[string]cmdlib.StreamerInfo, error) {
-	client := c.ClientsLoop.NextClient()
 	helixClient, err := helix.NewClient(&helix.Options{
-		ClientID:     string(c.SpecificConfig["client_id"]),
-		ClientSecret: string(c.SpecificConfig["client_secret"]),
-		HTTPClient:   client.Client,
+		ClientID:     string(c.Cfg.ClientID),
+		ClientSecret: string(c.Cfg.ClientSecret),
+		HTTPClient:   c.Client,
 	})
 	if err != nil {
 		return nil, err
@@ -136,11 +169,10 @@ func (c *TwitchChecker) QueryFixedListOnlineStreamers(
 
 // QueryFixedListStatuses checks if specific Twitch channels exist
 func (c *TwitchChecker) QueryFixedListStatuses(channelIDs []string, _ cmdlib.CheckMode) (map[string]cmdlib.StreamerInfoWithStatus, error) {
-	client := c.ClientsLoop.NextClient()
 	helixClient, err := helix.NewClient(&helix.Options{
-		ClientID:     string(c.SpecificConfig["client_id"]),
-		ClientSecret: string(c.SpecificConfig["client_secret"]),
-		HTTPClient:   client.Client,
+		ClientID:     string(c.Cfg.ClientID),
+		ClientSecret: string(c.Cfg.ClientSecret),
+		HTTPClient:   c.Client,
 	})
 	if err != nil {
 		return nil, err
@@ -249,15 +281,14 @@ func requestAppAccessToken(helixClient *helix.Client) (*helix.AppAccessTokenResp
 	return accessResponse, nil
 }
 
-// SubjectSupported returns true for Twitch
-func (c *TwitchChecker) SubjectSupported() bool { return true }
-
-// Capabilities reports the status surfaces Twitch implements.
-func (*TwitchChecker) Capabilities() cmdlib.Capabilities {
-	return cmdlib.Capabilities{
-		QueryOnlineStreamers:          false,
-		QueryFixedListOnlineStreamers: true,
-		QueryFixedListStatuses:        true,
-		QueryStatus:                   true,
+// Capabilities lists the surfaces Twitch exposes for dispatch.
+func (*TwitchChecker) Capabilities() Capabilities {
+	return Capabilities{
+		SupportsQueryOnlineStreamers:          false,
+		SupportsQueryFixedListOnlineStreamers: true,
+		SupportsQueryFixedListStatuses:        true,
+		SupportsQueryStatus:                   true,
+		SupportsCLI:                           true,
+		SupportsSubject:                       true,
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -468,7 +469,7 @@ func (s *snapshot) marshalOnline() []byte {
 func (s *snapshot) applyBulk(
 	ctx context.Context,
 	cfg *config,
-	client *cmdlib.Client,
+	client *http.Client,
 	ext *mfcExtData,
 ) ([]int, error) {
 	fetchCtx, cancel := context.WithTimeout(ctx, cfg.ExtDataFetchTimeout)

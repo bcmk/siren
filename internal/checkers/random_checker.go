@@ -7,10 +7,36 @@ import (
 	"github.com/bcmk/siren/v2/lib/cmdlib"
 )
 
-// RandomChecker implements test checker
-type RandomChecker struct{ cmdlib.CheckerCommon }
+// TestCheckerConfig is the config for RandomChecker. Skips
+// BaseCheckerConfig.validateBase (no HTTP requests).
+type TestCheckerConfig struct {
+	BaseCheckerConfig `mapstructure:",squash"`
+}
 
-var _ cmdlib.Checker = &RandomChecker{}
+func (c *TestCheckerConfig) validate() error { return nil }
+
+// RandomChecker implements test checker
+type RandomChecker struct {
+	BaseChecker[*TestCheckerConfig]
+}
+
+// Site returns the site name.
+func (*RandomChecker) Site() string { return "test" }
+
+// Init loads test-checker.json.
+func (c *RandomChecker) Init(checkerCfgPath string, dbg bool) error {
+	if err := c.ensureUninitialised(); err != nil {
+		return err
+	}
+	cfg := &TestCheckerConfig{}
+	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
+		return err
+	}
+	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	return nil
+}
+
+var _ Checker = &RandomChecker{}
 
 // QueryStatus mimics checker
 func (c *RandomChecker) QueryStatus(_ string) (cmdlib.StreamerInfoWithStatus, error) {
@@ -45,15 +71,15 @@ func (c *RandomChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, 
 
 // QueryFixedListOnlineStreamers is not implemented for online list checkers
 func (c *RandomChecker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckMode) (map[string]cmdlib.StreamerInfo, error) {
-	return nil, cmdlib.ErrNotImplemented
+	return nil, ErrNotImplemented
 }
 
-// Capabilities reports the status surfaces RandomChecker implements.
-func (*RandomChecker) Capabilities() cmdlib.Capabilities {
-	return cmdlib.Capabilities{
-		QueryOnlineStreamers:          true,
-		QueryFixedListOnlineStreamers: false,
-		QueryFixedListStatuses:        false,
-		QueryStatus:                   true,
+// Capabilities lists the surfaces RandomChecker exposes for dispatch.
+func (*RandomChecker) Capabilities() Capabilities {
+	return Capabilities{
+		SupportsQueryOnlineStreamers:          true,
+		SupportsQueryFixedListOnlineStreamers: false,
+		SupportsQueryFixedListStatuses:        false,
+		SupportsQueryStatus:                   true,
 	}
 }

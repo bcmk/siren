@@ -65,10 +65,12 @@ You can obtain a certificate in Let's Encrypt or other certificate authority.
 The bot uses [webhooks](https://core.telegram.org/bots/webhooks) to receive updates.
 
 Create JSON configuration and YAML translation files.
-A configuration is described in [config.go](https://github.com/bcmk/siren/tree/master/cmd/bot/config.go).
+The bot configuration is described in [botconfig.go](https://github.com/bcmk/siren/tree/master/internal/botconfig/botconfig.go).
+Per-site checker settings (HTTP timeout, request interval, API secrets, online query endpoints) go in a separate `<site>-checker.json` file.
+See [internal/checkers](https://github.com/bcmk/siren/tree/master/internal/checkers) for the per-site config structs.
 An example of translation are in [common.en.yaml](https://github.com/bcmk/siren/tree/master/res/translations/common.en.yaml) and [chaturbate.en.yaml](https://github.com/bcmk/siren/tree/master/res/translations/chaturbate.en.yaml).
 
-Build cmd/bot. Run this executable with a path to config file as an argument.
+Build cmd/bot. Run it with `--bot-config <path>` and `--checker-config <path>`.
 
 ## Privacy policy
 

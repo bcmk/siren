@@ -7,9 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bcmk/siren/v2/internal/botconfig"
 	"github.com/bcmk/siren/v2/lib/cmdlib"
-	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
@@ -30,7 +28,6 @@ type config struct {
 	Trace                  bool          `mapstructure:"trace"`
 	ListenAddress          string        `mapstructure:"listen_address"`
 	TimeoutSeconds         int           `mapstructure:"timeout_seconds"`
-	SourceIPAddress        string        `mapstructure:"source_ip_address"`
 	MaxSnapshotSize        int           `mapstructure:"max_snapshot_size"`
 	HTTPResponseLimitBytes int           `mapstructure:"http_response_limit_bytes"`
 	WSConnectTimeout       time.Duration `mapstructure:"ws_connect_timeout"`
@@ -92,14 +89,8 @@ func readConfig() *config {
 		NameCacheTTL:           24 * time.Hour,
 		SnapshotCountsLogEvery: 10 * time.Minute,
 	}
-	botconfig.BindEnvForConfig(v, cfg)
-	cmdlib.CheckErr(v.Unmarshal(cfg, func(dc *mapstructure.DecoderConfig) {
-		dc.ErrorUnused = true
-		dc.DecodeHook = mapstructure.ComposeDecodeHookFunc(
-			mapstructure.StringToTimeDurationHookFunc(),
-			mapstructure.TextUnmarshallerHookFunc(),
-		)
-	}))
+	cmdlib.BindEnvForConfig(v, cfg)
+	cmdlib.CheckErr(v.Unmarshal(cfg, cmdlib.StrictConfigDecoder))
 
 	if *daemonMode && cfg.ListenAddress == "" {
 		log.Fatal("configure listen_address")

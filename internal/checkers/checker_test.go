@@ -1,58 +1,69 @@
-package cmdlib
+package checkers
 
 import (
 	"errors"
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/bcmk/siren/v2/lib/cmdlib"
 )
 
-type TestChecker struct {
-	CheckerCommon
-	status StatusKind
-	info   StreamerInfo
-	online map[string]bool //nolint:structcheck
-	err    error           //nolint:structcheck
+type testChecker struct {
+	BaseChecker[*stubConfig]
+	status cmdlib.StatusKind
+	info   cmdlib.StreamerInfo
+	online map[string]bool
+	err    error
 }
 
 type testOnlineListChecker struct {
-	TestChecker
+	testChecker
 }
 
-var queueSize = 1000
-
-func (c *TestChecker) QueryStatus(string) (StreamerInfoWithStatus, error) {
-	return StreamerInfoWithStatus{StreamerInfo: c.info, Status: c.status}, nil
+// stubConfig is a minimal config for tests that build a BaseChecker
+// without going through the factory.
+type stubConfig struct {
+	BaseCheckerConfig
 }
 
-func (*TestChecker) Capabilities() Capabilities {
+func (c *testChecker) QueryStatus(string) (cmdlib.StreamerInfoWithStatus, error) {
+	return cmdlib.StreamerInfoWithStatus{StreamerInfo: c.info, Status: c.status}, nil
+}
+
+func (*testChecker) Site() string { return "test" }
+
+// Init is a no-op: tests construct the checker and assign BaseChecker
+// directly via NewBaseChecker, bypassing the production Init path.
+func (*testChecker) Init(_ string, _ bool) error { return nil }
+
+// Capabilities reports only QueryStatus: testChecker itself has no
+// QueryOnlineStreamers method. testOnlineListChecker overrides this.
+func (*testChecker) Capabilities() Capabilities {
 	return Capabilities{
-		QueryOnlineStreamers:          true,
-		QueryFixedListOnlineStreamers: false,
-		QueryFixedListStatuses:        false,
-		QueryStatus:                   true,
+		SupportsQueryStatus: true,
 	}
 }
 
-func (c *testOnlineListChecker) QueryOnlineStreamers() (map[string]StreamerInfo, error) {
+func (c *testOnlineListChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
 	if c.err != nil {
 		return nil, c.err
 	}
-	streamers := map[string]StreamerInfo{}
+	streamers := map[string]cmdlib.StreamerInfo{}
 	for k := range c.online {
-		streamers[k] = StreamerInfo{}
+		streamers[k] = cmdlib.StreamerInfo{}
 	}
 	return streamers, nil
 }
 
-func (c *testOnlineListChecker) QueryFixedListOnlineStreamers(streamers []string, _ CheckMode) (map[string]StreamerInfo, error) {
+func (c *testOnlineListChecker) QueryFixedListOnlineStreamers(streamers []string, _ cmdlib.CheckMode) (map[string]cmdlib.StreamerInfo, error) {
 	if c.err != nil {
 		return nil, c.err
 	}
-	result := map[string]StreamerInfo{}
+	result := map[string]cmdlib.StreamerInfo{}
 	for _, ch := range streamers {
 		if c.online[ch] {
-			result[ch] = StreamerInfo{}
+			result[ch] = cmdlib.StreamerInfo{}
 		}
 	}
 	return result, nil
@@ -60,28 +71,28 @@ func (c *testOnlineListChecker) QueryFixedListOnlineStreamers(streamers []string
 
 func (*testOnlineListChecker) Capabilities() Capabilities {
 	return Capabilities{
-		QueryOnlineStreamers:          true,
-		QueryFixedListOnlineStreamers: true,
-		QueryFixedListStatuses:        false,
-		QueryStatus:                   true,
+		SupportsQueryOnlineStreamers:          true,
+		SupportsQueryFixedListOnlineStreamers: true,
+		SupportsQueryFixedListStatuses:        false,
+		SupportsQueryStatus:                   true,
 	}
 }
 
 func TestOnlineListCheckerHandlesFixedList(t *testing.T) {
 	checker := &testOnlineListChecker{}
-	checker.Init(CheckerConfig{UsersOnlineEndpoints: []string{""}, QueueSize: queueSize})
-	resultsCh := make(chan CheckerResults)
-	StartCheckerDaemon(checker)
+	checker.BaseChecker = NewBaseChecker(&stubConfig{}, false)
+	resultsCh := make(chan cmdlib.CheckerResults)
+	StartCheckerDaemon(t.Context(), checker)
 
 	checker.online = toSet("a", "b")
-	if err := checker.PushStatusRequest(&FixedListOnlineRequest{
+	if err := checker.PushStatusRequest(&cmdlib.FixedListOnlineRequest{
 		ResultsCh: resultsCh,
 		Streamers: toSet("a", "c"),
 	}); err != nil {
 		t.Errorf("cannot query updates, %v", err)
 		return
 	}
-	result := (<-resultsCh).(*FixedListOnlineResults)
+	result := (<-resultsCh).(*cmdlib.FixedListOnlineResults)
 	if result.Failed() {
 		t.Error("unexpected error")
 	}
@@ -100,19 +111,19 @@ func TestOnlineListCheckerHandlesFixedList(t *testing.T) {
 
 func TestSingleStatusRequestPropagatesInfo(t *testing.T) {
 	checker := &testOnlineListChecker{}
-	checker.Init(CheckerConfig{UsersOnlineEndpoints: []string{""}, QueueSize: queueSize})
+	checker.BaseChecker = NewBaseChecker(&stubConfig{}, false)
 	viewers := 42
-	checker.info = StreamerInfo{
+	checker.info = cmdlib.StreamerInfo{
 		ImageURL: "https://example/img.jpg",
 		Viewers:  &viewers,
-		ShowKind: ShowGroup,
+		ShowKind: cmdlib.ShowGroup,
 		Subject:  "subject",
 	}
-	checker.status = StatusOnline
-	resultsCh := make(chan *ExistenceListResults, 1)
-	StartCheckerDaemon(checker)
+	checker.status = cmdlib.StatusOnline
+	resultsCh := make(chan *cmdlib.ExistenceListResults, 1)
+	StartCheckerDaemon(t.Context(), checker)
 
-	if err := checker.PushStatusRequest(&SingleStatusRequest{
+	if err := checker.PushStatusRequest(&cmdlib.SingleStatusRequest{
 		Streamer:  "alice",
 		ResultsCh: resultsCh,
 	}); err != nil {
@@ -126,8 +137,8 @@ func TestSingleStatusRequestPropagatesInfo(t *testing.T) {
 	if !ok {
 		t.Fatal("alice missing from results")
 	}
-	if got.Status != StatusOnline {
-		t.Errorf("status: got %v, want %v", got.Status, StatusOnline)
+	if got.Status != cmdlib.StatusOnline {
+		t.Errorf("status: got %v, want %v", got.Status, cmdlib.StatusOnline)
 	}
 	if got.ImageURL != "https://example/img.jpg" {
 		t.Errorf("image_url: got %q", got.ImageURL)
@@ -135,7 +146,7 @@ func TestSingleStatusRequestPropagatesInfo(t *testing.T) {
 	if got.Viewers == nil || *got.Viewers != 42 {
 		t.Errorf("viewers: got %v", got.Viewers)
 	}
-	if got.ShowKind != ShowGroup {
+	if got.ShowKind != cmdlib.ShowGroup {
 		t.Errorf("show_kind: got %v", got.ShowKind)
 	}
 	if got.Subject != "subject" {
@@ -144,42 +155,48 @@ func TestSingleStatusRequestPropagatesInfo(t *testing.T) {
 }
 
 type testPolledChecker struct {
-	CheckerCommon
+	BaseChecker[*stubConfig]
 	online     map[string]bool
-	individual map[string]StatusKind
+	individual map[string]cmdlib.StatusKind
 	queryCalls []string
 }
 
-func (c *testPolledChecker) QueryStatus(nickname string) (StreamerInfoWithStatus, error) {
+func (*testPolledChecker) Site() string { return "test" }
+
+// Init is a no-op: tests construct the checker and assign BaseChecker
+// directly via NewBaseChecker, bypassing the production Init path.
+func (*testPolledChecker) Init(_ string, _ bool) error { return nil }
+
+func (c *testPolledChecker) QueryStatus(nickname string) (cmdlib.StreamerInfoWithStatus, error) {
 	c.queryCalls = append(c.queryCalls, nickname)
 	status, ok := c.individual[nickname]
 	if !ok {
-		return StreamerInfoWithStatus{Status: StatusOffline}, nil
+		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOffline}, nil
 	}
-	return StreamerInfoWithStatus{Status: status}, nil
+	return cmdlib.StreamerInfoWithStatus{Status: status}, nil
 }
 
-func (c *testPolledChecker) QueryOnlineStreamers() (map[string]StreamerInfo, error) {
-	out := map[string]StreamerInfo{}
+func (c *testPolledChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
+	out := map[string]cmdlib.StreamerInfo{}
 	for k := range c.online {
-		out[k] = StreamerInfo{}
+		out[k] = cmdlib.StreamerInfo{}
 	}
 	return out, nil
 }
 
-func (*testPolledChecker) QueryFixedListOnlineStreamers([]string, CheckMode) (map[string]StreamerInfo, error) {
+func (*testPolledChecker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckMode) (map[string]cmdlib.StreamerInfo, error) {
 	return nil, ErrNotImplemented
 }
 
 func (*testPolledChecker) Capabilities() Capabilities {
-	return Capabilities{QueryOnlineStreamers: true, QueryStatus: true}
+	return Capabilities{SupportsQueryOnlineStreamers: true, SupportsQueryStatus: true}
 }
 
 func TestOnlineListCheckerPollsAdditionalStreamers(t *testing.T) {
 	cases := []struct {
 		name       string
 		online     map[string]bool
-		individual map[string]StatusKind
+		individual map[string]cmdlib.StatusKind
 		poll       []string
 		wantOnline map[string]bool
 		wantCalls  map[string]bool
@@ -187,7 +204,7 @@ func TestOnlineListCheckerPollsAdditionalStreamers(t *testing.T) {
 		{
 			name:       "polled-only online appears in result",
 			online:     toSet("a"),
-			individual: map[string]StatusKind{"b": StatusOnline},
+			individual: map[string]cmdlib.StatusKind{"b": cmdlib.StatusOnline},
 			poll:       []string{"a", "b"},
 			wantOnline: toSet("a", "b"),
 			wantCalls:  toSet("b"),
@@ -195,7 +212,7 @@ func TestOnlineListCheckerPollsAdditionalStreamers(t *testing.T) {
 		{
 			name:       "polled-only offline does not appear",
 			online:     toSet("a"),
-			individual: map[string]StatusKind{"b": StatusOffline},
+			individual: map[string]cmdlib.StatusKind{"b": cmdlib.StatusOffline},
 			poll:       []string{"a", "b"},
 			wantOnline: toSet("a"),
 			wantCalls:  toSet("b"),
@@ -218,17 +235,17 @@ func TestOnlineListCheckerPollsAdditionalStreamers(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			checker := &testPolledChecker{online: tc.online, individual: tc.individual}
-			checker.Init(CheckerConfig{UsersOnlineEndpoints: []string{""}, QueueSize: queueSize})
-			resultsCh := make(chan CheckerResults, 1)
-			StartCheckerDaemon(checker)
+			checker.BaseChecker = NewBaseChecker(&stubConfig{}, false)
+			resultsCh := make(chan cmdlib.CheckerResults, 1)
+			StartCheckerDaemon(t.Context(), checker)
 
-			if err := checker.PushStatusRequest(&OnlineListRequest{
+			if err := checker.PushStatusRequest(&cmdlib.OnlineListRequest{
 				ResultsCh: resultsCh,
 				Poll:      tc.poll,
 			}); err != nil {
 				t.Fatalf("cannot push request: %v", err)
 			}
-			result := (<-resultsCh).(*OnlineListResults)
+			result := (<-resultsCh).(*cmdlib.OnlineListResults)
 			if result.Failed() {
 				t.Fatal("unexpected failure")
 			}
@@ -252,12 +269,12 @@ func TestOnlineListCheckerPollsAdditionalStreamers(t *testing.T) {
 
 func TestOnlineListCheckerError(t *testing.T) {
 	checker := &testOnlineListChecker{}
-	checker.Init(CheckerConfig{UsersOnlineEndpoints: []string{""}, QueueSize: queueSize})
-	resultsCh := make(chan CheckerResults)
-	StartCheckerDaemon(checker)
+	checker.BaseChecker = NewBaseChecker(&stubConfig{}, false)
+	resultsCh := make(chan cmdlib.CheckerResults)
+	StartCheckerDaemon(t.Context(), checker)
 
 	checker.err = errors.New("error")
-	if err := checker.PushStatusRequest(&OnlineListRequest{ResultsCh: resultsCh}); err != nil {
+	if err := checker.PushStatusRequest(&cmdlib.OnlineListRequest{ResultsCh: resultsCh}); err != nil {
 		t.Errorf("cannot query updates, %v", err)
 		return
 	}
@@ -276,6 +293,6 @@ func toSet(xs ...string) map[string]bool {
 }
 
 func TestMain(m *testing.M) {
-	Verbosity = SilentVerbosity
+	cmdlib.Verbosity = cmdlib.SilentVerbosity
 	os.Exit(m.Run())
 }

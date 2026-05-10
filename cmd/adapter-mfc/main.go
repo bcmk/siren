@@ -86,8 +86,7 @@ func main() {
 	rootCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	client := cmdlib.HTTPClientWithTimeoutAndAddress(
-		cfg.TimeoutSeconds, cfg.SourceIPAddress, false)
+	client := cmdlib.HTTPClientWithTimeout(time.Duration(cfg.TimeoutSeconds) * time.Second)
 
 	if !*daemonMode {
 		runOnceMode(rootCtx, cfg, client)
@@ -103,7 +102,7 @@ func main() {
 // "<nickname> <image_url>" format used by siren-online-list, and exits.
 // An overall deadline (from --once-timeout) caps dial-through-bulk so a
 // dead upstream can't hang the process indefinitely.
-func runOnceMode(ctx context.Context, cfg *config, client *cmdlib.Client) {
+func runOnceMode(ctx context.Context, cfg *config, client *http.Client) {
 	if *onceTimeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, *onceTimeout)
@@ -165,7 +164,7 @@ func runOnceMode(ctx context.Context, cfg *config, client *cmdlib.Client) {
 //     every snapshotCountsLogEvery so production logs carry it regardless
 //     of verbosity.
 //   - http shutdown watcher: blocks on ctx.Done() then calls srv.Shutdown.
-func runDaemonMode(parentCtx context.Context, cfg *config, client *cmdlib.Client) error {
+func runDaemonMode(parentCtx context.Context, cfg *config, client *http.Client) error {
 	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
@@ -384,7 +383,7 @@ func runNameCachePruner(ctx context.Context, snap *snapshot, cfg *config) {
 // refresh alone: a healthy connection may run for weeks, by which point
 // MFC has reassigned video servers and our snapshot URLs would 404.
 // On fetch failure we log and keep the existing map.
-func runVideoHostsRefresher(ctx context.Context, snap *snapshot, cfg *config, client *cmdlib.Client) {
+func runVideoHostsRefresher(ctx context.Context, snap *snapshot, cfg *config, client *http.Client) {
 	t := time.NewTicker(videoHostsRefreshEvery)
 	defer t.Stop()
 	for {
@@ -435,7 +434,7 @@ func dispatchFrame(
 	sessCtx context.Context,
 	snap *snapshot,
 	cfg *config,
-	client *cmdlib.Client,
+	client *http.Client,
 	sess *wsSession,
 	f frame,
 ) error {
@@ -498,7 +497,7 @@ func dispatchFrame(
 
 // manageWebsocketSessions keeps a websocket connected for the lifetime of ctx,
 // applying frames to snap. It reconnects with exponential backoff on errors.
-func manageWebsocketSessions(ctx context.Context, snap *snapshot, cfg *config, client *cmdlib.Client) {
+func manageWebsocketSessions(ctx context.Context, snap *snapshot, cfg *config, client *http.Client) {
 	backoff := reconnectBackoffInitial
 	for ctx.Err() == nil {
 		err := runWebsocketSession(ctx, snap, cfg, client, func(sessCtx context.Context, sess *wsSession, f frame) (bool, error) {
@@ -541,7 +540,7 @@ func runWebsocketSession(
 	ctx context.Context,
 	snap *snapshot,
 	cfg *config,
-	client *cmdlib.Client,
+	client *http.Client,
 	handle func(sessCtx context.Context, sess *wsSession, f frame) (stop bool, err error),
 ) (err error) {
 	dialCtx, dialCancel := context.WithTimeout(ctx, cfg.WSConnectTimeout)
@@ -935,14 +934,14 @@ func wsCloseStatusName(s websocket.StatusCode) string {
 // FCS handshake and guest login. Returns the ready-to-read connection along
 // with the camserv → video host map fetched from the same serverconfig.js,
 // so the caller can install it on the snapshot.
-func dialMFC(ctx context.Context, snap *snapshot, client *cmdlib.Client, cfg *config) (*websocket.Conn, map[int]string, error) {
+func dialMFC(ctx context.Context, snap *snapshot, client *http.Client, cfg *config) (*websocket.Conn, map[int]string, error) {
 	sc, err := fetchMFCServerConfig(ctx, snap, client, cfg)
 	if err != nil {
 		return nil, nil, err
 	}
 	wsURL := fmt.Sprintf("wss://%s.myfreecams.com/fcsl", sc.wsServer)
 	conn, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
-		HTTPClient: client.Client,
+		HTTPClient: client,
 		HTTPHeader: http.Header{"Origin": []string{mfcWSOrigin}},
 	})
 	if err != nil {
@@ -1063,8 +1062,8 @@ type mfcServerConfig struct {
 // fetchBounded issues req and reads up to limit bytes, erroring on non-200 or
 // when the response would exceed the cap. Defends against runaway upstream
 // responses OOMing the daemon.
-func fetchBounded(req *http.Request, client *cmdlib.Client, limit int) ([]byte, error) {
-	resp, err := client.Client.Do(req)
+func fetchBounded(req *http.Request, client *http.Client, limit int) ([]byte, error) {
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, translateHTTPError(err)
 	}
@@ -1090,7 +1089,7 @@ func fetchBounded(req *http.Request, client *cmdlib.Client, limit int) ([]byte, 
 func fetchMFCServerConfig(
 	ctx context.Context,
 	snap *snapshot,
-	client *cmdlib.Client,
+	client *http.Client,
 	cfg *config,
 ) (_ *mfcServerConfig, err error) {
 	defer func() {
@@ -1150,7 +1149,7 @@ func fetchMFCServerConfig(
 // fetchExtData retrieves and parses a MANAGELIST/CAMS payload referenced by an EXTDATA envelope.
 func fetchExtData(
 	ctx context.Context,
-	client *cmdlib.Client,
+	client *http.Client,
 	cfg *config,
 	ext *mfcExtData,
 ) (bulk, error) {

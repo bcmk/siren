@@ -13,9 +13,27 @@ import (
 )
 
 // StreamateChecker implements a checker for Streamate
-type StreamateChecker struct{ cmdlib.CheckerCommon }
+type StreamateChecker struct {
+	BaseChecker[*SimpleCheckerConfig]
+}
 
-var _ cmdlib.Checker = &StreamateChecker{}
+var _ Checker = &StreamateChecker{}
+
+// Site returns the site name.
+func (*StreamateChecker) Site() string { return "streamate" }
+
+// Init loads streamate-checker.json.
+func (c *StreamateChecker) Init(checkerCfgPath string, dbg bool) error {
+	if err := c.ensureUninitialised(); err != nil {
+		return err
+	}
+	cfg := &SimpleCheckerConfig{}
+	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
+		return err
+	}
+	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	return nil
+}
 
 type descriptionsRequest struct {
 	XMLName xml.Name `xml:"Descriptions"`
@@ -127,7 +145,6 @@ func streamateShowKind(m performerResponse) cmdlib.ShowKind {
 
 // QueryStatus checks Streamate model status
 func (c *StreamateChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
-	client := c.ClientsLoop.NextClient()
 	reqData := streamateRequest{
 		Options: optionsRequest{MaxResults: 1},
 		AvailablePerformers: availablePerformersRequest{
@@ -144,18 +161,18 @@ func (c *StreamateChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithS
 	reqString := fmt.Sprintf("%s%s\n", xml.Header, string(output))
 	req, err := http.NewRequest("POST", "https://affiliate.streamate.com/SMLive/SMLResult.xml", strings.NewReader(reqString))
 	cmdlib.CheckErr(err)
-	for _, h := range c.Headers {
+	for _, h := range c.Cfg.Headers {
 		req.Header.Set(h[0], h[1])
 	}
 	req.Header.Set("Content-Type", "text/xml")
-	resp, err := client.Client.Do(req)
+	resp, err := c.Client.Do(req)
 	if err != nil {
-		cmdlib.Lerr("[%v] cannot send a query, %v", client.Addr, err)
+		cmdlib.Lerr("cannot send a query, %v", err)
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	defer cmdlib.CloseBody(resp.Body)
 	if c.Dbg {
-		cmdlib.Ldbg("[%v] query status for %s: %d", client.Addr, modelID, resp.StatusCode)
+		cmdlib.Ldbg("query status for %s: %d", modelID, resp.StatusCode)
 	}
 	if resp.StatusCode == 404 {
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusNotFound}, nil
@@ -163,7 +180,7 @@ func (c *StreamateChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithS
 	buf := bytes.Buffer{}
 	_, err = buf.ReadFrom(resp.Body)
 	if err != nil {
-		cmdlib.Lerr("[%v] cannot read response for model %s, %v", client.Addr, modelID, err)
+		cmdlib.Lerr("cannot read response for model %s, %v", modelID, err)
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	decoder := xml.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
@@ -173,7 +190,7 @@ func (c *StreamateChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithS
 		cmdlib.Ldbg("response: %s", buf.String())
 	}
 	if err != nil {
-		cmdlib.Lerr("[%v] cannot parse response for model %s, %v", client.Addr, modelID, err)
+		cmdlib.Lerr("cannot parse response for model %s, %v", modelID, err)
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	if parsed.AvailablePerformers.ExactMatches != 1 || len(parsed.AvailablePerformers.Performers) != 1 {
@@ -190,9 +207,8 @@ func (c *StreamateChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithS
 
 // QueryOnlineStreamers returns Streamate online models
 func (c *StreamateChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
-	client := c.ClientsLoop.NextClient()
 	streamers := map[string]cmdlib.StreamerInfo{}
-	endpoint := c.UsersOnlineEndpoints[0]
+	endpoint := c.Cfg.UsersOnlineEndpoint
 	// Somehow 500 doesn't work well
 	queriedPageSize := 400
 	pages := 1
@@ -219,11 +235,11 @@ func (c *StreamateChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInf
 		reqString := fmt.Sprintf("%s%s\n", xml.Header, string(output))
 		req, err := http.NewRequest("POST", endpoint, strings.NewReader(reqString))
 		cmdlib.CheckErr(err)
-		for _, h := range c.Headers {
+		for _, h := range c.Cfg.Headers {
 			req.Header.Set(h[0], h[1])
 		}
 		req.Header.Set("Content-Type", "text/xml")
-		_, buf, err := cmdlib.OnlineRequest(req, client)
+		_, buf, err := cmdlib.OnlineRequest(req, c.Client)
 		if err != nil {
 			return nil, fmt.Errorf("cannot send a query, %v", err)
 		}
@@ -234,7 +250,7 @@ func (c *StreamateChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInf
 			cmdlib.Ldbg("response: %s", buf.String())
 		}
 		if err != nil {
-			return nil, fmt.Errorf("[%v] cannot parse response %v", client.Addr, err)
+			return nil, fmt.Errorf("cannot parse response %v", err)
 		}
 		for _, m := range parsed.AvailablePerformers.Performers {
 			image := ""
@@ -262,15 +278,16 @@ func (c *StreamateChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInf
 
 // QueryFixedListOnlineStreamers is not implemented for online list checkers
 func (c *StreamateChecker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckMode) (map[string]cmdlib.StreamerInfo, error) {
-	return nil, cmdlib.ErrNotImplemented
+	return nil, ErrNotImplemented
 }
 
-// Capabilities reports the status surfaces Streamate implements.
-func (*StreamateChecker) Capabilities() cmdlib.Capabilities {
-	return cmdlib.Capabilities{
-		QueryOnlineStreamers:          true,
-		QueryFixedListOnlineStreamers: false,
-		QueryFixedListStatuses:        false,
-		QueryStatus:                   true,
+// Capabilities lists the surfaces Streamate exposes for dispatch.
+func (*StreamateChecker) Capabilities() Capabilities {
+	return Capabilities{
+		SupportsQueryOnlineStreamers:          true,
+		SupportsQueryFixedListOnlineStreamers: false,
+		SupportsQueryFixedListStatuses:        false,
+		SupportsQueryStatus:                   true,
+		SupportsCLI:                           true,
 	}
 }

@@ -4,48 +4,27 @@ package main
 import (
 	"flag"
 	"fmt"
-	"maps"
 	"os"
-	"slices"
 	"strings"
 
 	"github.com/bcmk/siren/v2/internal/checkers"
-	"github.com/bcmk/siren/v2/lib/cmdlib"
 )
 
 var verbose = flag.Bool("v", false, "verbose output")
-var timeout = flag.Int("t", 10, "timeout in seconds")
-var address = flag.String("a", "", "source IP address")
-var cookies = flag.Bool("c", false, "use cookies")
-var endpoints = cmdlib.StringSetFlag{}
-var userID = flag.String("user_id", "", "Stripchat user_id")
-var clientID = flag.String("client_id", "", "Twitch/Kick client_id")
-var clientSecret = flag.String("client_secret", "", "Twitch/Kick client_secret")
-
-var sites = map[string]cmdlib.Checker{
-	"bongacams":  &checkers.BongaCamsChecker{},
-	"cam4":       &checkers.Cam4Checker{},
-	"camsoda":    &checkers.CamSodaChecker{},
-	"chaturbate": &checkers.ChaturbateChecker{},
-	"flirt4free": &checkers.Flirt4FreeChecker{},
-	"livejasmin": &checkers.LiveJasminChecker{},
-	"streamate":  &checkers.StreamateChecker{},
-	"stripchat":  &checkers.StripchatChecker{},
-	"twitch":     &checkers.TwitchChecker{},
-	"kick":       &checkers.KickChecker{},
-}
-
-const streamateDefaultEndpoint = "http://affiliate.streamate.com/SMLive/SMLResult.xml"
+var checkerCfgPath = flag.String("checker-config", "", "path to <site>-checker.json (overrides default search)")
 
 func main() {
-	siteNames := strings.Join(slices.Sorted(maps.Keys(sites)), ", ")
-	flag.Var(&endpoints, "e", "online query endpoint (repeatable)")
 	flag.Usage = func() {
 		fmt.Fprintf(
 			os.Stderr,
-			"usage: %s [options] <site>\n\nsites: %s\n\n",
+			"usage: %s [options] <site>\n\n"+
+				"sites: %s\n\n"+
+				"Per-site checker settings (HTTP timeout, secrets, endpoint URLs)\n"+
+				"are read from <site>-checker.json, searched in the current directory,\n"+
+				"$XDG_CONFIG_HOME/siren/, and ~/.config/siren/.\n"+
+				"Override the path with -checker-config.\n\n",
 			os.Args[0],
-			siteNames,
+			strings.Join(checkers.CLISites(), ", "),
 		)
 		flag.PrintDefaults()
 	}
@@ -56,54 +35,24 @@ func main() {
 	}
 	site := flag.Arg(0)
 
-	checker, ok := sites[site]
-	if !ok {
-		fmt.Fprintf(os.Stderr, "unknown site: %s\nsites: %s\n", site, siteNames)
+	checker, err := checkers.New(site)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
-
-	endpointSlice := slices.Collect(maps.Keys(endpoints))
-	if len(endpointSlice) == 0 {
-		switch site {
-		case "streamate":
-			endpointSlice = []string{streamateDefaultEndpoint}
-		case "twitch", "kick":
-			endpointSlice = []string{""}
-		default:
-			fmt.Fprintln(os.Stderr, "specify endpoint with -e")
-			os.Exit(1)
-		}
+	caps := checker.Capabilities()
+	if !caps.SupportsCLI {
+		fmt.Fprintf(os.Stderr, "%s is not supported in CLI tools\n", site)
+		os.Exit(1)
 	}
-
-	config := cmdlib.CheckerConfig{
-		UsersOnlineEndpoints: endpointSlice,
-		Clients: []*cmdlib.Client{
-			cmdlib.HTTPClientWithTimeoutAndAddress(*timeout, *address, *cookies),
-		},
-		Dbg: *verbose,
+	if !caps.SupportsQueryOnlineStreamers {
+		fmt.Fprintf(os.Stderr, "online list is not supported for %s\n", site)
+		os.Exit(1)
 	}
-
-	switch site {
-	case "stripchat":
-		if *userID == "" {
-			fmt.Fprintln(os.Stderr, "specify user_id")
-			os.Exit(1)
-		}
-		config.SpecificConfig = map[string]cmdlib.Secret{
-			"user_id": cmdlib.Secret(*userID),
-		}
-	case "twitch", "kick":
-		if *clientID == "" || *clientSecret == "" {
-			fmt.Fprintln(os.Stderr, "specify client_id and client_secret")
-			os.Exit(1)
-		}
-		config.SpecificConfig = map[string]cmdlib.Secret{
-			"client_id":     cmdlib.Secret(*clientID),
-			"client_secret": cmdlib.Secret(*clientSecret),
-		}
+	if err := checker.Init(*checkerCfgPath, *verbose); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
 	}
-
-	checker.Init(config)
 	streamers, err := checker.QueryOnlineStreamers()
 	if err != nil {
 		fmt.Printf("error occurred: %v\n", err)
