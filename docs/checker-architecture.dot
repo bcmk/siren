@@ -1,0 +1,64 @@
+digraph {
+    graph [dpi = 96]
+    label = <<table border="0" height="62"><tr><td>Checker architecture</td></tr></table>>
+    labelloc = t
+    fontname = "Inter"
+    fontsize = 18
+    bgcolor = white
+    rankdir = BT
+    nodesep = 0.45
+    ranksep = 0.8
+    node [shape = box, style = "filled, rounded"]
+    node [penwidth = 1.5]
+    node [fontname = "Inter"]
+    edge [fontname = "Inter"]
+    node [fontsize = 11]
+    edge [fontsize = 9]
+    node [color = white]
+    node [margin = "0.18,0.10"]
+    edge [color = "#666666"]
+
+    // UML edge legend:
+    //   ----|>  (dashed, hollow triangle)   realization — implements an interface
+    //   <>--->  (solid, filled diamond)     composition — owns a field (incl. Go embedding); label = field / "embeds"
+    //   o>--->  (solid, open diamond)       aggregation — holds a reference to an injected/shared object
+    //   ----->  (dashed, open arrow)        dependency — uses / creates / drives / type used in a signature
+    // Colours:
+    //   green = interface
+    //   blue = struct
+
+    // ---- interfaces ----
+    node [fillcolor = "#d0f0cc"]
+    Checker       [label = <<b>Checker</b><br/><i>«interface» internal/checkers</i>>]
+    CheckerConfig [label = <<b>CheckerConfig</b><br/><i>«interface» internal/checkers</i>>]
+
+    // ---- structs ----
+    node [fillcolor = "#e0ebff"]
+    BaseChecker       [label = <<b>BaseChecker[T CheckerConfig]</b><br/><i>«generic struct» internal/checkers</i>>]
+    BaseCheckerConfig [label = <<b>BaseCheckerConfig</b><br/><i>«struct» internal/checkers</i>>]
+    SiteCheckerConfig [label = <<b>&#x27E8;Site&#x27E9;CheckerConfig</b><br/><i>«struct, one per site» internal/checkers</i>>]
+    SiteChecker       [label = <<b>&#x27E8;Site&#x27E9;Checker</b><br/><i>«struct, one per site» internal/checkers</i>>]
+    MainLoop          [label = <<b>worker</b><br/><i>«struct» cmd/bot</i>>]
+
+    // ===================== relationships =====================
+
+    edge [dir = both]
+
+    // -- realization (implements an interface) --
+    SiteChecker       -> Checker       [style = dashed, dir = forward, arrowhead = onormal, label = "realizes"]
+    BaseCheckerConfig -> CheckerConfig [style = dashed, dir = forward, arrowhead = onormal, label = "realizes"]
+
+    // -- composition (owns a field; Go embedding is an anonymous field) --
+    SiteChecker       -> BaseChecker     [arrowtail = diamond, arrowhead = vee, label = "embeds"]
+    SiteCheckerConfig -> BaseCheckerConfig [arrowtail = diamond, arrowhead = vee, label = "embeds"]
+    BaseChecker     -> SiteCheckerConfig [arrowtail = diamond, arrowhead = vee, label = "Cfg T"]
+
+    // -- aggregation (holds a reference to an injected / shared object) --
+    MainLoop -> Checker [arrowtail = odiamond, arrowhead = vee, label = "checker"]
+
+    // -- dependency (uses / creates / drives / type used in a signature) --
+    BaseChecker -> Checker       [style = dashed, dir = forward, arrowhead = vee, label = "common methods"]
+    Checker       -> CheckerConfig [style = dashed, dir = forward, arrowhead = vee, label = "Config()"]
+
+    MainLoop -> SiteChecker [style = dashed, dir = forward, arrowhead = vee, label = "«create»"]
+}

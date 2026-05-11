@@ -6,6 +6,7 @@
   and `-C` triggers an extra permission prompt.
   If the wrong cwd is in effect, run a bare `cd /path` first (no `&&`, no chain)
 - Prefer modern git commands, e.g. `switch` over `checkout` for branches
+- Commit directly on `master` unless asked to use a branch
 - Don't use slashes in branch names
 - Use one-line commit messages only
 - Don't use heredocs for commit messages, use `git commit -m "message"`
@@ -142,6 +143,8 @@
 
 - Read `docs/status-changes.md` before modifying status handling code
 - Read `docs/streamer-search.md` before modifying streamer fuzzy search
+- Read `docs/architecture-diagrams.md` before adding or regenerating
+  an architecture diagram (`docs/*.dot` / `docs/*.pdf`)
 
 ## Code Locations
 
@@ -150,3 +153,4 @@
 - SQL queries: `internal/db/sql_queries.go`
 - Database migrations: `internal/db/migrations/`
 - Translations: `res/translations/`
+- Architecture diagrams: `docs/*.dot`, built with `scripts/build-diagram`

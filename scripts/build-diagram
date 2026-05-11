@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Renders architecture diagrams: docs/<name>.dot -> docs/<name>.pdf.
+#
+# Path is dot -> SVG -> Inkscape -> PDF, not dot -Tpdf, because Graphviz's
+# cairo/Pango PDF backend mangles italic text (uneven letter spacing — e.g.
+# Inter italic "f" colliding with the next glyph); Inkscape's PDF export lays
+# it out cleanly. Then all PDF metadata is stripped, so nothing about the build
+# environment (creation date, timezone, producer string, paths) leaks.
+#
+# Usage:
+#   scripts/build-diagram                            # rebuild every docs/*.dot
+#   scripts/build-diagram checker-architecture [...]  # rebuild named diagram(s)
+#
+# Requires: graphviz, inkscape, exiftool, qpdf.
+set -euo pipefail
+
+cur="$(dirname "$(readlink -f "$0")")"
+cd "$cur/.."
+
+names=("$@")
+if [ ${#names[@]} -eq 0 ]; then
+    for f in docs/*.dot; do
+        names+=("$(basename "$f" .dot)")
+    done
+fi
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+
+for name in "${names[@]}"; do
+    src="docs/$name.dot"
+    out="docs/$name.pdf"
+    if [ ! -f "$src" ]; then
+        echo "build-diagram: no such diagram: $src" >&2
+        exit 1
+    fi
+
+    dot -Tsvg "$src" -o "$work/$name.svg"
+    inkscape "$work/$name.svg" --export-type=pdf --export-filename="$out" >/dev/null
+
+    # Drop the /Producer entry, dates, and any other document metadata, then
+    # rewrite the file so no superseded metadata objects linger in the bytes.
+    # --deterministic-id makes the output byte-reproducible (the file /ID is a
+    # content hash, not a fresh UUID), so rebuilding an unchanged diagram is a
+    # no-op in git.
+    exiftool -all= -overwrite_original "$out" >/dev/null
+    qpdf --linearize --deterministic-id "$out" "$work/$name.clean.pdf"
+    mv "$work/$name.clean.pdf" "$out"
+    chmod 0644 "$out"
+
+    echo "$out"
+done
