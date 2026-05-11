@@ -94,6 +94,25 @@
   (e.g. `scripts/query-registry-versions bot`) to list images
   in the container registry.
 
+## Releases
+
+- On tagging, ensure `CHANGELOG.md` has a `## v<version> — <date>`
+  section at the top describing what's in the release (em-dash, ISO
+  date). If `## Unreleased` exists, promote it; otherwise write the
+  section fresh from `git log v<prev>..HEAD`. Don't presume Unreleased
+  is maintained between releases — sometimes it isn't there.
+  Commit the CHANGELOG update as `chore: release v<version>`,
+  then `git tag -a v<version>` on that commit and run the publish
+  scripts.
+- Bump major on user-visible breaking changes (config layout splits,
+  CLI flag removals/renames, env-var renames, ops-action-required
+  schema migrations). Bump minor for new features, patch for fixes.
+  `git log v<prev>..HEAD` is the source of truth for what's in scope.
+- After publishing, bump the matching `siren-config` image refs:
+  `bump-all-bots v<version>` (covers prod/test bot charts) plus a
+  `sed` on `prod/prod-adapter-mfc/values.yaml` when the adapter ships.
+- Pushing tags to origin requires explicit permission, like any push.
+
 ## Communication
 
 - Always suggest English grammar/style fixes
