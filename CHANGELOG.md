@@ -3,6 +3,21 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v3.0.1 — 2026-05-12
+
+### Changed
+
+- adapter-mfc: the periodic snapshot-counts heartbeat line now reports
+  `connection uptime` (time since the live websocket handshake completed,
+  or `disconnected` between reconnects) in place of the lifetime
+  `incomplete frames` tally, which had served its purpose confirming that
+  MFC's mid-frame message flushing is handled correctly.
+
+### Fixed
+
+- Bot shutdown no longer panics when Telegram answers the `deleteWebhook`
+  call with HTTP 400; the library expected a `nil` argument there.
+
 ## v3.0.0 — 2026-05-11
 
 ### Changed
