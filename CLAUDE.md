@@ -12,6 +12,9 @@
 - Don't use heredocs for commit messages, use `git commit -m "message"`
 - Use conventional commit style
 - Use site scope for single-site changes, e.g. `feat(chaturbate): add room subject`
+  or `refactor(myfreecams): ...` for bot-side MyFreeCams code in
+  `internal/checkers/` (the `adapter-mfc` scope is only for the
+  `cmd/adapter-mfc` daemon).
 - When stashing, use a descriptive name
 - Never push to remote without explicit permission
 - Never delete tags after pushing to the container registry
