@@ -17,8 +17,7 @@ type AdapterCheckerConfig struct {
 	BaseCheckerConfig `mapstructure:",squash"`
 	// BaseURL is the daemon's base URL, e.g. "http://adapter-mfc:8080".
 	// The adapter appends /online and /status itself.
-	BaseURL string      `mapstructure:"base_url"`
-	Headers [][2]string `mapstructure:"headers"`
+	BaseURL string `mapstructure:"base_url"`
 }
 
 func (c *AdapterCheckerConfig) validate() error {
@@ -116,7 +115,7 @@ func (c *OnlineListAdapter) QueryOnlineStreamers() (
 	error,
 ) {
 	endpoint := c.Cfg.BaseURL + "/online"
-	resp, buf, err := cmdlib.OnlineQuery(endpoint, c.Client, c.Cfg.Headers)
+	resp, buf, err := cmdlib.OnlineQuery(endpoint, c.Client, nil)
 	if err != nil {
 		return nil, fmt.Errorf("cannot query %s, %v", endpoint, err)
 	}
@@ -150,7 +149,7 @@ func (c *OnlineListAdapter) QueryOnlineStreamers() (
 // rather than an error so the bot's status loop keeps running.
 func (c *OnlineListAdapter) QueryStatus(nickname string) (cmdlib.StreamerInfoWithStatus, error) {
 	endpoint := c.Cfg.BaseURL + "/status?name=" + url.QueryEscape(nickname)
-	resp, buf, err := cmdlib.OnlineQuery(endpoint, c.Client, c.Cfg.Headers)
+	resp, buf, err := cmdlib.OnlineQuery(endpoint, c.Client, nil)
 	if err != nil {
 		cmdlib.Lerr("cannot query %s, %v", endpoint, err)
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
