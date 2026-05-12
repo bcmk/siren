@@ -42,7 +42,6 @@ type Config struct {
 	AdminID                         int64                     `mapstructure:"admin_id"`                           // admin Telegram ID
 	AdminEndpoint                   string                    `mapstructure:"admin_endpoint"`                     // admin endpoint
 	DBConnectionString              cmdlib.Secret             `mapstructure:"db_connection_string"`               // database connection string
-	BlockThreshold                  int                       `mapstructure:"block_threshold"`                    // do not send a message to the user after being blocked by him this number of times
 	Endpoints                       map[string]endpoint       `mapstructure:"endpoints"`                          // the endpoints by simple name, used for the support of the bots in different languages accessing the same database
 	HeavyUserRemainder              int                       `mapstructure:"heavy_user_remainder"`               // the maximum remainder of subscriptions to treat a user as heavy
 	ReferralBonus                   int                       `mapstructure:"referral_bonus"`                     // number of additional subscriptions for a referrer
@@ -117,9 +116,6 @@ func checkConfig(cfg *Config) error {
 	}
 	if cfg.DBConnectionString == "" {
 		return errors.New("configure db_connection_string")
-	}
-	if cfg.BlockThreshold == 0 {
-		return errors.New("configure block_threshold")
 	}
 	if cfg.Website == "" {
 		return errors.New("configure website")
