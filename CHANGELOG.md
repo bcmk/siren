@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v3.0.2 — 2026-05-12
+
+### Removed
+
+- `headers` key from the MyFreeCams checker config — never used.
+- `block_threshold` key from the bot config — never consulted; the
+  per-chat block counter is still tracked.
+
 ## v3.0.1 — 2026-05-12
 
 ### Changed
