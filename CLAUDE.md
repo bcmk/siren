@@ -107,6 +107,8 @@
   Commit the CHANGELOG update as `chore: release v<version>`,
   then `git tag -a v<version>` on that commit and run the publish
   scripts.
+- Keep CHANGELOG entries terse — ideally one line per change,
+  no rationale paragraphs. State what changed, not why.
 - Bump major on user-visible breaking changes (config layout splits,
   CLI flag removals/renames, env-var renames, ops-action-required
   schema migrations). Bump minor for new features, patch for fixes.
