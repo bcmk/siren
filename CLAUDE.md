@@ -72,7 +72,7 @@
 
 ## Checks and Tests
 
-- Run `prettier --write` on markdown files after changes (no `npx`)
+- Run `npx prettier --write` on markdown files after changes
 - Run `go fmt ./...` after changes and before committing
 - Run `golangci-lint run ./...` before committing
 - Run `go test ./...` to ensure changes work
