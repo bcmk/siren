@@ -29,16 +29,16 @@ digraph {
 
     // ---- interfaces ----
     node [fillcolor = "#d0f0cc"]
-    Checker       [label = <<b>Checker</b><br/><i>«interface» internal/checkers</i>>]
-    CheckerConfig [label = <<b>CheckerConfig</b><br/><i>«interface» internal/checkers</i>>]
+    Checker       [label = <<font face="JetBrains Mono NL"><b>Checker</b></font><br/><i>«interface» internal/checkers</i>>]
+    CheckerConfig [label = <<font face="JetBrains Mono NL"><b>CheckerConfig</b></font><br/><i>«interface» internal/checkers</i>>]
 
     // ---- structs ----
     node [fillcolor = "#e0ebff"]
-    BaseChecker       [label = <<b>BaseChecker[T CheckerConfig]</b><br/><i>«generic struct» internal/checkers</i>>]
-    BaseCheckerConfig [label = <<b>BaseCheckerConfig</b><br/><i>«struct» internal/checkers</i>>]
-    SiteCheckerConfig [label = <<b>&#x27E8;Site&#x27E9;CheckerConfig</b><br/><i>«struct, one per site» internal/checkers</i>>]
-    SiteChecker       [label = <<b>&#x27E8;Site&#x27E9;Checker</b><br/><i>«struct, one per site» internal/checkers</i>>]
-    MainLoop          [label = <<b>worker</b><br/><i>«struct» cmd/bot</i>>]
+    BaseChecker       [label = <<font face="JetBrains Mono NL"><b>BaseChecker[T CheckerConfig]</b></font><br/><i>«generic struct» internal/checkers</i>>]
+    BaseCheckerConfig [label = <<font face="JetBrains Mono NL"><b>BaseCheckerConfig</b></font><br/><i>«struct» internal/checkers</i>>]
+    SiteCheckerConfig [label = <<font face="JetBrains Mono NL"><b>&#x27E8;Site&#x27E9;CheckerConfig</b></font><br/><i>«struct» internal/checkers</i>>]
+    SiteChecker       [label = <<font face="JetBrains Mono NL"><b>&#x27E8;Site&#x27E9;Checker</b></font><br/><i>«struct» internal/checkers</i>>]
+    MainLoop          [label = <<font face="JetBrains Mono NL"><b>worker</b></font><br/><i>«struct» cmd/bot</i>>]
 
     // ===================== relationships =====================
 
@@ -51,14 +51,14 @@ digraph {
     // -- composition (owns a field; Go embedding is an anonymous field) --
     SiteChecker       -> BaseChecker     [arrowtail = diamond, arrowhead = vee, label = "embeds"]
     SiteCheckerConfig -> BaseCheckerConfig [arrowtail = diamond, arrowhead = vee, label = "embeds"]
-    BaseChecker     -> SiteCheckerConfig [arrowtail = diamond, arrowhead = vee, label = "Cfg T"]
+    BaseChecker     -> SiteCheckerConfig [arrowtail = diamond, arrowhead = vee, label = <<font face="JetBrains Mono NL">Cfg T</font>>]
 
     // -- aggregation (holds a reference to an injected / shared object) --
-    MainLoop -> Checker [arrowtail = odiamond, arrowhead = vee, label = "checker"]
+    MainLoop -> Checker [arrowtail = odiamond, arrowhead = vee, label = <<font face="JetBrains Mono NL">checker</font>>]
 
     // -- dependency (uses / creates / drives / type used in a signature) --
     BaseChecker -> Checker       [style = dashed, dir = forward, arrowhead = vee, label = "common methods"]
-    Checker       -> CheckerConfig [style = dashed, dir = forward, arrowhead = vee, label = "Config()"]
+    Checker       -> CheckerConfig [style = dashed, dir = forward, arrowhead = vee, label = <<font face="JetBrains Mono NL">Config()</font>>]
 
     MainLoop -> SiteChecker [style = dashed, dir = forward, arrowhead = vee, label = "«create»"]
 }

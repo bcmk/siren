@@ -16,9 +16,19 @@ scripts/build-diagram                       # rebuild every docs/*.dot
 scripts/build-diagram checker-architecture  # rebuild one diagram
 ```
 
-Requires `graphviz`, `inkscape`, `exiftool`, and `qpdf`.
+Requires `graphviz`, `exiftool`, `qpdf`, the **Inter** and **JetBrains Mono NL**
+fonts, and `svg2pdf` — the Rust [`svg2pdf-cli`](https://github.com/typst/svg2pdf)
+crate, _not_ the older Cairo-based program that also goes by `svg2pdf` (see the
+renderer table below). There is no prebuilt package for the Rust one; install a
+Rust toolchain (e.g. via [`rustup`](https://rustup.rs)) and then:
 
-## Why the pipeline is `dot -> SVG -> Inkscape -> PDF`
+```
+cargo install svg2pdf-cli    # installs the `svg2pdf` binary into ~/.cargo/bin
+```
+
+Make sure `~/.cargo/bin` is on your `PATH`.
+
+## Why the pipeline is `dot -> SVG -> svg2pdf -> PDF`
 
 Do not use `dot -Tpdf`. Graphviz's PDF (and PNG, and PS2) output goes through
 the cairo + Pango stack, and that stack lays out italic text with visibly uneven
@@ -34,36 +44,59 @@ rendering the diagram at a larger scale.
 
 Renderers checked:
 
-| pipeline                                            | result                                 |
-| --------------------------------------------------- | -------------------------------------- |
-| `dot -Tpdf` (cairo + Pango)                         | bad italics                            |
-| `dot -Tsvg` then `rsvg-convert -f pdf`              | bad italics (same cairo/Pango stack)   |
-| `dot -Tps` then `ps2pdf`                            | loses Inter, falls back to Courier     |
-| `dot -Tsvg` then `mutool convert`                   | loses Inter, falls back to a serif     |
-| `dot -Tsvg` then Chrome `--headless --print-to-pdf` | good                                   |
-| `dot -Tsvg` then `inkscape --export-type=pdf`       | good — and no extra browser dependency |
+| pipeline                                            | result                                            |
+| --------------------------------------------------- | ------------------------------------------------- |
+| `dot -Tpdf` (cairo + Pango)                         | bad italics                                       |
+| `dot -Tsvg` then `rsvg-convert -f pdf`              | bad italics (same cairo/Pango stack)              |
+| `dot -Tps` then `ps2pdf`                            | loses Inter, falls back to Courier                |
+| `dot -Tsvg` then `mutool convert`                   | loses Inter, falls back to a serif                |
+| `dot -Tsvg` then the Cairo-based `svg2pdf`          | bad italics (same cairo stack — wrong `svg2pdf`!) |
+| `dot -Tsvg` then Chrome `--headless --print-to-pdf` | good — but depends on a browser                   |
+| `dot -Tsvg` then `inkscape --export-type=pdf`       | good — but pulls in the whole Inkscape app        |
+| `dot -Tsvg` then `svg2pdf` (Rust `svg2pdf-cli`)     | good — small CLI, no GUI/browser dependency       |
 
-Inkscape's PDF export does its own glyph layout (double-precision positioning,
-not cairo's metric-quantized path), so it renders the italics cleanly. Hence the
-pipeline.
+The Rust `svg2pdf` parses the SVG with resvg's `usvg` and writes the PDF with
+`pdf-writer`; it shapes text with `rustybuzz` and places glyphs at full
+precision, not cairo's metric-quantized path, so the italics come out clean. It
+replaced an `inkscape --export-type=pdf` step that produced the same result but
+required installing all of Inkscape. (Chrome's headless print also works; it
+just trades the Inkscape dependency for a browser one.)
+
+### Font fallback — keep every glyph inside a covered font
+
+`usvg` does _whole-run_ font fallback: if one glyph in a text run is missing
+from the requested font, the **entire run** is re-shaped in a fallback face — a
+single uncovered character in a class name drags the whole name into, say,
+Menlo. The diagram avoids this by only using fonts that cover every glyph it
+draws. The notable case is the `⟨` `⟩` placeholder brackets (U+27E8 / U+27E9):
+**Inter has no glyph for them, JetBrains Mono does** — one more reason the
+identifier text is set in JetBrains Mono NL (see the conventions below).
 
 ## Metadata stripping
 
-Both cairo and Inkscape stamp the PDF with a `/Producer` string and a
-`/CreationDate` (including the local timezone offset). `scripts/build-diagram`
-runs `exiftool -all=` to clear the document info dictionary and then
-`qpdf --linearize` to rewrite the file so no superseded metadata objects linger
-in the bytes (exiftool's PDF edit is an incremental update — it warns that
-deleted tags "may be recovered"; the qpdf rewrite is what actually drops them).
-`qpdf --deterministic-id` then makes the output byte-reproducible (the file
-identifier is a content hash, not a fresh UUID), so rebuilding an unchanged
-diagram is a no-op in git. The committed PDFs have no creation date, no producer
-string, and no filesystem paths.
+`svg2pdf` stamps the PDF with a `/Producer (svg2pdf)` string — no dates, and no
+file `/ID` of its own. `scripts/build-diagram` runs `exiftool -all=` to clear
+the document info dictionary and then `qpdf --linearize` to rewrite the file so
+no superseded metadata objects linger in the bytes (exiftool's PDF edit is an
+incremental update — it warns that deleted tags "may be recovered"; the qpdf
+rewrite is what actually drops them). `qpdf --deterministic-id` derives the
+`/ID` that `--linearize` has to add from a content hash rather than from fresh
+randomness. The committed PDFs have no producer string and no filesystem paths.
+
+Note — unlike the old Inkscape step, `svg2pdf` serializes the page's font
+resource dictionary in a nondeterministic (hash-map) order, and `qpdf` does not
+normalize that, so two rebuilds of an unchanged `.dot` are **not**
+byte-identical. Only rebuild and commit the `.pdf` when the `.dot` actually
+changed; if a rebuild merely shuffled bytes, `git checkout` it.
 
 ## Conventions for new diagrams
 
-- **Font:** Inter. Class/box names bold;
-  secondary lines (stereotypes, package paths) italic.
+- **Fonts:** Inter for prose — the diagram title and the secondary lines inside
+  boxes (stereotypes, package paths), set italic. **JetBrains Mono NL** for
+  identifiers: type names bold (the box title line), inline code on edge labels
+  (field names, method calls) regular. Use the _NL_ (no-ligatures) family — it
+  ships a static bold weight; plain "JetBrains Mono" is usually a variable font
+  whose bold weight `usvg` can't reach.
 - **Palette** — matching the dataflow-diagram conventions used elsewhere:
   white node borders, `#666666` edges, fills from `#e0ebff` (blue), `#d0f0cc` (green),
   `#fee3d4` (peach), `#fff0d6` (yellow), `#ffd777` (gold).
@@ -78,5 +111,7 @@ string, and no filesystem paths.
 - Prefer collapsing many near-identical types into one box;
   use a placeholder name with the varying part in mathematical angle brackets
   (e.g. `⟨Site⟩Checker` covers `ChaturbateChecker`, `StripchatChecker`, …).
+  Keep the `⟨⟩` inside the JetBrains Mono run — Inter has no glyph for them
+  (see the font-fallback note above).
 - After editing a `.dot`, rerun `scripts/build-diagram` and commit the updated
   `.pdf` alongside it.

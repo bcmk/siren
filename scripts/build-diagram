@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 # Renders architecture diagrams: docs/<name>.dot -> docs/<name>.pdf.
 #
-# Path is dot -> SVG -> Inkscape -> PDF, not dot -Tpdf, because Graphviz's
+# Path is dot -> SVG -> svg2pdf -> PDF, not dot -Tpdf, because Graphviz's
 # cairo/Pango PDF backend mangles italic text (uneven letter spacing — e.g.
-# Inter italic "f" colliding with the next glyph); Inkscape's PDF export lays
-# it out cleanly. Then all PDF metadata is stripped, so nothing about the build
-# environment (creation date, timezone, producer string, paths) leaks.
+# Inter italic "f" colliding with the next glyph); svg2pdf (resvg/usvg text
+# layout) places it cleanly. Then all PDF metadata is stripped, so nothing
+# about the build environment (producer string, paths) leaks.
 #
 # Usage:
 #   scripts/build-diagram                            # rebuild every docs/*.dot
 #   scripts/build-diagram checker-architecture [...]  # rebuild named diagram(s)
 #
-# Requires: graphviz, inkscape, exiftool, qpdf.
+# Requires: graphviz, svg2pdf (the Rust "svg2pdf-cli" crate — `cargo install
+# svg2pdf-cli`; NOT the older Cairo-based program of the same name), exiftool,
+# qpdf, and the Inter and JetBrains Mono NL fonts.
+# See docs/architecture-diagrams.md.
 set -euo pipefail
 
 cur="$(dirname "$(readlink -f "$0")")"
@@ -36,13 +39,14 @@ for name in "${names[@]}"; do
     fi
 
     dot -Tsvg "$src" -o "$work/$name.svg"
-    inkscape "$work/$name.svg" --export-type=pdf --export-filename="$out" >/dev/null
+    svg2pdf "$work/$name.svg" "$out"
 
-    # Drop the /Producer entry, dates, and any other document metadata, then
-    # rewrite the file so no superseded metadata objects linger in the bytes.
-    # --deterministic-id makes the output byte-reproducible (the file /ID is a
-    # content hash, not a fresh UUID), so rebuilding an unchanged diagram is a
-    # no-op in git.
+    # Drop the /Producer entry and any other document metadata, then rewrite the
+    # file so no superseded metadata objects linger in the bytes.
+    # --deterministic-id derives the /ID (which --linearize must add) from a
+    # content hash, not fresh randomness. NB: svg2pdf writes the page's font
+    # dict in hash-map order, so rebuilds still aren't byte-identical — only
+    # commit the regenerated .pdf when the .dot actually changed.
     exiftool -all= -overwrite_original "$out" >/dev/null
     qpdf --linearize --deterministic-id "$out" "$work/$name.clean.pdf"
     mv "$work/$name.clean.pdf" "$out"
