@@ -282,8 +282,12 @@ func (w *worker) removeWebhook() {
 	ctx := context.Background()
 	for n := range w.cfg.Endpoints {
 		linf("removing webhook for endpoint %s...", n)
-		_, err := w.bots[n].DeleteWebhook(ctx, &bot.DeleteWebhookParams{})
-		checkErr(err)
+		// nil, not &DeleteWebhookParams{}: an empty struct makes the library
+		// send a part-less multipart body that Telegram 400s with no body.
+		if _, err := w.bots[n].DeleteWebhook(ctx, nil); err != nil {
+			lerr("failed to remove webhook for endpoint %s: %v", n, err)
+			continue
+		}
 		linf("OK")
 	}
 }
