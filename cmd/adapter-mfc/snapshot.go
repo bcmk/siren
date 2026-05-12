@@ -51,7 +51,6 @@ type snapshot struct {
 	bulkApplied                  bool
 	lifetimeDisconnects          atomic.Int32
 	lifetimeServerConfigFailures atomic.Int32
-	lifetimeIncompleteFrames     atomic.Int32
 	// currentSession is the live wsSession, set by runWebsocketSession on
 	// dial and cleared on teardown. Nil between sessions; HTTP handlers
 	// that need to drive outbound websocket requests (e.g. /status)
@@ -385,10 +384,22 @@ func (s *snapshot) countsLineLocked() string {
 			pending++
 		}
 	}
-	return fmt.Sprintf("snapshot: online = %d, name cache = %d, pending lookups = %d, disconnects = %d, server config failures = %d, incomplete frames = %d",
+	return fmt.Sprintf("snapshot: online = %d, name cache = %d, pending lookups = %d, disconnects = %d, server config failures = %d, connection uptime = %s",
 		len(s.online), len(s.nameCache), pending,
 		s.lifetimeDisconnects.Load(), s.lifetimeServerConfigFailures.Load(),
-		s.lifetimeIncompleteFrames.Load())
+		s.connectionUptime())
+}
+
+// connectionUptime reports how long the live websocket session has been up,
+// rounded to seconds, or "disconnected" when no session is connected (the
+// gap between a drop and the next successful dial). Reads currentSession,
+// which is an atomic, so it needs no lock of its own.
+func (s *snapshot) connectionUptime() string {
+	sess := s.currentSession.Load()
+	if sess == nil {
+		return "disconnected"
+	}
+	return time.Since(sess.dialedAt).Round(time.Second).String()
 }
 
 // logCounts emits a snapshot-counts line at debug level. Called after each

@@ -409,8 +409,8 @@ func runVideoHostsRefresher(ctx context.Context, snap *snapshot, cfg *config, cl
 // fixed interval. The same line is logged after every event at debug level
 // by snapshot.logCounts; this runner duplicates it at info so production
 // logs (which run at info verbosity) carry a periodic heartbeat of online,
-// name cache, pending lookups, and lifetime disconnect/serverconfig
-// failure counters.
+// name cache, pending lookups, lifetime disconnect/serverconfig failure
+// counters, and connection uptime.
 func runSnapshotCountsLogger(ctx context.Context, snap *snapshot, cfg *config) {
 	t := time.NewTicker(cfg.SnapshotCountsLogEvery)
 	defer t.Stop()
@@ -627,9 +627,7 @@ func runWebsocketSession(
 			return false, walkErr
 		}
 		if consumed < buf.Len() {
-			carry := buf.Len() - consumed
-			n := snap.lifetimeIncompleteFrames.Add(1)
-			cmdlib.Ldbg("incomplete frame: %d bytes carried over (lifetime = %d)", carry, n)
+			cmdlib.Ldbg("incomplete frame: %d bytes carried over", buf.Len()-consumed)
 		}
 		buf.Next(consumed)
 		if stopOK {
@@ -641,12 +639,14 @@ func runWebsocketSession(
 
 // wsSession owns a single MFC websocket connection plus the per-connection
 // state we need for outbound requests (write serialisation, query-id counter).
-// USERNAMELOOKUP dedupe for snapshot-fill traffic lives on the snapshot via
-// nameEntry.lookupAt; pending tracks qids of HTTP-driven lookups so the
-// frame dispatcher can hand the response to the waiting caller instead of
-// folding it into the snapshot.
+// dialedAt stamps when the websocket handshake completed so the snapshot-counts
+// line can report connection uptime. USERNAMELOOKUP dedupe for snapshot-fill
+// traffic lives on the snapshot via nameEntry.lookupAt; pending tracks qids of
+// HTTP-driven lookups so the frame dispatcher can hand the response to the
+// waiting caller instead of folding it into the snapshot.
 type wsSession struct {
 	conn        *websocket.Conn
+	dialedAt    time.Time
 	writeMu     sync.Mutex
 	nextQueryID atomic.Int64
 	pendingMu   sync.Mutex
@@ -655,8 +655,9 @@ type wsSession struct {
 
 func newWSSession(conn *websocket.Conn) *wsSession {
 	return &wsSession{
-		conn:    conn,
-		pending: map[int64]chan *lookupResponseMsg{},
+		conn:     conn,
+		dialedAt: time.Now(),
+		pending:  map[int64]chan *lookupResponseMsg{},
 	}
 }
 
