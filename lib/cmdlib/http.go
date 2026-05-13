@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -16,11 +17,21 @@ func NoRedirect(_ *http.Request, _ []*http.Request) error { return http.ErrUseLa
 // A zero timeout disables the timeout (the same convention http.Client
 // itself uses) and is intended for tests.
 func HTTPClientWithTimeout(timeout time.Duration) *http.Client {
+	return httpClient(timeout, http.ProxyFromEnvironment)
+}
+
+// HTTPClientWithProxy returns an HTTP client routing all requests
+// through the given proxy URL (supports http, https, socks5 schemes).
+func HTTPClientWithProxy(timeout time.Duration, proxyURL *url.URL) *http.Client {
+	return httpClient(timeout, http.ProxyURL(proxyURL))
+}
+
+func httpClient(timeout time.Duration, proxy func(*http.Request) (*url.URL, error)) *http.Client {
 	return &http.Client{
 		CheckRedirect: NoRedirect,
 		Timeout:       timeout,
 		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
+			Proxy: proxy,
 			DialContext: (&net.Dialer{
 				Timeout:   timeout,
 				KeepAlive: 30 * time.Second,

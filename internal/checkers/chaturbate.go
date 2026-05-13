@@ -5,15 +5,49 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
+	"sync/atomic"
 
 	"github.com/bcmk/siren/v2/lib/cmdlib"
 )
 
+// ChaturbateCheckerConfig is the per-site config for Chaturbate.
+type ChaturbateCheckerConfig struct {
+	BaseCheckerConfig   `mapstructure:",squash"`
+	UsersOnlineEndpoint string          `mapstructure:"users_online_endpoint"`
+	Headers             [][2]string     `mapstructure:"headers"`
+	Proxies             []cmdlib.Secret `mapstructure:"proxies"`
+}
+
+func (c *ChaturbateCheckerConfig) validate() error {
+	if err := c.validateBase(); err != nil {
+		return err
+	}
+	if c.UsersOnlineEndpoint == "" {
+		return errors.New("configure users_online_endpoint")
+	}
+	if len(c.Proxies) == 0 {
+		return errors.New("configure proxies")
+	}
+	for i, p := range c.Proxies {
+		if p == "" {
+			return fmt.Errorf("proxies[%d] is empty", i)
+		}
+		if _, err := url.Parse(string(p)); err != nil {
+			return fmt.Errorf("proxies[%d]: invalid URL, %v", i, err)
+		}
+	}
+	return nil
+}
+
 // ChaturbateChecker implements a checker for Chaturbate
 type ChaturbateChecker struct {
-	BaseChecker[*SimpleCheckerConfig]
+	BaseChecker[*ChaturbateCheckerConfig]
+	proxyClients []*http.Client
+	nextProxy    atomic.Uint64
 }
 
 var _ Checker = &ChaturbateChecker{}
@@ -26,11 +60,18 @@ func (c *ChaturbateChecker) Init(checkerCfgPath string, dbg bool) error {
 	if err := c.ensureUninitialised(); err != nil {
 		return err
 	}
-	cfg := &SimpleCheckerConfig{}
+	cfg := &ChaturbateCheckerConfig{}
 	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
 		return err
 	}
 	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	for i, p := range cfg.Proxies {
+		u, err := url.Parse(string(p))
+		if err != nil {
+			return fmt.Errorf("proxies[%d]: invalid URL, %v", i, err)
+		}
+		c.proxyClients = append(c.proxyClients, cmdlib.HTTPClientWithProxy(cfg.Timeout(), u))
+	}
 	return nil
 }
 
@@ -59,25 +100,38 @@ type chaturbateResponse struct {
 	Code       string `json:"code"`
 }
 
+func (c *ChaturbateChecker) pickProxyClient() *http.Client {
+	idx := c.nextProxy.Add(1) - 1
+	return c.proxyClients[idx%uint64(len(c.proxyClients))]
+}
+
 // QueryStatus checks Chaturbate model status
 func (c *ChaturbateChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
-	resp := c.DoGetRequest(fmt.Sprintf("https://chaturbate.com/api/biocontext/%s/?", modelID), c.Cfg.Headers)
-	if resp == nil {
+	client := c.pickProxyClient()
+	req, err := http.NewRequest("GET", fmt.Sprintf("https://chaturbate.com/api/biocontext/%s/?", modelID), nil)
+	cmdlib.CheckErr(err)
+	for _, h := range c.Cfg.Headers {
+		req.Header.Set(h[0], h[1])
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		cmdlib.Lerr("cannot send a query, %v", err)
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	defer cmdlib.CloseBody(resp.Body)
+	if c.Dbg {
+		cmdlib.Ldbg("query status for %s: %d", req.URL, resp.StatusCode)
+	}
 	if resp.StatusCode == 404 {
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusNotFound}, nil
 	}
 	buf := bytes.Buffer{}
-	_, err := buf.ReadFrom(resp.Body)
-	if err != nil {
+	if _, err := buf.ReadFrom(resp.Body); err != nil {
 		cmdlib.Lerr("cannot read response for model %s, %v", modelID, err)
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	parsed := &chaturbateResponse{}
-	err = json.Unmarshal(buf.Bytes(), parsed)
-	if err != nil {
+	if err := json.Unmarshal(buf.Bytes(), parsed); err != nil {
 		cmdlib.Lerr("cannot parse response for model %s, %v", modelID, err)
 		if c.Dbg {
 			cmdlib.Ldbg("response: %s", buf.String())
@@ -177,14 +231,12 @@ func (c *ChaturbateChecker) QueryFixedListOnlineStreamers([]string, cmdlib.Check
 }
 
 // Capabilities lists the surfaces Chaturbate exposes for dispatch.
-// QueryStatus is intentionally false: the biocontext endpoint needs
-// a proxy we don't have.
 func (*ChaturbateChecker) Capabilities() Capabilities {
 	return Capabilities{
 		SupportsQueryOnlineStreamers:          true,
 		SupportsQueryFixedListOnlineStreamers: false,
 		SupportsQueryFixedListStatuses:        false,
-		SupportsQueryStatus:                   false,
+		SupportsQueryStatus:                   true,
 		SupportsCLI:                           true,
 		SupportsSubject:                       true,
 	}
