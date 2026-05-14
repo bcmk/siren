@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v3.1.0 — 2026-05-14
+
+### Added
+
+- chaturbate: `QueryStatus` (single-streamer check) routed through a
+  round-robin list of proxies. Required `proxies` field added to
+  `chaturbate-checker.json`; pods without it will fail to start.
+
 ## v3.0.2 — 2026-05-12
 
 ### Removed
