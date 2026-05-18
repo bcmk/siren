@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v3.1.4 — 2026-05-18
+
+### Changed
+
+- Clustered `sent_message_log` and `received_message_log` by timestamp
+  and tuned BRIN to `pages_per_range = 8`.
+
 ## v3.1.3 — 2026-05-18
 
 ### Changed
