@@ -105,7 +105,7 @@
   section fresh from `git log v<prev>..HEAD`. Don't presume Unreleased
   is maintained between releases — sometimes it isn't there.
   Commit the CHANGELOG update as `chore: release v<version>`,
-  then `git tag -a v<version>` on that commit and run the publish
+  then `git tag v<version>` on that commit and run the publish
   scripts.
 - Keep CHANGELOG entries terse — ideally one line per change,
   no rationale paragraphs. State what changed, not why.
