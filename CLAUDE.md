@@ -62,8 +62,10 @@
   Do not use em-dashes in log messages — prefer `:` or `,` there.
 - In log messages, write `key = value` with spaces around `=`
   (e.g., `@uid = %d`, `head = %s`), not `key=%s`.
-- Wrap documentation and comments at 80 characters max,
-  prefer breaking at full stops over commas over natural pauses over spaces
+- Wrap documentation (including CLAUDE.md) and comments at 80 characters max.
+  Keep elementary discourse units on the same line —
+  prefer breaking at full stops over semicolons over em-dashes
+  over commas over natural pauses over spaces.
 - Prefer short comments: one line is the default.
   Add more lines only when required to understand the code.
 - Keep lines no longer than 120 characters
@@ -155,7 +157,14 @@
 - Filename format: `0001_name.sql` (number for ordering, name stored in DB)
 - Use `0001_no_transaction_name.sql` for statements like `vacuum` that cannot
   run inside a transaction
-- A `vacuum` statement must be alone in its own `no_transaction` file.
+- Each `vacuum` statement must be alone in its own `no_transaction` file.
+  Two vacuums cannot share a migration file.
+  PostgreSQL's simple-query protocol
+  wraps a multi-statement Exec call in an implicit transaction,
+  while a single-statement Exec runs without one.
+- After replacing indexes on large tables,
+  follow up with `vacuum analyze` on those tables
+  in a `no_transaction` migration.
 - When a migration needs multiple files, use `_1`, `_2` suffixes.
   They must share the same base name
   (differing only in number prefix, suffix, and `no_transaction`).
