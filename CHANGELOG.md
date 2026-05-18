@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v3.1.5 — 2026-05-19
+
+### Fixed
+
+- `vacuum analyze` on `sent_message_log` and `received_message_log`
+  after the v3.1.4 cluster — CLUSTER resets the visibility map,
+  degrading Index-Only Scans until VACUUM runs.
+
 ## v3.1.4 — 2026-05-18
 
 ### Changed
