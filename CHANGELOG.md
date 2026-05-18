@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v3.1.3 — 2026-05-18
+
+### Changed
+
+- `vacuum analyze` for `sent_message_log` and `received_message_log`.
+
 ## v3.1.1 — 2026-05-18
 
 ### Changed
