@@ -162,9 +162,12 @@
   PostgreSQL's simple-query protocol
   wraps a multi-statement Exec call in an implicit transaction,
   while a single-statement Exec runs without one.
-- After replacing indexes on large tables,
-  follow up with `vacuum analyze` on those tables
-  in a `no_transaction` migration.
+- After `cluster` on a large table,
+  follow up with `vacuum analyze` in `no_transaction` migrations.
+  `cluster` resets the visibility map and leaves correlation stats out of date.
+  Plain `analyze` updates `pg_stats` but does not touch the visibility map.
+  Refs: <https://www.postgresql.org/docs/current/sql-cluster.html>,
+  <https://www.postgresql.org/docs/current/storage-vm.html>.
 - When a migration needs multiple files, use `_1`, `_2` suffixes.
   They must share the same base name
   (differing only in number prefix, suffix, and `no_transaction`).
