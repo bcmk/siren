@@ -178,6 +178,9 @@
 - Read `docs/streamer-search.md` before modifying streamer fuzzy search
 - Read `docs/architecture-diagrams.md` before adding or regenerating
   an architecture diagram (`docs/*.dot` / `docs/*.pdf`)
+- Read `docs/brin-maintenance.md` before changing any BRIN index,
+  recreating one, or running operations
+  that could affect physical row order on a BRIN-indexed table.
 
 ## Code Locations
 
