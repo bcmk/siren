@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v3.1.1 — 2026-05-18
+
+### Changed
+
+- Reworked `chat_id` indexes on `sent_message_log` /
+  `received_message_log` to compound `(chat_id, timestamp)`.
+
 ## v3.1.0 — 2026-05-14
 
 ### Added
