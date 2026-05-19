@@ -3,6 +3,7 @@ package botconfig
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -27,6 +28,12 @@ type endpoint struct {
 type StatusConfirmationSeconds struct {
 	Offline int `mapstructure:"offline"`
 	Online  int `mapstructure:"online"`
+}
+
+// SubsTier is a Stars package: Count subscriptions for Cost stars total.
+type SubsTier struct {
+	Count int `mapstructure:"count"`
+	Cost  int `mapstructure:"cost"`
 }
 
 // Config represents bot configuration
@@ -58,6 +65,7 @@ type Config struct {
 	ShowImages                      bool                      `mapstructure:"show_images"`                        // images support
 	AdChancePercent                 int                       `mapstructure:"ad_chance_percent"`                  // probability of showing an ad (0–100)
 	WhitelistChats                  []int64                   `mapstructure:"whitelist_chats"`                    // if set, only these chats are processed
+	SubsTiers                       []SubsTier                `mapstructure:"subs_tiers"`                         // fixed Stars packages, ascending Count; empty disables buying
 }
 
 // ReadConfig reads the bot config from cfgPath. cfgPath must be non-empty.
@@ -147,8 +155,34 @@ func checkConfig(cfg *Config) error {
 	if cfg.NotificationsReadyPeriodSeconds == 0 {
 		return errors.New("configure notifications_ready_period_seconds")
 	}
+	if err := validateSubsTiers(cfg.SubsTiers); err != nil {
+		return err
+	}
 
 	return nil
+}
+
+// validateSubsTiers requires ascending counts and non-increasing per-sub price.
+// Empty tiers are valid and disable buying.
+func validateSubsTiers(tiers []SubsTier) error {
+	for i, t := range tiers {
+		if t.Count <= 0 || t.Cost <= 0 {
+			return fmt.Errorf("subs_tiers[%d]: count and cost must be positive", i)
+		}
+		if i > 0 && t.Count <= tiers[i-1].Count {
+			return fmt.Errorf("subs_tiers must be sorted by count ascending")
+		}
+		// cost/count must not rise; cross-multiply to avoid floats.
+		if i > 0 && t.Cost*tiers[i-1].Count > tiers[i-1].Cost*t.Count {
+			return fmt.Errorf("subs_tiers: cost per subscription must not increase as count grows")
+		}
+	}
+	return nil
+}
+
+// BuySubsEnabled reports whether buying subscriptions with Stars is configured.
+func (c *Config) BuySubsEnabled() bool {
+	return len(c.SubsTiers) > 0
 }
 
 // TelegramTimeout returns the configured Telegram HTTP timeout.

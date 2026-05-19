@@ -38,7 +38,7 @@ func TestSql(t *testing.T) {
 	cmdlib.Verbosity = cmdlib.SilentVerbosity
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase(make(chan bool, 1))
+	w.createDatabase()
 	w.initCache()
 	for _, n := range []string{"a", "b", "c", "c2", "c3", "d", "e", "f", "g"} {
 		insertTestStreamer(&w.db, db.Streamer{Nickname: n})
@@ -129,7 +129,7 @@ func TestSql(t *testing.T) {
 func TestUpdateNotifications(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase(make(chan bool, 1))
+	w.createDatabase()
 	w.initCache()
 
 	for _, n := range []string{"a", "b", "c", "d"} {
@@ -188,7 +188,7 @@ func TestUpdateNotifications(t *testing.T) {
 func TestNotificationsStorage(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase(make(chan bool, 1))
+	w.createDatabase()
 
 	w.db.AddUser(1, 3, 0, "private")
 	w.db.AddUser(2, 3, 0, "private")
@@ -263,7 +263,7 @@ func TestNotificationsStorage(t *testing.T) {
 func TestStreamers(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase(make(chan bool, 1))
+	w.createDatabase()
 	insertTestStreamer(&w.db, db.Streamer{Nickname: "a", ConfirmedStatus: cmdlib.StatusOffline})
 	if w.db.MaybeStreamer("a") == nil {
 		t.Error("unexpected result")
@@ -276,7 +276,7 @@ func TestStreamers(t *testing.T) {
 func TestCopyFromAndBatchInTransaction(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase(make(chan bool, 1))
+	w.createDatabase()
 
 	// Test that CopyFrom and SendBatch are in the same transaction
 	// by making SendBatch fail and verifying CopyFrom data is rolled back
@@ -410,7 +410,7 @@ func TestCommandParser(t *testing.T) {
 func TestUnconfirmedStatusConsistency(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase(make(chan bool, 1))
+	w.createDatabase()
 	w.initCache()
 
 	// Insert first status change for streamer "a"
@@ -605,7 +605,7 @@ func checkInv(w *worker, t *testing.T) {
 func TestAddStreamer(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase(make(chan bool, 1))
+	w.createDatabase()
 	w.db.AddUser(1, 3, 0, "private")
 
 	// Add streamer that doesn't exist — should insert into pending_subscriptions and return nil
@@ -650,7 +650,7 @@ func TestAddStreamer(t *testing.T) {
 func TestConfirmSub(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase(make(chan bool, 1))
+	w.createDatabase()
 
 	// Insert pending subscription
 	w.db.MustExec(
@@ -689,7 +689,7 @@ func TestConfirmSub(t *testing.T) {
 func TestDenySub(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase(make(chan bool, 1))
+	w.createDatabase()
 
 	// Insert pending subscription
 	w.db.MustExec(
@@ -709,7 +709,7 @@ func TestDenySub(t *testing.T) {
 func TestProcessSubsConfirmations(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase(make(chan bool, 1))
+	w.createDatabase()
 
 	// Insert pending subscriptions in checking state
 	w.db.MustExec(
@@ -853,7 +853,7 @@ func TestProcessSubsConfirmations(t *testing.T) {
 func TestProcessSubsConfirmationsPartialList(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase(make(chan bool, 1))
+	w.createDatabase()
 
 	w.db.MustExec(
 		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking) values ($1, $2, $3, $4)",
@@ -913,7 +913,7 @@ func TestUserReferral(t *testing.T) {
 	t.Run("valid referral creates event and bonuses", func(t *testing.T) {
 		w := newTestWorker()
 		defer w.terminate()
-		w.createDatabase(make(chan bool, 1))
+		w.createDatabase()
 
 		// Create referrer and their referral link
 		w.db.AddUser(20, w.cfg.MaxSubs, 0, "private")
@@ -966,7 +966,7 @@ func TestUserReferral(t *testing.T) {
 	t.Run("invalid referral ID", func(t *testing.T) {
 		w := newTestWorker()
 		defer w.terminate()
-		w.createDatabase(make(chan bool, 1))
+		w.createDatabase()
 
 		w.start("test", 30, "nonexistent-ref", 100, "private")
 
@@ -986,7 +986,7 @@ func TestUserReferral(t *testing.T) {
 	t.Run("existing user ignores referral", func(t *testing.T) {
 		w := newTestWorker()
 		defer w.terminate()
-		w.createDatabase(make(chan bool, 1))
+		w.createDatabase()
 
 		// Create referrer with referral link
 		w.db.AddUser(40, w.cfg.MaxSubs, 0, "private")
@@ -1020,7 +1020,7 @@ func TestUserReferral(t *testing.T) {
 	t.Run("own referral link is rejected", func(t *testing.T) {
 		w := newTestWorker()
 		defer w.terminate()
-		w.createDatabase(make(chan bool, 1))
+		w.createDatabase()
 
 		// Create user with referral link
 		w.db.AddUser(50, w.cfg.MaxSubs, 0, "private")
@@ -1046,7 +1046,7 @@ func TestStreamerReferral(t *testing.T) {
 	t.Run("known streamer creates referral event", func(t *testing.T) {
 		w := newTestWorker()
 		defer w.terminate()
-		w.createDatabase(make(chan bool, 1))
+		w.createDatabase()
 
 		// Pre-create a known streamer
 		insertTestStreamer(&w.db, db.Streamer{Nickname: "known_model", ConfirmedStatus: cmdlib.StatusOnline})
@@ -1080,7 +1080,7 @@ func TestStreamerReferral(t *testing.T) {
 	t.Run("unknown streamer defers referral to pending", func(t *testing.T) {
 		w := newTestWorker()
 		defer w.terminate()
-		w.createDatabase(make(chan bool, 1))
+		w.createDatabase()
 
 		w.start("test", 11, "m-unknown_model", 100, "private")
 
@@ -1179,7 +1179,7 @@ func TestStatusConfirmations(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			w := newTestWorker()
 			defer w.terminate()
-			w.createDatabase(make(chan bool, 1))
+			w.createDatabase()
 
 			// Set up background streamers that should remain unchanged
 			insertTestStreamer(&w.db, db.Streamer{
@@ -1240,7 +1240,7 @@ func TestStatusConfirmations(t *testing.T) {
 func TestQueryLastSubscriptionStatuses(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase(make(chan bool, 1))
+	w.createDatabase()
 
 	// Insert streamers and confirmed subscriptions
 	insertTestStreamer(&w.db, db.Streamer{
@@ -1276,7 +1276,7 @@ func TestQueryLastSubscriptionStatuses(t *testing.T) {
 func TestHandleStatusUpdates(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase(make(chan bool, 1))
+	w.createDatabase()
 	w.initCache()
 
 	// Insert a subscription
@@ -1366,7 +1366,7 @@ func TestHandleStatusUpdates(t *testing.T) {
 func TestUnsubscribeBeforeRestart(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase(make(chan bool, 1))
+	w.createDatabase()
 	w.initCache()
 
 	// Subscribe to "a" and "b"
@@ -1424,7 +1424,7 @@ func TestUnsubscribeBeforeRestart(t *testing.T) {
 func TestUnknownStreamerFirstOfflineSaved(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase(make(chan bool, 1))
+	w.createDatabase()
 	w.initCache()
 
 	// Add a user
@@ -1617,7 +1617,7 @@ func TestStatusTransitions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			w := newTestWorker()
 			defer w.terminate()
-			w.createDatabase(make(chan bool, 1))
+			w.createDatabase()
 			// Set up background streamers that should remain unchanged
 			insertTestStreamer(&w.db, db.Streamer{
 				Nickname:             "always_online",
@@ -1743,7 +1743,7 @@ func ptr[T any](v T) *T { return &v }
 func TestNotifyOfStatuses(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase(make(chan bool, 1))
+	w.createDatabase()
 
 	w.db.AddUser(100, 3, 0, "private")
 	w.db.AddUser(101, 3, 0, "private")

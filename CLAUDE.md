@@ -184,6 +184,8 @@
 - Read `docs/brin-maintenance.md` before changing any BRIN index,
   recreating one, or running operations
   that could affect physical row order on a BRIN-indexed table.
+- Read `docs/telegram-stars.md` before changing Telegram Stars payment handling
+  (buying subscriptions, invoices, pre-checkout, refunds).
 
 ## Code Locations
 

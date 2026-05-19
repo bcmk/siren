@@ -143,7 +143,7 @@ func TestOnlineCells(t *testing.T) {
 			cmdlib.Verbosity = cmdlib.SilentVerbosity
 			w := newTestWorker()
 			defer w.terminate()
-			w.createDatabase(make(chan bool, 1))
+			w.createDatabase()
 
 			for _, ins := range tc.inserts {
 				w.db.UpsertUnconfirmedStatusChanges(
@@ -185,7 +185,7 @@ func TestOnlineCellsEmpty(t *testing.T) {
 	cmdlib.Verbosity = cmdlib.SilentVerbosity
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase(make(chan bool, 1))
+	w.createDatabase()
 
 	changes := w.db.ChangesFromToForStreamers([]int{}, 100, 200)
 	result := onlineCells(changes, 100, 200, 10)

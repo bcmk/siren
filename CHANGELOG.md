@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v3.2.0 — 2026-06-03
+
+### Added
+
+- `/buy_subscriptions`: buy extra subscription slots with Telegram Stars,
+  configured via `buy_tiers`.
+
 ## v3.1.5 — 2026-05-19
 
 ### Fixed

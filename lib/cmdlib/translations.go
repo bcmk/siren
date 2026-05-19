@@ -79,6 +79,7 @@ type Translations struct {
 	RemoveAll                   *Translation `yaml:"remove_all"`
 	AllStreamersRemoved         *Translation `yaml:"all_streamers_removed"`
 	ReferralLink                *Translation `yaml:"referral_link"`
+	WantMore                    *Translation `yaml:"want_more"`
 	InvalidReferralLink         *Translation `yaml:"invalid_referral_link"`
 	FollowerExists              *Translation `yaml:"follower_exists"`
 	ReferralApplied             *Translation `yaml:"referral_applied"`
@@ -103,6 +104,15 @@ type Translations struct {
 	SearchNoResults             *Translation `yaml:"search_no_results"`
 	SearchFailed                *Translation `yaml:"search_failed"`
 	SearchFailedToAdd           *Translation `yaml:"search_failed_to_add"`
+	BuySubs                     *Translation `yaml:"buy_subs"`
+	BuySubsPackageButton        *Translation `yaml:"buy_subs_package_button"`
+	BuySubsInvoiceTitle         *Translation `yaml:"buy_subs_invoice_title"`
+	BuySubsInvoiceDescription   *Translation `yaml:"buy_subs_invoice_description"`
+	BuySubsInvoiceLabel         *Translation `yaml:"buy_subs_invoice_label"`
+	BuyInvoiceFailed            *Translation `yaml:"buy_invoice_failed"`
+	BuyInvoiceExpired           *Translation `yaml:"buy_invoice_expired"`
+	BuyAlreadyCredited          *Translation `yaml:"buy_already_credited"`
+	SubsPurchased               *Translation `yaml:"subs_purchased"`
 }
 
 // LoadEndpointTranslations loads translations for a specific endpoint

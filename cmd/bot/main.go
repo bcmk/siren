@@ -13,6 +13,7 @@ import (
 	"html"
 	htmltemplate "html/template"
 	"image"
+	"io"
 	"maps"
 	"math/rand"
 	"net"
@@ -26,6 +27,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	texttemplate "text/template"
 	"time"
@@ -93,6 +95,7 @@ type worker struct {
 	searchRequests             chan searchRequest
 	addRequests                chan addRequest
 	incomingPackets            chan incomingPacket
+	dbReady                    atomic.Bool
 }
 
 type searchRequest struct {
@@ -302,6 +305,16 @@ func (w *worker) initBotNames() {
 	}
 }
 
+func (w *worker) menuCommandEnabled(command string) bool {
+	switch command {
+	case "buy_subs":
+		return w.cfg.BuySubsEnabled()
+	case "week":
+		return w.cfg.EnableWeek
+	}
+	return true
+}
+
 func (w *worker) setCommands() {
 	ctx := context.Background()
 	for n := range w.cfg.Endpoints {
@@ -314,6 +327,9 @@ func (w *worker) setCommands() {
 				checkErr(fmt.Errorf("unexpected command pair %q", l))
 			}
 			pair[0], pair[1] = strings.TrimSpace(pair[0]), strings.TrimSpace(pair[1])
+			if !w.menuCommandEnabled(pair[0]) {
+				continue
+			}
 			commands = append(commands, models.BotCommand{Command: pair[0], Description: pair[1]})
 			if w.cfg.Debug {
 				ldbg("command %s - %s", pair[0], pair[1])
@@ -504,14 +520,13 @@ func (w *worker) sendTrImage(
 	w.sendImage(priority, endpoint, chatID, notify, translation.Parse, text, image, kind)
 }
 
-func (w *worker) createDatabase(done chan bool) {
+func (w *worker) createDatabase() {
 	linf("ensuring database created...")
 	for _, prelude := range w.cfg.SQLPrelude {
 		w.db.MustExec(prelude)
 		w.fuzzySearchDB.MustExec(prelude)
 	}
 	w.db.ApplyMigrations()
-	done <- true
 }
 
 func (w *worker) initCache() {
@@ -803,7 +818,199 @@ func (w *worker) subscriptionUsage(endpoint string, chatID int64, ad bool) {
 }
 
 func (w *worker) wantMore(endpoint string, chatID int64) {
-	w.showReferral(endpoint, chatID)
+	w.sendTr(db.PriorityHigh, endpoint, chatID, false,
+		w.tr[endpoint].WantMore, w.referralData(endpoint, chatID), db.ReplyPacket)
+}
+
+// productSubs is the only product sold today.
+// handlePreCheckoutQuery and handleSuccessfulPayment guard on it,
+// so adding another product means extending those guards.
+const productSubs = "subs"
+
+func (w *worker) findSubsTier(count int) (botconfig.SubsTier, bool) {
+	for _, t := range w.cfg.SubsTiers {
+		if t.Count == count {
+			return t, true
+		}
+	}
+	return botconfig.SubsTier{}, false
+}
+
+func (w *worker) buySubs(endpoint string, chatID int64) {
+	if len(w.cfg.SubsTiers) == 0 {
+		return
+	}
+	tr := w.tr[endpoint].BuySubs
+	text := templateToString(w.tpl[endpoint], tr.Key, nil)
+	buttonTpl := w.tr[endpoint].BuySubsPackageButton
+	base := w.cfg.SubsTiers[0]
+	buttons := make([][]models.InlineKeyboardButton, 0, len(w.cfg.SubsTiers))
+	for _, t := range w.cfg.SubsTiers {
+		discount := (t.Count*base.Cost - t.Cost*base.Count) * 100 / (t.Count * base.Cost)
+		label := templateToString(w.tpl[endpoint], buttonTpl.Key, tplData{
+			"count":    t.Count,
+			"stars":    t.Cost,
+			"discount": discount,
+		})
+		buttons = append(buttons, []models.InlineKeyboardButton{{
+			Text:         label,
+			CallbackData: fmt.Sprintf("buy:stars:%d", t.Count),
+		}})
+	}
+	params := &bot.SendMessageParams{
+		ChatID:      chatID,
+		Text:        text,
+		ReplyMarkup: &models.InlineKeyboardMarkup{InlineKeyboard: buttons},
+	}
+	if tr.DisablePreview {
+		disabled := true
+		params.LinkPreviewOptions = &models.LinkPreviewOptions{IsDisabled: &disabled}
+	}
+	switch tr.Parse {
+	case cmdlib.ParseHTML:
+		params.ParseMode = models.ParseModeHTML
+	case cmdlib.ParseMarkdown:
+		params.ParseMode = models.ParseModeMarkdown
+	}
+	w.enqueueMessage(db.PriorityHigh, endpoint, &messageParams{params}, db.ReplyPacket)
+}
+
+func (w *worker) sendSubsInvoice(endpoint string, chatID int64, tier botconfig.SubsTier) {
+	stars := tier.Cost
+	title := templateToString(w.tpl[endpoint], w.tr[endpoint].BuySubsInvoiceTitle.Key, tplData{"count": tier.Count})
+	description := templateToString(w.tpl[endpoint], w.tr[endpoint].BuySubsInvoiceDescription.Key, tplData{"count": tier.Count})
+	label := templateToString(w.tpl[endpoint], w.tr[endpoint].BuySubsInvoiceLabel.Key, tplData{"count": tier.Count})
+	payload := fmt.Sprintf("stars:%s:%d:%d", productSubs, chatID, tier.Count)
+	ctx := context.Background()
+	_, err := w.bots[endpoint].SendInvoice(ctx, &bot.SendInvoiceParams{
+		ChatID:      chatID,
+		Title:       title,
+		Description: description,
+		Payload:     payload,
+		Currency:    "XTR",
+		Prices:      []models.LabeledPrice{{Label: label, Amount: stars}},
+	})
+	if err != nil {
+		lerr("cannot send invoice to %d: %v", chatID, err)
+		w.sendTr(db.PriorityHigh, endpoint, chatID, false,
+			w.tr[endpoint].BuyInvoiceFailed, nil, db.ReplyPacket)
+	}
+}
+
+// parseStarsPayload parses a "stars:<product>:<chat_id>:<count>" payload.
+func parseStarsPayload(payload string) (product string, chatID int64, count int, ok bool) {
+	parts := strings.Split(payload, ":")
+	if len(parts) != 4 || parts[0] != "stars" || parts[1] == "" {
+		return "", 0, 0, false
+	}
+	id, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil {
+		return "", 0, 0, false
+	}
+	n, err := strconv.Atoi(parts[3])
+	if err != nil || n < 1 {
+		return "", 0, 0, false
+	}
+	return parts[1], id, n, true
+}
+
+func (w *worker) handleBuyCallback(endpoint string, chatID int64, data string) {
+	if !w.cfg.BuySubsEnabled() {
+		return
+	}
+	parts := strings.SplitN(data, ":", 3)
+	if len(parts) != 3 {
+		w.buySubs(endpoint, chatID)
+		return
+	}
+	switch method, arg := parts[1], parts[2]; method {
+	case "stars":
+		w.handleStarsBuyCallback(endpoint, chatID, arg)
+	default:
+		w.buySubs(endpoint, chatID)
+	}
+}
+
+func (w *worker) handleStarsBuyCallback(endpoint string, chatID int64, arg string) {
+	count, err := strconv.Atoi(arg)
+	tier, found := w.findSubsTier(count)
+	if err != nil || !found {
+		// Stale callback (tier removed or button data malformed): re-show menu.
+		w.buySubs(endpoint, chatID)
+		return
+	}
+	w.sendSubsInvoice(endpoint, chatID, tier)
+}
+
+func (w *worker) handlePreCheckoutQuery(endpoint string, q *models.PreCheckoutQuery) {
+	ctx := context.Background()
+	product, chatID, count, valid := parseStarsPayload(q.InvoicePayload)
+	tier, found := w.findSubsTier(count)
+	// PreCheckoutQuery has no chat, so whitelist-gate on the payload's chat id.
+	ok := w.cfg.BuySubsEnabled() &&
+		q.Currency == "XTR" &&
+		valid &&
+		product == productSubs &&
+		w.cfg.ChatWhitelisted(chatID) &&
+		found &&
+		q.TotalAmount == tier.Cost
+	params := &bot.AnswerPreCheckoutQueryParams{
+		PreCheckoutQueryID: q.ID,
+		OK:                 ok,
+	}
+	if !ok {
+		params.ErrorMessage = templateToString(w.tpl[endpoint], w.tr[endpoint].BuyInvoiceExpired.Key, nil)
+	}
+	if _, err := w.bots[endpoint].AnswerPreCheckoutQuery(ctx, params); err != nil {
+		lerr("cannot answer pre-checkout query %s: %v", q.ID, err)
+	}
+}
+
+func (w *worker) handleSuccessfulPayment(endpoint string, chatID int64, chatType string, p *models.SuccessfulPayment, now int) {
+	product, payloadChatID, count, ok := parseStarsPayload(p.InvoicePayload)
+	if !ok || payloadChatID != chatID {
+		lerr("malformed successful payment payload %q for chat %d", p.InvoicePayload, chatID)
+		return
+	}
+	if product != productSubs {
+		// Only subscriptions are credited today; reject rather than miscredit.
+		lerr("unsupported product %q in successful payment for chat %d", product, chatID)
+		return
+	}
+	// Tiers changed since pre_checkout; credit anyway and log for reconciliation.
+	if tier, found := w.findSubsTier(count); !found || p.TotalAmount != tier.Cost {
+		lerr(
+			"successful_payment tier/amount mismatch, crediting anyway: chat = %d, charge = %s, count = %d, paid = %d",
+			chatID, p.TelegramPaymentChargeID, count, p.TotalAmount)
+	}
+	// Log the charge first: a failed credit rolls back the star_payments row.
+	linf(
+		"crediting successful_payment: chat = %d, charge = %s, product = %s, count = %d, stars = %d",
+		chatID, p.TelegramPaymentChargeID, product, count, p.TotalAmount)
+	// Ensure the user row exists so GrantStarPaymentSubs can bump max_subs.
+	w.db.AddUser(chatID, w.cfg.MaxSubs, now, chatType)
+	added, maxSubs := w.db.GrantStarPaymentSubs(
+		chatID,
+		endpoint,
+		p.TelegramPaymentChargeID,
+		p.TotalAmount,
+		product,
+		count,
+		p.InvoicePayload,
+		now)
+	if !added {
+		lerr("duplicate successful_payment for chat %d, charge %s", chatID, p.TelegramPaymentChargeID)
+		w.sendTr(db.PriorityHigh, endpoint, chatID, false,
+			w.tr[endpoint].BuyAlreadyCredited, nil, db.ReplyPacket)
+		return
+	}
+	w.sendTr(db.PriorityHigh, endpoint, chatID, false,
+		w.tr[endpoint].SubsPurchased,
+		tplData{
+			"added":               count,
+			"total_subscriptions": maxSubs,
+		},
+		db.ReplyPacket)
 }
 
 func (w *worker) settings(endpoint string, chatID int64) {
@@ -1521,7 +1728,7 @@ func (w *worker) refer(followerChatID int64, referrer string, now int, chatType 
 	return referralApplied
 }
 
-func (w *worker) showReferral(endpoint string, chatID int64) {
+func (w *worker) referralData(endpoint string, chatID int64) tplData {
 	referralID := w.db.ReferralID(chatID)
 	if referralID == nil {
 		temp := w.newRandReferralID()
@@ -1531,13 +1738,19 @@ func (w *worker) showReferral(endpoint string, chatID int64) {
 	referralLink := fmt.Sprintf("https://t.me/%s?start=%s", w.botNames[endpoint], *referralID)
 	subscriptionsNumber := w.db.SubscribedOrPendingCount(endpoint, chatID)
 	user := w.mustUser(chatID)
-	w.sendTr(db.PriorityHigh, endpoint, chatID, false, w.tr[endpoint].ReferralLink, tplData{
+	return tplData{
 		"link":                referralLink,
 		"referral_bonus":      w.cfg.ReferralBonus,
 		"follower_bonus":      w.cfg.FollowerBonus,
 		"subscriptions_used":  subscriptionsNumber,
 		"total_subscriptions": user.MaxSubs,
-	}, db.ReplyPacket)
+		"buy_subs_enabled":    w.cfg.BuySubsEnabled(),
+	}
+}
+
+func (w *worker) showReferral(endpoint string, chatID int64) {
+	w.sendTr(db.PriorityHigh, endpoint, chatID, false,
+		w.tr[endpoint].ReferralLink, w.referralData(endpoint, chatID), db.ReplyPacket)
 }
 
 func (w *worker) start(endpoint string, chatID int64, referrer string, now int, chatType string) {
@@ -1619,7 +1832,8 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		w.ad(db.PriorityHigh, endpoint, chatID)
 	case "faq":
 		w.sendTr(db.PriorityHigh, endpoint, chatID, false, w.tr[endpoint].FAQ, tplData{
-			"max_subs": w.cfg.MaxSubs,
+			"max_subs":         w.cfg.MaxSubs,
+			"buy_subs_enabled": w.cfg.BuySubsEnabled(),
 		}, db.ReplyPacket)
 	case "feedback":
 		w.feedback(endpoint, chatID, arguments, now)
@@ -1640,6 +1854,12 @@ func (w *worker) processIncomingCommand(endpoint string, chatID int64, command, 
 		w.sureRemoveAll(endpoint, chatID)
 	case "want_more":
 		w.wantMore(endpoint, chatID)
+	case "buy_subs":
+		if !w.cfg.BuySubsEnabled() {
+			unknown()
+			return
+		}
+		w.buySubs(endpoint, chatID)
 	case "settings":
 		w.settings(endpoint, chatID)
 	case "enable_images":
@@ -1956,6 +2176,7 @@ func getCommandAndArgs(update *models.Update, mention string, ourIDs []int64) (i
 var loggedCommands = map[string]bool{
 	"ad":                            true,
 	"add":                           true,
+	"buy_subs":                      true,
 	"disable_images":                true,
 	"disable_offline_notifications": true,
 	"disable_subject":               true,
@@ -1984,6 +2205,45 @@ var loggedCommands = map[string]bool{
 func (w *worker) processTGUpdate(p incomingPacket) {
 	now := int(time.Now().Unix())
 	u := p.message
+	if u.PreCheckoutQuery != nil {
+		w.handlePreCheckoutQuery(p.endpoint, u.PreCheckoutQuery)
+		return
+	}
+	if u.CallbackQuery != nil {
+		q := u.CallbackQuery
+		var chatID int64
+		switch {
+		case q.Message.Type == models.MaybeInaccessibleMessageTypeMessage && q.Message.Message != nil:
+			chatID = q.Message.Message.Chat.ID
+		case q.Message.Type == models.MaybeInaccessibleMessageTypeInaccessibleMessage && q.Message.InaccessibleMessage != nil:
+			chatID = q.Message.InaccessibleMessage.Chat.ID
+		default:
+			return
+		}
+		if !w.cfg.ChatWhitelisted(chatID) {
+			linf("callback_query from chat %d ignored, not in whitelist", chatID)
+			return
+		}
+		// Always answer to clear the client's loading spinner,
+		// even for data we do not handle (e.g. a stale keyboard from an older build).
+		ctx := context.Background()
+		if _, err := w.bots[p.endpoint].AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: q.ID}); err != nil {
+			lerr("cannot answer callback query %s: %v", q.ID, err)
+		}
+		if strings.HasPrefix(q.Data, "buy:") {
+			w.handleBuyCallback(p.endpoint, chatID, q.Data)
+		}
+		return
+	}
+	if u.Message != nil && u.Message.SuccessfulPayment != nil {
+		chatID := u.Message.Chat.ID
+		if !w.cfg.ChatWhitelisted(chatID) {
+			linf("successful_payment from chat %d ignored, not in whitelist", chatID)
+			return
+		}
+		w.handleSuccessfulPayment(p.endpoint, chatID, string(u.Message.Chat.Type), u.Message.SuccessfulPayment, now)
+		return
+	}
 	mention := "@" + w.botNames[p.endpoint]
 	chatID, command, args := getCommandAndArgs(u, mention, w.ourIDs)
 	if !w.cfg.ChatWhitelisted(chatID) {
@@ -2014,10 +2274,46 @@ func (w *worker) incoming() chan incomingPacket {
 	ctx := context.Background()
 	for n, p := range w.cfg.Endpoints {
 		linf("listening for a webhook for endpoint %s", n)
-		http.Handle(string(p.ListenPath), w.bots[n].WebhookHandler())
+		http.Handle(string(p.ListenPath), w.rejectPaymentsWhileMigrating(w.bots[n].WebhookHandler()))
 		go w.bots[n].StartWebhook(ctx)
 	}
 	return w.incomingPackets
+}
+
+// maxWebhookBody caps the body buffered in the migration gate.
+// Updates are far smaller, so this only bounds an oversized public POST.
+const maxWebhookBody = 1 << 20
+
+// rejectPaymentsWhileMigrating 503s successful_payment during migration,
+// so Telegram redelivers it once the schema is ready.
+// The library 200s on enqueue, so a 503 is the only way to force redelivery.
+// pre_checkout passes through (10s deadline).
+func (w *worker) rejectPaymentsWhileMigrating(inner http.Handler) http.Handler {
+	return http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		if !w.dbReady.Load() {
+			body, err := io.ReadAll(http.MaxBytesReader(rw, req.Body, maxWebhookBody))
+			if err != nil {
+				http.Error(rw, "cannot read body", http.StatusServiceUnavailable)
+				return
+			}
+			req.Body = io.NopCloser(bytes.NewReader(body))
+			update := &models.Update{}
+			// Decode with the library's own type so classification matches it.
+			// Fail closed: an unparsable payment must not be 200'd and dropped.
+			if err := json.Unmarshal(body, update); err != nil {
+				http.Error(rw, "unparsable update", http.StatusServiceUnavailable)
+				return
+			}
+			if m := update.Message; m != nil && m.SuccessfulPayment != nil {
+				linf(
+					"rejecting successful_payment during migration for redelivery: chat = %d, charge = %s",
+					m.Chat.ID, m.SuccessfulPayment.TelegramPaymentChargeID)
+				http.Error(rw, "migrating", http.StatusServiceUnavailable)
+				return
+			}
+		}
+		inner.ServeHTTP(rw, req)
+	})
 }
 
 func getOurIDs(c *botconfig.Config) []int64 {
@@ -2043,6 +2339,34 @@ func (w *worker) maintenanceStartupReply(incoming chan incomingPacket, done chan
 	for {
 		select {
 		case u := <-incoming:
+			// Reject pre-checkout during startup, the payment won't complete.
+			if u.message.PreCheckoutQuery != nil {
+				ctx := context.Background()
+				_, err := w.bots[u.endpoint].AnswerPreCheckoutQuery(ctx, &bot.AnswerPreCheckoutQueryParams{
+					PreCheckoutQueryID: u.message.PreCheckoutQuery.ID,
+					OK:                 false,
+					ErrorMessage:       w.cfg.Endpoints[u.endpoint].MaintenanceResponse,
+				})
+				if err != nil {
+					lerr("cannot answer pre-checkout query during maintenance: %v", err)
+				}
+				continue
+			}
+			// Answer inline-button taps with the maintenance notice,
+			// otherwise the client spinner hangs until Telegram expires the callback.
+			if u.message.CallbackQuery != nil {
+				ctx := context.Background()
+				_, err := w.bots[u.endpoint].AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
+					CallbackQueryID: u.message.CallbackQuery.ID,
+					Text:            w.cfg.Endpoints[u.endpoint].MaintenanceResponse,
+				})
+				if err != nil {
+					lerr("cannot answer callback query during maintenance: %v", err)
+				}
+				continue
+			}
+			// successful_payment is rejected at the webhook layer during maintenance,
+			// so it never reaches here.
 			mention := "@" + w.botNames[u.endpoint]
 			chatID, command, args := getCommandAndArgs(u.message, mention, w.ourIDs)
 			if command != "" {
@@ -2202,7 +2526,10 @@ func main() {
 	go w.sendNotificationsDaemon()
 	go w.fuzzySearchDaemon()
 	w.sendText(db.PriorityHigh, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, "bot started", db.MessagePacket)
-	w.createDatabase(databaseDone)
+	w.createDatabase()
+	// initCache and the resets below take well under a second.
+	// A pre_checkout arriving during them waits briefly for the loop, not rejected.
+	databaseDone <- true
 	w.registerWebApp()
 	w.initCache()
 	w.db.ResetNotificationSending()
@@ -2223,6 +2550,8 @@ func main() {
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT)
 	w.sendText(db.PriorityHigh, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, "bot is up", db.MessagePacket)
 	w.pushOnlineRequest()
+	// Open the payment gate here, so an admitted payment is consumed at once.
+	w.dbReady.Store(true)
 	for {
 		select {
 		case <-requestTimer.C:

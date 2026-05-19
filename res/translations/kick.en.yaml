@@ -82,6 +82,7 @@ raw_commands:
   parse: raw
   str: |-
     referral - Your referral link
+    buy_subs - Buy more subscriptions
     add - Add a channel
     remove - Remove a channel
     remove_all - Remove all channels
@@ -128,7 +129,7 @@ faq_pricing:
     <b>Pricing</b>
 
     The basic service is free.
-    If you need to subscribe to more than {{ .max_subs }} channels you may earn additional subscriptions by sharing this service.
+    If you need to subscribe to more than {{ .max_subs }} channels you may earn additional subscriptions by sharing this service{{ if .buy_subs_enabled }} or buy them with Telegram Stars via /buy_subs{{ end }}.
 invalid_symbols:
   parse: raw
   disable_preview: true

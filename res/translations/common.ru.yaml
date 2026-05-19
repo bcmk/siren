@@ -50,6 +50,7 @@ raw_commands:
   parse: raw
   str: |-
     referral - Ваша реферальная ссылка
+    buy_subs - Купить дополнительные подписки
     add - Добавить модель
     remove - Удалить модель
     remove_all - Удалить всех моделей
@@ -96,7 +97,7 @@ streamer_removed:
   str: "Модель {{ .streamer }} удалена"
 no_online_streamers:
   parse: raw
-  str: Не найдено моделей в сети, на которые вы подписаны
+  str: Не найдено моделей в сети, на которых вы подписаны
 not_enough_subscriptions:
   parse: raw
   str: У вас недостаточно подписок
@@ -194,8 +195,17 @@ referral_link:
     Зарабатывайте дополнительные подписки, делясь реферальной ссылкой!
     {{ .link }}
 
-    Вы получите по {{ .referral_bonus }} дополнительные модели за каждого зарегистрировавшегося пользователя
-    Новый пользователь получит {{ .follower_bonus }} дополнительные модели
+    Вы получите по {{ .referral_bonus }} дополнительных подписок за каждого зарегистрировавшегося пользователя
+    Новый пользователь получит {{ .follower_bonus }} дополнительных подписок
+want_more:
+  disable_preview: true
+  parse: raw
+  str: |-
+    {{ template "referral_link" . }}
+    {{- if .buy_subs_enabled }}
+
+    Или купите подписки за звёзды Telegram: /buy_subs
+    {{- end }}
 remove_all:
   parse: raw
   str: |-
@@ -384,7 +394,46 @@ faq_pricing:
     <b>Цены</b>
 
     Базовый пакет — бесплатный.
-    Если вы хотите подписаться на более чем {{ .max_subs }} моделей, вы можете зарабатывать дополнительные подписки, делясь реферальными ссылками на этот сервис.
+    Если вы хотите подписаться на более чем {{ .max_subs }} моделей, вы
+    можете зарабатывать дополнительные подписки, делясь реферальными
+    ссылками на этот сервис
+    {{- if .buy_subs_enabled }}, или купить их за звёзды Telegram командой /buy_subs{{ end }}.
+buy_subs:
+  parse: html
+  disable_preview: true
+  str: |-
+    Здесь вы можете купить дополнительные подписки за звёзды Telegram.
+    Чем больше пакет, тем дешевле каждая подписка.
+
+    Выберите пакет ниже.
+buy_subs_package_button:
+  parse: raw
+  str: |-
+    {{- .count }} подписок · {{ .stars }} ⭐
+    {{- if .discount }} (-{{ .discount }}%){{ end -}}
+buy_subs_invoice_title:
+  parse: raw
+  str: "{{ .count }} дополнительных подписок"
+buy_subs_invoice_description:
+  parse: raw
+  str: "Разовая покупка: навсегда добавляет {{ .count }} подписок в этом боте."
+buy_subs_invoice_label:
+  parse: raw
+  str: "{{ .count }} подписок"
+buy_invoice_failed:
+  parse: raw
+  str: Не удалось начать оплату. Попробуйте позже.
+buy_invoice_expired:
+  parse: raw
+  str: Этот счёт больше недействителен. Попробуйте ещё раз.
+buy_already_credited:
+  parse: raw
+  str: Этот платёж уже зачислен.
+subs_purchased:
+  parse: raw
+  str: |-
+    Спасибо! Добавлено подписок: {{ .added }}.
+    Текущий лимит: {{ .total_subscriptions }}
 too_many_subscriptions_for_pics:
   str: Эта команда поддерживает до {{ .max_subs }} подписок в групповом чате
 we_are_up:

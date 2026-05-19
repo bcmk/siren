@@ -319,6 +319,42 @@ func (d *Database) SetLimit(chatID int64, maxSubs int) {
 		maxSubs)
 }
 
+// GrantStarPaymentSubs records the charge and bumps max_subs
+// in one transaction, returning the new max_subs.
+// A duplicate charge id returns (false, 0) and changes nothing.
+func (d *Database) GrantStarPaymentSubs(
+	chatID int64,
+	endpoint string,
+	chargeID string,
+	stars int,
+	product string,
+	quantity int,
+	payload string,
+	now int,
+) (added bool, maxSubs int) {
+	defer d.Measure("db: grant star payment subs")()
+	tx, err := d.Begin()
+	checkErr(err)
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	tag, err := tx.Exec(context.Background(), `
+		insert into star_payments (
+			chat_id, endpoint, telegram_payment_charge_id,
+			stars_amount, product, quantity, payload, timestamp)
+		values ($1, $2, $3, $4, $5, $6, $7, $8)
+		on conflict (telegram_payment_charge_id) do nothing`,
+		chatID, endpoint, chargeID, stars, product, quantity, payload, now)
+	checkErr(err)
+	if tag.RowsAffected() == 0 {
+		return false, 0
+	}
+	err = tx.QueryRow(context.Background(),
+		"update users set max_subs = max_subs + $1 where chat_id = $2 returning max_subs",
+		quantity, chatID).Scan(&maxSubs)
+	checkErr(err)
+	checkErr(tx.Commit(context.Background()))
+	return true, maxSubs
+}
+
 // ConfirmSub confirms a pending subscription by upserting the streamer,
 // moving it from pending_subscriptions to subscriptions, and deleting the pending entry.
 // Returns the streamer ID.

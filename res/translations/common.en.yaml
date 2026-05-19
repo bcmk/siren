@@ -50,6 +50,7 @@ raw_commands:
   parse: raw
   str: |-
     referral - Your referral link
+    buy_subs - Buy more subscriptions
     add - Add model
     remove - Remove model
     remove_all - Remove all models
@@ -196,6 +197,15 @@ referral_link:
 
     You will get {{ .referral_bonus }} additional subscriptions for every new registered user
     New user will get {{ .follower_bonus }} additional subscriptions
+want_more:
+  disable_preview: true
+  parse: raw
+  str: |-
+    {{ template "referral_link" . }}
+    {{- if .buy_subs_enabled }}
+
+    Or buy more right away with Telegram Stars: /buy_subs
+    {{- end }}
 remove_all:
   parse: raw
   str: |-
@@ -384,7 +394,45 @@ faq_pricing:
     <b>Pricing</b>
 
     The basic service is free.
-    If you need to subscribe to more than {{ .max_subs }} models you may earn additional subscriptions by sharing this service.
+    If you need to subscribe to more than {{ .max_subs }} models you may earn
+    additional subscriptions by sharing this service
+    {{- if .buy_subs_enabled }} or buy them with Telegram Stars via /buy_subs{{ end }}.
+buy_subs:
+  parse: html
+  disable_preview: true
+  str: |-
+    Buy additional subscriptions with Telegram Stars.
+    The more you buy, the cheaper each subscription is.
+
+    Pick a package below.
+buy_subs_package_button:
+  parse: raw
+  str: |-
+    {{- .count }} subs · {{ .stars }} ⭐
+    {{- if .discount }} (-{{ .discount }}%){{ end -}}
+buy_subs_invoice_title:
+  parse: raw
+  str: "{{ .count }} extra subs"
+buy_subs_invoice_description:
+  parse: raw
+  str: "One-time purchase. Adds {{ .count }} extra subs on this bot for life."
+buy_subs_invoice_label:
+  parse: raw
+  str: "{{ .count }} subs"
+buy_invoice_failed:
+  parse: raw
+  str: Could not start the payment. Please try again later.
+buy_invoice_expired:
+  parse: raw
+  str: This invoice is no longer valid. Please try again.
+buy_already_credited:
+  parse: raw
+  str: This payment has already been credited.
+subs_purchased:
+  parse: raw
+  str: |-
+    Thank you! {{ .added }} subscriptions added.
+    New total: {{ .total_subscriptions }}
 too_many_subscriptions_for_pics:
   str: This command supports up to {{ .max_subs }} subscriptions in a group chat
 we_are_up:
