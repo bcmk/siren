@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v3.2.1 — 2026-06-03
+
+### Added
+
+- Log the Stars buy funnel (invoice, pre-checkout, payment)
+  and the silent-message toggle commands.
+
 ## v3.2.0 — 2026-06-03
 
 ### Added
