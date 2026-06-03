@@ -2395,6 +2395,35 @@ func (w *worker) maintenanceStartupReply(incoming chan incomingPacket, done chan
 	}
 }
 
+// Grace window to drain updates the library accepted but not yet processed.
+// It 200s on enqueue, so dropping them at shutdown loses them for good.
+const (
+	shutdownDrainIdle    = time.Second
+	shutdownDrainTimeout = 10 * time.Second
+)
+
+// drainPendingUpdates processes buffered updates
+// until incoming goes idle or shutdownDrainTimeout elapses.
+func (w *worker) drainPendingUpdates(incoming chan incomingPacket) {
+	linf("draining pending updates before shutdown")
+	hardStop := time.NewTimer(shutdownDrainTimeout)
+	defer hardStop.Stop()
+	for {
+		select {
+		case u := <-incoming:
+			w.processTGUpdate(u)
+		case <-w.outgoingMsgResults:
+			// Keep the sender unblocked;
+			// skip its result bookkeeping during shutdown.
+		case <-time.After(shutdownDrainIdle):
+			return
+		case <-hardStop.C:
+			linf("shutdown drain timed out after %s", shutdownDrainTimeout)
+			return
+		}
+	}
+}
+
 func (w *worker) sendReadyNotifications() { w.sendingNotifications <- w.db.NewNotifications() }
 
 func (w *worker) sendNotificationsDaemon() {
@@ -2610,6 +2639,7 @@ func main() {
 			linf("got signal %v", s)
 			if s == syscall.SIGINT || s == syscall.SIGTERM || s == syscall.SIGABRT {
 				w.removeWebhook()
+				w.drainPendingUpdates(incoming)
 				return
 			}
 		case r := <-w.outgoingMsgResults:
