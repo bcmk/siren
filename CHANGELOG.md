@@ -7,8 +7,8 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
-- `/buy_subscriptions`: buy extra subscription slots with Telegram Stars,
-  configured via `buy_tiers`.
+- `/buy_subs`: buy extra subscription slots with Telegram Stars,
+  configured via `subs_tiers`.
 
 ## v3.1.5 — 2026-05-19
 
