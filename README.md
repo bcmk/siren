@@ -33,6 +33,7 @@ The bot queries streamer statuses every minute.
 - **remove** _NICKNAME_ — Remove a streamer
 - **remove_all** — Remove all subscriptions
 - **list** — List your subscriptions
+- **buy_subs** — Buy additional subscriptions with Telegram Stars
 - **pics** — Pictures of your online subscriptions
 - **week** _NICKNAME_ — Online hours in the previous 7 days
 - **help** — Help
