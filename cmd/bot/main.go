@@ -894,7 +894,10 @@ func (w *worker) sendSubsInvoice(endpoint string, chatID int64, tier botconfig.S
 		lerr("cannot send invoice to %d: %v", chatID, err)
 		w.sendTr(db.PriorityHigh, endpoint, chatID, false,
 			w.tr[endpoint].BuyInvoiceFailed, nil, db.ReplyPacket)
+		return
 	}
+	command := "invoice"
+	w.db.LogReceivedMessage(int(time.Now().Unix()), endpoint, chatID, &command)
 }
 
 // parseStarsPayload parses a "stars:<product>:<chat_id>:<count>" payload.
@@ -946,6 +949,10 @@ func (w *worker) handlePreCheckoutQuery(endpoint string, q *models.PreCheckoutQu
 	ctx := context.Background()
 	product, chatID, count, valid := parseStarsPayload(q.InvoicePayload)
 	tier, found := w.findSubsTier(count)
+	if valid {
+		command := "pre_checkout"
+		w.db.LogReceivedMessage(int(time.Now().Unix()), endpoint, chatID, &command)
+	}
 	// PreCheckoutQuery has no chat, so whitelist-gate on the payload's chat id.
 	ok := w.cfg.BuySubsEnabled() &&
 		q.Currency == "XTR" &&
@@ -972,6 +979,8 @@ func (w *worker) handleSuccessfulPayment(endpoint string, chatID int64, chatType
 		lerr("malformed successful payment payload %q for chat %d", p.InvoicePayload, chatID)
 		return
 	}
+	command := "successful_payment"
+	w.db.LogReceivedMessage(now, endpoint, chatID, &command)
 	if product != productSubs {
 		// Only subscriptions are credited today; reject rather than miscredit.
 		lerr("unsupported product %q in successful payment for chat %d", product, chatID)
@@ -2179,9 +2188,11 @@ var loggedCommands = map[string]bool{
 	"buy_subs":                      true,
 	"disable_images":                true,
 	"disable_offline_notifications": true,
+	"disable_silent_messages":       true,
 	"disable_subject":               true,
 	"enable_images":                 true,
 	"enable_offline_notifications":  true,
+	"enable_silent_messages":        true,
 	"enable_subject":                true,
 	"faq":                           true,
 	"feedback":                      true,
