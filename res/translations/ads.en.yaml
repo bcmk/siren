@@ -7,6 +7,9 @@ telegram_channel:
 other:
   str: We have bots for other streaming sites too! Type /help for the full list
   weight: 10
+buy_subs:
+  str: "Want to follow more streamers? Buy extra subscriptions with Telegram Stars: /buy_subs"
+  weight: 10
 ukraine:
   str: >-
     Our team is against unprovoked Russian aggression in Ukraine.
