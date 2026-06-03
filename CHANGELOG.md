@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v3.3.0 — 2026-06-03
+
+### Added
+
+- In-bot ad promoting `/buy_subs`.
+
+### Fixed
+
+- Drain pending webhook updates on shutdown.
+
 ## v3.2.1 — 2026-06-03
 
 ### Added
