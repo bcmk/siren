@@ -175,8 +175,16 @@
   PostgreSQL auto-creates it as `tablename_pkey`.
 - Don't indent continuation lines in multi-line SQL statements
 
+## Commands and Logging
+
+- When adding a command to the bot, add it to the `loggedCommands` map
+  so its usage gets logged.
+- To log a command-like event (invoice, payment, pre-checkout, callback),
+  call `LogReceivedMessage` directly with a name for it (as `search` does).
+
 ## Documentation
 
+- Don't mention other projects in CLAUDE.md or docs; keep them about this repo.
 - Read `docs/status-changes.md` before modifying status handling code
 - Read `docs/streamer-search.md` before modifying streamer fuzzy search
 - Read `docs/architecture-diagrams.md` before adding or regenerating
