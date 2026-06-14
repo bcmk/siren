@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v3.4.0 — 2026-06-14
+
+### Added
+
+- adapter-mfc: log bulk-applied state in the snapshot-counts heartbeat.
+
+### Fixed
+
+- adapter-mfc: reconnect if the initial bulk dump never arrives,
+  instead of serving a failed online list forever
+  (new `bulk_arrival_timeout`, default 60s).
+
 ## v3.3.0 — 2026-06-03
 
 ### Added
