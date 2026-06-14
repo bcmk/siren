@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v3.5.0 — 2026-06-15
+
+### Changed
+
+- Treat "not enough rights to send text messages" bad requests as a
+  non-error: log at debug and track a distinct `no text rights` send
+  result instead of an error.
+
 ## v3.4.0 — 2026-06-14
 
 ### Added
