@@ -409,6 +409,7 @@ func runVideoHostsRefresher(ctx context.Context, snap *snapshot, cfg *config, cl
 // fixed interval. The same line is logged after every event at debug level
 // by snapshot.logCounts; this runner duplicates it at info so production
 // logs (which run at info verbosity) carry a periodic heartbeat of online,
+// bulk-applied readiness (false means /online is serving failed=true),
 // name cache, pending lookups, lifetime disconnect/serverconfig failure
 // counters, and connection uptime.
 func runSnapshotCountsLogger(ctx context.Context, snap *snapshot, cfg *config) {
@@ -568,6 +569,10 @@ func runWebsocketSession(
 		defer close(keepAliveDone)
 		runKeepAlive(connCtx, sess)
 	}()
+	// Force a reconnect if the initial bulk never lands. Bound to connCtx so
+	// it exits on teardown. No done channel needed: it never writes to the
+	// conn, so it cannot race the close ordering keepalive does.
+	go runBulkWatchdog(connCtx, snap, sess, cfg.BulkArrivalTimeout)
 	defer func() {
 		snap.currentSession.CompareAndSwap(sess, nil)
 		sess.closePendingLookups()
@@ -989,6 +994,30 @@ func runKeepAlive(ctx context.Context, sess *wsSession) {
 				return
 			}
 		}
+	}
+}
+
+// runBulkWatchdog forces a reconnect when the initial bulk dump has not
+// landed within timeout of the session connecting. MFC's /fcsl listener
+// pushes the bulk unprompted after login and offers no way to re-request it,
+// so a fresh connection is the only recovery. Until the bulk lands /online
+// serves failed=true; without this, a session that stays connected (organic
+// traffic keeps the idle timer fed) but never receives a bulk would leave
+// /online failed indefinitely, needing a manual restart. Closing the conn
+// makes the read loop error out and reconnect. No-op once the bulk has
+// applied or on ctx cancellation (normal teardown / shutdown).
+func runBulkWatchdog(ctx context.Context, snap *snapshot, sess *wsSession, timeout time.Duration) {
+	t := time.NewTimer(timeout)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return
+	case <-t.C:
+		if snap.bulkReady() {
+			return
+		}
+		cmdlib.Lerr("no bulk dump within %s of connecting, closing for reconnect", timeout)
+		closeAndLog(sess.conn, websocket.StatusInternalError, "bulk arrival timeout", "bulk watchdog close")
 	}
 }
 

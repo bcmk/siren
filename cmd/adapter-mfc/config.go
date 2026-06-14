@@ -32,6 +32,7 @@ type config struct {
 	HTTPResponseLimitBytes int           `mapstructure:"http_response_limit_bytes"`
 	WSConnectTimeout       time.Duration `mapstructure:"ws_connect_timeout"`
 	WSIdleTimeout          time.Duration `mapstructure:"ws_idle_timeout"`
+	BulkArrivalTimeout     time.Duration `mapstructure:"bulk_arrival_timeout"`
 	ReconnectBackoffMax    time.Duration `mapstructure:"reconnect_backoff_max"`
 	ExtDataFetchTimeout    time.Duration `mapstructure:"extdata_fetch_timeout"`
 	LookupTTL              time.Duration `mapstructure:"lookup_ttl"`
@@ -83,6 +84,7 @@ func readConfig() *config {
 		HTTPResponseLimitBytes: defaultHTTPResponseLimitBytes,
 		WSConnectTimeout:       30 * time.Second,
 		WSIdleTimeout:          30 * time.Second,
+		BulkArrivalTimeout:     60 * time.Second,
 		ReconnectBackoffMax:    time.Minute,
 		ExtDataFetchTimeout:    30 * time.Second,
 		LookupTTL:              5 * time.Minute,
@@ -109,6 +111,9 @@ func readConfig() *config {
 	}
 	if cfg.WSIdleTimeout <= 0 {
 		log.Fatal("configure ws_idle_timeout")
+	}
+	if cfg.BulkArrivalTimeout <= 0 {
+		log.Fatal("configure bulk_arrival_timeout")
 	}
 	if cfg.ReconnectBackoffMax <= 0 {
 		log.Fatal("configure reconnect_backoff_max")

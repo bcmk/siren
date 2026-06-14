@@ -384,8 +384,8 @@ func (s *snapshot) countsLineLocked() string {
 			pending++
 		}
 	}
-	return fmt.Sprintf("snapshot: online = %d, name cache = %d, pending lookups = %d, disconnects = %d, server config failures = %d, connection uptime = %s",
-		len(s.online), len(s.nameCache), pending,
+	return fmt.Sprintf("snapshot: online = %d, bulk applied = %t, name cache = %d, pending lookups = %d, disconnects = %d, server config failures = %d, connection uptime = %s",
+		len(s.online), s.bulkApplied, len(s.nameCache), pending,
 		s.lifetimeDisconnects.Load(), s.lifetimeServerConfigFailures.Load(),
 		s.connectionUptime())
 }
@@ -451,6 +451,16 @@ func (s *snapshot) collectIfReady() (streamers map[string]cmdlib.StreamerInfo, o
 		}
 	}
 	return out, true
+}
+
+// bulkReady reports whether a bulk dump has been applied in the current
+// session. The bulk watchdog uses it to decide whether the session is making
+// progress; equivalent to the readiness gate in collectIfReady but without
+// building the streamers map.
+func (s *snapshot) bulkReady() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.bulkApplied
 }
 
 // marshalOnline returns the JSON-serialised online list. When no bulk has
