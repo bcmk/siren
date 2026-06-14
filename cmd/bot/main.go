@@ -147,6 +147,7 @@ const (
 	messageChatNotFound        = -5
 	messageSkipped             = -6
 	messageNoPhotoRights       = -7
+	messageNoTextRights        = -8
 )
 
 type msgSendResult struct {
@@ -446,6 +447,12 @@ func (w *worker) sendMessageInternal(endpoint string, msg sendable) int {
 					ldbg("cannot send a message, no photo rights")
 				}
 				return messageNoPhotoRights
+			}
+			if strings.Contains(err.Error(), "not enough rights to send text messages") {
+				if w.cfg.Debug {
+					ldbg("cannot send a message, no text rights")
+				}
+				return messageNoTextRights
 			}
 			lerr("cannot send a message, bad request, error: %v", err)
 			return messageBadRequest
