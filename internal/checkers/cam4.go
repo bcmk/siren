@@ -22,7 +22,7 @@ var _ Checker = &Cam4Checker{}
 func (*Cam4Checker) Site() string { return "cam4" }
 
 // Init loads cam4-checker.json.
-func (c *Cam4Checker) Init(checkerCfgPath string, dbg bool) error {
+func (c *Cam4Checker) Init(checkerCfgPath string) error {
 	if err := c.ensureUninitialised(); err != nil {
 		return err
 	}
@@ -30,7 +30,7 @@ func (c *Cam4Checker) Init(checkerCfgPath string, dbg bool) error {
 	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
 		return err
 	}
-	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	c.BaseChecker = NewBaseChecker(cfg)
 	return nil
 }
 
@@ -85,9 +85,7 @@ func (c *Cam4Checker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithStatus
 	err = json.Unmarshal(buf.Bytes(), parsed)
 	if err != nil {
 		cmdlib.Lerr("cannot parse response for model %s, %v", modelID, err)
-		if c.Dbg {
-			cmdlib.Ldbg("response: %s", buf.String())
-		}
+		cmdlib.Ldbg("response: %s", buf.String())
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	if parsed.Online {
@@ -121,9 +119,7 @@ func (c *Cam4Checker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, er
 	var parsed []cam4Model
 	err = json.Unmarshal(buf.Bytes(), &parsed)
 	if err != nil {
-		if c.Dbg {
-			cmdlib.Ldbg("response: %s", buf.String())
-		}
+		cmdlib.Ldbg("response: %s", buf.String())
 		return nil, fmt.Errorf("cannot parse response, %v", err)
 	}
 	for _, m := range parsed {

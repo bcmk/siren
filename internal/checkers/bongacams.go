@@ -20,7 +20,7 @@ var _ Checker = &BongaCamsChecker{}
 func (*BongaCamsChecker) Site() string { return "bongacams" }
 
 // Init loads bongacams-checker.json.
-func (c *BongaCamsChecker) Init(checkerCfgPath string, dbg bool) error {
+func (c *BongaCamsChecker) Init(checkerCfgPath string) error {
 	if err := c.ensureUninitialised(); err != nil {
 		return err
 	}
@@ -28,7 +28,7 @@ func (c *BongaCamsChecker) Init(checkerCfgPath string, dbg bool) error {
 	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
 		return err
 	}
-	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	c.BaseChecker = NewBaseChecker(cfg)
 	return nil
 }
 
@@ -70,9 +70,7 @@ func (c *BongaCamsChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInf
 	var parsed []bongacamsModel
 	err = json.Unmarshal(buf.Bytes(), &parsed)
 	if err != nil {
-		if c.Dbg {
-			cmdlib.Ldbg("response: %s", buf.String())
-		}
+		cmdlib.Ldbg("response: %s", buf.String())
 		return nil, fmt.Errorf("cannot parse response, %v", err)
 	}
 

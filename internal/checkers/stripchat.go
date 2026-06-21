@@ -46,7 +46,7 @@ var _ Checker = &StripchatChecker{}
 func (*StripchatChecker) Site() string { return "stripchat" }
 
 // Init loads stripchat-checker.json.
-func (c *StripchatChecker) Init(checkerCfgPath string, dbg bool) error {
+func (c *StripchatChecker) Init(checkerCfgPath string) error {
 	if err := c.ensureUninitialised(); err != nil {
 		return err
 	}
@@ -54,7 +54,7 @@ func (c *StripchatChecker) Init(checkerCfgPath string, dbg bool) error {
 	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
 		return err
 	}
-	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	c.BaseChecker = NewBaseChecker(cfg)
 	return nil
 }
 
@@ -128,9 +128,7 @@ func (c *StripchatChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithS
 	parsed := &stripchatCamResponse{}
 	if err := json.Unmarshal(buf.Bytes(), parsed); err != nil {
 		cmdlib.Lerr("cannot parse response for model %s, %v", modelID, err)
-		if c.Dbg {
-			cmdlib.Ldbg("response: %s", buf.String())
-		}
+		cmdlib.Ldbg("response: %s", buf.String())
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	u := parsed.User.User
@@ -174,14 +172,10 @@ func (c *StripchatChecker) checkOnlyOnline() (map[string]cmdlib.StreamerInfo, er
 	parsed := &onlineResponse{}
 	err = json.Unmarshal(buf.Bytes(), parsed)
 	if err != nil {
-		if c.Dbg {
-			cmdlib.Ldbg("response: %s", buf.String())
-		}
+		cmdlib.Ldbg("response: %s", buf.String())
 		return nil, fmt.Errorf("cannot parse response, %v", err)
 	}
-	if c.Dbg {
-		cmdlib.Ldbg("models count in the response: %d", len(parsed.Models))
-	}
+	cmdlib.Ldbg("models count in the response: %d", len(parsed.Models))
 	for _, m := range parsed.Models {
 		if m.Username != "" {
 			modelID := strings.ToLower(m.Username)
@@ -230,14 +224,10 @@ func (c *StripchatChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInf
 		parsed := &stripchatResponse{}
 		err = json.Unmarshal(buf.Bytes(), parsed)
 		if err != nil {
-			if c.Dbg {
-				cmdlib.Ldbg("response: %s", buf.String())
-			}
+			cmdlib.Ldbg("response: %s", buf.String())
 			return nil, fmt.Errorf("cannot parse response, %v", err)
 		}
-		if c.Dbg {
-			cmdlib.Ldbg("models count in the response: %d", len(parsed.Models))
-		}
+		cmdlib.Ldbg("models count in the response: %d", len(parsed.Models))
 		for _, m := range parsed.Models {
 			if m.Username != "" {
 				modelID := strings.ToLower(m.Username)

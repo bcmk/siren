@@ -27,6 +27,7 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+	cmdlib.SetVerbosity(*verbose)
 	if flag.NArg() == 0 {
 		flag.Usage()
 		os.Exit(2)
@@ -46,7 +47,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "fixed-list online query is not supported for twitch")
 		os.Exit(1)
 	}
-	if err := checker.Init(*checkerCfgPath, *verbose); err != nil {
+	if err := checker.Init(*checkerCfgPath); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}

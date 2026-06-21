@@ -3,7 +3,6 @@ package checkers
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"slices"
@@ -56,7 +55,7 @@ func readCheckerConfig(
 	if err := v.ReadInConfig(); err != nil {
 		return fmt.Errorf("reading %q: %w", resolvedPath, err)
 	}
-	log.Printf("successfully read checker config %q", resolvedPath)
+	cmdlib.Linf("successfully read checker config %q", resolvedPath)
 
 	v.SetEnvPrefix("XRN")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))

@@ -35,7 +35,7 @@ func (*testChecker) Site() string { return "test" }
 
 // Init is a no-op: tests construct the checker and assign BaseChecker
 // directly via NewBaseChecker, bypassing the production Init path.
-func (*testChecker) Init(_ string, _ bool) error { return nil }
+func (*testChecker) Init(_ string) error { return nil }
 
 // Capabilities reports only QueryStatus: testChecker itself has no
 // QueryOnlineStreamers method. testOnlineListChecker overrides this.
@@ -80,7 +80,7 @@ func (*testOnlineListChecker) Capabilities() Capabilities {
 
 func TestOnlineListCheckerHandlesFixedList(t *testing.T) {
 	checker := &testOnlineListChecker{}
-	checker.BaseChecker = NewBaseChecker(&stubConfig{}, false)
+	checker.BaseChecker = NewBaseChecker(&stubConfig{})
 	resultsCh := make(chan cmdlib.CheckerResults)
 	StartCheckerDaemon(t.Context(), checker)
 
@@ -111,7 +111,7 @@ func TestOnlineListCheckerHandlesFixedList(t *testing.T) {
 
 func TestSingleStatusRequestPropagatesInfo(t *testing.T) {
 	checker := &testOnlineListChecker{}
-	checker.BaseChecker = NewBaseChecker(&stubConfig{}, false)
+	checker.BaseChecker = NewBaseChecker(&stubConfig{})
 	viewers := 42
 	checker.info = cmdlib.StreamerInfo{
 		ImageURL: "https://example/img.jpg",
@@ -165,7 +165,7 @@ func (*testPolledChecker) Site() string { return "test" }
 
 // Init is a no-op: tests construct the checker and assign BaseChecker
 // directly via NewBaseChecker, bypassing the production Init path.
-func (*testPolledChecker) Init(_ string, _ bool) error { return nil }
+func (*testPolledChecker) Init(_ string) error { return nil }
 
 func (c *testPolledChecker) QueryStatus(nickname string) (cmdlib.StreamerInfoWithStatus, error) {
 	c.queryCalls = append(c.queryCalls, nickname)
@@ -235,7 +235,7 @@ func TestOnlineListCheckerPollsAdditionalStreamers(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			checker := &testPolledChecker{online: tc.online, individual: tc.individual}
-			checker.BaseChecker = NewBaseChecker(&stubConfig{}, false)
+			checker.BaseChecker = NewBaseChecker(&stubConfig{})
 			resultsCh := make(chan cmdlib.CheckerResults, 1)
 			StartCheckerDaemon(t.Context(), checker)
 
@@ -269,7 +269,7 @@ func TestOnlineListCheckerPollsAdditionalStreamers(t *testing.T) {
 
 func TestOnlineListCheckerError(t *testing.T) {
 	checker := &testOnlineListChecker{}
-	checker.BaseChecker = NewBaseChecker(&stubConfig{}, false)
+	checker.BaseChecker = NewBaseChecker(&stubConfig{})
 	resultsCh := make(chan cmdlib.CheckerResults)
 	StartCheckerDaemon(t.Context(), checker)
 

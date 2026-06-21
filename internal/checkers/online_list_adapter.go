@@ -67,7 +67,7 @@ var _ Checker = &OnlineListAdapter{}
 func (c *OnlineListAdapter) Site() string { return c.siteName }
 
 // Init loads <site>-checker.json.
-func (c *OnlineListAdapter) Init(checkerCfgPath string, dbg bool) error {
+func (c *OnlineListAdapter) Init(checkerCfgPath string) error {
 	if err := c.ensureUninitialised(); err != nil {
 		return err
 	}
@@ -75,7 +75,7 @@ func (c *OnlineListAdapter) Init(checkerCfgPath string, dbg bool) error {
 	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
 		return err
 	}
-	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	c.BaseChecker = NewBaseChecker(cfg)
 	return nil
 }
 
@@ -129,9 +129,7 @@ func (c *OnlineListAdapter) QueryOnlineStreamers() (
 		Failed    bool                           `json:"failed"`
 	}
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
-		if c.Dbg {
-			cmdlib.Ldbg("response: %s", buf.String())
-		}
+		cmdlib.Ldbg("response: %s", buf.String())
 		return nil, fmt.Errorf("cannot parse response, %v", err)
 	}
 	if result.Failed {
@@ -161,9 +159,7 @@ func (c *OnlineListAdapter) QueryStatus(nickname string) (cmdlib.StreamerInfoWit
 	var result cmdlib.StreamerInfoWithStatus
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
 		cmdlib.Lerr("cannot parse %s response, %v", endpoint, err)
-		if c.Dbg {
-			cmdlib.Ldbg("response: %s", buf.String())
-		}
+		cmdlib.Ldbg("response: %s", buf.String())
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	return result, nil

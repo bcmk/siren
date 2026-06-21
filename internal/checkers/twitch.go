@@ -41,7 +41,7 @@ var _ Checker = &TwitchChecker{}
 func (*TwitchChecker) Site() string { return "twitch" }
 
 // Init loads twitch-checker.json.
-func (c *TwitchChecker) Init(checkerCfgPath string, dbg bool) error {
+func (c *TwitchChecker) Init(checkerCfgPath string) error {
 	if err := c.ensureUninitialised(); err != nil {
 		return err
 	}
@@ -49,7 +49,7 @@ func (c *TwitchChecker) Init(checkerCfgPath string, dbg bool) error {
 	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
 		return err
 	}
-	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	c.BaseChecker = NewBaseChecker(cfg)
 	return nil
 }
 

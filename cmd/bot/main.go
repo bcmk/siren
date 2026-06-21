@@ -332,9 +332,7 @@ func (w *worker) setCommands() {
 				continue
 			}
 			commands = append(commands, models.BotCommand{Command: pair[0], Description: pair[1]})
-			if w.cfg.Debug {
-				ldbg("command %s - %s", pair[0], pair[1])
-			}
+			ldbg("command %s - %s", pair[0], pair[1])
 		}
 		linf("setting commands for endpoint %s...", n)
 		_, err := w.bots[n].SetMyCommands(ctx, &bot.SetMyCommandsParams{Commands: commands})
@@ -417,41 +415,29 @@ func (w *worker) sendMessageInternal(endpoint string, msg sendable) int {
 	if _, err := msg.send(ctx, w.bots[endpoint]); err != nil {
 		var migrateErr *bot.MigrateError
 		if errors.As(err, &migrateErr) {
-			if w.cfg.Debug {
-				ldbg("cannot send a message, group migration")
-			}
+			ldbg("cannot send a message, group migration")
 			return messageMigrate
 		}
 		var tooManyErr *bot.TooManyRequestsError
 		if errors.As(err, &tooManyErr) {
-			if w.cfg.Debug {
-				ldbg("cannot send a message, too many requests")
-			}
+			ldbg("cannot send a message, too many requests")
 			return messageTooManyRequests
 		}
 		if errors.Is(err, bot.ErrorForbidden) {
-			if w.cfg.Debug {
-				ldbg("cannot send a message, bot blocked")
-			}
+			ldbg("cannot send a message, bot blocked")
 			return messageBlocked
 		}
 		if errors.Is(err, bot.ErrorBadRequest) {
 			if strings.Contains(err.Error(), "chat not found") {
-				if w.cfg.Debug {
-					ldbg("cannot send a message, chat not found")
-				}
+				ldbg("cannot send a message, chat not found")
 				return messageChatNotFound
 			}
 			if strings.Contains(err.Error(), "not enough rights to send photos") {
-				if w.cfg.Debug {
-					ldbg("cannot send a message, no photo rights")
-				}
+				ldbg("cannot send a message, no photo rights")
 				return messageNoPhotoRights
 			}
 			if strings.Contains(err.Error(), "not enough rights to send text messages") {
-				if w.cfg.Debug {
-					ldbg("cannot send a message, no text rights")
-				}
+				ldbg("cannot send a message, no text rights")
 				return messageNoTextRights
 			}
 			lerr("cannot send a message, bad request, error: %v", err)
@@ -460,9 +446,7 @@ func (w *worker) sendMessageInternal(endpoint string, msg sendable) int {
 		var netErr net.Error
 		if errors.As(err, &netErr) {
 			if netErr.Timeout() {
-				if w.cfg.Debug {
-					ldbg("cannot send a message, timeout")
-				}
+				ldbg("cannot send a message, timeout")
 				return messageTimeout
 			}
 			lerr("cannot send a message, unknown network error")
@@ -619,9 +603,7 @@ func (w *worker) notifyOfStatus(priority db.Priority, n db.Notification, image [
 	if w.tr[n.Endpoint] == nil {
 		return
 	}
-	if w.cfg.Debug {
-		ldbg("notifying of status of the streamer %s", n.Nickname)
-	}
+	ldbg("notifying of status of the streamer %s", n.Nickname)
 	var timeDiff *timeDiff
 	if n.TimeDiff != nil {
 		temp := calcTimeDiff(*n.TimeDiff)
@@ -1365,9 +1347,7 @@ func (w *worker) broadcast(endpoint string, text string) {
 	if text == "" {
 		return
 	}
-	if w.cfg.Debug {
-		ldbg("broadcasting")
-	}
+	ldbg("broadcasting")
 	chats := w.db.BroadcastChats(endpoint)
 	for _, chatID := range chats {
 		w.sendText(db.PriorityLow, endpoint, chatID, true, false, cmdlib.ParseRaw, text, db.MessagePacket)
@@ -2546,7 +2526,8 @@ func main() {
 	}
 
 	cfg := botconfig.ReadConfig(*botCfgPath)
-	checker, err := checkers.Build(cfg.Website, *checkerCfgPath, cfg.Debug)
+	cmdlib.SetVerbosity(cfg.Debug)
+	checker, err := checkers.Build(cfg.Website, *checkerCfgPath)
 	checkErr(err)
 	if *printCfg {
 		enc := json.NewEncoder(os.Stdout)
@@ -2633,9 +2614,7 @@ func main() {
 				"confirm_changes_ms":                   processed.confirmChangesMs,
 				"store_notifications_ms":               processed.storeNotificationsMs,
 			})
-			if w.cfg.Debug {
-				ldbg("status updates processed in %v", processed.elapsed)
-			}
+			ldbg("status updates processed in %v", processed.elapsed)
 		case req := <-w.addRequests:
 			now := int(time.Now().Unix())
 			w.addStreamer(req.endpoint, req.chatID, req.nickname, now, false)

@@ -56,7 +56,7 @@ var _ Checker = &ChaturbateChecker{}
 func (*ChaturbateChecker) Site() string { return "chaturbate" }
 
 // Init loads chaturbate-checker.json.
-func (c *ChaturbateChecker) Init(checkerCfgPath string, dbg bool) error {
+func (c *ChaturbateChecker) Init(checkerCfgPath string) error {
 	if err := c.ensureUninitialised(); err != nil {
 		return err
 	}
@@ -64,7 +64,7 @@ func (c *ChaturbateChecker) Init(checkerCfgPath string, dbg bool) error {
 	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
 		return err
 	}
-	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	c.BaseChecker = NewBaseChecker(cfg)
 	for i, p := range cfg.Proxies {
 		u, err := url.Parse(string(p))
 		if err != nil {
@@ -119,9 +119,7 @@ func (c *ChaturbateChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWith
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	defer cmdlib.CloseBody(resp.Body)
-	if c.Dbg {
-		cmdlib.Ldbg("query status for %s: %d", req.URL, resp.StatusCode)
-	}
+	cmdlib.Ldbg("query status for %s: %d", req.URL, resp.StatusCode)
 	if resp.StatusCode == 404 {
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusNotFound}, nil
 	}
@@ -133,9 +131,7 @@ func (c *ChaturbateChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWith
 	parsed := &chaturbateResponse{}
 	if err := json.Unmarshal(buf.Bytes(), parsed); err != nil {
 		cmdlib.Lerr("cannot parse response for model %s, %v", modelID, err)
-		if c.Dbg {
-			cmdlib.Ldbg("response: %s", buf.String())
-		}
+		cmdlib.Ldbg("response: %s", buf.String())
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	if parsed.Status != nil {
@@ -204,9 +200,7 @@ func (c *ChaturbateChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerIn
 	var parsed []chaturbateModel
 	err = json.Unmarshal(buf.Bytes(), &parsed)
 	if err != nil {
-		if c.Dbg {
-			cmdlib.Ldbg("response: %s", buf.String())
-		}
+		cmdlib.Ldbg("response: %s", buf.String())
 		return nil, fmt.Errorf("cannot parse response, %v", err)
 	}
 	for _, m := range parsed {

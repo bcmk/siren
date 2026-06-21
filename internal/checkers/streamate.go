@@ -23,7 +23,7 @@ var _ Checker = &StreamateChecker{}
 func (*StreamateChecker) Site() string { return "streamate" }
 
 // Init loads streamate-checker.json.
-func (c *StreamateChecker) Init(checkerCfgPath string, dbg bool) error {
+func (c *StreamateChecker) Init(checkerCfgPath string) error {
 	if err := c.ensureUninitialised(); err != nil {
 		return err
 	}
@@ -31,7 +31,7 @@ func (c *StreamateChecker) Init(checkerCfgPath string, dbg bool) error {
 	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
 		return err
 	}
-	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	c.BaseChecker = NewBaseChecker(cfg)
 	return nil
 }
 
@@ -171,9 +171,7 @@ func (c *StreamateChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithS
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	defer cmdlib.CloseBody(resp.Body)
-	if c.Dbg {
-		cmdlib.Ldbg("query status for %s: %d", modelID, resp.StatusCode)
-	}
+	cmdlib.Ldbg("query status for %s: %d", modelID, resp.StatusCode)
 	if resp.StatusCode == 404 {
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusNotFound}, nil
 	}
@@ -186,9 +184,7 @@ func (c *StreamateChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithS
 	decoder := xml.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 	parsed := &streamateResponse{}
 	err = decoder.Decode(parsed)
-	if c.Dbg {
-		cmdlib.Ldbg("response: %s", buf.String())
-	}
+	cmdlib.Ldbg("response: %s", buf.String())
 	if err != nil {
 		cmdlib.Lerr("cannot parse response for model %s, %v", modelID, err)
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
@@ -246,9 +242,7 @@ func (c *StreamateChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInf
 		decoder := xml.NewDecoder(io.NopCloser(bytes.NewReader(buf.Bytes())))
 		parsed := &streamateResponse{}
 		err = decoder.Decode(parsed)
-		if c.Dbg {
-			cmdlib.Ldbg("response: %s", buf.String())
-		}
+		cmdlib.Ldbg("response: %s", buf.String())
 		if err != nil {
 			return nil, fmt.Errorf("cannot parse response %v", err)
 		}

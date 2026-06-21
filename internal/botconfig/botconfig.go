@@ -4,7 +4,6 @@ package botconfig
 import (
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -74,9 +73,9 @@ func ReadConfig(cfgPath string) *Config {
 	v.SetConfigType("json")
 	v.SetConfigFile(cfgPath)
 	if err := v.ReadInConfig(); err != nil {
-		log.Fatalf("error reading %q: %v", cfgPath, err)
+		cmdlib.Lfatalf("error reading %q: %v", cfgPath, err)
 	}
-	log.Printf("successfully read config %q", cfgPath)
+	cmdlib.Linf("successfully read config %q", cfgPath)
 
 	v.SetEnvPrefix("XRN")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))

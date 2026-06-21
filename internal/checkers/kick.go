@@ -43,7 +43,7 @@ var _ Checker = &KickChecker{}
 func (*KickChecker) Site() string { return "kick" }
 
 // Init loads kick-checker.json.
-func (c *KickChecker) Init(checkerCfgPath string, dbg bool) error {
+func (c *KickChecker) Init(checkerCfgPath string) error {
 	if err := c.ensureUninitialised(); err != nil {
 		return err
 	}
@@ -51,7 +51,7 @@ func (c *KickChecker) Init(checkerCfgPath string, dbg bool) error {
 	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
 		return err
 	}
-	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	c.BaseChecker = NewBaseChecker(cfg)
 	return nil
 }
 

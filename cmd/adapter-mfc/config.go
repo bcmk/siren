@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"io/fs"
-	"log"
 	"strings"
 	"time"
 
@@ -67,12 +66,12 @@ func readConfig() *config {
 		v.SetConfigFile(f.name)
 		if err := v.MergeInConfig(); err != nil {
 			if errors.Is(err, fs.ErrNotExist) && !f.required {
-				log.Printf("skip config %q", f.name)
+				cmdlib.Linf("skip config %q", f.name)
 				continue
 			}
-			log.Fatalf("error reading %q: %v", f.name, err)
+			cmdlib.Lfatalf("error reading %q: %v", f.name, err)
 		}
-		log.Printf("successfully read config %q", f.name)
+		cmdlib.Linf("successfully read config %q", f.name)
 	}
 
 	v.SetEnvPrefix("XRN")
@@ -95,40 +94,40 @@ func readConfig() *config {
 	cmdlib.CheckErr(v.Unmarshal(cfg, cmdlib.StrictConfigDecoder))
 
 	if *daemonMode && cfg.ListenAddress == "" {
-		log.Fatal("configure listen_address")
+		cmdlib.Lfatalf("configure listen_address")
 	}
 	if cfg.TimeoutSeconds <= 0 {
-		log.Fatal("configure timeout_seconds")
+		cmdlib.Lfatalf("configure timeout_seconds")
 	}
 	if cfg.MaxSnapshotSize <= 0 {
-		log.Fatal("configure max_snapshot_size")
+		cmdlib.Lfatalf("configure max_snapshot_size")
 	}
 	if cfg.HTTPResponseLimitBytes <= 0 {
-		log.Fatal("configure http_response_limit_bytes")
+		cmdlib.Lfatalf("configure http_response_limit_bytes")
 	}
 	if cfg.WSConnectTimeout <= 0 {
-		log.Fatal("configure ws_connect_timeout")
+		cmdlib.Lfatalf("configure ws_connect_timeout")
 	}
 	if cfg.WSIdleTimeout <= 0 {
-		log.Fatal("configure ws_idle_timeout")
+		cmdlib.Lfatalf("configure ws_idle_timeout")
 	}
 	if cfg.BulkArrivalTimeout <= 0 {
-		log.Fatal("configure bulk_arrival_timeout")
+		cmdlib.Lfatalf("configure bulk_arrival_timeout")
 	}
 	if cfg.ReconnectBackoffMax <= 0 {
-		log.Fatal("configure reconnect_backoff_max")
+		cmdlib.Lfatalf("configure reconnect_backoff_max")
 	}
 	if cfg.ExtDataFetchTimeout <= 0 {
-		log.Fatal("configure extdata_fetch_timeout")
+		cmdlib.Lfatalf("configure extdata_fetch_timeout")
 	}
 	if cfg.LookupTTL <= 0 {
-		log.Fatal("configure lookup_ttl")
+		cmdlib.Lfatalf("configure lookup_ttl")
 	}
 	if cfg.NameCacheTTL <= 0 {
-		log.Fatal("configure name_cache_ttl")
+		cmdlib.Lfatalf("configure name_cache_ttl")
 	}
 	if cfg.SnapshotCountsLogEvery <= 0 {
-		log.Fatal("configure snapshot_counts_log_every")
+		cmdlib.Lfatalf("configure snapshot_counts_log_every")
 	}
 	return cfg
 }

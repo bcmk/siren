@@ -374,9 +374,11 @@ func (s *snapshot) pruneNameCache(resolvedTTL, pendingTTL time.Duration) int {
 	return removed
 }
 
-// countsLineLocked formats the snapshot-counts line. Caller must hold s.mu
-// (any kind). Walks online to count nameless entries, so callers that emit
-// at debug level should gate on verbosity to avoid the O(online) cost.
+// countsLineLocked formats the snapshot-counts line.
+// Caller must hold s.mu (any kind).
+// Walks online to count nameless entries,
+// so debug-level callers log it through countsLine,
+// which defers the O(online) cost until rendered.
 func (s *snapshot) countsLineLocked() string {
 	pending := 0
 	for _, cur := range s.online {
@@ -402,16 +404,19 @@ func (s *snapshot) connectionUptime() string {
 	return time.Since(sess.dialedAt).Round(time.Second).String()
 }
 
+// countsLine renders the snapshot-counts line lazily:
+// its String runs the O(online) walk in countsLineLocked
+// only when fmt actually formats it (i.e. when the log level is enabled).
+// The caller must hold s.mu while it's logged.
+type countsLine struct{ s *snapshot }
+
+func (c countsLine) String() string { return c.s.countsLineLocked() }
+
 // logCounts emits a snapshot-counts line at debug level. Called after each
 // event log so the per-event line can stay terse and the counts get their
-// own readable line. Caller must hold s.mu (any kind). Skipped at
-// non-debug verbosity so the O(online) walk in countsLineLocked is paid
-// only when it would actually log.
+// own readable line. Caller must hold s.mu (any kind).
 func (s *snapshot) logCounts() {
-	if cmdlib.Verbosity < cmdlib.DbgVerbosity {
-		return
-	}
-	cmdlib.Ldbg("%s", s.countsLineLocked())
+	cmdlib.Ldbg("%s", countsLine{s})
 }
 
 // logCountsInfo emits the same line at info level so it shows up in
@@ -420,7 +425,7 @@ func (s *snapshot) logCounts() {
 func (s *snapshot) logCountsInfo() {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	cmdlib.Linf("%s", s.countsLineLocked())
+	cmdlib.Linf("%s", countsLine{s})
 }
 
 // collectIfReady returns the streamers map and a readiness flag in one

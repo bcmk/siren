@@ -24,7 +24,7 @@ type RandomChecker struct {
 func (*RandomChecker) Site() string { return "test" }
 
 // Init loads test-checker.json.
-func (c *RandomChecker) Init(checkerCfgPath string, dbg bool) error {
+func (c *RandomChecker) Init(checkerCfgPath string) error {
 	if err := c.ensureUninitialised(); err != nil {
 		return err
 	}
@@ -32,7 +32,7 @@ func (c *RandomChecker) Init(checkerCfgPath string, dbg bool) error {
 	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
 		return err
 	}
-	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	c.BaseChecker = NewBaseChecker(cfg)
 	return nil
 }
 

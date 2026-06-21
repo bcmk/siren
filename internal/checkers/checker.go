@@ -100,10 +100,9 @@ type Checker interface {
 	Capabilities() Capabilities
 	Config() CheckerConfig
 	Site() string
-	Init(checkerCfgPath string, dbg bool) error
+	Init(checkerCfgPath string) error
 	PushStatusRequest(request cmdlib.StatusRequest) error
 	StatusRequestsQueue() <-chan cmdlib.StatusRequest
-	Debug() bool
 	NicknamePreprocessing(name string) string
 	NicknameRegexp() *regexp.Regexp
 }
@@ -112,7 +111,6 @@ type Checker interface {
 // Cfg is the typed per-site config; site code reads c.Cfg.Field directly.
 type BaseChecker[T CheckerConfig] struct {
 	Cfg            T
-	Dbg            bool
 	Client         *http.Client
 	statusRequests chan cmdlib.StatusRequest
 }
@@ -153,10 +151,9 @@ func (c *BaseChecker[T]) QueryFixedListStatuses(_ []string, _ cmdlib.CheckMode) 
 func (c *BaseChecker[T]) Config() CheckerConfig { return c.Cfg }
 
 // NewBaseChecker builds a BaseChecker for a per-site checker.
-func NewBaseChecker[T CheckerConfig](cfg T, dbg bool) BaseChecker[T] {
+func NewBaseChecker[T CheckerConfig](cfg T) BaseChecker[T] {
 	return BaseChecker[T]{
 		Cfg:            cfg,
-		Dbg:            dbg,
 		Client:         cmdlib.HTTPClientWithTimeout(cfg.Timeout()),
 		statusRequests: make(chan cmdlib.StatusRequest, cfg.QueueSize()),
 	}
@@ -167,9 +164,6 @@ func NewBaseChecker[T CheckerConfig](cfg T, dbg bool) BaseChecker[T] {
 func (c *BaseChecker[T]) StatusRequestsQueue() <-chan cmdlib.StatusRequest {
 	return c.statusRequests
 }
-
-// Debug returns whether debug mode is enabled
-func (c *BaseChecker[T]) Debug() bool { return c.Dbg }
 
 // NicknamePreprocessing preprocesses nickname to canonical form
 func (c *BaseChecker[T]) NicknamePreprocessing(name string) string {
@@ -245,9 +239,7 @@ func StartCheckerDaemon(ctx context.Context, checker Checker) {
 					}
 				}
 				elapsed := time.Since(start)
-				if checker.Debug() {
-					cmdlib.Ldbg("got statuses: %d", len(onlineStreamers))
-				}
+				cmdlib.Ldbg("got statuses: %d", len(onlineStreamers))
 				result := cmdlib.NewOnlineListResults(onlineStreamers, elapsed)
 				result.PollCount = len(req.Poll)
 				result.PollErrors = pollErrors
@@ -267,9 +259,7 @@ func StartCheckerDaemon(ctx context.Context, checker Checker) {
 					}
 				}
 				elapsed := time.Since(start)
-				if checker.Debug() {
-					cmdlib.Ldbg("got statuses: upstream = %d, returned = %d", len(streamers), len(filtered))
-				}
+				cmdlib.Ldbg("got statuses: upstream = %d, returned = %d", len(streamers), len(filtered))
 				req.ResultsCh <- cmdlib.NewFixedListOnlineResults(req.Streamers, filtered, elapsed)
 			case *cmdlib.FixedListStatusRequest:
 				streamers, err := checker.QueryFixedListStatuses(setToSlice(req.Streamers), cmdlib.CheckStatuses)
@@ -286,9 +276,7 @@ func StartCheckerDaemon(ctx context.Context, checker Checker) {
 					}
 				}
 				elapsed := time.Since(start)
-				if checker.Debug() {
-					cmdlib.Ldbg("got statuses: upstream = %d, returned = %d", len(streamers), len(filtered))
-				}
+				cmdlib.Ldbg("got statuses: upstream = %d, returned = %d", len(streamers), len(filtered))
 				req.ResultsCh <- cmdlib.NewExistenceListResults(filtered, elapsed)
 			case *cmdlib.SingleStatusRequest:
 				info, err := checker.QueryStatus(req.Streamer)
@@ -297,9 +285,7 @@ func StartCheckerDaemon(ctx context.Context, checker Checker) {
 					info = cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}
 				}
 				elapsed := time.Since(start)
-				if checker.Debug() {
-					cmdlib.Ldbg("got status: %s = %s", req.Streamer, info.Status)
-				}
+				cmdlib.Ldbg("got status: %s = %s", req.Streamer, info.Status)
 				req.ResultsCh <- cmdlib.NewExistenceListResults(
 					map[string]cmdlib.StreamerInfoWithStatus{req.Streamer: info},
 					elapsed,
@@ -324,9 +310,7 @@ func (c *BaseChecker[T]) DoGetRequest(url string, headers [][2]string) *http.Res
 		cmdlib.Lerr("cannot send a query, %v", err)
 		return nil
 	}
-	if c.Dbg {
-		cmdlib.Ldbg("query status for %s: %d", url, resp.StatusCode)
-	}
+	cmdlib.Ldbg("query status for %s: %d", url, resp.StatusCode)
 	return resp
 }
 

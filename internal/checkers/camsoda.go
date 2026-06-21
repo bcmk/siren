@@ -20,7 +20,7 @@ var _ Checker = &CamSodaChecker{}
 func (*CamSodaChecker) Site() string { return "camsoda" }
 
 // Init loads camsoda-checker.json.
-func (c *CamSodaChecker) Init(checkerCfgPath string, dbg bool) error {
+func (c *CamSodaChecker) Init(checkerCfgPath string) error {
 	if err := c.ensureUninitialised(); err != nil {
 		return err
 	}
@@ -28,7 +28,7 @@ func (c *CamSodaChecker) Init(checkerCfgPath string, dbg bool) error {
 	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
 		return err
 	}
-	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	c.BaseChecker = NewBaseChecker(cfg)
 	return nil
 }
 
@@ -81,9 +81,7 @@ func (c *CamSodaChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo,
 	var parsed camSodaOnlineResponse
 	err = json.Unmarshal(buf.Bytes(), &parsed)
 	if err != nil {
-		if c.Dbg {
-			cmdlib.Ldbg("response: %s", buf.String())
-		}
+		cmdlib.Ldbg("response: %s", buf.String())
 		return nil, fmt.Errorf("cannot parse response, %v", err)
 	}
 	if !parsed.Status {

@@ -52,7 +52,7 @@ var _ Checker = &LiveJasminChecker{}
 func (*LiveJasminChecker) Site() string { return "livejasmin" }
 
 // Init loads livejasmin-checker.json.
-func (c *LiveJasminChecker) Init(checkerCfgPath string, dbg bool) error {
+func (c *LiveJasminChecker) Init(checkerCfgPath string) error {
 	if err := c.ensureUninitialised(); err != nil {
 		return err
 	}
@@ -60,7 +60,7 @@ func (c *LiveJasminChecker) Init(checkerCfgPath string, dbg bool) error {
 	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
 		return err
 	}
-	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	c.BaseChecker = NewBaseChecker(cfg)
 	return nil
 }
 
@@ -146,15 +146,11 @@ func (c *LiveJasminChecker) checkEndpoint(endpoint string) (map[string]cmdlib.St
 	var parsed liveJasminResponse
 	err = json.Unmarshal(buf.Bytes(), &parsed)
 	if err != nil {
-		if c.Dbg {
-			cmdlib.Ldbg("response: %s", buf.String())
-		}
+		cmdlib.Ldbg("response: %s", buf.String())
 		return nil, fmt.Errorf("cannot parse response, %v", err)
 	}
 	if parsed.Status != "OK" {
-		if c.Dbg {
-			cmdlib.Ldbg("response: %s", buf.String())
-		}
+		cmdlib.Ldbg("response: %s", buf.String())
 		return nil, fmt.Errorf("cannot query a list of models, %d", parsed.ErrorCode)
 	}
 	for _, m := range parsed.Data.Models {
@@ -176,9 +172,7 @@ func (c *LiveJasminChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerIn
 		if err != nil {
 			return nil, err
 		}
-		if c.Dbg {
-			cmdlib.Ldbg("got streamers for endpoint: %d", len(endpointStreamers))
-		}
+		cmdlib.Ldbg("got streamers for endpoint: %d", len(endpointStreamers))
 		for nickname, info := range endpointStreamers {
 			streamers[nickname] = info
 		}

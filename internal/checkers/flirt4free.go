@@ -21,7 +21,7 @@ var _ Checker = &Flirt4FreeChecker{}
 func (*Flirt4FreeChecker) Site() string { return "flirt4free" }
 
 // Init loads flirt4free-checker.json.
-func (c *Flirt4FreeChecker) Init(checkerCfgPath string, dbg bool) error {
+func (c *Flirt4FreeChecker) Init(checkerCfgPath string) error {
 	if err := c.ensureUninitialised(); err != nil {
 		return err
 	}
@@ -29,7 +29,7 @@ func (c *Flirt4FreeChecker) Init(checkerCfgPath string, dbg bool) error {
 	if err := readCheckerConfig(cfg, c.Site(), checkerCfgPath); err != nil {
 		return err
 	}
-	c.BaseChecker = NewBaseChecker(cfg, dbg)
+	c.BaseChecker = NewBaseChecker(cfg)
 	return nil
 }
 
@@ -74,9 +74,7 @@ func (c *Flirt4FreeChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWith
 	err = json.Unmarshal(buf.Bytes(), parsed)
 	if err != nil {
 		cmdlib.Lerr("cannot parse response for model %s, %v", modelID, err)
-		if c.Dbg {
-			cmdlib.Ldbg("response: %s", buf.String())
-		}
+		cmdlib.Ldbg("response: %s", buf.String())
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	return cmdlib.StreamerInfoWithStatus{Status: flirt4FreeStatus(parsed.Status)}, nil
@@ -135,9 +133,7 @@ func (c *Flirt4FreeChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerIn
 	var parsed flirt4FreeOnlineResponse
 	err = json.Unmarshal(buf.Bytes(), &parsed)
 	if err != nil {
-		if c.Dbg {
-			cmdlib.Ldbg("response: %s", buf.String())
-		}
+		cmdlib.Ldbg("response: %s", buf.String())
 		return nil, fmt.Errorf("cannot parse response, %v", err)
 	}
 	if parsed.Error != nil {

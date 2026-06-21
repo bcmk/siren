@@ -30,6 +30,7 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+	cmdlib.SetVerbosity(*verbose)
 	if flag.NArg() != 2 {
 		flag.Usage()
 		return
@@ -51,7 +52,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "single check is not supported for %s\n", site)
 		os.Exit(1)
 	}
-	if err := checker.Init(*checkerCfgPath, *verbose); err != nil {
+	if err := checker.Init(*checkerCfgPath); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}

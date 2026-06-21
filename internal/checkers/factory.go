@@ -32,12 +32,12 @@ func New(site string) (Checker, error) {
 }
 
 // Build is New + Init.
-func Build(site, checkerCfgPath string, dbg bool) (Checker, error) {
+func Build(site, checkerCfgPath string) (Checker, error) {
 	checker, err := New(site)
 	if err != nil {
 		return nil, err
 	}
-	if err := checker.Init(checkerCfgPath, dbg); err != nil {
+	if err := checker.Init(checkerCfgPath); err != nil {
 		return nil, err
 	}
 	return checker, nil

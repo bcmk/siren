@@ -98,7 +98,7 @@ func newTestWorker() *testWorker {
 			tr:            map[string]*cmdlib.Translations{"test": &testTranslations},
 			tpl:           map[string]*template.Template{"test": tpl},
 			outgoingMsgCh: make(chan outgoingPacket, maxHeapLen),
-			checker:       &checkers.RandomChecker{BaseChecker: checkers.NewBaseChecker(&checkers.TestCheckerConfig{}, false)},
+			checker:       &checkers.RandomChecker{BaseChecker: checkers.NewBaseChecker(&checkers.TestCheckerConfig{})},
 		},
 	}
 	w.terminate = func() {
