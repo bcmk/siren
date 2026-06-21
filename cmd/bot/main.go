@@ -148,6 +148,7 @@ const (
 	messageSkipped             = -6
 	messageNoPhotoRights       = -7
 	messageNoTextRights        = -8
+	messageTopicClosed         = -9
 )
 
 type msgSendResult struct {
@@ -439,6 +440,10 @@ func (w *worker) sendMessageInternal(endpoint string, msg sendable) int {
 			if strings.Contains(err.Error(), "not enough rights to send text messages") {
 				ldbg("cannot send a message, no text rights")
 				return messageNoTextRights
+			}
+			if strings.Contains(err.Error(), "TOPIC_CLOSED") {
+				ldbg("cannot send a message, topic closed")
+				return messageTopicClosed
 			}
 			lerr("cannot send a message, bad request, error: %v", err)
 			return messageBadRequest
