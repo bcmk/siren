@@ -34,7 +34,7 @@ func BindEnvForConfig(v *viper.Viper, cfg any) {
 }
 
 func bindEnvForStructType(v *viper.Viper, t reflect.Type, prefix string) {
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 
