@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v3.6.0 — 2026-06-23
+
+### Changed
+
+- Bump the Go module path to `/v3` to match the v3 release tags.
+
 ## v3.5.0 — 2026-06-15
 
 ### Changed
