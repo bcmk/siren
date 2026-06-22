@@ -66,6 +66,7 @@
   Keep elementary discourse units on the same line —
   prefer breaking at full stops over semicolons over em-dashes
   over commas over natural pauses over spaces.
+  Never break a line mid-phrase; break only at the boundaries above.
 - Prefer short comments: one line is the default.
   Add more lines only when required to understand the code.
 - Keep lines no longer than 120 characters
@@ -119,6 +120,13 @@
   `bump-all-bots v<version>` (covers prod/test bot charts) plus a
   `sed` on `prod/prod-adapter-mfc/values.yaml` when the adapter ships.
 - Pushing tags to origin requires explicit permission, like any push.
+
+## Go Module Version
+
+- The module path's major-version suffix in `go.mod`
+  must match the release tags' major version.
+- To bump it, rewrite `github.com/bcmk/siren/vN` to the new `vN` in `go.mod`,
+  every Go import, the `build-*` script `-ldflags`, and the README badge URLs.
 
 ## Communication
 

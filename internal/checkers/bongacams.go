@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bcmk/siren/v2/lib/cmdlib"
+	"github.com/bcmk/siren/v3/lib/cmdlib"
 )
 
 // BongaCamsChecker implements a checker for BongaCams

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bcmk/siren/v2/lib/cmdlib"
+	"github.com/bcmk/siren/v3/lib/cmdlib"
 )
 
 // LiveJasminCheckerConfig holds API credentials and per-category

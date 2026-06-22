@@ -6,4 +6,4 @@ cd "$cur/.."
 
 SIREN_VERSION="${1:-$(git describe --tags)}"
 SIREN_VERSION="${SIREN_VERSION#v}"
-go build -o cmd/bot/bot -ldflags="-s -w -X 'github.com/bcmk/siren/v2/lib/cmdlib.Version=${SIREN_VERSION}'" ./cmd/bot
+go build -o cmd/bot/bot -ldflags="-s -w -X 'github.com/bcmk/siren/v3/lib/cmdlib.Version=${SIREN_VERSION}'" ./cmd/bot

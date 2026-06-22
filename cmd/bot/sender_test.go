@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bcmk/siren/v2/internal/db"
+	"github.com/bcmk/siren/v3/internal/db"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )

@@ -11,7 +11,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/bcmk/siren/v2/lib/cmdlib"
+	"github.com/bcmk/siren/v3/lib/cmdlib"
 )
 
 // FCS frame type constants and protocol values.

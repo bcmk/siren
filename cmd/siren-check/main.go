@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/bcmk/siren/v2/internal/checkers"
-	"github.com/bcmk/siren/v2/lib/cmdlib"
+	"github.com/bcmk/siren/v3/internal/checkers"
+	"github.com/bcmk/siren/v3/lib/cmdlib"
 )
 
 var verbose = flag.Bool("v", false, "verbose output")

@@ -28,7 +28,7 @@ import (
 	"container/heap"
 	"time"
 
-	"github.com/bcmk/siren/v2/internal/db"
+	"github.com/bcmk/siren/v3/internal/db"
 )
 
 const maxHeapLen = 20000

@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/bcmk/siren/v2/lib/cmdlib"
+	"github.com/bcmk/siren/v3/lib/cmdlib"
 )
 
 // StreamateChecker implements a checker for Streamate

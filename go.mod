@@ -1,4 +1,4 @@
-module github.com/bcmk/siren/v2
+module github.com/bcmk/siren/v3
 
 require (
 	github.com/go-telegram/bot v1.18.0

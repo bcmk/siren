@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bcmk/siren/v2/lib/cmdlib"
+	"github.com/bcmk/siren/v3/lib/cmdlib"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )

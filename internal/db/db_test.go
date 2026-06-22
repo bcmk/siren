@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/bcmk/siren/v2/lib/cmdlib"
+	"github.com/bcmk/siren/v3/lib/cmdlib"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
