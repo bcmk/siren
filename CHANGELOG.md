@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v3.7.0 — 2026-06-23
+
+### Added
+
+- Migrate a chat's subscriptions and settings to its new ID
+  on a group-to-supergroup upgrade.
+
 ## v3.6.0 — 2026-06-23
 
 ### Changed
