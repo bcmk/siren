@@ -221,21 +221,23 @@ func (w *worker) sender() {
 			}
 
 			chatID := pkt.message.chatID()
+			migrated := false
 		resend:
 			for {
 				now = time.Now()
-				result := w.sendMessageInternal(pkt.endpoint, pkt.message)
+				result, migrateToChatID := w.sendMessageInternal(pkt.endpoint, pkt.message)
 				// time.Now() — cooldown starts after the send completes
 				h.setReadyAt(chatID, time.Now().Add(time.Second))
 				latency := int(time.Since(pkt.requestedAt).Milliseconds())
 				w.outgoingMsgResults <- msgSendResult{
-					priority:  pkt.priority,
-					timestamp: int(now.Unix()),
-					result:    result,
-					endpoint:  pkt.endpoint,
-					chatID:    chatID,
-					latency:   latency,
-					kind:      pkt.kind,
+					priority:        pkt.priority,
+					timestamp:       int(now.Unix()),
+					result:          result,
+					endpoint:        pkt.endpoint,
+					chatID:          chatID,
+					migrateToChatID: migrateToChatID,
+					latency:         latency,
+					kind:            pkt.kind,
 				}
 				switch result {
 				case messageTimeout:
@@ -246,6 +248,16 @@ func (w *worker) sender() {
 					continue resend
 				case messageTooManyRequests:
 					time.Sleep(8000 * time.Millisecond)
+					continue resend
+				case messageMigrate:
+					// The chat became a supergroup; resend to its new ID, once.
+					if migrateToChatID == 0 || migrated {
+						time.Sleep(60 * time.Millisecond)
+						break resend
+					}
+					migrated = true
+					pkt.message.setChatID(migrateToChatID)
+					chatID = migrateToChatID
 					continue resend
 				case messageNoPhotoRights:
 					if p, ok := pkt.message.(*photoParams); ok {

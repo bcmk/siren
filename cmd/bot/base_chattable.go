@@ -10,6 +10,7 @@ import (
 
 type sendable interface {
 	chatID() int64
+	setChatID(int64)
 	send(ctx context.Context, b *bot.Bot) (*models.Message, error)
 }
 
@@ -19,6 +20,10 @@ type messageParams struct {
 
 func (m *messageParams) chatID() int64 {
 	return m.ChatID.(int64)
+}
+
+func (m *messageParams) setChatID(id int64) {
+	m.ChatID = id
 }
 
 func (m *messageParams) send(ctx context.Context, b *bot.Bot) (*models.Message, error) {
@@ -32,6 +37,10 @@ type photoParams struct {
 
 func (p *photoParams) chatID() int64 {
 	return p.ChatID.(int64)
+}
+
+func (p *photoParams) setChatID(id int64) {
+	p.ChatID = id
 }
 
 func (p *photoParams) send(ctx context.Context, b *bot.Bot) (*models.Message, error) {

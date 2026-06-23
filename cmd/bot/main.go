@@ -152,13 +152,14 @@ const (
 )
 
 type msgSendResult struct {
-	priority  db.Priority
-	timestamp int
-	result    int
-	endpoint  string
-	chatID    int64
-	latency   int
-	kind      db.PacketKind
+	priority        db.Priority
+	timestamp       int
+	result          int
+	endpoint        string
+	chatID          int64
+	migrateToChatID int64
+	latency         int
+	kind            db.PacketKind
 }
 
 type waitingUser struct {
@@ -407,60 +408,60 @@ func (w *worker) sendImage(
 	w.enqueueMessage(priority, endpoint, &photoParams{SendPhotoParams: params, imageData: img}, kind)
 }
 
-func (w *worker) sendMessageInternal(endpoint string, msg sendable) int {
+func (w *worker) sendMessageInternal(endpoint string, msg sendable) (int, int64) {
 	chatID := msg.chatID()
 	if !w.cfg.ChatWhitelisted(chatID) {
-		return messageSkipped
+		return messageSkipped, 0
 	}
 	ctx := context.Background()
 	if _, err := msg.send(ctx, w.bots[endpoint]); err != nil {
 		var migrateErr *bot.MigrateError
 		if errors.As(err, &migrateErr) {
 			ldbg("cannot send a message, group migration")
-			return messageMigrate
+			return messageMigrate, int64(migrateErr.MigrateToChatID)
 		}
 		var tooManyErr *bot.TooManyRequestsError
 		if errors.As(err, &tooManyErr) {
 			ldbg("cannot send a message, too many requests")
-			return messageTooManyRequests
+			return messageTooManyRequests, 0
 		}
 		if errors.Is(err, bot.ErrorForbidden) {
 			ldbg("cannot send a message, bot blocked")
-			return messageBlocked
+			return messageBlocked, 0
 		}
 		if errors.Is(err, bot.ErrorBadRequest) {
 			if strings.Contains(err.Error(), "chat not found") {
 				ldbg("cannot send a message, chat not found")
-				return messageChatNotFound
+				return messageChatNotFound, 0
 			}
 			if strings.Contains(err.Error(), "not enough rights to send photos") {
 				ldbg("cannot send a message, no photo rights")
-				return messageNoPhotoRights
+				return messageNoPhotoRights, 0
 			}
 			if strings.Contains(err.Error(), "not enough rights to send text messages") {
 				ldbg("cannot send a message, no text rights")
-				return messageNoTextRights
+				return messageNoTextRights, 0
 			}
 			if strings.Contains(err.Error(), "TOPIC_CLOSED") {
 				ldbg("cannot send a message, topic closed")
-				return messageTopicClosed
+				return messageTopicClosed, 0
 			}
 			lerr("cannot send a message, bad request, error: %v", err)
-			return messageBadRequest
+			return messageBadRequest, 0
 		}
 		var netErr net.Error
 		if errors.As(err, &netErr) {
 			if netErr.Timeout() {
 				ldbg("cannot send a message, timeout")
-				return messageTimeout
+				return messageTimeout, 0
 			}
 			lerr("cannot send a message, unknown network error")
-			return messageUnknownNetworkError
+			return messageUnknownNetworkError, 0
 		}
 		lerr("unexpected error type while sending a message to %d, %v", chatID, err)
-		return messageUnknownError
+		return messageUnknownError, 0
 	}
-	return messageSent
+	return messageSent, 0
 }
 
 func templateToString(t *texttemplate.Template, key string, data map[string]interface{}) string {
@@ -2205,6 +2206,27 @@ var loggedCommands = map[string]bool{
 	"week":                          true,
 }
 
+// handleChatMigration migrates a chat after a group-to-supergroup upgrade.
+// Both the migrate_to and migrate_from messages carry the same ID pair.
+func (w *worker) handleChatMigration(m *models.Message) {
+	fromID, toID := m.Chat.ID, m.MigrateToChatID
+	if m.MigrateFromChatID != 0 {
+		fromID, toID = m.MigrateFromChatID, m.Chat.ID
+	}
+	if !w.cfg.ChatWhitelisted(fromID) && !w.cfg.ChatWhitelisted(toID) {
+		linf("chat migration %d -> %d ignored, not in whitelist", fromID, toID)
+		return
+	}
+	w.migrateChat(fromID, toID)
+}
+
+// migrateChat moves a chat's data and logs it.
+// Only the main goroutine may touch the database, so it must run there.
+func (w *worker) migrateChat(fromID, toID int64) {
+	linf("migrating chat %d -> %d", fromID, toID)
+	w.db.MigrateChat(fromID, toID)
+}
+
 func (w *worker) processTGUpdate(p incomingPacket) {
 	now := int(time.Now().Unix())
 	u := p.message
@@ -2247,6 +2269,10 @@ func (w *worker) processTGUpdate(p incomingPacket) {
 		w.handleSuccessfulPayment(p.endpoint, chatID, string(u.Message.Chat.Type), u.Message.SuccessfulPayment, now)
 		return
 	}
+	if m := u.Message; m != nil && (m.MigrateToChatID != 0 || m.MigrateFromChatID != 0) {
+		w.handleChatMigration(m)
+		return
+	}
 	mention := "@" + w.botNames[p.endpoint]
 	chatID, command, args := getCommandAndArgs(u, mention, w.ourIDs)
 	if !w.cfg.ChatWhitelisted(chatID) {
@@ -2277,7 +2303,7 @@ func (w *worker) incoming() chan incomingPacket {
 	ctx := context.Background()
 	for n, p := range w.cfg.Endpoints {
 		linf("listening for a webhook for endpoint %s", n)
-		http.Handle(string(p.ListenPath), w.rejectPaymentsWhileMigrating(w.bots[n].WebhookHandler()))
+		http.Handle(string(p.ListenPath), w.rejectForRedeliveryWhileMigrating(w.bots[n].WebhookHandler()))
 		go w.bots[n].StartWebhook(ctx)
 	}
 	return w.incomingPackets
@@ -2287,11 +2313,12 @@ func (w *worker) incoming() chan incomingPacket {
 // Updates are far smaller, so this only bounds an oversized public POST.
 const maxWebhookBody = 1 << 20
 
-// rejectPaymentsWhileMigrating 503s successful_payment during migration,
-// so Telegram redelivers it once the schema is ready.
+// rejectForRedeliveryWhileMigrating 503s updates that must not be dropped
+// during the startup schema migration, so Telegram redelivers them.
+// These are successful_payment and group-to-supergroup migration messages.
 // The library 200s on enqueue, so a 503 is the only way to force redelivery.
 // pre_checkout passes through (10s deadline).
-func (w *worker) rejectPaymentsWhileMigrating(inner http.Handler) http.Handler {
+func (w *worker) rejectForRedeliveryWhileMigrating(inner http.Handler) http.Handler {
 	return http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		if !w.dbReady.Load() {
 			body, err := io.ReadAll(http.MaxBytesReader(rw, req.Body, maxWebhookBody))
@@ -2302,17 +2329,24 @@ func (w *worker) rejectPaymentsWhileMigrating(inner http.Handler) http.Handler {
 			req.Body = io.NopCloser(bytes.NewReader(body))
 			update := &models.Update{}
 			// Decode with the library's own type so classification matches it.
-			// Fail closed: an unparsable payment must not be 200'd and dropped.
+			// Fail closed: an unparsable update must not be 200'd and dropped.
 			if err := json.Unmarshal(body, update); err != nil {
 				http.Error(rw, "unparsable update", http.StatusServiceUnavailable)
 				return
 			}
-			if m := update.Message; m != nil && m.SuccessfulPayment != nil {
-				linf(
-					"rejecting successful_payment during migration for redelivery: chat = %d, charge = %s",
-					m.Chat.ID, m.SuccessfulPayment.TelegramPaymentChargeID)
-				http.Error(rw, "migrating", http.StatusServiceUnavailable)
-				return
+			if m := update.Message; m != nil {
+				if m.SuccessfulPayment != nil {
+					linf(
+						"rejecting successful_payment during migration for redelivery: chat = %d, charge = %s",
+						m.Chat.ID, m.SuccessfulPayment.TelegramPaymentChargeID)
+					http.Error(rw, "migrating", http.StatusServiceUnavailable)
+					return
+				}
+				if m.MigrateToChatID != 0 || m.MigrateFromChatID != 0 {
+					linf("rejecting chat migration during startup for redelivery: chat = %d", m.Chat.ID)
+					http.Error(rw, "migrating", http.StatusServiceUnavailable)
+					return
+				}
 			}
 		}
 		inner.ServeHTTP(rw, req)
@@ -2641,6 +2675,11 @@ func main() {
 				w.db.ResetBlock(r.endpoint, r.chatID)
 				if memberCount := w.getChatMemberCount(r.endpoint, r.chatID); memberCount != nil {
 					w.db.UpdateMemberCount(r.chatID, *memberCount)
+				}
+			case messageMigrate:
+				// Move the chat's data so later sends go to the new ID, not the old.
+				if r.migrateToChatID != 0 {
+					w.migrateChat(r.chatID, r.migrateToChatID)
 				}
 			}
 			w.db.LogSentMessage(r.timestamp, r.chatID, r.result, r.endpoint, r.priority, r.latency, r.kind)

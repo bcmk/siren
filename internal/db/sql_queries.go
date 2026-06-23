@@ -240,6 +240,78 @@ func (d *Database) AddUser(chatID int64, maxSubs int, now int, chatType string) 
 		chatType)
 }
 
+// MigrateChat moves a chat to a new ID after a group-to-supergroup upgrade.
+// If the destination already exists, the source is dropped, not merged,
+// so an active supergroup is not polluted with old subscriptions.
+// Its limit is still raised to the larger of the two.
+// Otherwise the chat is moved over, after clearing any dangling rows
+// at the new ID so the move cannot collide on a primary key.
+func (d *Database) MigrateChat(fromID, toID int64) {
+	if fromID == toID {
+		return
+	}
+	defer d.Measure("db: migrate chat")()
+	ctx := context.Background()
+	tx, err := d.Begin()
+	checkErr(err)
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var destExists bool
+	checkErr(tx.QueryRow(ctx, "select exists (select 1 from users where chat_id = $1)", toID).Scan(&destExists))
+
+	if destExists {
+		// The destination is an active chat.
+		// Keep it, drop the source, and raise the limit so it never regresses.
+		_, err = tx.Exec(ctx, `
+			update users d set max_subs = greatest(d.max_subs, s.max_subs)
+			from users s
+			where d.chat_id = $2 and s.chat_id = $1`,
+			fromID, toID)
+		checkErr(err)
+		_, err = tx.Exec(ctx, "delete from subscriptions where chat_id = $1", fromID)
+		checkErr(err)
+		_, err = tx.Exec(ctx, "delete from pending_subscriptions where chat_id = $1", fromID)
+		checkErr(err)
+		_, err = tx.Exec(ctx, "delete from block where chat_id = $1", fromID)
+		checkErr(err)
+		_, err = tx.Exec(ctx, "delete from notification_queue where chat_id = $1", fromID)
+		checkErr(err)
+		_, err = tx.Exec(ctx, "delete from referrals where chat_id = $1", fromID)
+		checkErr(err)
+		_, err = tx.Exec(ctx, "delete from users where chat_id = $1", fromID)
+		checkErr(err)
+		checkErr(tx.Commit(ctx))
+		return
+	}
+
+	// Clear rows dangling at the destination so the source can move in
+	// without a primary-key collision.
+	// Any child table can orphan, since none has a foreign key to users.
+	// TODO: give these tables a users(chat_id) foreign key,
+	// so the invariant is enforced instead of assumed.
+	_, err = tx.Exec(ctx, "delete from subscriptions where chat_id = $1", toID)
+	checkErr(err)
+	_, err = tx.Exec(ctx, "delete from pending_subscriptions where chat_id = $1", toID)
+	checkErr(err)
+	_, err = tx.Exec(ctx, "delete from block where chat_id = $1", toID)
+	checkErr(err)
+	_, err = tx.Exec(ctx, "delete from referrals where chat_id = $1", toID)
+	checkErr(err)
+	_, err = tx.Exec(ctx, "update users set chat_id = $2, chat_type = 'supergroup' where chat_id = $1", fromID, toID)
+	checkErr(err)
+	_, err = tx.Exec(ctx, "update subscriptions set chat_id = $2 where chat_id = $1", fromID, toID)
+	checkErr(err)
+	_, err = tx.Exec(ctx, "update pending_subscriptions set chat_id = $2 where chat_id = $1", fromID, toID)
+	checkErr(err)
+	_, err = tx.Exec(ctx, "update block set chat_id = $2 where chat_id = $1", fromID, toID)
+	checkErr(err)
+	_, err = tx.Exec(ctx, "update notification_queue set chat_id = $2 where chat_id = $1", fromID, toID)
+	checkErr(err)
+	_, err = tx.Exec(ctx, "update referrals set chat_id = $2 where chat_id = $1", fromID, toID)
+	checkErr(err)
+	checkErr(tx.Commit(ctx))
+}
+
 // MaybeStreamer returns a streamer if exists
 func (d *Database) MaybeStreamer(nickname string) *Streamer {
 	var result Streamer

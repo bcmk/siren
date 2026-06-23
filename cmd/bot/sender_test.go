@@ -15,6 +15,8 @@ type stubMessage struct{ id int64 }
 
 func (s *stubMessage) chatID() int64 { return s.id }
 
+func (s *stubMessage) setChatID(id int64) { s.id = id }
+
 func (s *stubMessage) send(_ context.Context, _ *bot.Bot) (*models.Message, error) {
 	return nil, nil
 }

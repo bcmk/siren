@@ -8,9 +8,11 @@ import (
 	"testing"
 )
 
-func TestRejectPaymentsWhileMigrating(t *testing.T) {
+func TestRejectForRedeliveryWhileMigrating(t *testing.T) {
 	const paymentBody = `{"message":{"chat":{"id":123},"successful_payment":{"telegram_payment_charge_id":"ch_1"}}}`
 	const plainBody = `{"message":{"chat":{"id":123},"text":"/start"}}`
+	const migrateToBody = `{"message":{"chat":{"id":123},"migrate_to_chat_id":-1001234}}`
+	const migrateFromBody = `{"message":{"chat":{"id":-1001234},"migrate_from_chat_id":123}}`
 
 	tests := []struct {
 		name       string
@@ -20,6 +22,9 @@ func TestRejectPaymentsWhileMigrating(t *testing.T) {
 		wantInner  bool
 	}{
 		{name: "payment while migrating rejected", ready: false, body: paymentBody, wantStatus: http.StatusServiceUnavailable, wantInner: false},
+		{name: "migrate_to while migrating rejected", ready: false, body: migrateToBody, wantStatus: http.StatusServiceUnavailable, wantInner: false},
+		{name: "migrate_from while migrating rejected", ready: false, body: migrateFromBody, wantStatus: http.StatusServiceUnavailable, wantInner: false},
+		{name: "migration when ready passes", ready: true, body: migrateToBody, wantStatus: http.StatusOK, wantInner: true},
 		{name: "plain update while migrating passes", ready: false, body: plainBody, wantStatus: http.StatusOK, wantInner: true},
 		{name: "payment when ready passes", ready: true, body: paymentBody, wantStatus: http.StatusOK, wantInner: true},
 		{name: "unparsable while migrating fails closed", ready: false, body: `{`, wantStatus: http.StatusServiceUnavailable, wantInner: false},
@@ -42,7 +47,7 @@ func TestRejectPaymentsWhileMigrating(t *testing.T) {
 			})
 			rec := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader([]byte(tt.body)))
-			w.rejectPaymentsWhileMigrating(inner).ServeHTTP(rec, req)
+			w.rejectForRedeliveryWhileMigrating(inner).ServeHTTP(rec, req)
 
 			if rec.Code != tt.wantStatus {
 				t.Errorf("status = %d, want %d", rec.Code, tt.wantStatus)
