@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/go-telegram/bot/models"
 )
 
 func TestRejectForRedeliveryWhileMigrating(t *testing.T) {
@@ -60,6 +62,27 @@ func TestRejectForRedeliveryWhileMigrating(t *testing.T) {
 				t.Errorf("inner body = %q, want %q (rewind failed)", innerBody, tt.body)
 			}
 		})
+	}
+}
+
+// A malformed payment must create no user:
+// handleSuccessfulPayment resolves the user only through GrantStarPaymentSubs,
+// after the payload validates.
+// The DB-level test can't catch a stray user made here, above that call.
+func TestHandleSuccessfulPaymentMalformedCreatesNoUser(t *testing.T) {
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase()
+
+	const chatID = int64(555)
+	w.handleSuccessfulPayment("test", chatID, &models.SuccessfulPayment{
+		InvoicePayload:          "garbage",
+		TelegramPaymentChargeID: "charge-malformed",
+		TotalAmount:             100,
+	}, 1000)
+
+	if _, found := w.db.User(chatID); found {
+		t.Error("malformed successful payment created a stray user")
 	}
 }
 

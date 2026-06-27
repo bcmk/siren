@@ -100,14 +100,14 @@ func newTestWorker() *testWorker {
 	w := &testWorker{
 		worker: worker{
 			bots:          nil,
-			db:            db.NewDatabase(connStr, true),
+			db:            db.NewDatabase(connStr, true, testConfig.MaxSubs),
 			cfg:           &testConfig,
 			client:        nil,
 			tr:            map[string]*cmdlib.Translations{"test": &testTranslations},
 			tpl:           map[string]*template.Template{"test": tpl},
 			sendQueue:     newSendHeap(),
 			sendResults:   make(chan msgSendResult, sendChanCap),
-			cooledChats:   make(chan int64, sendChanCap),
+			cooledUsers:   make(chan db.UserID, sendChanCap),
 			shutdownCh:    make(chan struct{}),
 			commonCooling: true,
 			checker:       &checkers.RandomChecker{BaseChecker: checkers.NewBaseChecker(&checkers.TestCheckerConfig{})},
@@ -126,7 +126,8 @@ func confirmedStatusesForChat(d *db.Database, endpoint string, chatID int64) (st
 		select s.nickname, s.confirmed_status
 		from subscriptions sub
 		join streamers s on s.id = sub.streamer_id
-		where sub.chat_id = $1 and sub.endpoint = $2
+		join users u on u.id = sub.user_id
+		where u.chat_id = $1 and sub.endpoint = $2
 		order by s.nickname`,
 		db.QueryParams{chatID, endpoint},
 		db.ScanTo{&iter.Nickname, &iter.ConfirmedStatus},
@@ -153,11 +154,12 @@ func (w *testWorker) chatsForStreamer(nickname string) (chats []int64, endpoints
 	var chatID int64
 	var endpoint string
 	w.db.MustQuery(`
-		select sub.chat_id, sub.endpoint
+		select u.chat_id, sub.endpoint
 		from subscriptions sub
 		join streamers s on s.id = sub.streamer_id
+		join users u on u.id = sub.user_id
 		where s.nickname = $1
-		order by sub.chat_id`,
+		order by u.chat_id`,
 		db.QueryParams{nickname},
 		db.ScanTo{&chatID, &endpoint},
 		func() {
@@ -188,8 +190,21 @@ func insertTestStreamer(d *db.Database, s db.Streamer) int {
 }
 
 func insertSubscription(d *db.Database, endpoint string, chatID int64, nickname string) {
+	d.AddUser(chatID, 0, 0, "")
 	d.MustExec(`
-		insert into subscriptions (endpoint, chat_id, streamer_id)
-		values ($1, $2, (select id from streamers where nickname = $3))`,
+		insert into subscriptions (endpoint, user_id, streamer_id)
+		select $1, u.id, s.id
+		from users u, streamers s
+		where u.chat_id = $2 and s.nickname = $3`,
 		endpoint, chatID, nickname)
+}
+
+func insertPendingSubscription(d *db.Database, endpoint string, chatID int64, nickname string, checking bool) {
+	d.AddUser(chatID, 0, 0, "")
+	d.MustExec(`
+		insert into pending_subscriptions (endpoint, user_id, nickname, checking)
+		select $1, u.id, $3, $4
+		from users u
+		where u.chat_id = $2`,
+		endpoint, chatID, nickname, checking)
 }

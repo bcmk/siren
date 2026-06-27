@@ -76,6 +76,12 @@
 ## Checks and Tests
 
 - Run `npx prettier --write` on markdown files after changes
+- Before committing, rewrap changed docs and comments
+  to the 80-char discourse-boundary rules under Code Style.
+  Run the `wrap-docs` skill via a subagent that follows
+  `.claude/skills/wrap-docs/SKILL.md`,
+  so the reflow stays out of the main context;
+  or run `/wrap-docs` inline.
 - Run `go fmt ./...` after changes and before committing
 - Run `golangci-lint run ./...` before committing
 - Run `go test ./...` to ensure changes work
@@ -183,6 +189,10 @@
   (differing only in number prefix, suffix, and `no_transaction`).
 - When renaming a table, also rename its primary key constraint.
   PostgreSQL auto-creates it as `tablename_pkey`.
+- Name constraints and indexes:
+  foreign keys `fk_<table>_<column>`, check constraints `chk_<table>_<column>`,
+  indexes `ix_<table>_<columns>`, primary keys `<table>_pkey`.
+  Use a unique `ix_` index for uniqueness, not a unique constraint.
 - Don't indent continuation lines in multi-line SQL statements
 
 ## Commands and Logging

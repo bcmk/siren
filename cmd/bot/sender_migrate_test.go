@@ -46,18 +46,19 @@ func receiveResult(t *testing.T, ch chan msgSendResult) msgSendResult {
 // and checks it reports the new id and resends there, not to the old one.
 func TestSenderResendsOnMigrate(t *testing.T) {
 	const oldID, newID = int64(-100), int64(-1001234)
+	const userID = db.UserID(42)
 	w := &worker{
 		cfg:         &botconfig.Config{},
 		bots:        map[string]*bot.Bot{"ep": nil},
 		sendResults: make(chan msgSendResult, 16),
-		cooledChats: make(chan int64, 16),
+		cooledUsers: make(chan db.UserID, 16),
 	}
 
 	// We drive deliver directly with the chat preset,
 	// exercising the migrate and resend path without a database.
 	msg := &migrateThenOK{id: oldID, target: int(newID)}
 	go w.deliver(&queuedMessage{
-		chatID:   oldID,
+		userID:   userID,
 		endpoint: "ep",
 		message:  msg,
 		priority: db.PriorityHigh,
@@ -79,21 +80,22 @@ func TestSenderResendsOnMigrate(t *testing.T) {
 	}
 }
 
-// TestDeliverReleasesOriginalIDOnMigrate checks that after a resend
-// to the new supergroup id, deliver frees exactly the id trySend cooled,
-// the original one.
-// The new id is deliberately never cooled, so releasing it would be stray.
-func TestDeliverReleasesOriginalIDOnMigrate(t *testing.T) {
+// TestDeliverReleasesUserOnMigrate checks that after a migrate bounce and
+// resend, deliver frees the message's userID exactly once. The surrogate id is
+// stable across the migration, so there is a single id to release — the old
+// per-chat-id cooldown race (a stray new-id release) is gone by construction.
+func TestDeliverReleasesUserOnMigrate(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		const oldID, newID = int64(-100), int64(-1001234)
+		const userID = db.UserID(42)
 		w := &worker{
 			cfg:         &botconfig.Config{},
 			bots:        map[string]*bot.Bot{"ep": nil},
 			sendResults: make(chan msgSendResult, 16),
-			cooledChats: make(chan int64, 16),
+			cooledUsers: make(chan db.UserID, 16),
 		}
 		go w.deliver(&queuedMessage{
-			chatID:   oldID,
+			userID:   userID,
 			endpoint: "ep",
 			message:  &migrateThenOK{id: oldID, target: int(newID)},
 			priority: db.PriorityHigh,
@@ -105,14 +107,14 @@ func TestDeliverReleasesOriginalIDOnMigrate(t *testing.T) {
 
 		// The migrated chat is a supergroup, released after groupCooldown;
 		// synctest's fake clock makes that wait instant.
-		if id := <-w.cooledChats; id != oldID {
-			t.Errorf("released id = %d, want %d", id, oldID)
+		if id := <-w.cooledUsers; id != userID {
+			t.Errorf("released id = %d, want %d", id, userID)
 		}
 		// An extra release would follow at once; settle all goroutines
 		// and confirm none arrives.
 		synctest.Wait()
 		select {
-		case id := <-w.cooledChats:
+		case id := <-w.cooledUsers:
 			t.Errorf("unexpected extra release of %d", id)
 		default:
 		}

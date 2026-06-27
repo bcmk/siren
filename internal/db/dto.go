@@ -6,7 +6,7 @@ import "github.com/bcmk/siren/v3/lib/cmdlib"
 type Notification struct {
 	ID       int
 	Endpoint string
-	ChatID   int64
+	UserID   UserID
 
 	// Nil if the streamer is unknown (e.g. denied subscription replies)
 	StreamerID *int
@@ -26,6 +26,10 @@ type Notification struct {
 	Subject        string
 	SilentMessages bool
 }
+
+// UserID is a user's stable surrogate id (users.id), distinct from the mutable
+// chat_id. Typed so the compiler keeps the two from being swapped.
+type UserID int64
 
 // Priority represents a message priority
 type Priority int
@@ -80,6 +84,7 @@ const (
 // User represents a chat
 type User struct {
 	ChatID               int64
+	UserID               UserID
 	MaxSubs              int
 	Reports              int
 	Blacklist            bool
@@ -121,7 +126,7 @@ type ConfirmedStatusChange struct {
 
 // PendingSubscription represents an unconfirmed subscription
 type PendingSubscription struct {
-	ChatID   int64
+	UserID   UserID
 	Nickname string
 	Endpoint string
 	Referral bool

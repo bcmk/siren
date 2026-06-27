@@ -39,23 +39,23 @@ func (m *countingMessage) send(context.Context, *bot.Bot) (*models.Message, erro
 }
 
 // TestSenderScheduling drives the real worker and checks priority order,
-// per-chat cooldown and the single-flight slot.
+// per-user cooldown and the single-flight slot.
 func TestSenderScheduling(t *testing.T) {
 	type enq struct {
-		chatIdx int
+		userIdx int
 		pri     db.Priority
 	}
 	tests := []struct {
 		name    string
-		chats   int
+		users   int
 		enqueue []enq
 		want    []int
 	}{
 		{
 			// 0 sends at once; its second message waits out the cooldown,
 			// so 1 slips in front.
-			name:    "per-chat cooldown defers the same chat",
-			chats:   2,
+			name:    "per-user cooldown defers the same user",
+			users:   2,
 			enqueue: []enq{{0, db.PriorityLow}, {0, db.PriorityLow}, {1, db.PriorityLow}},
 			want:    []int{0, 1, 0},
 		},
@@ -63,7 +63,7 @@ func TestSenderScheduling(t *testing.T) {
 			// 0 sends at once; 1 and 2 queue behind it,
 			// and the high-priority 2 jumps the low-priority 1.
 			name:    "priority wins among queued messages",
-			chats:   3,
+			users:   3,
 			enqueue: []enq{{0, db.PriorityLow}, {1, db.PriorityLow}, {2, db.PriorityHigh}},
 			want:    []int{0, 2, 1},
 		},
@@ -75,28 +75,28 @@ func TestSenderScheduling(t *testing.T) {
 			w.createDatabase()
 			w.commonCooling = false
 
-			chatIDs := make([]int64, tt.chats)
-			idxOf := map[int64]int{}
-			for i := range chatIDs {
-				chatIDs[i] = int64(100 + i)
-				idxOf[chatIDs[i]] = i
+			userIDs := make([]db.UserID, tt.users)
+			idxOf := map[db.UserID]int{}
+			for i := range userIDs {
+				userIDs[i], _ = w.db.AddUser(int64(100+i), 3, 0, "private")
+				idxOf[userIDs[i]] = i
 			}
 
 			var inflight, maxInflight int32
 			for _, e := range tt.enqueue {
 				w.enqueueMessage(e.pri, "test",
-					&countingMessage{id: chatIDs[e.chatIdx], inflight: &inflight, maxInflight: &maxInflight},
-					db.MessagePacket, 0)
+					&countingMessage{inflight: &inflight, maxInflight: &maxInflight},
+					db.MessagePacket, userIDs[e.userIdx], 0)
 			}
 
 			var order []int
 			for len(order) < len(tt.enqueue) {
 				select {
 				case r := <-w.sendResults:
-					order = append(order, idxOf[r.chatID])
+					order = append(order, idxOf[r.userID])
 					w.onSendDone()
-				case c := <-w.cooledChats:
-					w.onChatCooled(c)
+				case u := <-w.cooledUsers:
+					w.onUserCooled(u)
 				}
 			}
 
@@ -121,60 +121,60 @@ func (m *okMessage) send(context.Context, *bot.Bot) (*models.Message, error) {
 }
 
 // TestSendHeapOrder checks the ordering the old packetHeap test covered:
-// a cooling chat sinks below every ready one, then priority wins,
+// a cooling user sinks below every ready one, then priority wins,
 // then push sequence breaks ties.
 func TestSendHeapOrder(t *testing.T) {
 	type item struct {
-		chatID   int64
+		userID   db.UserID
 		priority db.Priority
 		seq      uint64
 	}
 	tests := []struct {
 		name    string
 		items   []item
-		cooling []int64
-		want    []int64
+		cooling []db.UserID
+		want    []db.UserID
 	}{
 		{
 			name:  "priority beats push sequence",
 			items: []item{{1, db.PriorityLow, 1}, {2, db.PriorityHigh, 2}},
-			want:  []int64{2, 1},
+			want:  []db.UserID{2, 1},
 		},
 		{
 			name:  "sequence preserves FIFO within a priority",
 			items: []item{{1, db.PriorityLow, 1}, {2, db.PriorityLow, 2}},
-			want:  []int64{1, 2},
+			want:  []db.UserID{1, 2},
 		},
 		{
-			name:    "a cooling chat sinks below a ready one despite higher priority",
+			name:    "a cooling user sinks below a ready one despite higher priority",
 			items:   []item{{1, db.PriorityHigh, 1}, {2, db.PriorityLow, 2}},
-			cooling: []int64{1},
-			want:    []int64{2, 1},
+			cooling: []db.UserID{1},
+			want:    []db.UserID{2, 1},
 		},
 		{
-			name:    "ready chats drain before the cooling one",
+			name:    "ready users drain before the cooling one",
 			items:   []item{{1, db.PriorityLow, 1}, {2, db.PriorityLow, 2}, {3, db.PriorityLow, 3}},
-			cooling: []int64{1},
-			want:    []int64{2, 3, 1},
+			cooling: []db.UserID{1},
+			want:    []db.UserID{2, 3, 1},
 		},
 		{
 			name:  "a single message pops",
 			items: []item{{7, db.PriorityLow, 1}},
-			want:  []int64{7},
+			want:  []db.UserID{7},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h := newSendHeap()
 			for _, c := range tt.cooling {
-				h.chatCooling[c] = struct{}{}
+				h.userCooling[c] = struct{}{}
 			}
 			for _, it := range tt.items {
-				heap.Push(&h, &queuedMessage{chatID: it.chatID, priority: it.priority, seq: it.seq})
+				heap.Push(&h, &queuedMessage{userID: it.userID, priority: it.priority, seq: it.seq})
 			}
-			var got []int64
+			var got []db.UserID
 			for h.Len() > 0 {
-				got = append(got, heap.Pop(&h).(*queuedMessage).chatID)
+				got = append(got, heap.Pop(&h).(*queuedMessage).userID)
 			}
 			if !slices.Equal(got, tt.want) {
 				t.Errorf("pop order = %v, want %v", got, tt.want)
@@ -183,22 +183,22 @@ func TestSendHeapOrder(t *testing.T) {
 	}
 }
 
-// TestSendHeapChatCount checks the per-chat counter the heap keeps,
-// so a cooling flip can skip the O(n) re-init when the chat has
+// TestSendHeapUserCount checks the per-user counter the heap keeps,
+// so a cooling flip can skip the O(n) re-init when the user has
 // nothing else queued.
-func TestSendHeapChatCount(t *testing.T) {
+func TestSendHeapUserCount(t *testing.T) {
 	h := newSendHeap()
-	for _, chatID := range []int64{1, 1, 2} {
-		heap.Push(&h, &queuedMessage{chatID: chatID})
+	for _, userID := range []db.UserID{1, 1, 2} {
+		heap.Push(&h, &queuedMessage{userID: userID})
 	}
-	if h.chatCount[1] != 2 || h.chatCount[2] != 1 {
-		t.Fatalf("chatCount = %v, want {1:2, 2:1}", h.chatCount)
+	if h.userCount[1] != 2 || h.userCount[2] != 1 {
+		t.Fatalf("userCount = %v, want {1:2, 2:1}", h.userCount)
 	}
 	for h.Len() > 0 {
 		heap.Pop(&h)
 	}
-	if len(h.chatCount) != 0 {
-		t.Errorf("chatCount not drained to empty: %v", h.chatCount)
+	if len(h.userCount) != 0 {
+		t.Errorf("userCount not drained to empty: %v", h.userCount)
 	}
 }
 
@@ -211,7 +211,7 @@ func TestEnqueueAtPreservesRequestTime(t *testing.T) {
 		commonCooling: true, // parks the message instead of sending it
 	}
 	past := time.Now().Add(-42 * time.Second)
-	w.enqueueMessageAt(past, db.PriorityHigh, "ep", &okMessage{id: 1}, db.MessagePacket, 0)
+	w.enqueueMessageAt(past, db.PriorityHigh, "ep", &okMessage{id: 1}, db.MessagePacket, 0, 0)
 	q := heap.Pop(&w.sendQueue).(*queuedMessage)
 	if !q.requestedAt.Equal(past) {
 		t.Errorf("requestedAt = %v, want the preserved %v", q.requestedAt, past)
@@ -220,18 +220,18 @@ func TestEnqueueAtPreservesRequestTime(t *testing.T) {
 
 // TestDeliverTiming runs a delivery on a fake clock and checks the durations
 // the old readyAt test asserted: the result is reported after the global
-// pacing gap, and the chat is freed only after the full per-chat cooldown.
+// pacing gap, and the user is freed only after the full per-user cooldown.
 func TestDeliverTiming(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		w := &worker{
 			cfg:         &botconfig.Config{},
 			bots:        map[string]*bot.Bot{"ep": nil},
 			sendResults: make(chan msgSendResult, 16),
-			cooledChats: make(chan int64, 16),
+			cooledUsers: make(chan db.UserID, 16),
 		}
 		start := time.Now()
 		go w.deliver(&queuedMessage{
-			chatID:   1,
+			userID:   1,
 			endpoint: "ep",
 			message:  &okMessage{id: 1},
 			priority: db.PriorityHigh,
@@ -245,9 +245,9 @@ func TestDeliverTiming(t *testing.T) {
 			t.Errorf("result reported after %v, want the %v pacing gap", d, commonCooldown)
 		}
 
-		<-w.cooledChats
-		if d := time.Since(start); d != chatCooldown {
-			t.Errorf("chat freed after %v, want the %v cooldown", d, chatCooldown)
+		<-w.cooledUsers
+		if d := time.Since(start); d != userCooldown {
+			t.Errorf("user freed after %v, want the %v cooldown", d, userCooldown)
 		}
 	})
 }
@@ -269,13 +269,13 @@ func TestDeliverAbandonsBackoffOnShutdown(t *testing.T) {
 			cfg:         &botconfig.Config{},
 			bots:        map[string]*bot.Bot{"ep": nil},
 			sendResults: make(chan msgSendResult, 16),
-			cooledChats: make(chan int64, 16),
+			cooledUsers: make(chan db.UserID, 16),
 			shutdownCh:  make(chan struct{}),
 		}
 		done := make(chan struct{})
 		go func() {
 			w.deliver(&queuedMessage{
-				chatID:   1,
+				userID:   1,
 				endpoint: "ep",
 				message:  &tooManyRequests{id: 1},
 				priority: db.PriorityHigh,

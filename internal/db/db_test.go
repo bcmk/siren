@@ -34,7 +34,7 @@ func newTestDB(t *testing.T) *testDB {
 		t.Fatal(err)
 	}
 
-	d := NewDatabase(connStr, false)
+	d := NewDatabase(connStr, false, 5)
 	d.ApplyMigrations()
 
 	return &testDB{

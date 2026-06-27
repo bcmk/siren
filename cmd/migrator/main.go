@@ -14,6 +14,6 @@ func main() {
 		panic("usage: migrator <dsn>")
 	}
 
-	db := db.NewDatabase(args[0], false)
+	db := db.NewDatabase(args[0], false, 0)
 	db.ApplyMigrations()
 }

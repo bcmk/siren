@@ -11,6 +11,7 @@ import (
 
 	"github.com/bcmk/siren/v3/lib/cmdlib"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var (
@@ -31,17 +32,26 @@ type Database struct {
 	mainGID           int
 	shouldCheckGID    bool
 	gidCheckSuspended bool
+	defaultMaxSubs    int
 }
 
-// NewDatabase creates a new database object
-func NewDatabase(connString string, shouldCheckGID bool) Database {
-	db, err := pgx.Connect(context.Background(), connString)
+// NewDatabase creates a new database object.
+// defaultMaxSubs is the limit for a user row auto-created by EnsureUser.
+func NewDatabase(connString string, shouldCheckGID bool, defaultMaxSubs int) Database {
+	config, err := pgx.ParseConfig(connString)
+	checkErr(err)
+	// Surface server notices (e.g. migration raise notice) through our logger.
+	config.OnNotice = func(_ *pgconn.PgConn, n *pgconn.Notice) {
+		linf("db: %s", n.Message)
+	}
+	db, err := pgx.ConnectConfig(context.Background(), config)
 	checkErr(err)
 	return Database{
 		Durations:      map[string]QueryDurationsData{},
 		db:             db,
 		shouldCheckGID: shouldCheckGID,
 		mainGID:        gid(),
+		defaultMaxSubs: defaultMaxSubs,
 	}
 }
 

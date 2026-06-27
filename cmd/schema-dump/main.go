@@ -35,7 +35,7 @@ func main() {
 	checkErr(err)
 
 	linf("applying migrations...")
-	database := db.NewDatabase(connStr, false)
+	database := db.NewDatabase(connStr, false, 0)
 	defer func() { checkErr(database.Close()) }()
 
 	database.ApplyMigrations()

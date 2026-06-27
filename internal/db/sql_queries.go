@@ -8,6 +8,7 @@ import (
 
 	"github.com/bcmk/siren/v3/lib/cmdlib"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // NewNotifications returns new notifications
@@ -16,11 +17,11 @@ func (d *Database) NewNotifications() []Notification {
 	var iter Notification
 	d.MustQuery(`
 		select
-			n.id, n.endpoint, n.chat_id, n.streamer_id, s.nickname, n.status,
+			n.id, n.endpoint, u.id, n.streamer_id, s.nickname, n.status,
 			n.time_diff, n.image_url, n.viewers, n.show_kind, n.social, n.priority,
 			n.sound, n.kind, n.subject, u.silent_messages
 		from notification_queue n
-		join users u on u.chat_id = n.chat_id
+		join users u on u.id = n.user_id
 		join streamers s on s.id = n.streamer_id
 		where n.sending = 0
 		order by n.id`,
@@ -28,7 +29,7 @@ func (d *Database) NewNotifications() []Notification {
 		ScanTo{
 			&iter.ID,
 			&iter.Endpoint,
-			&iter.ChatID,
+			&iter.UserID,
 			&iter.StreamerID,
 			&iter.Nickname,
 			&iter.Status,
@@ -58,7 +59,7 @@ func (d *Database) StoreNotifications(nots []Notification) {
 		batch.Queue(`
 			insert into notification_queue (
 				endpoint,
-				chat_id,
+				user_id,
 				streamer_id,
 				status,
 				time_diff,
@@ -72,7 +73,7 @@ func (d *Database) StoreNotifications(nots []Notification) {
 				subject
 			)
 			values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-			n.Endpoint, n.ChatID, n.StreamerID, n.Status, n.TimeDiff, n.ImageURL, n.Viewers, n.ShowKind, n.Social, n.Priority, n.Sound, n.Kind, n.Subject,
+			n.Endpoint, int64(n.UserID), n.StreamerID, n.Status, n.TimeDiff, n.ImageURL, n.Viewers, n.ShowKind, n.Social, n.Priority, n.Sound, n.Kind, n.Subject,
 		)
 	}
 	d.SendBatch(batch)
@@ -84,6 +85,7 @@ func (d *Database) UsersForStreamers(streamerIDs []int) (users map[int][]User, e
 	endpoints = make(map[int][]string)
 	var streamerID int
 	var chatID int64
+	var userID int64
 	var endpoint string
 	var offlineNotifications bool
 	var showImages bool
@@ -91,19 +93,21 @@ func (d *Database) UsersForStreamers(streamerIDs []int) (users map[int][]User, e
 	d.MustQuery(`
 		select
 			sub.streamer_id,
-			sub.chat_id,
+			u.chat_id,
+			u.id,
 			sub.endpoint,
 			u.offline_notifications,
 			u.show_images,
 			u.show_subject
 		from subscriptions sub
-		join users u on u.chat_id = sub.chat_id
+		join users u on u.id = sub.user_id
 		where sub.streamer_id = any($1)`,
 		QueryParams{streamerIDs},
-		ScanTo{&streamerID, &chatID, &endpoint, &offlineNotifications, &showImages, &showSubject},
+		ScanTo{&streamerID, &chatID, &userID, &endpoint, &offlineNotifications, &showImages, &showSubject},
 		func() {
 			users[streamerID] = append(users[streamerID], User{
 				ChatID:               chatID,
+				UserID:               UserID(userID),
 				OfflineNotifications: offlineNotifications,
 				ShowImages:           showImages,
 				ShowSubject:          showSubject,
@@ -113,34 +117,41 @@ func (d *Database) UsersForStreamers(streamerIDs []int) (users map[int][]User, e
 	return
 }
 
-// BroadcastChats returns private chats having subscriptions
-func (d *Database) BroadcastChats(endpoint string) (chats []int64) {
-	var chatID int64
-	d.MustQuery(
-		`select distinct chat_id from subscriptions where endpoint = $1 and chat_id > 0 order by chat_id`,
+// BroadcastUsers returns the users to broadcast to on an endpoint:
+// its private subscribers (chat_id > 0 excludes groups and channels).
+// trySend resolves each user's current chat id at dispatch.
+func (d *Database) BroadcastUsers(endpoint string) (users []UserID) {
+	var id int64
+	d.MustQuery(`
+		select distinct u.id
+		from subscriptions sub
+		join users u on u.id = sub.user_id
+		where sub.endpoint = $1 and u.chat_id > 0
+		order by u.id`,
 		QueryParams{endpoint},
-		ScanTo{&chatID},
-		func() { chats = append(chats, chatID) })
+		ScanTo{&id},
+		func() { users = append(users, UserID(id)) })
 	return
 }
 
-// StreamersForChat returns streamers that particular chat is subscribed to
-func (d *Database) StreamersForChat(endpoint string, chatID int64) (streamers []Streamer) {
+// StreamersForUser returns streamers that a particular user is subscribed to
+func (d *Database) StreamersForUser(endpoint string, userID UserID) (streamers []Streamer) {
 	var iter Streamer
 	d.MustQuery(`
 		select s.id, s.nickname
 		from subscriptions sub
 		join streamers s on s.id = sub.streamer_id
-		where sub.chat_id = $1 and sub.endpoint = $2
+		where sub.user_id = $1 and sub.endpoint = $2
 		order by s.nickname`,
-		QueryParams{chatID, endpoint},
+		QueryParams{int64(userID), endpoint},
 		ScanTo{&iter.ID, &iter.Nickname},
 		func() { streamers = append(streamers, iter) })
 	return
 }
 
-// UnconfirmedStatusesForChat returns streamers with their unconfirmed statuses from streamers table
-func (d *Database) UnconfirmedStatusesForChat(endpoint string, chatID int64) (statuses []Streamer) {
+// UnconfirmedStatusesForUser returns streamers a user is subscribed to,
+// with their unconfirmed statuses.
+func (d *Database) UnconfirmedStatusesForUser(endpoint string, userID UserID) (statuses []Streamer) {
 	var iter Streamer
 	d.MustQuery(`
 		select
@@ -152,9 +163,9 @@ func (d *Database) UnconfirmedStatusesForChat(endpoint string, chatID int64) (st
 			s.prev_unconfirmed_timestamp
 		from subscriptions sub
 		join streamers s on s.id = sub.streamer_id
-		where sub.chat_id = $1 and sub.endpoint = $2
+		where sub.user_id = $1 and sub.endpoint = $2
 		order by s.nickname`,
-		QueryParams{chatID, endpoint},
+		QueryParams{int64(userID), endpoint},
 		ScanTo{
 			&iter.ID,
 			&iter.Nickname,
@@ -168,35 +179,45 @@ func (d *Database) UnconfirmedStatusesForChat(endpoint string, chatID int64) (st
 }
 
 // SubscribedOrPending checks if a subscription or pending subscription exists
-func (d *Database) SubscribedOrPending(endpoint string, chatID int64, nickname string) bool {
+func (d *Database) SubscribedOrPending(endpoint string, userID UserID, nickname string) bool {
 	return d.MustBool(`
 		select exists(
 			select 1 from subscriptions sub
 			join streamers s on s.id = sub.streamer_id
-			where sub.chat_id = $1 and s.nickname = $2 and sub.endpoint = $3
+			where sub.user_id = $1 and s.nickname = $2 and sub.endpoint = $3
 			union all
-			select 1 from pending_subscriptions
-			where chat_id = $1 and nickname = $2 and endpoint = $3
+			select 1 from pending_subscriptions ps
+			where ps.user_id = $1 and ps.nickname = $2 and ps.endpoint = $3
 		)`,
-		chatID, nickname, endpoint)
+		int64(userID), nickname, endpoint)
 }
 
 // SubscribedOrPendingCount returns the total number of subscriptions
-// and pending subscriptions of a particular chat
-func (d *Database) SubscribedOrPendingCount(endpoint string, chatID int64) int {
+// and pending subscriptions of a particular user
+func (d *Database) SubscribedOrPendingCount(endpoint string, userID UserID) int {
 	return d.MustInt(`
 		select
-			(select count(*) from subscriptions
-			where chat_id = $1 and endpoint = $2) +
-			(select count(*) from pending_subscriptions
-			where chat_id = $1 and endpoint = $2)`,
-		chatID, endpoint)
+			(select count(*) from subscriptions sub
+			where sub.user_id = $1 and sub.endpoint = $2) +
+			(select count(*) from pending_subscriptions ps
+			where ps.user_id = $1 and ps.endpoint = $2)`,
+		int64(userID), endpoint)
 }
 
 // User queries a user with particular ID
 func (d *Database) User(chatID int64) (user User, found bool) {
+	// Follow migrated_to like addUser, so a tombstoned chat reads its live user.
+	// The walk is repeated in full in each resolver by design, not shared.
+	// migrated_to is acyclic (the group-to-supergroup upgrade is one-way),
+	// so the chain has a live end to select; a cycle would select nothing.
 	found = d.MaybeRecord(`
+		with recursive chain as (
+			select id, migrated_to from users where chat_id = $1
+			union
+			select u.id, u.migrated_to from users u join chain c on u.id = c.migrated_to
+		)
 		select
+			id,
 			chat_id,
 			max_subs,
 			reports,
@@ -209,10 +230,11 @@ func (d *Database) User(chatID int64) (user User, found bool) {
 			chat_type,
 			member_count
 		from users
-		where chat_id = $1
+		where id = (select id from chain where migrated_to is null)
 	`,
 		QueryParams{chatID},
 		ScanTo{
+			&user.UserID,
 			&user.ChatID,
 			&user.MaxSubs,
 			&user.Reports,
@@ -228,27 +250,211 @@ func (d *Database) User(chatID int64) (user User, found bool) {
 	return
 }
 
-// AddUser inserts a user
-func (d *Database) AddUser(chatID int64, maxSubs int, now int, chatType string) {
-	d.MustExec(`
+// UserByID queries a user by its surrogate id.
+func (d *Database) UserByID(userID UserID) (user User, found bool) {
+	found = d.MaybeRecord(`
+		select
+			id,
+			chat_id,
+			max_subs,
+			reports,
+			blacklist,
+			show_images,
+			offline_notifications,
+			show_subject,
+			silent_messages,
+			created_at,
+			chat_type,
+			member_count
+		from users
+		where id = $1
+	`,
+		QueryParams{int64(userID)},
+		ScanTo{
+			&user.UserID,
+			&user.ChatID,
+			&user.MaxSubs,
+			&user.Reports,
+			&user.Blacklist,
+			&user.ShowImages,
+			&user.OfflineNotifications,
+			&user.ShowSubject,
+			&user.SilentMessages,
+			&user.CreatedAt,
+			&user.ChatType,
+			&user.MemberCount,
+		})
+	return
+}
+
+// querier runs queries on either the pool or a caller's transaction,
+// so user resolution can join a caller's transaction or run on its own.
+type querier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
+// AddUser ensures a user row for chatID and returns its surrogate id.
+// created reports whether the row was inserted now
+// (false if it already existed), which gates the referral follower bonus.
+func (d *Database) AddUser(chatID int64, maxSubs int, now int, chatType string) (id UserID, created bool) {
+	defer d.Measure("db: add user")()
+	return d.addUser(d.db, chatID, maxSubs, now, chatType)
+}
+
+// AddUserInTx is AddUser inside a caller's transaction,
+// so a rollback undoes a row it creates.
+func (d *Database) AddUserInTx(tx pgx.Tx, chatID int64, maxSubs int, now int, chatType string) (id UserID, created bool) {
+	return d.addUser(tx, chatID, maxSubs, now, chatType)
+}
+
+// addUser reads first, deliberately, not a plain insert-on-conflict upsert:
+// this runs on nearly every update, for a chat that almost always exists,
+// so the common path is one indexed select with no write,
+// no row lock, no dead tuple, and no burned sequence value.
+// Only a brand-new chat falls to the insert,
+// whose on conflict guards a concurrent insert
+// and backfills a chat_type left null by an earlier resolve with no type.
+func (d *Database) addUser(q querier, chatID int64, maxSubs int, now int, chatType string) (id UserID, created bool) {
+	ctx := context.Background()
+	var raw int64
+	var storedType *string
+	// Like ChatIDForUser on the send path, follow migrated_to:
+	// an in-flight update to a tombstoned chat resolves to the destination user,
+	// one identity whether we write its data or reply.
+	// The walk is repeated in full in each resolver by design, not shared.
+	// migrated_to is acyclic (the group-to-supergroup upgrade is one-way),
+	// so the chain has a live end to select; a cycle would select nothing.
+	err := q.QueryRow(ctx, `
+		with recursive chain as (
+			select id, chat_type, migrated_to from users where chat_id = $1
+			union
+			select u.id, u.chat_type, u.migrated_to
+			from users u
+			join chain c on u.id = c.migrated_to
+		)
+		select id, chat_type from chain where migrated_to is null`,
+		chatID).Scan(&raw, &storedType)
+	if err == nil {
+		if storedType == nil && chatType != "" {
+			_, err := q.Exec(ctx, "update users set chat_type = $1 where id = $2", chatType, raw)
+			checkErr(err)
+		}
+		return UserID(raw), false
+	}
+	if err != pgx.ErrNoRows {
+		checkErr(err)
+	}
+	// (xmax = 0) tells a fresh insert from an on-conflict update:
+	// Postgres zeroes xmax on insert and stamps it with the txid on update.
+	// A documented, stable signal, fine to rely on:
+	// the referral follower bonus gates on this created flag.
+	checkErr(q.QueryRow(ctx, `
 		insert into users (chat_id, max_subs, created_at, chat_type)
-		values ($1, $2, $3, $4)
-		on conflict(chat_id) do nothing`,
-		chatID,
-		maxSubs,
-		now,
-		chatType)
+		values ($1, $2, $3, nullif($4, ''))
+		on conflict (chat_id) do update
+		set chat_type = case when users.chat_type is null then excluded.chat_type else users.chat_type end
+		returning id, (xmax = 0)`,
+		chatID, maxSubs, now, chatType).Scan(&raw, &created))
+	return UserID(raw), created
+}
+
+// EnsureUser returns chatID's surrogate id,
+// creating the user (defaultMaxSubs) if missing.
+// It is the single create-if-missing path.
+func (d *Database) EnsureUser(chatID int64) UserID {
+	id, _ := d.AddUser(chatID, d.defaultMaxSubs, int(time.Now().Unix()), "")
+	return id
+}
+
+// ChatIDForUser returns the current chat_id for a user's surrogate id,
+// and false if the user has no row.
+// It never panics on a missing user,
+// so a dispatch-time lookup can't crash the send goroutine.
+//
+// It follows migrated_to so a queued send for a tombstoned source
+// reaches the live destination chat, not the dead old one.
+// union bounds the walk; without it a cycle would loop forever.
+func (d *Database) ChatIDForUser(userID UserID) (int64, bool) {
+	defer d.Measure("db: chat id for user")()
+	var chatID int64
+	// The walk is repeated in full in each resolver by design, not shared.
+	// migrated_to is acyclic (the group-to-supergroup upgrade is one-way),
+	// so the chain has a live end to select; a cycle would select nothing.
+	err := d.db.QueryRow(context.Background(), `
+		with recursive chain as (
+			select id, chat_id, migrated_to from users where id = $1
+			union
+			select u.id, u.chat_id, u.migrated_to
+			from users u
+			join chain c on u.id = c.migrated_to
+		)
+		select chat_id from chain where migrated_to is null`,
+		int64(userID)).Scan(&chatID)
+	if err == pgx.ErrNoRows {
+		return 0, false
+	}
+	checkErr(err)
+	return chatID, true
+}
+
+// LiveUserID follows migrated_to from a user's surrogate id
+// to the live user it merged into,
+// so bookkeeping for an in-flight send lands on the live row
+// even if a migrate tombstoned the id between dispatch and result.
+// It returns the input id if the user has no row (defensive).
+func (d *Database) LiveUserID(userID UserID) UserID {
+	defer d.Measure("db: live user id")()
+	var id int64
+	// The walk is repeated in full in each resolver by design, not shared.
+	// migrated_to is acyclic (the group-to-supergroup upgrade is one-way),
+	// so the chain has a live end to select; a cycle would select nothing.
+	err := d.db.QueryRow(context.Background(), `
+		with recursive chain as (
+			select id, migrated_to from users where id = $1
+			union
+			select u.id, u.migrated_to
+			from users u
+			join chain c on u.id = c.migrated_to
+		)
+		select id from chain where migrated_to is null`,
+		int64(userID)).Scan(&id)
+	if err == pgx.ErrNoRows {
+		return userID
+	}
+	checkErr(err)
+	return UserID(id)
+}
+
+// ChatMigration is the outcome of a chat migration, for the caller to log.
+// Renamed means the source was simply renamed to the new id;
+// otherwise the destination already existed and the source was tombstoned,
+// with the counts of the history rows moved to it.
+type ChatMigration struct {
+	Renamed   bool
+	Feedback  int64
+	Payments  int64
+	Referrals int64
 }
 
 // MigrateChat moves a chat to a new ID after a group-to-supergroup upgrade.
-// If the destination already exists, the source is dropped, not merged,
-// so an active supergroup is not polluted with old subscriptions.
-// Its limit is still raised to the larger of the two.
-// Otherwise the chat is moved over, after clearing any dangling rows
-// at the new ID so the move cannot collide on a primary key.
-func (d *Database) MigrateChat(fromID, toID int64) {
-	if fromID == toID {
-		return
+// chat_id is a mutable field on users, so a rename is one update,
+// and every row keyed on user_id follows automatically.
+//
+// If the destination already exists (the same chat recorded twice),
+// its limit is raised to the larger of the two.
+// The source's operational rows are dropped, its small history
+// (feedback, payments, referrals) moves to the destination,
+// and the source is kept as a tombstone for its BRIN message logs,
+// linked via migrated_to.
+//
+// It returns the outcome, or nil when there was nothing to do: invalid ids,
+// or the migration was already applied (a redelivery).
+// A non-nil result lets the caller log it
+// and write one received_message_log event per migration.
+func (d *Database) MigrateChat(fromID, toID int64) *ChatMigration {
+	if fromID == toID || fromID == 0 || toID == 0 {
+		return nil
 	}
 	defer d.Measure("db: migrate chat")()
 	ctx := context.Background()
@@ -256,60 +462,76 @@ func (d *Database) MigrateChat(fromID, toID int64) {
 	checkErr(err)
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	var destExists bool
-	checkErr(tx.QueryRow(ctx, "select exists (select 1 from users where chat_id = $1)", toID).Scan(&destExists))
-
-	if destExists {
-		// The destination is an active chat.
-		// Keep it, drop the source, and raise the limit so it never regresses.
-		_, err = tx.Exec(ctx, `
-			update users d set max_subs = greatest(d.max_subs, s.max_subs)
-			from users s
-			where d.chat_id = $2 and s.chat_id = $1`,
-			fromID, toID)
-		checkErr(err)
-		_, err = tx.Exec(ctx, "delete from subscriptions where chat_id = $1", fromID)
-		checkErr(err)
-		_, err = tx.Exec(ctx, "delete from pending_subscriptions where chat_id = $1", fromID)
-		checkErr(err)
-		_, err = tx.Exec(ctx, "delete from block where chat_id = $1", fromID)
-		checkErr(err)
-		_, err = tx.Exec(ctx, "delete from notification_queue where chat_id = $1", fromID)
-		checkErr(err)
-		_, err = tx.Exec(ctx, "delete from referrals where chat_id = $1", fromID)
-		checkErr(err)
-		_, err = tx.Exec(ctx, "delete from users where chat_id = $1", fromID)
-		checkErr(err)
-		checkErr(tx.Commit(ctx))
-		return
+	// Already gone, or already tombstoned by a prior apply:
+	// a redelivery, nothing to do.
+	// A rename clears the source's chat_id, so it reads as gone here;
+	// a tombstone keeps it, so migrated_to marks an applied one.
+	var srcID int64
+	var migratedTo *int64
+	err = tx.QueryRow(ctx, "select id, migrated_to from users where chat_id = $1", fromID).Scan(&srcID, &migratedTo)
+	if err == pgx.ErrNoRows {
+		return nil
+	}
+	checkErr(err)
+	if migratedTo != nil {
+		return nil
 	}
 
-	// Clear rows dangling at the destination so the source can move in
-	// without a primary-key collision.
-	// Any child table can orphan, since none has a foreign key to users.
-	// TODO: give these tables a users(chat_id) foreign key,
-	// so the invariant is enforced instead of assumed.
-	_, err = tx.Exec(ctx, "delete from subscriptions where chat_id = $1", toID)
+	var dstID int64
+	err = tx.QueryRow(ctx, "select id from users where chat_id = $1", toID).Scan(&dstID)
+	if err == pgx.ErrNoRows {
+		// The destination is new: just rename the chat.
+		// The new chat is always a supergroup,
+		// and every child row follows by its user_id.
+		_, err = tx.Exec(ctx,
+			"update users set chat_id = $1, chat_type = 'supergroup' where id = $2", toID, srcID)
+		checkErr(err)
+		checkErr(tx.Commit(ctx))
+		return &ChatMigration{Renamed: true}
+	}
 	checkErr(err)
-	_, err = tx.Exec(ctx, "delete from pending_subscriptions where chat_id = $1", toID)
+
+	// The destination is an active chat (the same chat recorded twice).
+	// Raise its limit and drop the source's operational rows.
+	// Move its small history (feedback, payments, referrals) to the destination,
+	// then keep the source as a tombstone for its BRIN message logs,
+	// linked via migrated_to.
+	_, err = tx.Exec(ctx, `
+		update users d set max_subs = greatest(d.max_subs, s.max_subs)
+		from users s
+		where d.id = $1 and s.id = $2`,
+		dstID, srcID)
 	checkErr(err)
-	_, err = tx.Exec(ctx, "delete from block where chat_id = $1", toID)
+	del := func(q string) {
+		_, err := tx.Exec(ctx, q, srcID)
+		checkErr(err)
+	}
+	del("delete from subscriptions where user_id = $1")
+	del("delete from pending_subscriptions where user_id = $1")
+	del("delete from block where user_id = $1")
+	del("delete from notification_queue where user_id = $1")
+	// Keep the source's referral key when the destination has none:
+	// move it, so links shared for the old chat still credit the merged user.
+	// Otherwise drop it, since a user has a single key.
+	_, err = tx.Exec(ctx, `
+		update referrals set user_id = $1
+		where user_id = $2 and not exists (select 1 from referrals where user_id = $1)`,
+		dstID, srcID)
 	checkErr(err)
-	_, err = tx.Exec(ctx, "delete from referrals where chat_id = $1", toID)
-	checkErr(err)
-	_, err = tx.Exec(ctx, "update users set chat_id = $2, chat_type = 'supergroup' where chat_id = $1", fromID, toID)
-	checkErr(err)
-	_, err = tx.Exec(ctx, "update subscriptions set chat_id = $2 where chat_id = $1", fromID, toID)
-	checkErr(err)
-	_, err = tx.Exec(ctx, "update pending_subscriptions set chat_id = $2 where chat_id = $1", fromID, toID)
-	checkErr(err)
-	_, err = tx.Exec(ctx, "update block set chat_id = $2 where chat_id = $1", fromID, toID)
-	checkErr(err)
-	_, err = tx.Exec(ctx, "update notification_queue set chat_id = $2 where chat_id = $1", fromID, toID)
-	checkErr(err)
-	_, err = tx.Exec(ctx, "update referrals set chat_id = $2 where chat_id = $1", fromID, toID)
+	del("delete from referrals where user_id = $1")
+	move := func(q string) int64 {
+		tag, err := tx.Exec(ctx, q, dstID, srcID)
+		checkErr(err)
+		return tag.RowsAffected()
+	}
+	feedback := move("update feedback set user_id = $1 where user_id = $2")
+	payments := move("update star_payments set user_id = $1 where user_id = $2")
+	referrals := move("update referral_events set referrer_user_id = $1 where referrer_user_id = $2") +
+		move("update referral_events set follower_user_id = $1 where follower_user_id = $2")
+	_, err = tx.Exec(ctx, "update users set migrated_to = $1 where id = $2", dstID, srcID)
 	checkErr(err)
 	checkErr(tx.Commit(ctx))
+	return &ChatMigration{Feedback: feedback, Payments: payments, Referrals: referrals}
 }
 
 // MaybeStreamer returns a streamer if exists
@@ -383,17 +605,14 @@ func (d *Database) ChangesFromToForStreamers(streamerIDs []int, from int, to int
 }
 
 // SetLimit updates a particular user with its max subs limit
-func (d *Database) SetLimit(chatID int64, maxSubs int) {
-	d.MustExec(`
-		insert into users (chat_id, max_subs) values ($1, $2)
-		on conflict(chat_id) do update set max_subs=excluded.max_subs`,
-		chatID,
-		maxSubs)
+func (d *Database) SetLimit(userID UserID, maxSubs int) {
+	d.MustExec("update users set max_subs = $1 where id = $2", maxSubs, int64(userID))
 }
 
 // GrantStarPaymentSubs records the charge and bumps max_subs
 // in one transaction, returning the new max_subs.
-// A duplicate charge id returns (false, 0) and changes nothing.
+// A duplicate charge returns (false, 0) and changes nothing.
+// The user row is created if the chat has none, so a charge is always credited.
 func (d *Database) GrantStarPaymentSubs(
 	chatID int64,
 	endpoint string,
@@ -403,33 +622,42 @@ func (d *Database) GrantStarPaymentSubs(
 	quantity int,
 	payload string,
 	now int,
-) (added bool, maxSubs int) {
+) (added bool, maxSubs int, userID UserID) {
 	defer d.Measure("db: grant star payment subs")()
 	tx, err := d.Begin()
 	checkErr(err)
 	defer func() { _ = tx.Rollback(context.Background()) }()
+
+	// Resolve the user in the charge tx, so a rollback undoes any new row.
+	// The charge is credited even when the chat never started the bot normally.
+	// The id comes back from here so the caller resolves no user
+	// for a rejected payload or a duplicate.
+	userID, _ = d.AddUserInTx(tx, chatID, d.defaultMaxSubs, now, "")
+
 	tag, err := tx.Exec(context.Background(), `
 		insert into star_payments (
-			chat_id, endpoint, telegram_payment_charge_id,
+			user_id, endpoint, telegram_payment_charge_id,
 			stars_amount, product, quantity, payload, timestamp)
 		values ($1, $2, $3, $4, $5, $6, $7, $8)
 		on conflict (telegram_payment_charge_id) do nothing`,
-		chatID, endpoint, chargeID, stars, product, quantity, payload, now)
+		userID, endpoint, chargeID, stars, product, quantity, payload, now)
 	checkErr(err)
 	if tag.RowsAffected() == 0 {
-		return false, 0
+		// A genuine duplicate means the first payment already committed the user,
+		// so AddUserInTx found it and the id is valid despite the rollback.
+		return false, 0, userID
 	}
 	err = tx.QueryRow(context.Background(),
-		"update users set max_subs = max_subs + $1 where chat_id = $2 returning max_subs",
-		quantity, chatID).Scan(&maxSubs)
+		"update users set max_subs = max_subs + $1 where id = $2 returning max_subs",
+		quantity, userID).Scan(&maxSubs)
 	checkErr(err)
 	checkErr(tx.Commit(context.Background()))
-	return true, maxSubs
+	return true, maxSubs, userID
 }
 
 // ConfirmSub confirms a pending subscription by upserting the streamer,
-// moving it from pending_subscriptions to subscriptions, and deleting the pending entry.
-// Returns the streamer ID.
+// moving it from pending_subscriptions to subscriptions,
+// and deleting the pending entry. Returns the streamer ID.
 func (d *Database) ConfirmSub(sub PendingSubscription) int {
 	defer d.Measure("db: confirm sub")()
 	tx, err := d.Begin()
@@ -461,13 +689,14 @@ func (d *Database) ConfirmSub(sub PendingSubscription) int {
 		sub.Nickname).Scan(&streamerID)
 	checkErr(err)
 	_, err = tx.Exec(context.Background(), `
-		insert into subscriptions (chat_id, streamer_id, endpoint)
+		insert into subscriptions (user_id, streamer_id, endpoint)
 		values ($1, $2, $3)`,
-		sub.ChatID, streamerID, sub.Endpoint)
+		int64(sub.UserID), streamerID, sub.Endpoint)
 	checkErr(err)
-	_, err = tx.Exec(context.Background(),
-		"delete from pending_subscriptions where endpoint = $1 and chat_id = $2 and nickname = $3",
-		sub.Endpoint, sub.ChatID, sub.Nickname)
+	_, err = tx.Exec(context.Background(), `
+		delete from pending_subscriptions
+		where user_id = $1 and endpoint = $2 and nickname = $3`,
+		int64(sub.UserID), sub.Endpoint, sub.Nickname)
 	checkErr(err)
 	checkErr(tx.Commit(context.Background()))
 	return streamerID
@@ -475,9 +704,10 @@ func (d *Database) ConfirmSub(sub PendingSubscription) int {
 
 // DenySub denies a pending subscription
 func (d *Database) DenySub(sub PendingSubscription) {
-	d.MustExec(
-		"delete from pending_subscriptions where endpoint = $1 and chat_id = $2 and nickname = $3",
-		sub.Endpoint, sub.ChatID, sub.Nickname)
+	d.MustExec(`
+		delete from pending_subscriptions
+		where user_id = $1 and endpoint = $2 and nickname = $3`,
+		int64(sub.UserID), sub.Endpoint, sub.Nickname)
 }
 
 // UnconfirmedStatusesForStreamers returns unconfirmed statuses for specific streamers
@@ -839,35 +1069,45 @@ func (d *Database) SearchStreamers(term string) []string {
 }
 
 // ReferralID returns referral identifier
-func (d *Database) ReferralID(chatID int64) *string {
+func (d *Database) ReferralID(userID UserID) *string {
 	var referralID string
-	if !d.MaybeRecord("select referral_id from referrals where chat_id = $1", QueryParams{chatID}, ScanTo{&referralID}) {
+	if !d.MaybeRecord(
+		"select referral_id from referrals where user_id = $1",
+		QueryParams{int64(userID)},
+		ScanTo{&referralID}) {
 		return nil
 	}
 	return &referralID
 }
 
-// ChatForReferralID returns a chat ID for particular referral ID
-func (d *Database) ChatForReferralID(referralID string) *int64 {
-	var chatID int64
-	if !d.MaybeRecord("select chat_id from referrals where referral_id = $1", QueryParams{referralID}, ScanTo{&chatID}) {
+// UserForReferralID returns the user id for a particular referral id
+func (d *Database) UserForReferralID(referralID string) *UserID {
+	var id int64
+	if !d.MaybeRecord(
+		"select user_id from referrals where referral_id = $1",
+		QueryParams{referralID},
+		ScanTo{&id}) {
 		return nil
 	}
-	return &chatID
+	userID := UserID(id)
+	return &userID
 }
 
 // IncrementBlock increments blocking count for particular chat ID
-func (d *Database) IncrementBlock(endpoint string, chatID int64) {
+func (d *Database) IncrementBlock(endpoint string, userID UserID) {
 	d.MustExec(`
-		insert into block as included (endpoint, chat_id, block) values ($1, $2, 1)
-		on conflict(chat_id, endpoint) do update set block = included.block + 1`,
+		insert into block as b (endpoint, user_id, block)
+		values ($1, $2, 1)
+		on conflict (user_id, endpoint) do update set block = b.block + 1`,
 		endpoint,
-		chatID)
+		int64(userID))
 }
 
-// ResetBlock resets blocking count for particular chat ID
-func (d *Database) ResetBlock(endpoint string, chatID int64) {
-	d.MustExec("update block set block=0 where endpoint = $1 and chat_id = $2", endpoint, chatID)
+// ResetBlock resets blocking count for particular user
+func (d *Database) ResetBlock(endpoint string, userID UserID) {
+	d.MustExec(
+		"update block set block = 0 where endpoint = $1 and user_id = $2",
+		endpoint, int64(userID))
 }
 
 // UpsertUnconfirmedTimings holds per-phase timing for UpsertUnconfirmedStatusChanges.
@@ -974,147 +1214,153 @@ func (d *Database) UpsertUnconfirmedStatusChanges(
 }
 
 // AddSubscription inserts a confirmed subscription
-func (d *Database) AddSubscription(chatID int64, streamerID int, endpoint string) {
-	d.MustExec(
-		"insert into subscriptions (chat_id, streamer_id, endpoint) values ($1, $2, $3)",
-		chatID,
+func (d *Database) AddSubscription(userID UserID, streamerID int, endpoint string) {
+	d.MustExec(`
+		insert into subscriptions (user_id, streamer_id, endpoint)
+		values ($1, $2, $3)`,
+		int64(userID),
 		streamerID,
 		endpoint)
 }
 
 // AddPendingSubscription inserts a pending subscription for an unknown streamer
-func (d *Database) AddPendingSubscription(chatID int64, nickname string, endpoint string, referral bool) {
-	d.MustExec(
-		"insert into pending_subscriptions (chat_id, nickname, endpoint, referral) values ($1, $2, $3, $4)",
-		chatID,
+func (d *Database) AddPendingSubscription(userID UserID, nickname string, endpoint string, referral bool) {
+	d.MustExec(`
+		insert into pending_subscriptions (user_id, nickname, endpoint, referral)
+		values ($1, $2, $3, $4)`,
+		int64(userID),
 		nickname,
 		endpoint,
 		referral)
 }
 
 // SetShowImages updates the show_images setting for a user
-func (d *Database) SetShowImages(chatID int64, showImages bool) {
-	d.MustExec("update users set show_images = $1 where chat_id = $2", showImages, chatID)
+func (d *Database) SetShowImages(userID UserID, showImages bool) {
+	d.MustExec("update users set show_images = $1 where id = $2", showImages, int64(userID))
 }
 
 // SetOfflineNotifications updates the offline_notifications setting for a user
-func (d *Database) SetOfflineNotifications(chatID int64, offlineNotifications bool) {
-	d.MustExec("update users set offline_notifications = $1 where chat_id = $2", offlineNotifications, chatID)
+func (d *Database) SetOfflineNotifications(userID UserID, offlineNotifications bool) {
+	d.MustExec("update users set offline_notifications = $1 where id = $2", offlineNotifications, int64(userID))
 }
 
 // SetShowSubject updates the show_subject setting for a user
-func (d *Database) SetShowSubject(chatID int64, showSubject bool) {
-	d.MustExec("update users set show_subject = $1 where chat_id = $2", showSubject, chatID)
+func (d *Database) SetShowSubject(userID UserID, showSubject bool) {
+	d.MustExec("update users set show_subject = $1 where id = $2", showSubject, int64(userID))
 }
 
 // SetSilentMessages updates the silent_messages setting for a user
-func (d *Database) SetSilentMessages(chatID int64, silentMessages bool) {
-	d.MustExec("update users set silent_messages = $1 where chat_id = $2", silentMessages, chatID)
+func (d *Database) SetSilentMessages(userID UserID, silentMessages bool) {
+	d.MustExec("update users set silent_messages = $1 where id = $2", silentMessages, int64(userID))
 }
 
 // UpdateMemberCount updates the member_count for a user
-func (d *Database) UpdateMemberCount(chatID int64, memberCount int) {
-	d.MustExec("update users set member_count = $1 where chat_id = $2", memberCount, chatID)
+func (d *Database) UpdateMemberCount(userID UserID, memberCount int) {
+	d.MustExec("update users set member_count = $1 where id = $2", memberCount, int64(userID))
 }
 
-// RemoveSubscription deletes a specific subscription and any pending subscription
-func (d *Database) RemoveSubscription(chatID int64, nickname string, endpoint string) {
+// RemoveSubscription deletes a specific subscription
+// and any pending subscription
+func (d *Database) RemoveSubscription(userID UserID, nickname string, endpoint string) {
 	defer d.Measure("db: remove subscription")()
 	tx, err := d.Begin()
 	checkErr(err)
 	defer func() { _ = tx.Rollback(context.Background()) }()
 
 	_, err = tx.Exec(context.Background(), `
-		delete from subscriptions
-		where chat_id = $1
-		and streamer_id = (select id from streamers where nickname = $2)
-		and endpoint = $3`,
-		chatID, nickname, endpoint)
+		delete from subscriptions sub
+		using streamers s
+		where sub.streamer_id = s.id
+		and sub.user_id = $1 and s.nickname = $2 and sub.endpoint = $3`,
+		int64(userID), nickname, endpoint)
 	checkErr(err)
-	_, err = tx.Exec(context.Background(),
-		"delete from pending_subscriptions where chat_id = $1 and nickname = $2 and endpoint = $3",
-		chatID, nickname, endpoint)
+	_, err = tx.Exec(context.Background(), `
+		delete from pending_subscriptions ps
+		where ps.user_id = $1 and ps.nickname = $2 and ps.endpoint = $3`,
+		int64(userID), nickname, endpoint)
 	checkErr(err)
 	checkErr(tx.Commit(context.Background()))
 }
 
-// RemoveAllSubscriptions deletes all subscriptions and pending subscriptions for a chat and endpoint
-func (d *Database) RemoveAllSubscriptions(chatID int64, endpoint string) {
+// RemoveAllSubscriptions deletes all subscriptions and pending subscriptions
+// for a user and endpoint
+func (d *Database) RemoveAllSubscriptions(userID UserID, endpoint string) {
 	defer d.Measure("db: remove all subscriptions")()
 	tx, err := d.Begin()
 	checkErr(err)
 	defer func() { _ = tx.Rollback(context.Background()) }()
 
-	_, err = tx.Exec(context.Background(),
-		"delete from subscriptions where chat_id = $1 and endpoint = $2", chatID, endpoint)
+	_, err = tx.Exec(context.Background(), `
+		delete from subscriptions where user_id = $1 and endpoint = $2`,
+		int64(userID), endpoint)
 	checkErr(err)
-	_, err = tx.Exec(context.Background(),
-		"delete from pending_subscriptions where chat_id = $1 and endpoint = $2", chatID, endpoint)
+	_, err = tx.Exec(context.Background(), `
+		delete from pending_subscriptions where user_id = $1 and endpoint = $2`,
+		int64(userID), endpoint)
 	checkErr(err)
 	checkErr(tx.Commit(context.Background()))
 }
 
 // AddFeedback stores user feedback
-func (d *Database) AddFeedback(endpoint string, chatID int64, text string, timestamp int) {
-	d.MustExec(
-		"insert into feedback (endpoint, chat_id, text, timestamp) values ($1, $2, $3, $4)",
+func (d *Database) AddFeedback(endpoint string, userID UserID, text string, timestamp int) {
+	d.MustExec(`
+		insert into feedback (endpoint, user_id, text, timestamp)
+		values ($1, $2, $3, $4)`,
 		endpoint,
-		chatID,
+		int64(userID),
 		text,
 		timestamp)
 }
 
 // BlacklistUser sets the blacklist flag for a user
-func (d *Database) BlacklistUser(chatID int64) {
-	d.MustExec("update users set blacklist = true where chat_id = $1", chatID)
+func (d *Database) BlacklistUser(userID UserID) {
+	d.MustExec("update users set blacklist = true where id = $1", int64(userID))
 }
 
-// AddUserWithBonus inserts a user with a specific max_subs value
-func (d *Database) AddUserWithBonus(chatID int64, maxSubs int, now int, chatType string) {
-	d.MustExec(`
-		insert into users (chat_id, max_subs, created_at, chat_type)
-		values ($1, $2, $3, $4)
-	`, chatID, maxSubs, now, chatType)
-}
-
-// AddOrUpdateReferrer inserts or updates a referrer's max_subs
-func (d *Database) AddOrUpdateReferrer(chatID int64, maxSubs int, bonus int) {
-	d.MustExec(`
-		insert into users as included (chat_id, max_subs) values ($1, $2)
-		on conflict(chat_id) do update set max_subs=included.max_subs + $3`,
-		chatID,
-		maxSubs,
-		bonus)
+// AddReferrerBonus adds a bonus to a referrer's max_subs
+func (d *Database) AddReferrerBonus(userID UserID, bonus int) {
+	d.MustExec("update users set max_subs = max_subs + $1 where id = $2", bonus, int64(userID))
 }
 
 // IncrementReferredUsers increments the referred_users count for a referral
-func (d *Database) IncrementReferredUsers(chatID int64) {
-	d.MustExec("update referrals set referred_users=referred_users+1 where chat_id = $1", chatID)
+func (d *Database) IncrementReferredUsers(userID UserID) {
+	d.MustExec(
+		"update referrals set referred_users = referred_users + 1 where user_id = $1",
+		int64(userID))
 }
 
 // AddReferralEvent adds a referral event
-func (d *Database) AddReferralEvent(timestamp int, referrerChatID *int64, followerChatID int64, streamerID *int) {
+func (d *Database) AddReferralEvent(timestamp int, referrerUserID *UserID, followerUserID UserID, streamerID *int) {
+	var referrer *int64
+	if referrerUserID != nil {
+		r := int64(*referrerUserID)
+		referrer = &r
+	}
 	d.MustExec(`
-		insert into referral_events (timestamp, referrer_chat_id, follower_chat_id, streamer_id)
+		insert into referral_events (timestamp, referrer_user_id, follower_user_id, streamer_id)
 		values ($1, $2, $3, $4)`,
 		timestamp,
-		referrerChatID,
-		followerChatID,
+		referrer,
+		int64(followerUserID),
 		streamerID)
 }
 
 // AddReferral adds a new referral record
-func (d *Database) AddReferral(chatID int64, referralID string) {
-	d.MustExec("insert into referrals (chat_id, referral_id) values ($1, $2)", chatID, referralID)
+func (d *Database) AddReferral(userID UserID, referralID string) {
+	d.MustExec(
+		"insert into referrals (user_id, referral_id) values ($1, $2)",
+		int64(userID), referralID)
 }
 
-// LogReceivedMessage logs a received message
-func (d *Database) LogReceivedMessage(timestamp int, endpoint string, chatID int64, command *string) {
-	d.MustExec(
-		"insert into received_message_log (timestamp, endpoint, chat_id, command) values ($1, $2, $3, $4)",
+// LogReceivedMessage records a received message.
+// The caller resolves the user id, so logging never hides a create.
+func (d *Database) LogReceivedMessage(timestamp int, endpoint string, userID UserID, command *string) {
+	d.MustExec(`
+		insert into received_message_log (timestamp, endpoint, user_id, command)
+		values ($1, $2, $3, $4)`,
 		timestamp,
 		endpoint,
-		chatID,
+		int64(userID),
 		command)
 }
 
@@ -1153,11 +1399,12 @@ func (d *Database) ResetNotificationSending() {
 }
 
 // LogSentMessage logs a sent message
-func (d *Database) LogSentMessage(timestamp int, chatID int64, result int, endpoint string, priority Priority, latency int, kind PacketKind) {
-	d.MustExec(
-		"insert into sent_message_log (timestamp, chat_id, result, endpoint, priority, latency, kind) values ($1, $2, $3, $4, $5, $6, $7)",
+func (d *Database) LogSentMessage(timestamp int, userID UserID, result int, endpoint string, priority Priority, latency int, kind PacketKind) {
+	d.MustExec(`
+		insert into sent_message_log (timestamp, user_id, result, endpoint, priority, latency, kind)
+		values ($1, $2, $3, $4, $5, $6, $7)`,
 		timestamp,
-		chatID,
+		int64(userID),
 		result,
 		endpoint,
 		priority,
@@ -1177,8 +1424,8 @@ func (d *Database) RequeueNotification(id int) {
 }
 
 // IncrementReports increments the reports count for a user
-func (d *Database) IncrementReports(chatID int64) {
-	d.MustExec("update users set reports=reports+1 where chat_id = $1", chatID)
+func (d *Database) IncrementReports(userID UserID) {
+	d.MustExec("update users set reports=reports+1 where id = $1", int64(userID))
 }
 
 // ConfirmStatusChanges finds streamers needing confirmation and updates them.

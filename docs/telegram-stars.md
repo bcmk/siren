@@ -17,7 +17,8 @@ so larger packages are cheaper per subscription and discounts stay non-negative.
 4. `successful_payment` triggers `GrantStarPaymentSubs` (idempotent).
 
 During the startup migration window,
-`rejectPaymentsWhileMigrating` rejects payments with HTTP 503,
+`rejectForRedeliveryWhileMigrating` rejects payments
+and group-to-supergroup migration messages with HTTP 503,
 so Telegram redelivers them once the schema is ready.
 We cannot defer in-process:
 the webhook library returns 200 as soon as the update is enqueued,

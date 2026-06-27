@@ -19,7 +19,14 @@ type messageParams struct {
 }
 
 func (m *messageParams) chatID() int64 {
-	return m.ChatID.(int64)
+	// setChatID must run first (trySend or sendMaintenance).
+	// A read before it is a bug in a new send path,
+	// so fail here rather than silently POSTing to chat 0.
+	id, ok := m.ChatID.(int64)
+	if !ok {
+		panic("chatID read before setChatID")
+	}
+	return id
 }
 
 func (m *messageParams) setChatID(id int64) {
@@ -36,7 +43,12 @@ type photoParams struct {
 }
 
 func (p *photoParams) chatID() int64 {
-	return p.ChatID.(int64)
+	// See messageParams.chatID: a read before setChatID is a bug.
+	id, ok := p.ChatID.(int64)
+	if !ok {
+		panic("chatID read before setChatID")
+	}
+	return id
 }
 
 func (p *photoParams) setChatID(id int64) {

@@ -55,18 +55,18 @@ func TestSql(t *testing.T) {
 	insertSubscription(&w.db, "ep2", 6, "e")
 	insertSubscription(&w.db, "ep2", 7, "f")
 	insertSubscription(&w.db, "ep2", 8, "g")
-	w.db.MustExec("insert into block (endpoint, chat_id, block) values ($1, $2, $3)", "ep1", 2, 0)
+	w.db.MustExec("insert into block (endpoint, user_id, block) select $1, u.id, $3 from users u where u.chat_id = $2", "ep1", 2, 0)
 	w.db.MustExec("update streamers set confirmed_status = $2 where nickname = $1", "a", cmdlib.StatusOnline)
 	w.db.MustExec("update streamers set confirmed_status = $2 where nickname = $1", "b", cmdlib.StatusOnline)
 	w.db.MustExec("update streamers set confirmed_status = $2 where nickname = $1", "c", cmdlib.StatusOnline)
 	w.db.MustExec("update streamers set confirmed_status = $2 where nickname = $1", "c2", cmdlib.StatusOnline)
-	broadcastChats := w.db.BroadcastChats("ep1")
-	if !reflect.DeepEqual(broadcastChats, []int64{1, 2, 3, 4, 5, 6, 7}) {
-		t.Error("unexpected broadcast chats result", broadcastChats)
+	broadcastUsers := w.db.BroadcastUsers("ep1")
+	if !reflect.DeepEqual(broadcastUsers, []db.UserID{1, 2, 3, 4, 5, 6, 7}) {
+		t.Error("unexpected broadcast users result", broadcastUsers)
 	}
-	broadcastChats = w.db.BroadcastChats("ep2")
-	if !reflect.DeepEqual(broadcastChats, []int64{6, 7, 8}) {
-		t.Error("unexpected broadcast chats result", broadcastChats)
+	broadcastUsers = w.db.BroadcastUsers("ep2")
+	if !reflect.DeepEqual(broadcastUsers, []db.UserID{6, 7, 8}) {
+		t.Error("unexpected broadcast users result", broadcastUsers)
 	}
 	chatsForStreamer, endpoints := w.chatsForStreamer("a")
 	if !reflect.DeepEqual(endpoints, []string{"ep1"}) {
@@ -97,23 +97,23 @@ func TestSql(t *testing.T) {
 	}
 	w.db.IncrementBlock("ep1", 2)
 	w.db.IncrementBlock("ep1", 2)
-	if w.db.MustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep1") != 2 {
+	if w.db.MustInt("select b.block from block b join users u on u.id = b.user_id where u.chat_id = $1 and b.endpoint = $2", 2, "ep1") != 2 {
 		t.Error("unexpected block for streamer result", chatsForStreamer)
 	}
 	w.db.IncrementBlock("ep2", 2)
-	if w.db.MustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep2") != 1 {
+	if w.db.MustInt("select b.block from block b join users u on u.id = b.user_id where u.chat_id = $1 and b.endpoint = $2", 2, "ep2") != 1 {
 		t.Error("unexpected block for streamer result", chatsForStreamer)
 	}
 	w.db.ResetBlock("ep1", 2)
-	if w.db.MustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep1") != 0 {
+	if w.db.MustInt("select b.block from block b join users u on u.id = b.user_id where u.chat_id = $1 and b.endpoint = $2", 2, "ep1") != 0 {
 		t.Error("unexpected block for streamer result", chatsForStreamer)
 	}
-	if w.db.MustInt("select block from block where chat_id = $1 and endpoint = $2", 2, "ep2") != 1 {
+	if w.db.MustInt("select b.block from block b join users u on u.id = b.user_id where u.chat_id = $1 and b.endpoint = $2", 2, "ep2") != 1 {
 		t.Error("unexpected block for streamer result", chatsForStreamer)
 	}
 	w.db.IncrementBlock("ep1", 1)
 	w.db.IncrementBlock("ep1", 1)
-	if w.db.MustInt("select block from block where chat_id = $1", 1) != 2 {
+	if w.db.MustInt("select b.block from block b join users u on u.id = b.user_id where u.chat_id = $1", 1) != 2 {
 		t.Error("unexpected block for streamer result", chatsForStreamer)
 	}
 	statuses := confirmedStatusesForChat(&w.db, "ep1", 3)
@@ -142,10 +142,10 @@ func TestUpdateNotifications(t *testing.T) {
 	insertSubscription(&w.db, "ep1", 4, "d")
 	insertSubscription(&w.db, "ep2", 4, "d")
 
-	w.db.MustExec("insert into users (chat_id, created_at) values ($1, 0)", 1)
-	w.db.MustExec("insert into users (chat_id, created_at) values ($1, 0)", 2)
-	w.db.MustExec("insert into users (chat_id, created_at) values ($1, 0)", 3)
-	w.db.MustExec("insert into users (chat_id, created_at) values ($1, 0)", 4)
+	w.db.MustExec("insert into users (chat_id, created_at) values ($1, 0) on conflict (chat_id) do nothing", 1)
+	w.db.MustExec("insert into users (chat_id, created_at) values ($1, 0) on conflict (chat_id) do nothing", 2)
+	w.db.MustExec("insert into users (chat_id, created_at) values ($1, 0) on conflict (chat_id) do nothing", 3)
+	w.db.MustExec("insert into users (chat_id, created_at) values ($1, 0) on conflict (chat_id) do nothing", 4)
 
 	// All subscribed streamers for this test
 	allStreamers := map[string]bool{"a": true, "b": true, "c": true, "d": true}
@@ -202,7 +202,7 @@ func TestNotificationsStorage(t *testing.T) {
 	nots := []db.Notification{
 		{
 			Endpoint:   "endpoint_a",
-			ChatID:     1,
+			UserID:     w.db.EnsureUser(1),
 			StreamerID: &idA,
 			Nickname:   "a",
 			Status:     cmdlib.StatusUnknown,
@@ -215,7 +215,7 @@ func TestNotificationsStorage(t *testing.T) {
 		},
 		{
 			Endpoint:   "endpoint_b",
-			ChatID:     2,
+			UserID:     w.db.EnsureUser(2),
 			StreamerID: &idB,
 			Nickname:   "b",
 			Status:     cmdlib.StatusOffline,
@@ -238,7 +238,7 @@ func TestNotificationsStorage(t *testing.T) {
 	nots = []db.Notification{
 		{
 			Endpoint:   "endpoint_c",
-			ChatID:     3,
+			UserID:     w.db.EnsureUser(3),
 			StreamerID: &idC,
 			Nickname:   "c",
 			Status:     cmdlib.StatusOnline,
@@ -257,6 +257,40 @@ func TestNotificationsStorage(t *testing.T) {
 	count := w.db.MustInt("select count(*) from notification_queue")
 	if count != 3 {
 		t.Errorf("unexpected notifications count %d", count)
+	}
+}
+
+// A migrate arriving as a final (non-retry) result re-arms the notification
+// instead of finalizing it as delivered: nothing was actually sent.
+func TestCompleteSendResultMigrateReArms(t *testing.T) {
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase()
+
+	w.db.AddUser(1, 3, 0, "private")
+	streamerID := insertTestStreamer(&w.db, db.Streamer{Nickname: "a"})
+	w.db.StoreNotifications([]db.Notification{{
+		Endpoint:   "test",
+		UserID:     w.db.EnsureUser(1),
+		StreamerID: &streamerID,
+		Nickname:   "a",
+		Status:     cmdlib.StatusOnline,
+		Priority:   db.PriorityHigh,
+		Kind:       db.NotificationPacket,
+	}})
+	not := w.db.NewNotifications()[0]
+
+	// Old code deleted the row and incremented reports for this final migrate.
+	w.completeSendResult(msgSendResult{
+		result:         messageMigrate,
+		userID:         not.UserID,
+		notificationID: not.ID,
+		kind:           db.NotificationPacket,
+	})
+
+	// Re-armed, not finalized: it returns on the next fetch.
+	if requeued := w.db.NewNotifications(); len(requeued) != 1 || requeued[0].ID != not.ID {
+		t.Errorf("migrate finalized the notification instead of re-arming it: %v", requeued)
 	}
 }
 
@@ -609,7 +643,7 @@ func TestAddStreamer(t *testing.T) {
 	w.db.AddUser(1, 3, 0, "private")
 
 	// Add streamer that doesn't exist — should insert into pending_subscriptions and return nil
-	if w.addStreamer("test", 1, "newmodel", 100, false) != nil {
+	if w.addStreamer("test", 1, w.db.EnsureUser(1), "newmodel", 100, false) != nil {
 		t.Error("expected addStreamer to return nil when streamer is not in the database and subscription is pending verification")
 	}
 	if w.db.MustInt("select count(*) from pending_subscriptions where nickname = $1", "newmodel") != 1 {
@@ -620,7 +654,7 @@ func TestAddStreamer(t *testing.T) {
 
 	// Add streamer that exists with online status — should return non-nil
 	insertTestStreamer(&w.db, db.Streamer{Nickname: "onlinemodel", ConfirmedStatus: cmdlib.StatusOnline})
-	if w.addStreamer("test", 1, "onlinemodel", 100, false) == nil {
+	if w.addStreamer("test", 1, w.db.EnsureUser(1), "onlinemodel", 100, false) == nil {
 		t.Error("expected addStreamer to return non-nil for existing streamer")
 	}
 	if w.db.MustInt(`
@@ -638,7 +672,7 @@ func TestAddStreamer(t *testing.T) {
 
 	// Add streamer that exists with offline status — should return non-nil
 	insertTestStreamer(&w.db, db.Streamer{Nickname: "offlinemodel", ConfirmedStatus: cmdlib.StatusOffline})
-	if w.addStreamer("test", 1, "offlinemodel", 100, false) == nil {
+	if w.addStreamer("test", 1, w.db.EnsureUser(1), "offlinemodel", 100, false) == nil {
 		t.Error("expected addStreamer to return non-nil for existing offline streamer")
 	}
 	nots = w.db.NewNotifications()
@@ -653,13 +687,11 @@ func TestConfirmSub(t *testing.T) {
 	w.createDatabase()
 
 	// Insert pending subscription
-	w.db.MustExec(
-		"insert into pending_subscriptions (endpoint, chat_id, nickname) values ($1, $2, $3)",
-		"test", 1, "a",
-	)
+	w.db.AddUser(1, 0, 0, "")
+	insertPendingSubscription(&w.db, "test", 1, "a", false)
 
 	// Confirm the subscription
-	streamerID := w.db.ConfirmSub(db.PendingSubscription{Endpoint: "test", ChatID: 1, Nickname: "a"})
+	streamerID := w.db.ConfirmSub(db.PendingSubscription{Endpoint: "test", UserID: 1, Nickname: "a"})
 
 	// Check returned streamer ID is valid
 	if streamerID == 0 {
@@ -692,13 +724,11 @@ func TestDenySub(t *testing.T) {
 	w.createDatabase()
 
 	// Insert pending subscription
-	w.db.MustExec(
-		"insert into pending_subscriptions (endpoint, chat_id, nickname) values ($1, $2, $3)",
-		"test", 1, "b",
-	)
+	w.db.AddUser(1, 0, 0, "")
+	insertPendingSubscription(&w.db, "test", 1, "b", false)
 
 	// Deny the subscription
-	w.db.DenySub(db.PendingSubscription{Endpoint: "test", ChatID: 1, Nickname: "b"})
+	w.db.DenySub(db.PendingSubscription{Endpoint: "test", UserID: 1, Nickname: "b"})
 
 	// Check pending subscription is deleted
 	if w.db.MustInt("select count(*) from pending_subscriptions where nickname = $1", "b") != 0 {
@@ -712,44 +742,23 @@ func TestProcessSubsConfirmations(t *testing.T) {
 	w.createDatabase()
 
 	// Insert pending subscriptions in checking state
-	w.db.MustExec(
-		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking) values ($1, $2, $3, $4)",
-		"test", 1, "online_model", true,
-	)
-	w.db.MustExec(
-		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking) values ($1, $2, $3, $4)",
-		"test", 2, "offline_model", true,
-	)
-	w.db.MustExec(
-		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking) values ($1, $2, $3, $4)",
-		"test", 3, "notfound_model", true,
-	)
-	w.db.MustExec(
-		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking) values ($1, $2, $3, $4)",
-		"test", 4, "denied_model", true,
-	)
-	w.db.MustExec(
-		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking) values ($1, $2, $3, $4)",
-		"test", 5, "notfound_denied_model", true,
-	)
-	w.db.MustExec(
-		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking) values ($1, $2, $3, $4)",
-		"test", 6, "online_offline_model", true,
-	)
-	w.db.MustExec(
-		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking) values ($1, $2, $3, $4)",
-		"test", 7, "unknown_model", true,
-	)
+	for chatID := int64(1); chatID <= 9; chatID++ {
+		w.db.AddUser(chatID, 0, 0, "")
+	}
+	insertPendingSubscription(&w.db, "test", 1, "online_model", true)
+	insertPendingSubscription(&w.db, "test", 2, "offline_model", true)
+	insertPendingSubscription(&w.db, "test", 3, "notfound_model", true)
+	insertPendingSubscription(&w.db, "test", 4, "denied_model", true)
+	insertPendingSubscription(&w.db, "test", 5, "notfound_denied_model", true)
+	insertPendingSubscription(&w.db, "test", 6, "online_offline_model", true)
+	insertPendingSubscription(&w.db, "test", 7, "unknown_model", true)
 	// Referral pending subscription — should create referral event on confirmation
 	w.db.MustExec(
-		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking, referral) values ($1, $2, $3, $4, $5)",
+		"insert into pending_subscriptions (endpoint, user_id, nickname, checking, referral) select $1, u.id, $3, $4, $5 from users u where u.chat_id = $2",
 		"test", 8, "referral_model", true, true,
 	)
 	// Non-referral pending subscription — should NOT create referral event
-	w.db.MustExec(
-		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking) values ($1, $2, $3, $4)",
-		"test", 9, "nonreferral_model", true,
-	)
+	insertPendingSubscription(&w.db, "test", 9, "nonreferral_model", true)
 
 	// Process confirmations with checker results
 	w.processSubsConfirmations(&cmdlib.ExistenceListResults{
@@ -826,9 +835,11 @@ func TestProcessSubsConfirmations(t *testing.T) {
 		t.Error("expected referral_model to be in subscriptions")
 	}
 	referralCount := w.db.MustInt(`
-		select count(*) from referral_events r
+		select count(*)
+		from referral_events r
 		join streamers s on s.id = r.streamer_id
-		where s.nickname = $1 and r.follower_chat_id = $2`, "referral_model", 8)
+		join users u on u.id = r.follower_user_id
+		where s.nickname = $1 and u.chat_id = $2`, "referral_model", 8)
 	if referralCount != 1 {
 		t.Error("expected referral event for referral_model")
 	}
@@ -838,9 +849,11 @@ func TestProcessSubsConfirmations(t *testing.T) {
 		t.Error("expected nonreferral_model to be in subscriptions")
 	}
 	nonReferralCount := w.db.MustInt(`
-		select count(*) from referral_events r
+		select count(*)
+		from referral_events r
 		join streamers s on s.id = r.streamer_id
-		where s.nickname = $1 and r.follower_chat_id = $2`, "nonreferral_model", 9)
+		join users u on u.id = r.follower_user_id
+		where s.nickname = $1 and u.chat_id = $2`, "nonreferral_model", 9)
 	if nonReferralCount != 0 {
 		t.Error("expected no referral event for nonreferral_model")
 	}
@@ -855,18 +868,12 @@ func TestProcessSubsConfirmationsPartialList(t *testing.T) {
 	defer w.terminate()
 	w.createDatabase()
 
-	w.db.MustExec(
-		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking) values ($1, $2, $3, $4)",
-		"test", 1, "answered_model", true,
-	)
-	w.db.MustExec(
-		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking) values ($1, $2, $3, $4)",
-		"test", 2, "still_pending_model", true,
-	)
-	w.db.MustExec(
-		"insert into pending_subscriptions (endpoint, chat_id, nickname, checking) values ($1, $2, $3, $4)",
-		"test", 3, "also_still_pending_model", true,
-	)
+	for chatID := int64(1); chatID <= 3; chatID++ {
+		w.db.AddUser(chatID, 0, 0, "")
+	}
+	insertPendingSubscription(&w.db, "test", 1, "answered_model", true)
+	insertPendingSubscription(&w.db, "test", 2, "still_pending_model", true)
+	insertPendingSubscription(&w.db, "test", 3, "also_still_pending_model", true)
 
 	w.processSubsConfirmations(&cmdlib.ExistenceListResults{
 		Streamers: map[string]cmdlib.StreamerInfoWithStatus{
@@ -917,10 +924,11 @@ func TestUserReferral(t *testing.T) {
 
 		// Create referrer and their referral link
 		w.db.AddUser(20, w.cfg.MaxSubs, 0, "private")
-		w.db.AddReferral(20, "ref-abc")
+		w.db.AddReferral(w.db.EnsureUser(20), "ref-abc")
 
 		// New user clicks referral link
-		w.start("test", 21, "ref-abc", 100, "private")
+		_, created := w.db.AddUser(21, w.cfg.MaxSubs, 100, "private")
+		w.start("test", 21, w.db.EnsureUser(21), "ref-abc", 100, created)
 
 		// Drain outgoing messages
 		for w.sendQueue.Len() > 0 {
@@ -929,8 +937,11 @@ func TestUserReferral(t *testing.T) {
 
 		// Verify referral event was created with referrer
 		refCount := w.db.MustInt(`
-			select count(*) from referral_events
-			where referrer_chat_id = $1 and follower_chat_id = $2`, 20, 21)
+			select count(*)
+			from referral_events re
+			join users ur on ur.id = re.referrer_user_id
+			join users uf on uf.id = re.follower_user_id
+			where ur.chat_id = $1 and uf.chat_id = $2`, 20, 21)
 		if refCount != 1 {
 			t.Error("expected referral event")
 		}
@@ -957,7 +968,7 @@ func TestUserReferral(t *testing.T) {
 
 		// Verify referred_users counter incremented
 		referredUsers := w.db.MustInt(
-			"select referred_users from referrals where chat_id = $1", 20)
+			"select r.referred_users from referrals r join users u on u.id = r.user_id where u.chat_id = $1", 20)
 		if referredUsers != 1 {
 			t.Errorf("expected referred_users=1, got %d", referredUsers)
 		}
@@ -968,7 +979,8 @@ func TestUserReferral(t *testing.T) {
 		defer w.terminate()
 		w.createDatabase()
 
-		w.start("test", 30, "nonexistent-ref", 100, "private")
+		_, created := w.db.AddUser(30, w.cfg.MaxSubs, 100, "private")
+		w.start("test", 30, w.db.EnsureUser(30), "nonexistent-ref", 100, created)
 
 		// Drain outgoing messages
 		for w.sendQueue.Len() > 0 {
@@ -977,7 +989,7 @@ func TestUserReferral(t *testing.T) {
 
 		// Verify no referral event
 		refCount := w.db.MustInt(
-			"select count(*) from referral_events where follower_chat_id = $1", 30)
+			"select count(*) from referral_events re join users u on u.id = re.follower_user_id where u.chat_id = $1", 30)
 		if refCount != 0 {
 			t.Error("expected no referral event for invalid referral ID")
 		}
@@ -990,12 +1002,13 @@ func TestUserReferral(t *testing.T) {
 
 		// Create referrer with referral link
 		w.db.AddUser(40, w.cfg.MaxSubs, 0, "private")
-		w.db.AddReferral(40, "ref-xyz")
+		w.db.AddReferral(w.db.EnsureUser(40), "ref-xyz")
 
 		// Create follower who already exists
 		w.db.AddUser(41, w.cfg.MaxSubs, 0, "private")
 
-		w.start("test", 41, "ref-xyz", 100, "private")
+		_, created := w.db.AddUser(41, w.cfg.MaxSubs, 100, "private")
+		w.start("test", 41, w.db.EnsureUser(41), "ref-xyz", 100, created)
 
 		// Drain outgoing messages
 		for w.sendQueue.Len() > 0 {
@@ -1004,7 +1017,7 @@ func TestUserReferral(t *testing.T) {
 
 		// Verify no referral event
 		refCount := w.db.MustInt(
-			"select count(*) from referral_events where follower_chat_id = $1", 41)
+			"select count(*) from referral_events re join users u on u.id = re.follower_user_id where u.chat_id = $1", 41)
 		if refCount != 0 {
 			t.Error("expected no referral event for existing user")
 		}
@@ -1024,9 +1037,10 @@ func TestUserReferral(t *testing.T) {
 
 		// Create user with referral link
 		w.db.AddUser(50, w.cfg.MaxSubs, 0, "private")
-		w.db.AddReferral(50, "ref-own")
+		w.db.AddReferral(w.db.EnsureUser(50), "ref-own")
 
-		w.start("test", 50, "ref-own", 100, "private")
+		_, created := w.db.AddUser(50, w.cfg.MaxSubs, 100, "private")
+		w.start("test", 50, w.db.EnsureUser(50), "ref-own", 100, created)
 
 		// Drain outgoing messages
 		for w.sendQueue.Len() > 0 {
@@ -1035,7 +1049,7 @@ func TestUserReferral(t *testing.T) {
 
 		// Verify no referral event
 		refCount := w.db.MustInt(
-			"select count(*) from referral_events where follower_chat_id = $1", 50)
+			"select count(*) from referral_events re join users u on u.id = re.follower_user_id where u.chat_id = $1", 50)
 		if refCount != 0 {
 			t.Error("expected no referral event for own link")
 		}
@@ -1051,7 +1065,8 @@ func TestStreamerReferral(t *testing.T) {
 		// Pre-create a known streamer
 		insertTestStreamer(&w.db, db.Streamer{Nickname: "known_model", ConfirmedStatus: cmdlib.StatusOnline})
 
-		w.start("test", 10, "m-known_model", 100, "private")
+		_, created := w.db.AddUser(10, w.cfg.MaxSubs, 100, "private")
+		w.start("test", 10, w.db.EnsureUser(10), "m-known_model", 100, created)
 
 		// Drain outgoing messages
 		for w.sendQueue.Len() > 0 {
@@ -1060,18 +1075,22 @@ func TestStreamerReferral(t *testing.T) {
 
 		// Verify subscription was created
 		subCount := w.db.MustInt(`
-			select count(*) from subscriptions sub
+			select count(*)
+			from subscriptions sub
 			join streamers s on s.id = sub.streamer_id
-			where s.nickname = $1 and sub.chat_id = $2`, "known_model", 10)
+			join users u on u.id = sub.user_id
+			where s.nickname = $1 and u.chat_id = $2`, "known_model", 10)
 		if subCount != 1 {
 			t.Error("expected subscription for known_model")
 		}
 
 		// Verify referral event was created
 		refCount := w.db.MustInt(`
-			select count(*) from referral_events r
+			select count(*)
+			from referral_events r
 			join streamers s on s.id = r.streamer_id
-			where s.nickname = $1 and r.follower_chat_id = $2`, "known_model", 10)
+			join users u on u.id = r.follower_user_id
+			where s.nickname = $1 and u.chat_id = $2`, "known_model", 10)
 		if refCount != 1 {
 			t.Error("expected referral event for known_model")
 		}
@@ -1082,7 +1101,8 @@ func TestStreamerReferral(t *testing.T) {
 		defer w.terminate()
 		w.createDatabase()
 
-		w.start("test", 11, "m-unknown_model", 100, "private")
+		_, created := w.db.AddUser(11, w.cfg.MaxSubs, 100, "private")
+		w.start("test", 11, w.db.EnsureUser(11), "m-unknown_model", 100, created)
 
 		// Drain outgoing messages
 		for w.sendQueue.Len() > 0 {
@@ -1090,8 +1110,11 @@ func TestStreamerReferral(t *testing.T) {
 		}
 
 		// Verify pending subscription was created with referral flag
-		refFlag := w.db.MustInt(
-			"select referral::int from pending_subscriptions where nickname = $1 and chat_id = $2",
+		refFlag := w.db.MustInt(`
+			select ps.referral::int
+			from pending_subscriptions ps
+			join users u on u.id = ps.user_id
+			where ps.nickname = $1 and u.chat_id = $2`,
 			"unknown_model", 11)
 		if refFlag != 1 {
 			t.Error("expected pending subscription with referral=true")
@@ -1099,9 +1122,11 @@ func TestStreamerReferral(t *testing.T) {
 
 		// Verify no referral event yet
 		refCount := w.db.MustInt(`
-			select count(*) from referral_events r
+			select count(*)
+			from referral_events r
 			join streamers s on s.id = r.streamer_id
-			where s.nickname = $1 and r.follower_chat_id = $2`, "unknown_model", 11)
+			join users u on u.id = r.follower_user_id
+			where s.nickname = $1 and u.chat_id = $2`, "unknown_model", 11)
 		if refCount != 0 {
 			t.Error("expected no referral event for unknown streamer")
 		}
@@ -1249,14 +1274,20 @@ func TestQueryLastSubscriptionStatuses(t *testing.T) {
 		UnconfirmedStatus: cmdlib.StatusOnline,
 	})
 	insertTestStreamer(&w.db, db.Streamer{Nickname: "model_without_status"})
+	w.db.AddUser(1, 0, 0, "")
+	w.db.AddUser(2, 0, 0, "")
 	w.db.MustExec(`
-		insert into subscriptions (endpoint, chat_id, streamer_id)
-		values ($1, $2, (select id from streamers where nickname = $3))`,
+		insert into subscriptions (endpoint, user_id, streamer_id)
+		select $1, u.id, s.id
+		from users u, streamers s
+		where u.chat_id = $2 and s.nickname = $3`,
 		"test", 1, "model_with_status",
 	)
 	w.db.MustExec(`
-		insert into subscriptions (endpoint, chat_id, streamer_id)
-		values ($1, $2, (select id from streamers where nickname = $3))`,
+		insert into subscriptions (endpoint, user_id, streamer_id)
+		select $1, u.id, s.id
+		from users u, streamers s
+		where u.chat_id = $2 and s.nickname = $3`,
 		"test", 2, "model_without_status",
 	)
 
@@ -1432,7 +1463,7 @@ func TestUnknownStreamerFirstOfflineSaved(t *testing.T) {
 
 	// 1. User subscribes to a streamer we don't know yet — creates unconfirmed subscription
 	// This simulates subscribing to a Twitch streamer or a new unknown model
-	if w.addStreamer("test", 1, "unknown_model", 100, false) != nil {
+	if w.addStreamer("test", 1, w.db.EnsureUser(1), "unknown_model", 100, false) != nil {
 		t.Error("expected addStreamer to return nil for unknown streamer")
 	}
 	// Drain the "checking streamer" message
@@ -1751,10 +1782,10 @@ func TestNotifyOfStatuses(t *testing.T) {
 	w.db.AddUser(201, 3, 0, "private")
 
 	nots := []db.Notification{
-		{ChatID: 100, Endpoint: "test", Nickname: "a", Status: cmdlib.StatusOnline, Priority: db.PriorityLow},
-		{ChatID: 101, Endpoint: "test", Nickname: "b", Status: cmdlib.StatusOnline, Priority: db.PriorityHigh},
-		{ChatID: 200, Endpoint: "test", Nickname: "c", Status: cmdlib.StatusOnline, Priority: db.PriorityLow},
-		{ChatID: 201, Endpoint: "test", Nickname: "d", Status: cmdlib.StatusOnline, Priority: db.PriorityHigh},
+		{UserID: w.db.EnsureUser(100), Endpoint: "test", Nickname: "a", Status: cmdlib.StatusOnline, Priority: db.PriorityLow},
+		{UserID: w.db.EnsureUser(101), Endpoint: "test", Nickname: "b", Status: cmdlib.StatusOnline, Priority: db.PriorityHigh},
+		{UserID: w.db.EnsureUser(200), Endpoint: "test", Nickname: "c", Status: cmdlib.StatusOnline, Priority: db.PriorityLow},
+		{UserID: w.db.EnsureUser(201), Endpoint: "test", Nickname: "d", Status: cmdlib.StatusOnline, Priority: db.PriorityHigh},
 	}
 
 	w.enqueueNotifications(notificationBatch{notifications: nots})
@@ -1777,5 +1808,30 @@ func TestNotifyOfStatuses(t *testing.T) {
 	}
 	if highCount != 2 {
 		t.Errorf("expected 2 high priority messages, got %d", highCount)
+	}
+}
+
+func TestDeliverOffMainGoroutine(t *testing.T) {
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase()
+
+	w.db.AddUser(100, 3, 0, "private")
+	userID := w.db.EnsureUser(100)
+
+	// deliver runs off the main goroutine and must not touch the database.
+	done := make(chan any, 1)
+	go func() {
+		defer func() { done <- recover() }()
+		w.deliver(&queuedMessage{
+			userID:   userID,
+			endpoint: "test",
+			message:  &migrateThenOK{id: 100, target: 200},
+			priority: db.PriorityHigh,
+			kind:     db.MessagePacket,
+		})
+	}()
+	if r := <-done; r != nil {
+		t.Fatalf("deliver touched the database off the main goroutine: %v", r)
 	}
 }
