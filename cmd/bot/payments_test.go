@@ -33,7 +33,7 @@ func TestRejectForRedeliveryWhileMigrating(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := &worker{}
-			w.dbReady.Store(tt.ready)
+			w.maintenance.Store(!tt.ready)
 			var innerCalled bool
 			var innerBody string
 			inner := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {

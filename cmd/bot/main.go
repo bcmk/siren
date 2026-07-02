@@ -27,6 +27,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	texttemplate "text/template"
@@ -84,18 +85,24 @@ type worker struct {
 	imageDownloadLogs          chan imageDownloadLog
 	unconfirmedOnlineStreamers map[string]cmdlib.StreamerInfo
 	botNames                   map[string]string
-	outgoingMsgCh              chan outgoingPacket
-	outgoingMsgResults         chan msgSendResult
+	sendQueue                  sendHeap
+	commonCooling              bool
+	sendSeq                    uint64
+	sendResults                chan msgSendResult
+	cooledChats                chan int64
+	deliverWG                  sync.WaitGroup
 	existenceListResults       chan *cmdlib.ExistenceListResults
 	checkerResults             chan cmdlib.CheckerResults
 	sendingNotifications       chan []db.Notification
-	sentNotifications          chan []db.Notification
+	imagedNotifications        chan notificationBatch
 	ourIDs                     []int64
 	searchHTML                 *htmltemplate.Template
 	searchRequests             chan searchRequest
 	addRequests                chan addRequest
 	incomingPackets            chan incomingPacket
-	dbReady                    atomic.Bool
+	maintenance                atomic.Bool
+	shuttingDown               atomic.Bool
+	shutdownCh                 chan struct{}
 }
 
 type searchRequest struct {
@@ -115,16 +122,6 @@ type addRequest struct {
 type incomingPacket struct {
 	message  *models.Update
 	endpoint string
-}
-
-type outgoingPacket struct {
-	message     sendable
-	endpoint    string
-	requestedAt time.Time
-	kind        db.PacketKind
-	priority    db.Priority
-	seq         uint64
-	heapIndex   int
 }
 
 type appliedKind int
@@ -160,6 +157,16 @@ type msgSendResult struct {
 	migrateToChatID int64
 	latency         int
 	kind            db.PacketKind
+	notificationID  int
+	requestedAt     time.Time
+	retry           bool
+	retryAsText     sendable
+}
+
+// willResend reports whether the message will be sent again:
+// a retry in flight or a text fallback to re-queue.
+func (r msgSendResult) willResend() bool {
+	return r.retry || r.retryAsText != nil
 }
 
 type waitingUser struct {
@@ -175,7 +182,7 @@ type imageDownloadLog struct {
 func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 	client := cmdlib.HTTPClientWithTimeout(checker.Config().Timeout())
 
-	incomingPackets := make(chan incomingPacket)
+	incomingPackets := make(chan incomingPacket, incomingBufferSize*len(cfg.Endpoints))
 	telegramClient := cmdlib.HTTPClientWithTimeout(cfg.TelegramTimeout())
 	bots := make(map[string]*bot.Bot)
 	for n, p := range cfg.Endpoints {
@@ -183,7 +190,11 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 		handler := func(_ context.Context, _ *bot.Bot, update *models.Update) {
 			incomingPackets <- incomingPacket{message: update, endpoint: endpointName}
 		}
-		b, err := bot.New(string(p.BotToken), bot.WithHTTPClient(0, telegramClient), bot.WithDefaultHandler(handler))
+		b, err := bot.New(
+			string(p.BotToken),
+			bot.WithHTTPClient(0, telegramClient),
+			bot.WithDefaultHandler(handler),
+			bot.WithUpdatesChannelCap(incomingBufferSize))
 		checkErr(err)
 		bots[n] = b
 	}
@@ -205,17 +216,21 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 		imageDownloadLogs:          make(chan imageDownloadLog),
 		unconfirmedOnlineStreamers: map[string]cmdlib.StreamerInfo{},
 		botNames:                   map[string]string{},
-		outgoingMsgCh:              make(chan outgoingPacket, maxHeapLen),
-		outgoingMsgResults:         make(chan msgSendResult),
+		sendQueue:                  newSendHeap(),
+		sendResults:                make(chan msgSendResult, sendChanCap),
+		cooledChats:                make(chan int64, sendChanCap),
+		shutdownCh:                 make(chan struct{}),
 		existenceListResults:       make(chan *cmdlib.ExistenceListResults),
 		checkerResults:             make(chan cmdlib.CheckerResults),
 		sendingNotifications:       make(chan []db.Notification, 1000),
-		sentNotifications:          make(chan []db.Notification),
+		imagedNotifications:        make(chan notificationBatch),
 		ourIDs:                     getOurIDs(cfg),
 		searchRequests:             make(chan searchRequest),
 		addRequests:                make(chan addRequest),
 		incomingPackets:            incomingPackets,
 	}
+	// The bot starts in maintenance: the database is not created yet.
+	w.maintenance.Store(true)
 	for endpoint, a := range tr {
 		for _, b := range a.ToMap() {
 			w.loadImageForTranslation(endpoint, b)
@@ -284,8 +299,7 @@ func (w *worker) setWebhook() {
 	}
 }
 
-func (w *worker) removeWebhook() {
-	ctx := context.Background()
+func (w *worker) removeWebhook(ctx context.Context) {
 	for n := range w.cfg.Endpoints {
 		linf("removing webhook for endpoint %s...", n)
 		// nil, not &DeleteWebhookParams{}: an empty struct makes the library
@@ -366,22 +380,8 @@ func (w *worker) sendText(
 	text string,
 	kind db.PacketKind,
 ) {
-	params := &bot.SendMessageParams{
-		ChatID:              chatID,
-		Text:                text,
-		DisableNotification: !notify,
-	}
-	if disablePreview {
-		disabled := true
-		params.LinkPreviewOptions = &models.LinkPreviewOptions{IsDisabled: &disabled}
-	}
-	switch parse {
-	case cmdlib.ParseHTML:
-		params.ParseMode = models.ParseModeHTML
-	case cmdlib.ParseMarkdown:
-		params.ParseMode = models.ParseModeMarkdown
-	}
-	w.enqueueMessage(priority, endpoint, &messageParams{params}, kind)
+	msg := textMessage(chatID, text, notify, disablePreview, parse)
+	w.enqueueMessage(priority, endpoint, msg, kind, 0)
 }
 
 func (w *worker) sendImage(
@@ -394,18 +394,8 @@ func (w *worker) sendImage(
 	img []byte,
 	kind db.PacketKind,
 ) {
-	params := &bot.SendPhotoParams{
-		ChatID:              chatID,
-		Caption:             text,
-		DisableNotification: !notify,
-	}
-	switch parse {
-	case cmdlib.ParseHTML:
-		params.ParseMode = models.ParseModeHTML
-	case cmdlib.ParseMarkdown:
-		params.ParseMode = models.ParseModeMarkdown
-	}
-	w.enqueueMessage(priority, endpoint, &photoParams{SendPhotoParams: params, imageData: img}, kind)
+	msg := photoMessage(chatID, text, notify, parse, img)
+	w.enqueueMessage(priority, endpoint, msg, kind, 0)
 }
 
 func (w *worker) sendMessageInternal(endpoint string, msg sendable) (int, int64) {
@@ -471,6 +461,64 @@ func templateToString(t *texttemplate.Template, key string, data map[string]inte
 	return buf.String()
 }
 
+func parseMode(parse cmdlib.ParseKind) models.ParseMode {
+	switch parse {
+	case cmdlib.ParseHTML:
+		return models.ParseModeHTML
+	case cmdlib.ParseMarkdown:
+		return models.ParseModeMarkdown
+	}
+	return ""
+}
+
+func textMessage(chatID int64, text string, notify, disablePreview bool, parse cmdlib.ParseKind) *messageParams {
+	params := &bot.SendMessageParams{
+		ChatID:              chatID,
+		Text:                text,
+		DisableNotification: !notify,
+		ParseMode:           parseMode(parse),
+	}
+	if disablePreview {
+		params.LinkPreviewOptions = &models.LinkPreviewOptions{IsDisabled: bot.True()}
+	}
+	return &messageParams{params}
+}
+
+func photoMessage(chatID int64, text string, notify bool, parse cmdlib.ParseKind, img []byte) *photoParams {
+	return &photoParams{
+		SendPhotoParams: &bot.SendPhotoParams{
+			ChatID:              chatID,
+			Caption:             text,
+			DisableNotification: !notify,
+			ParseMode:           parseMode(parse),
+		},
+		imageData: img,
+	}
+}
+
+// enqueueTr renders a translation and queues it,
+// tagged with the notification_queue row to clear once sent (0 for replies).
+func (w *worker) enqueueTr(
+	priority db.Priority,
+	endpoint string,
+	chatID int64,
+	notify bool,
+	translation *cmdlib.Translation,
+	data map[string]interface{},
+	image []byte,
+	kind db.PacketKind,
+	notificationID int,
+) {
+	text := templateToString(w.tpl[endpoint], translation.Key, data)
+	var msg sendable
+	if image == nil {
+		msg = textMessage(chatID, text, notify, translation.DisablePreview, translation.Parse)
+	} else {
+		msg = photoMessage(chatID, text, notify, translation.Parse, image)
+	}
+	w.enqueueMessage(priority, endpoint, msg, kind, notificationID)
+}
+
 func (w *worker) sendTr(
 	priority db.Priority,
 	endpoint string,
@@ -480,9 +528,7 @@ func (w *worker) sendTr(
 	data map[string]interface{},
 	kind db.PacketKind,
 ) {
-	tpl := w.tpl[endpoint]
-	text := templateToString(tpl, translation.Key, data)
-	w.sendText(priority, endpoint, chatID, notify, translation.DisablePreview, translation.Parse, text, kind)
+	w.enqueueTr(priority, endpoint, chatID, notify, translation, data, nil, kind, 0)
 }
 
 func (w *worker) sendAdsTr(
@@ -500,21 +546,6 @@ func (w *worker) sendAdsTr(
 	} else {
 		w.sendImage(priority, endpoint, chatID, notify, translation.Parse, text, translation.ImageBytes, db.AdPacket)
 	}
-}
-
-func (w *worker) sendTrImage(
-	priority db.Priority,
-	endpoint string,
-	chatID int64,
-	notify bool,
-	translation *cmdlib.Translation,
-	data map[string]interface{},
-	image []byte,
-	kind db.PacketKind,
-) {
-	tpl := w.tpl[endpoint]
-	text := templateToString(tpl, translation.Key, data)
-	w.sendImage(priority, endpoint, chatID, notify, translation.Parse, text, image, kind)
 }
 
 func (w *worker) createDatabase() {
@@ -560,13 +591,24 @@ func (w *worker) downloadImages(notifications []db.Notification) map[string][]by
 	return images
 }
 
-func (w *worker) notifyOfStatuses(notifications []db.Notification) {
-	images := map[string][]byte{}
-	if w.cfg.ShowImages {
-		images = w.downloadImages(notifications)
-	}
-	for _, n := range notifications {
-		w.notifyOfStatus(n.Priority, n, images[n.ImageURL], n.Social)
+// notificationBatch pairs notifications with their fetched images.
+type notificationBatch struct {
+	notifications []db.Notification
+	images        map[string][]byte
+}
+
+// enqueueNotifications queues a fetched batch of status notifications.
+// Main goroutine only.
+func (w *worker) enqueueNotifications(batch notificationBatch) {
+	// NewNotifications orders by id.
+	// On an idle scheduler the first push dispatches at once,
+	// before its batch siblings reach the heap;
+	// order by priority so that first pick is the best of the batch.
+	sort.SliceStable(batch.notifications, func(i, j int) bool {
+		return batch.notifications[i].Priority < batch.notifications[j].Priority
+	})
+	for _, n := range batch.notifications {
+		w.notifyOfStatus(n.Priority, n, batch.images[n.ImageURL], n.Social)
 	}
 }
 
@@ -605,8 +647,25 @@ func adWeight(tr *cmdlib.Translation) int {
 	return tr.Weight
 }
 
+// finalizeNotification clears a notification's row.
+// It counts toward the user's report total
+// only if the send reached a final result,
+// not if the row was dropped before any send
+// (no endpoint, unhandled status).
+func (w *worker) finalizeNotification(notificationID int, chatID int64, hasFinalResult bool) {
+	if notificationID == 0 {
+		return
+	}
+	w.db.DeleteNotification(notificationID)
+	if hasFinalResult {
+		w.db.IncrementReports(chatID)
+	}
+}
+
 func (w *worker) notifyOfStatus(priority db.Priority, n db.Notification, image []byte, social bool) {
 	if w.tr[n.Endpoint] == nil {
+		// Orphaned endpoint (removed from config); drop the stranded row.
+		w.finalizeNotification(n.ID, n.ChatID, false)
 		return
 	}
 	ldbg("notifying of status of the streamer %s", n.Nickname)
@@ -625,15 +684,14 @@ func (w *worker) notifyOfStatus(priority db.Priority, n db.Notification, image [
 	notify := !n.SilentMessages
 	switch n.Status {
 	case cmdlib.StatusOnline:
-		if image == nil {
-			w.sendTr(priority, n.Endpoint, n.ChatID, notify, w.tr[n.Endpoint].Online, data, n.Kind)
-		} else {
-			w.sendTrImage(priority, n.Endpoint, n.ChatID, notify, w.tr[n.Endpoint].Online, data, image, n.Kind)
-		}
+		w.enqueueTr(priority, n.Endpoint, n.ChatID, notify, w.tr[n.Endpoint].Online, data, image, n.Kind, n.ID)
 	case cmdlib.StatusOffline:
-		w.sendTr(priority, n.Endpoint, n.ChatID, false, w.tr[n.Endpoint].Offline, data, n.Kind)
+		w.enqueueTr(priority, n.Endpoint, n.ChatID, false, w.tr[n.Endpoint].Offline, data, nil, n.Kind, n.ID)
 	case cmdlib.StatusDenied:
-		w.sendTr(priority, n.Endpoint, n.ChatID, false, w.tr[n.Endpoint].Denied, data, n.Kind)
+		w.enqueueTr(priority, n.Endpoint, n.ChatID, false, w.tr[n.Endpoint].Denied, data, nil, n.Kind, n.ID)
+	default:
+		// No message for this status; clear the queue row so it doesn't strand.
+		w.finalizeNotification(n.ID, n.ChatID, false)
 	}
 	if social && w.cfg.AdChancePercent > 0 && rand.Intn(100) < w.cfg.AdChancePercent {
 		w.ad(priority, n.Endpoint, n.ChatID)
@@ -718,12 +776,9 @@ func (w *worker) addStreamer(endpoint string, chatID int64, nickname string, now
 	if nickname == "" {
 		tr := w.tr[endpoint].SyntaxAdd
 		text := templateToString(w.tpl[endpoint], tr.Key, nil)
-		params := &bot.SendMessageParams{
-			ChatID: chatID,
-			Text:   text,
-		}
+		msg := textMessage(chatID, text, true, tr.DisablePreview, tr.Parse)
 		if chatID > 0 && !w.checker.Capabilities().UsesFixedListOnline() {
-			params.ReplyMarkup = &models.InlineKeyboardMarkup{
+			msg.ReplyMarkup = &models.InlineKeyboardMarkup{
 				InlineKeyboard: [][]models.InlineKeyboardButton{{
 					{
 						Text:   w.tr[endpoint].SearchButton.Str,
@@ -732,17 +787,7 @@ func (w *worker) addStreamer(endpoint string, chatID int64, nickname string, now
 				}},
 			}
 		}
-		if tr.DisablePreview {
-			disabled := true
-			params.LinkPreviewOptions = &models.LinkPreviewOptions{IsDisabled: &disabled}
-		}
-		switch tr.Parse {
-		case cmdlib.ParseHTML:
-			params.ParseMode = models.ParseModeHTML
-		case cmdlib.ParseMarkdown:
-			params.ParseMode = models.ParseModeMarkdown
-		}
-		w.enqueueMessage(db.PriorityHigh, endpoint, &messageParams{params}, db.ReplyPacket)
+		w.enqueueMessage(db.PriorityHigh, endpoint, msg, db.ReplyPacket, 0)
 		return nil
 	}
 	nickname = w.checker.NicknamePreprocessing(nickname)
@@ -852,22 +897,9 @@ func (w *worker) buySubs(endpoint string, chatID int64) {
 			CallbackData: fmt.Sprintf("buy:stars:%d", t.Count),
 		}})
 	}
-	params := &bot.SendMessageParams{
-		ChatID:      chatID,
-		Text:        text,
-		ReplyMarkup: &models.InlineKeyboardMarkup{InlineKeyboard: buttons},
-	}
-	if tr.DisablePreview {
-		disabled := true
-		params.LinkPreviewOptions = &models.LinkPreviewOptions{IsDisabled: &disabled}
-	}
-	switch tr.Parse {
-	case cmdlib.ParseHTML:
-		params.ParseMode = models.ParseModeHTML
-	case cmdlib.ParseMarkdown:
-		params.ParseMode = models.ParseModeMarkdown
-	}
-	w.enqueueMessage(db.PriorityHigh, endpoint, &messageParams{params}, db.ReplyPacket)
+	msg := textMessage(chatID, text, true, tr.DisablePreview, tr.Parse)
+	msg.ReplyMarkup = &models.InlineKeyboardMarkup{InlineKeyboard: buttons}
+	w.enqueueMessage(db.PriorityHigh, endpoint, msg, db.ReplyPacket, 0)
 }
 
 func (w *worker) sendSubsInvoice(endpoint string, chatID int64, tier botconfig.SubsTier) {
@@ -1715,6 +1747,18 @@ func (w *worker) getChatMemberCount(endpoint string, chatID int64) *int {
 	return &count
 }
 
+// refreshMemberCount records the chat's member count.
+// It skips the network round-trip during shutdown,
+// whose drain runs on a fixed budget.
+func (w *worker) refreshMemberCount(endpoint string, chatID int64) {
+	if w.shuttingDown.Load() {
+		return
+	}
+	if memberCount := w.getChatMemberCount(endpoint, chatID); memberCount != nil {
+		w.db.UpdateMemberCount(chatID, *memberCount)
+	}
+}
+
 func (w *worker) refer(followerChatID int64, referrer string, now int, chatType string) (applied appliedKind) {
 	referrerChatID := w.db.ChatForReferralID(referrer)
 	if referrerChatID == nil {
@@ -2294,12 +2338,12 @@ func (w *worker) processTGUpdate(p incomingPacket) {
 		chatType = string(u.ChannelPost.Chat.Type)
 	}
 	w.processIncomingCommand(p.endpoint, chatID, command, args, now, chatType)
-	if memberCount := w.getChatMemberCount(p.endpoint, chatID); memberCount != nil {
-		w.db.UpdateMemberCount(chatID, *memberCount)
-	}
+	w.refreshMemberCount(p.endpoint, chatID)
 }
 
 func (w *worker) incoming() chan incomingPacket {
+	// Background, not a cancellable context. The bots stop on Shutdown
+	// (called by shutdownBots), draining buffered updates into incomingPackets.
 	ctx := context.Background()
 	for n, p := range w.cfg.Endpoints {
 		linf("listening for a webhook for endpoint %s", n)
@@ -2309,18 +2353,26 @@ func (w *worker) incoming() chan incomingPacket {
 	return w.incomingPackets
 }
 
-// maxWebhookBody caps the body buffered in the migration gate.
+// maxWebhookBody caps the body buffered in the redelivery gate.
 // Updates are far smaller, so this only bounds an oversized public POST.
 const maxWebhookBody = 1 << 20
 
-// rejectForRedeliveryWhileMigrating 503s updates that must not be dropped
-// during the startup schema migration, so Telegram redelivers them.
+// incomingBufferSize is incomingPackets' per-bot capacity,
+// and the cap of one bot's Updates channel, pinned at bot.New.
+// The channel holds it times the bot count,
+// so a shutdown flush of every bot's buffer usually fits outright;
+// drainIncoming consumes concurrently to cover a pre-existing backlog.
+const incomingBufferSize = 1024
+
+// rejectForRedeliveryWhileMigrating 503s updates that must not be dropped,
+// so Telegram redelivers them: during the startup schema migration, and
+// (via shuttingDown) during shutdown, when buffered updates would be lost.
 // These are successful_payment and group-to-supergroup migration messages.
 // The library 200s on enqueue, so a 503 is the only way to force redelivery.
 // pre_checkout passes through (10s deadline).
 func (w *worker) rejectForRedeliveryWhileMigrating(inner http.Handler) http.Handler {
 	return http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		if !w.dbReady.Load() {
+		if w.maintenance.Load() || w.shuttingDown.Load() {
 			body, err := io.ReadAll(http.MaxBytesReader(rw, req.Body, maxWebhookBody))
 			if err != nil {
 				http.Error(rw, "cannot read body", http.StatusServiceUnavailable)
@@ -2371,91 +2423,280 @@ func (w *worker) maintainDB() {
 	w.db.MaintainBrinIndexes()
 }
 
-func (w *worker) maintenanceStartupReply(incoming chan incomingPacket, done chan bool) {
-	waitingUsers := map[waitingUser]bool{}
+// maintenanceReply handles an update that arrives while migrations run:
+// it rejects pre-checkouts, answers callbacks,
+// and replies to commands with the maintenance notice,
+// remembering who to notify once the bot is up.
+// Replies go through the regular scheduler as MaintenancePacket,
+// so their send results touch no database.
+func (w *worker) maintenanceReply(u incomingPacket, waitingUsers map[waitingUser]bool) {
+	// Reject pre-checkout during startup, the payment won't complete.
+	if u.message.PreCheckoutQuery != nil {
+		ctx := context.Background()
+		_, err := w.bots[u.endpoint].AnswerPreCheckoutQuery(ctx, &bot.AnswerPreCheckoutQueryParams{
+			PreCheckoutQueryID: u.message.PreCheckoutQuery.ID,
+			OK:                 false,
+			ErrorMessage:       w.cfg.Endpoints[u.endpoint].MaintenanceResponse,
+		})
+		if err != nil {
+			lerr("cannot answer pre-checkout query during maintenance: %v", err)
+		}
+		return
+	}
+	// Answer inline-button taps with the maintenance notice,
+	// otherwise the client spinner hangs until Telegram expires the callback.
+	if u.message.CallbackQuery != nil {
+		ctx := context.Background()
+		_, err := w.bots[u.endpoint].AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
+			CallbackQueryID: u.message.CallbackQuery.ID,
+			Text:            w.cfg.Endpoints[u.endpoint].MaintenanceResponse,
+		})
+		if err != nil {
+			lerr("cannot answer callback query during maintenance: %v", err)
+		}
+		return
+	}
+	// successful_payment is rejected at the webhook layer during maintenance,
+	// so it never reaches here.
+	mention := "@" + w.botNames[u.endpoint]
+	chatID, command, args := getCommandAndArgs(u.message, mention, w.ourIDs)
+	if command != "" {
+		// Gate on the whitelist like processTGUpdate:
+		// otherwise finishStartup's EnsureUser materializes a row
+		// for a non-whitelisted chat.
+		if !w.cfg.ChatWhitelisted(chatID) {
+			linf("message from chat %d ignored, not in whitelist", chatID)
+			return
+		}
+		waitingUsers[waitingUser{chatID: chatID, endpoint: u.endpoint}] = true
+		w.sendText(
+			db.PriorityHigh,
+			u.endpoint,
+			chatID,
+			false,
+			true,
+			cmdlib.ParseRaw,
+			w.cfg.Endpoints[u.endpoint].MaintenanceResponse,
+			db.MaintenancePacket)
+		linf("ignoring command %s %s", command, args)
+	}
+}
+
+// shutdownWaitTimeout caps the whole stop sequence:
+// the webhook removal, the library flush and drain,
+// and the wait for the in-flight send.
+const shutdownWaitTimeout = 10 * time.Second
+
+// webhookRemovalTimeout caps the webhook removal inside shutdown,
+// so a hung Telegram call cannot eat the drain's share of the budget.
+const webhookRemovalTimeout = 2 * time.Second
+
+// shutdown runs the whole stop sequence under one shutdownWaitTimeout budget,
+// shared by every phase, so it fits the orchestrator's grace
+// rather than each phase getting a fresh timeout.
+// It rejects new work, flushes and drains the library buffers,
+// and waits for the in-flight send.
+func (w *worker) shutdown(incoming chan incomingPacket) {
+	w.shuttingDown.Store(true)
+	// Wake any retry sleeping on its backoff so it abandons at once.
+	close(w.shutdownCh)
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownWaitTimeout)
+	defer cancel()
+	webhookCtx, webhookCancel := context.WithTimeout(ctx, webhookRemovalTimeout)
+	w.removeWebhook(webhookCtx)
+	webhookCancel()
+	// Flush and drain concurrently:
+	// a full incoming channel would otherwise park the flush until the deadline,
+	// with the drain only starting after.
+	botsDone := make(chan struct{})
+	go func() {
+		w.shutdownBots(ctx)
+		close(botsDone)
+	}()
+	w.drainIncoming(ctx, incoming, botsDone)
+	w.waitForInflightSends(ctx)
+	w.drainSendResults()
+	w.logShutdownLoss(len(incoming))
+}
+
+// waitForInflightSends lets the single in-flight delivery finish its POST
+// before exit, bounded by ctx (the shared shutdown deadline).
+// Anything still queued is dropped;
+// notifications re-send next start, command replies are lost.
+func (w *worker) waitForInflightSends(ctx context.Context) {
+	done := make(chan struct{})
+	go func() {
+		w.deliverWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		linf("shutdown: in-flight send did not finish before the deadline")
+		// A POST succeeding right at the deadline
+		// still sleeps commonCooldown before its result lands; grant it that,
+		// so drainSendResults finalizes a delivered notification
+		// instead of re-arming it into a duplicate.
+		time.Sleep(2 * commonCooldown)
+	}
+}
+
+// handleSendResult runs the bookkeeping for one send result:
+// block counters, chat-data migration, member count, and the send log.
+// A maintenance send skips it all: it may run before the database exists.
+// The member-count lookup is a network call, skipped during shutdown.
+func (w *worker) handleSendResult(r msgSendResult) {
+	if r.kind == db.MaintenancePacket {
+		return
+	}
+	switch r.result {
+	case messageBlocked:
+		w.db.IncrementBlock(r.endpoint, r.chatID)
+	case messageSent:
+		w.db.ResetBlock(r.endpoint, r.chatID)
+		w.refreshMemberCount(r.endpoint, r.chatID)
+	case messageMigrate:
+		// Move the chat's data so later sends go to the new ID, not the old.
+		if r.migrateToChatID != 0 {
+			w.migrateChat(r.chatID, r.migrateToChatID)
+			// Log the migration as a command-like event.
+			command := "migrate"
+			w.db.LogReceivedMessage(r.timestamp, r.endpoint, r.migrateToChatID, &command)
+		}
+	}
+	w.db.LogSentMessage(r.timestamp, r.chatID, r.result, r.endpoint, r.priority, r.latency, r.kind)
+}
+
+// completeSendResult finalizes the notification, frees the send slot,
+// and runs the result bookkeeping — in that order,
+// so the next POST overlaps the bookkeeping
+// (getChatMemberCount is a network round-trip).
+// A retry result frees nothing: its deliver still owns the slot.
+// Main goroutine only.
+func (w *worker) completeSendResult(r msgSendResult) {
+	if !r.retry {
+		if r.willResend() {
+			// Re-queue the text fallback (waits out the cooldown),
+			// keeping the original request time for the latency log.
+			w.enqueueMessageAt(r.requestedAt, r.priority, r.endpoint, r.retryAsText, r.kind, r.notificationID)
+		} else {
+			w.finalizeNotification(r.notificationID, r.chatID, true)
+		}
+		w.onSendDone()
+	}
+	w.handleSendResult(r)
+}
+
+// drainSendResults handles sends that completed after the drain stopped
+// pumping, so their results were never read;
+// run their bookkeeping and finalize them here.
+// Without finalizing, the rows stay sending=1
+// and re-arm into duplicates on restart.
+// Retries and photo-to-text fallbacks are left to re-arm, their normal path.
+// Unlike completeSendResult, it never frees the slot:
+// no new send may start while exiting.
+func (w *worker) drainSendResults() {
 	for {
 		select {
-		case u := <-incoming:
-			// Reject pre-checkout during startup, the payment won't complete.
-			if u.message.PreCheckoutQuery != nil {
-				ctx := context.Background()
-				_, err := w.bots[u.endpoint].AnswerPreCheckoutQuery(ctx, &bot.AnswerPreCheckoutQueryParams{
-					PreCheckoutQueryID: u.message.PreCheckoutQuery.ID,
-					OK:                 false,
-					ErrorMessage:       w.cfg.Endpoints[u.endpoint].MaintenanceResponse,
-				})
-				if err != nil {
-					lerr("cannot answer pre-checkout query during maintenance: %v", err)
-				}
-				continue
+		case r := <-w.sendResults:
+			w.handleSendResult(r)
+			if !r.willResend() {
+				w.finalizeNotification(r.notificationID, r.chatID, true)
 			}
-			// Answer inline-button taps with the maintenance notice,
-			// otherwise the client spinner hangs until Telegram expires the callback.
-			if u.message.CallbackQuery != nil {
-				ctx := context.Background()
-				_, err := w.bots[u.endpoint].AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
-					CallbackQueryID: u.message.CallbackQuery.ID,
-					Text:            w.cfg.Endpoints[u.endpoint].MaintenanceResponse,
-				})
-				if err != nil {
-					lerr("cannot answer callback query during maintenance: %v", err)
-				}
-				continue
-			}
-			// successful_payment is rejected at the webhook layer during maintenance,
-			// so it never reaches here.
-			mention := "@" + w.botNames[u.endpoint]
-			chatID, command, args := getCommandAndArgs(u.message, mention, w.ourIDs)
-			if command != "" {
-				waitingUsers[waitingUser{chatID: chatID, endpoint: u.endpoint}] = true
-				w.sendText(db.PriorityHigh, u.endpoint, chatID, false, true, cmdlib.ParseRaw, w.cfg.Endpoints[u.endpoint].MaintenanceResponse, db.ReplyPacket)
-				linf("ignoring command %s %s", command, args)
-			}
-		case <-done:
-			for user := range waitingUsers {
-				w.sendTr(db.PriorityHigh, user.endpoint, user.chatID, false, w.tr[user.endpoint].WeAreUp, nil, db.MessagePacket)
-			}
+		default:
 			return
-		case <-w.outgoingMsgResults:
 		}
 	}
 }
 
-// Grace window to drain updates the library accepted but not yet processed.
-// It 200s on enqueue, so dropping them at shutdown loses them for good.
-const (
-	shutdownDrainIdle    = time.Second
-	shutdownDrainTimeout = 10 * time.Second
-)
+// logShutdownLoss reports what exiting drops.
+// Queued notifications re-send next start;
+// other queued messages and the buffered updates are lost.
+func (w *worker) logShutdownLoss(bufferedUpdates int) {
+	var messages, notifications int
+	for _, q := range w.sendQueue.items {
+		if q.notificationID == 0 {
+			messages++
+		} else {
+			notifications++
+		}
+	}
+	if messages+notifications+bufferedUpdates == 0 {
+		return
+	}
+	linf("shutdown dropped %d messages and %d unprocessed updates (lost); %d notifications will re-send",
+		messages, bufferedUpdates, notifications)
+}
 
-// drainPendingUpdates processes buffered updates
-// until incoming goes idle or shutdownDrainTimeout elapses.
-func (w *worker) drainPendingUpdates(incoming chan incomingPacket) {
-	linf("draining pending updates before shutdown")
-	hardStop := time.NewTimer(shutdownDrainTimeout)
-	defer hardStop.Stop()
+// drainIncoming processes updates the webhook 200'd but the loop hasn't,
+// for their DB side effects (e.g. successful_payment credits).
+// It consumes while shutdownBots flushes the library buffers into incoming,
+// so a full channel cannot park the flush, then drains what is left.
+// It keeps pumping send results and cooldowns meanwhile,
+// so queued replies and notifications still flow while the budget lasts.
+// Bounded by ctx, like every other shutdown phase.
+func (w *worker) drainIncoming(ctx context.Context, incoming chan incomingPacket, botsDone <-chan struct{}) {
+	n := 0
+	deadline := func() {
+		linf("shutdown: drain deadline hit after %d update(s)", n)
+	}
 	for {
+		// After the flush no producers remain, so an empty channel is drained.
+		if botsDone == nil && len(incoming) == 0 {
+			if n > 0 {
+				linf("shutdown: processed %d buffered update(s) before exit", n)
+			}
+			return
+		}
 		select {
 		case u := <-incoming:
 			w.processTGUpdate(u)
-		case <-w.outgoingMsgResults:
-			// Keep the sender unblocked;
-			// skip its result bookkeeping during shutdown.
-		case <-time.After(shutdownDrainIdle):
-			return
-		case <-hardStop.C:
-			linf("shutdown drain timed out after %s", shutdownDrainTimeout)
+			n++
+			if ctx.Err() != nil {
+				deadline()
+				return
+			}
+		case r := <-w.sendResults:
+			w.completeSendResult(r)
+		case chatID := <-w.cooledChats:
+			w.onChatCooled(chatID)
+		case <-botsDone:
+			botsDone = nil
+		case <-ctx.Done():
+			deadline()
 			return
 		}
 	}
+}
+
+// shutdownBots stops every bot with Shutdown,
+// draining its buffered updates (already 200'd)
+// into incomingPackets for drainIncoming.
+// Bots run concurrently under the shared ctx,
+// so one stalled bot can't eat the whole budget and starve the rest.
+func (w *worker) shutdownBots(ctx context.Context) {
+	var wg sync.WaitGroup
+	for n := range w.bots {
+		wg.Go(func() {
+			if err := w.bots[n].Shutdown(ctx); err != nil {
+				linf("shutdown: bot %s drain: %v", n, err)
+			}
+		})
+	}
+	wg.Wait()
 }
 
 func (w *worker) sendReadyNotifications() { w.sendingNotifications <- w.db.NewNotifications() }
 
-func (w *worker) sendNotificationsDaemon() {
+// notificationFetcher downloads notification images off the main goroutine,
+// then hands the batch back for the main loop to enqueue.
+func (w *worker) notificationFetcher() {
 	for nots := range w.sendingNotifications {
-		w.notifyOfStatuses(nots)
-		w.sentNotifications <- nots
+		images := map[string][]byte{}
+		if w.cfg.ShowImages {
+			images = w.downloadImages(nots)
+		}
+		w.imagedNotifications <- notificationBatch{notifications: nots, images: images}
 	}
 }
 
@@ -2548,6 +2789,60 @@ func (w *worker) processSubsConfirmations(res *cmdlib.ExistenceListResults) {
 	w.db.StoreNotifications(confirmedNots)
 }
 
+// startupTimers holds the main loop's periodic timer channels.
+type startupTimers struct {
+	request            <-chan time.Time
+	maintainDB         <-chan time.Time
+	subsConfirm        <-chan time.Time
+	notificationSender <-chan time.Time
+}
+
+// finishStartup completes the loop-owned initialization
+// once the database is ready: the periodic timers, the checker daemon,
+// signal handling, the queued we-are-up replies, and the payment gate.
+func (w *worker) finishStartup(
+	ctx context.Context,
+	cancel context.CancelFunc,
+	waitingUsers map[waitingUser]bool,
+) startupTimers {
+	timers := startupTimers{
+		request:            time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second).C,
+		subsConfirm:        time.NewTicker(time.Duration(w.cfg.SubsConfirmationPeriodSeconds) * time.Second).C,
+		notificationSender: time.NewTicker(time.Duration(w.cfg.NotificationsReadyPeriodSeconds) * time.Second).C,
+	}
+	if w.cfg.MaintainDBPeriodSeconds != 0 {
+		timers.maintainDB = time.NewTicker(time.Duration(w.cfg.MaintainDBPeriodSeconds) * time.Second).C
+	}
+	checkers.StartCheckerDaemon(ctx, w.checker)
+	// Install signals only now: a SIGTERM during migrations
+	// should kill the process outright,
+	// not run shutdown against a half-migrated schema.
+	signals := make(chan os.Signal, 16)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT)
+	go func() {
+		s := <-signals
+		linf("got signal %v, shutting down", s)
+		cancel()
+	}()
+	for user := range waitingUsers {
+		w.sendTr(db.PriorityHigh, user.endpoint, user.chatID, false, w.tr[user.endpoint].WeAreUp, nil, db.MessagePacket)
+	}
+	w.sendText(
+		db.PriorityHigh,
+		w.cfg.AdminEndpoint,
+		w.cfg.AdminID,
+		true,
+		true,
+		cmdlib.ParseRaw,
+		"bot is up",
+		db.MessagePacket)
+	w.pushOnlineRequest()
+	// Leave maintenance last: it opens the payment gate,
+	// so an admitted payment is consumed at once.
+	w.maintenance.Store(false)
+	return timers
+}
+
 func main() {
 	version := pflag.BoolP("version", "v", false, "prints current version")
 	printCfg := pflag.BoolP("print-config", "p", false, "print config and exit")
@@ -2585,50 +2880,59 @@ func main() {
 	w.setCommands()
 	w.setDefaultAdminRights()
 	w.initBotNames()
-	databaseDone := make(chan bool)
 	w.serveEndpoints()
 	incoming := w.incoming()
-	go w.sender()
-	go w.maintenanceStartupReply(incoming, databaseDone)
-	go w.sendNotificationsDaemon()
+	go w.notificationFetcher()
 	go w.fuzzySearchDaemon()
-	w.sendText(db.PriorityHigh, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, "bot started", db.MessagePacket)
-	w.createDatabase()
-	// initCache and the resets below take well under a second.
-	// A pre_checkout arriving during them waits briefly for the loop, not rejected.
-	databaseDone <- true
-	w.registerWebApp()
-	w.initCache()
-	w.db.ResetNotificationSending()
-	w.db.ResetCheckingToUnconfirmed()
+	// MaintenancePacket: the loop consumes its send result
+	// without touching the database, which is not created yet.
+	w.sendText(
+		db.PriorityHigh,
+		w.cfg.AdminEndpoint,
+		w.cfg.AdminID,
+		true,
+		true,
+		cmdlib.ParseRaw,
+		"bot started",
+		db.MaintenancePacket)
+	// The main loop below owns the scheduler from the start;
+	// the database work and the init that needs it run off the loop
+	// and report back on databaseDone, which publishes their writes.
+	// Suspend the single-goroutine check while that init runs off the loop.
+	w.db.SuspendGIDCheck()
+	databaseDone := make(chan bool)
+	go func() {
+		w.createDatabase()
+		w.initCache()
+		w.db.ResetNotificationSending()
+		w.db.ResetCheckingToUnconfirmed()
+		// Register the web app last:
+		// once its routes exist, requests can reach the loop's channels
+		// and must find the caches ready.
+		w.registerWebApp()
+		databaseDone <- true
+	}()
 
-	var requestTimer = time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second)
-	var maintainDBTimerChannel <-chan time.Time
-	if w.cfg.MaintainDBPeriodSeconds != 0 {
-		maintainDBTimerChannel = time.NewTicker(time.Duration(w.cfg.MaintainDBPeriodSeconds) * time.Second).C
-	}
-	var subsConfirmTimer = time.NewTicker(time.Duration(w.cfg.SubsConfirmationPeriodSeconds) * time.Second)
-	var notificationSenderTimer = time.NewTicker(time.Duration(w.cfg.NotificationsReadyPeriodSeconds) * time.Second)
-
-	checkerCtx, cancelCheckerCtx := context.WithCancel(context.Background())
-	defer cancelCheckerCtx()
-	checkers.StartCheckerDaemon(checkerCtx, w.checker)
-	signals := make(chan os.Signal, 16)
-	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGABRT)
-	w.sendText(db.PriorityHigh, w.cfg.AdminEndpoint, w.cfg.AdminID, true, true, cmdlib.ParseRaw, "bot is up", db.MessagePacket)
-	w.pushOnlineRequest()
-	// Open the payment gate here, so an admitted payment is consumed at once.
-	w.dbReady.Store(true)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	waitingUsers := map[waitingUser]bool{}
+	// The timers stay nil until the database is ready,
+	// keeping every database-touching select arm dormant.
+	var timers startupTimers
 	for {
 		select {
-		case <-requestTimer.C:
+		case <-databaseDone:
+			// The loop owns the database now; resume the single-goroutine check.
+			w.db.ResumeGIDCheck()
+			timers = w.finishStartup(ctx, cancel, waitingUsers)
+		case <-timers.request:
 			runtime.GC()
 			w.periodic()
-		case <-maintainDBTimerChannel:
+		case <-timers.maintainDB:
 			w.maintainDB()
-		case <-subsConfirmTimer.C:
+		case <-timers.subsConfirm:
 			w.queryUnconfirmedSubs()
-		case <-notificationSenderTimer.C:
+		case <-timers.notificationSender:
 			w.sendReadyNotifications()
 		case result := <-w.checkerResults:
 			now := int(time.Now().Unix())
@@ -2659,30 +2963,18 @@ func main() {
 			w.addStreamer(req.endpoint, req.chatID, req.nickname, now, false)
 			req.doneCh <- struct{}{}
 		case u := <-incoming:
-			w.processTGUpdate(u)
-		case s := <-signals:
-			linf("got signal %v", s)
-			if s == syscall.SIGINT || s == syscall.SIGTERM || s == syscall.SIGABRT {
-				w.removeWebhook()
-				w.drainPendingUpdates(incoming)
-				return
+			if w.maintenance.Load() {
+				w.maintenanceReply(u, waitingUsers)
+			} else {
+				w.processTGUpdate(u)
 			}
-		case r := <-w.outgoingMsgResults:
-			switch r.result {
-			case messageBlocked:
-				w.db.IncrementBlock(r.endpoint, r.chatID)
-			case messageSent:
-				w.db.ResetBlock(r.endpoint, r.chatID)
-				if memberCount := w.getChatMemberCount(r.endpoint, r.chatID); memberCount != nil {
-					w.db.UpdateMemberCount(r.chatID, *memberCount)
-				}
-			case messageMigrate:
-				// Move the chat's data so later sends go to the new ID, not the old.
-				if r.migrateToChatID != 0 {
-					w.migrateChat(r.chatID, r.migrateToChatID)
-				}
-			}
-			w.db.LogSentMessage(r.timestamp, r.chatID, r.result, r.endpoint, r.priority, r.latency, r.kind)
+		case <-ctx.Done():
+			w.shutdown(incoming)
+			return
+		case r := <-w.sendResults:
+			w.completeSendResult(r)
+		case chatID := <-w.cooledChats:
+			w.onChatCooled(chatID)
 		case r := <-w.existenceListResults:
 			now := int(time.Now().Unix())
 			w.db.LogPerformance(now, db.PerformanceLogExistenceQuery, int(r.Duration().Milliseconds()), map[string]any{
@@ -2690,11 +2982,8 @@ func main() {
 				"count":  r.Count(),
 			})
 			w.processSubsConfirmations(r)
-		case nots := <-w.sentNotifications:
-			for _, n := range nots {
-				w.db.DeleteNotification(n.ID)
-				w.db.IncrementReports(n.ChatID)
-			}
+		case batch := <-w.imagedNotifications:
+			w.enqueueNotifications(batch)
 		case r := <-w.imageDownloadLogs:
 			now := int(time.Now().Unix())
 			w.db.LogPerformance(now, db.PerformanceLogImageDownload, r.durationMs, map[string]any{

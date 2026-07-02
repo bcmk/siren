@@ -1,27 +1,6 @@
-// This file implements a priority queue with per-user
-// rate limiting for outgoing Telegram messages.
-//
-// Producers call enqueueMessage which pushes packets into a buffered channel.
-// A single sender goroutine owns a packetHeap,
-// drains all pending packets from the channel into the heap each iteration,
-// and sends the highest-priority ready packet.
-//
-// The heap is a min-heap ordered by:
-//  1. readyAt time — earlier is better.
-//     Zero (default) means ready immediately.
-//     Rate-limited chats get a future readyAt and sink to the bottom.
-//  2. priority — lower value wins (db.PriorityHigh < db.PriorityLow)
-//  3. push sequence — global sequence counter
-//
-// Per-user rate limiting:
-// After each send, setReadyAt marks the chat as unavailable for 1 second.
-// The heap re-sorts so other chats' packets flow while the rate-limited chat waits.
-//
-// Cleanup: maxReadyAt entries are removed after they expire.
-// A cleanup heap (min-heap by readyAt time) tracks per-chatID entries.
-// Superseded entries (seq mismatch) are skipped.
-// When an entry expires, its map entry is deleted and
-// heap.Fix restores affected packets' heap positions.
+// Outgoing message scheduling. The main goroutine owns all scheduling state;
+// each send runs on a deliver goroutine that does I/O only.
+
 package main
 
 import (
@@ -31,251 +10,282 @@ import (
 	"github.com/bcmk/siren/v3/internal/db"
 )
 
-const maxHeapLen = 20000
+const (
+	commonCooldown         = 60 * time.Millisecond // minimum gap between any two sends
+	chatCooldown           = time.Second           // minimum gap between sends to one chat
+	groupCooldown          = 3 * time.Second       // minimum gap to one group (Telegram's 20 msg/min cap)
+	tooManyRequestsBackoff = 8 * time.Second       // wait after a 429 before retrying
+	networkErrorBackoff    = time.Second           // wait after a timeout or network error before retrying
+	// maxHeapLen caps the outgoing queue; a broadcast past it drops its tail.
+	// A streamer's image is shared across subscribers,
+	// so even a full queue is cheap in memory.
+	maxHeapLen = 100000
+	// sendChanCap sizes sendResults and cooledChats.
+	// Single-flight delivery keeps both nearly empty.
+	sendChanCap = 64
+)
 
-type readyAtValue struct {
-	t   time.Time
-	seq uint64
+type queuedMessage struct {
+	chatID         int64
+	endpoint       string
+	message        sendable
+	priority       db.Priority
+	kind           db.PacketKind
+	notificationID int
+	requestedAt    time.Time
+	seq            uint64
 }
 
-type cleanupEntry struct {
-	chatID  int64
-	readyAt time.Time
-	seq     uint64
+// sendHeap keeps the best sendable message at the top. A cooling-down chat
+// sinks below every ready one, so the top is sendable
+// whenever any ready message exists.
+type sendHeap struct {
+	items       []*queuedMessage
+	chatCooling map[int64]struct{}
+	// chatCount tracks queued messages per chat,
+	// so a cooling flip for a chat with nothing else queued
+	// can skip the O(n) re-init.
+	chatCount map[int64]int
 }
 
-type cleanupHeap []cleanupEntry
-
-func (h cleanupHeap) Len() int           { return len(h) }
-func (h cleanupHeap) Less(i, j int) bool { return h[i].readyAt.Before(h[j].readyAt) }
-func (h cleanupHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
-func (h *cleanupHeap) Push(x any)        { *h = append(*h, x.(cleanupEntry)) }
-func (h *cleanupHeap) Pop() any {
-	old := *h
-	n := len(old)
-	x := old[n-1]
-	*h = old[:n-1]
-	return x
-}
-
-type packetHeap struct {
-	packets     []*outgoingPacket
-	pushSeq     uint64
-	maxReadyAt  map[int64]readyAtValue
-	chatPackets map[int64]map[*outgoingPacket]struct{}
-	readyAtSeq  uint64
-	cleanup     cleanupHeap
-}
-
-func (h *packetHeap) Len() int { return len(h.packets) }
-
-func (h *packetHeap) Less(i, j int) bool {
-	ri := h.maxReadyAt[h.packets[i].message.chatID()].t
-	rj := h.maxReadyAt[h.packets[j].message.chatID()].t
-	if !ri.Equal(rj) {
-		return ri.Before(rj)
-	}
-	if h.packets[i].priority != h.packets[j].priority {
-		return h.packets[i].priority < h.packets[j].priority
-	}
-	return h.packets[i].seq < h.packets[j].seq
-}
-
-func (h *packetHeap) Swap(i, j int) {
-	h.packets[i], h.packets[j] = h.packets[j], h.packets[i]
-	h.packets[i].heapIndex = i
-	h.packets[j].heapIndex = j
-}
-
-func (h *packetHeap) Push(x any) {
-	pkt := x.(*outgoingPacket)
-	h.pushSeq++
-	pkt.seq = h.pushSeq
-	pkt.heapIndex = len(h.packets)
-	h.packets = append(h.packets, pkt)
-	chatID := pkt.message.chatID()
-	if h.chatPackets[chatID] == nil {
-		h.chatPackets[chatID] = map[*outgoingPacket]struct{}{}
-	}
-	h.chatPackets[chatID][pkt] = struct{}{}
-}
-
-func (h *packetHeap) Pop() any {
-	old := h.packets
-	n := len(old)
-	x := old[n-1]
-	old[n-1] = nil
-	x.heapIndex = -1
-	h.packets = old[:n-1]
-	chatID := x.message.chatID()
-	delete(h.chatPackets[chatID], x)
-	if len(h.chatPackets[chatID]) == 0 {
-		delete(h.chatPackets, chatID)
-	}
-	return x
-}
-
-func (h *packetHeap) setReadyAt(chatID int64, t time.Time) {
-	h.readyAtSeq++
-	h.maxReadyAt[chatID] = readyAtValue{t, h.readyAtSeq}
-	heap.Push(&h.cleanup, cleanupEntry{chatID, t, h.readyAtSeq})
-	for pkt := range h.chatPackets[chatID] {
-		heap.Fix(h, pkt.heapIndex)
+func newSendHeap() sendHeap {
+	return sendHeap{
+		chatCooling: map[int64]struct{}{},
+		chatCount:   map[int64]int{},
 	}
 }
 
-// nextAction cleans up expired readyAt entries, then returns
-// the next packet to send or the duration to wait.
-// Returns (packet, 0) if a packet is ready — the packet is popped.
-// Returns (nil, wait) if the top packet is rate-limited.
-// Returns (nil, 0) if the heap is empty.
-func (h *packetHeap) nextAction(now time.Time) (*outgoingPacket, time.Duration) {
-	for h.cleanup.Len() > 0 {
-		entry := h.cleanup[0]
-		if entry.readyAt.After(now) {
+func (h *sendHeap) Len() int { return len(h.items) }
+
+func (h *sendHeap) Less(i, j int) bool {
+	_, ci := h.chatCooling[h.items[i].chatID]
+	_, cj := h.chatCooling[h.items[j].chatID]
+	if ci != cj {
+		return !ci
+	}
+	if h.items[i].priority != h.items[j].priority {
+		return h.items[i].priority < h.items[j].priority
+	}
+	return h.items[i].seq < h.items[j].seq
+}
+
+func (h *sendHeap) Swap(i, j int) {
+	h.items[i], h.items[j] = h.items[j], h.items[i]
+}
+
+func (h *sendHeap) Push(x any) {
+	it := x.(*queuedMessage)
+	h.chatCount[it.chatID]++
+	h.items = append(h.items, it)
+}
+
+func (h *sendHeap) Pop() any {
+	n := len(h.items)
+	it := h.items[n-1]
+	h.items[n-1] = nil
+	h.items = h.items[:n-1]
+	h.chatCount[it.chatID]--
+	if h.chatCount[it.chatID] == 0 {
+		delete(h.chatCount, it.chatID)
+	}
+	return it
+}
+
+// enqueueMessage adds a message and tries to start a send. Main goroutine only.
+// notificationID is the notification_queue row to clear, or 0 for a reply.
+func (w *worker) enqueueMessage(
+	priority db.Priority,
+	endpoint string,
+	msg sendable,
+	kind db.PacketKind,
+	notificationID int,
+) {
+	w.enqueueMessageAt(time.Now(), priority, endpoint, msg, kind, notificationID)
+}
+
+// enqueueMessageAt is enqueueMessage with an explicit request time,
+// so a re-queued message (the photo-to-text fallback)
+// keeps the latency baseline of its first attempt.
+func (w *worker) enqueueMessageAt(
+	requestedAt time.Time,
+	priority db.Priority,
+	endpoint string,
+	msg sendable,
+	kind db.PacketKind,
+	notificationID int,
+) {
+	if w.sendQueue.Len() >= maxHeapLen {
+		lerr("the outgoing message heap is full")
+		// A notification (notificationID != 0) is put back for a later fetch.
+		// A reply or broadcast (notificationID 0) is dropped here, logged above:
+		// an accepted, bounded loss when the queue overflows.
+		if notificationID != 0 {
+			w.db.RequeueNotification(notificationID)
+		}
+		return
+	}
+	chatID := msg.chatID()
+	w.sendSeq++
+	q := &queuedMessage{
+		chatID:         chatID,
+		endpoint:       endpoint,
+		message:        msg,
+		priority:       priority,
+		kind:           kind,
+		notificationID: notificationID,
+		requestedAt:    requestedAt,
+		seq:            w.sendSeq,
+	}
+	heap.Push(&w.sendQueue, q)
+	w.trySend()
+}
+
+// onChatCooled frees a chat after its per-chat cooldown. Main goroutine only.
+func (w *worker) onChatCooled(chatID int64) {
+	delete(w.sendQueue.chatCooling, chatID)
+	// chatID's queued items all flip back to ready at once; re-init
+	// the whole queue, as trySend does on the cooling flip.
+	// With nothing queued for the chat, no key changed and no re-init is due.
+	if w.sendQueue.chatCount[chatID] > 0 {
+		heap.Init(&w.sendQueue)
+	}
+	w.trySend()
+}
+
+// onSendDone frees the global slot after a delivery's final attempt.
+// Main goroutine only; the caller has already logged and acted on the result.
+func (w *worker) onSendDone() {
+	w.commonCooling = false
+	w.trySend()
+}
+
+func (w *worker) trySend() {
+	if w.commonCooling || w.sendQueue.Len() == 0 {
+		return
+	}
+	if _, cooling := w.sendQueue.chatCooling[w.sendQueue.items[0].chatID]; cooling {
+		return // every queued chat is cooling down
+	}
+	q := heap.Pop(&w.sendQueue).(*queuedMessage)
+	w.commonCooling = true
+	w.sendQueue.chatCooling[q.chatID] = struct{}{}
+	// q.chatID's remaining items all flip to cooling at once,
+	// but heap.Fix only repairs a single changed key, so per-item fixing
+	// can leave a cooling item at the root, starving a ready one.
+	// With no remaining items for the chat, no key changed at all.
+	// The re-init is O(n) in the queue length.
+	// The guard limits it to a chat with several items queued;
+	// a single-message chat is already optimized away.
+	// A lazy pop-time skip would avoid the O(n) but is more complex,
+	// and is warranted only if storm-time main-loop latency is measured.
+	if w.sendQueue.chatCount[q.chatID] > 0 {
+		heap.Init(&w.sendQueue)
+	}
+	// Track the in-flight send so shutdown can wait for it.
+	w.deliverWG.Go(func() {
+		w.deliver(q)
+	})
+}
+
+// isRetriableSendError reports whether a send result is a transient failure
+// worth retrying: a timeout, a network blip, or a rate-limit.
+func isRetriableSendError(result int) bool {
+	return result == messageTimeout ||
+		result == messageUnknownNetworkError ||
+		result == messageTooManyRequests
+}
+
+// deliver sends one message on its own goroutine, retrying and pacing,
+// then reports back. It touches no shared state.
+func (w *worker) deliver(q *queuedMessage) {
+	migrated := false
+	for {
+		now := time.Now()
+		result, migrateTo := w.sendMessageInternal(q.endpoint, q.message)
+		latency := int(time.Since(q.requestedAt).Milliseconds())
+		retry := isRetriableSendError(result) ||
+			(result == messageMigrate && migrateTo != 0 && !migrated)
+		// A photo to a no-photo-rights group falls back to text,
+		// re-queued so it waits out the chat's cooldown, not resent in place.
+		var retryAsText sendable
+		if p, ok := q.message.(*photoParams); ok && result == messageNoPhotoRights {
+			retryAsText = p.toText()
+		}
+		if !retry {
+			// Pace the global rate before releasing the slot.
+			time.Sleep(commonCooldown)
+		}
+		w.sendResults <- msgSendResult{
+			priority:        q.priority,
+			timestamp:       int(now.Unix()),
+			result:          result,
+			endpoint:        q.endpoint,
+			chatID:          q.message.chatID(),
+			migrateToChatID: migrateTo,
+			latency:         latency,
+			kind:            q.kind,
+			notificationID:  q.notificationID,
+			requestedAt:     q.requestedAt,
+			retry:           retry,
+			retryAsText:     retryAsText,
+		}
+		if !retry {
 			break
 		}
-		heap.Pop(&h.cleanup)
-		if val := h.maxReadyAt[entry.chatID]; val.seq == entry.seq {
-			delete(h.maxReadyAt, entry.chatID)
-			for pkt := range h.chatPackets[entry.chatID] {
-				heap.Fix(h, pkt.heapIndex)
-			}
+		// No attempt cap: this retries in place until success or shutdown.
+		// A retry keeps retry=true, so the slot stays held for the whole loop,
+		// and one recipient that keeps failing blocks every other send.
+		// Deliberate: a 429, timeout, or network error never says
+		// whether its cause is this chat or the whole bot,
+		// so we back off for everyone rather than risk hammering a global limit.
+		// The stall on a chat that never recovers is the accepted cost.
+		var backoff time.Duration
+		switch result {
+		case messageTooManyRequests:
+			backoff = tooManyRequestsBackoff
+		case messageMigrate:
+			migrated = true
+			q.message.setChatID(migrateTo)
+			backoff = commonCooldown
+		default:
+			backoff = networkErrorBackoff
 		}
-	}
-	if h.Len() == 0 {
-		return nil, 0
-	}
-	top := h.packets[0]
-	if wait := h.maxReadyAt[top.message.chatID()].t.Sub(now); wait > 0 {
-		return nil, wait
-	}
-	pkt := heap.Pop(h).(*outgoingPacket)
-	return pkt, 0
-}
-
-func (w *worker) enqueueMessage(priority db.Priority, endpoint string, msg sendable, kind db.PacketKind) {
-	select {
-	case w.outgoingMsgCh <- outgoingPacket{
-		message:     msg,
-		endpoint:    endpoint,
-		requestedAt: time.Now(),
-		kind:        kind,
-		priority:    priority,
-	}:
-	default:
-		lerr("the outgoing message queue is full")
-	}
-}
-
-func (w *worker) sender() {
-	h := packetHeap{
-		maxReadyAt:  map[int64]readyAtValue{},
-		chatPackets: map[int64]map[*outgoingPacket]struct{}{},
-	}
-	var waitFor *time.Timer
-	for {
-		var timerC <-chan time.Time
-		if waitFor != nil {
-			timerC = waitFor.C
-		}
-
+		// Wake at once on shutdown instead of sleeping the whole backoff
+		// (a 429 is 8s), which would eat the shared grace window.
+		// The retry is abandoned; a notification row stays sending=1
+		// and re-arms next start.
 		select {
-		case pkt := <-w.outgoingMsgCh:
-			if h.Len() >= maxHeapLen {
-				lerr("the outgoing message heap is full")
-			} else {
-				heap.Push(&h, &pkt)
-			}
-		case <-timerC:
-		}
-
-		if waitFor != nil {
-			waitFor.Stop()
-			waitFor = nil
-		}
-
-	send:
-		for {
-			// Drain pending packets so the heap can prioritize across the full batch
-		drain:
-			for {
-				if h.Len() >= maxHeapLen {
-					break drain
-				}
-				select {
-				case pkt := <-w.outgoingMsgCh:
-					heap.Push(&h, &pkt)
-				default:
-					break drain
-				}
-			}
-
-			now := time.Now()
-			pkt, wait := h.nextAction(now)
-			if pkt == nil {
-				if wait > 0 {
-					waitFor = time.NewTimer(wait)
-				}
-				break send
-			}
-
-			chatID := pkt.message.chatID()
-			migrated := false
-		resend:
-			for {
-				now = time.Now()
-				result, migrateToChatID := w.sendMessageInternal(pkt.endpoint, pkt.message)
-				// time.Now() — cooldown starts after the send completes
-				h.setReadyAt(chatID, time.Now().Add(time.Second))
-				latency := int(time.Since(pkt.requestedAt).Milliseconds())
-				w.outgoingMsgResults <- msgSendResult{
-					priority:        pkt.priority,
-					timestamp:       int(now.Unix()),
-					result:          result,
-					endpoint:        pkt.endpoint,
-					chatID:          chatID,
-					migrateToChatID: migrateToChatID,
-					latency:         latency,
-					kind:            pkt.kind,
-				}
-				switch result {
-				case messageTimeout:
-					time.Sleep(1000 * time.Millisecond)
-					continue resend
-				case messageUnknownNetworkError:
-					time.Sleep(1000 * time.Millisecond)
-					continue resend
-				case messageTooManyRequests:
-					time.Sleep(8000 * time.Millisecond)
-					continue resend
-				case messageMigrate:
-					// The chat became a supergroup; resend to its new ID, once.
-					if migrateToChatID == 0 || migrated {
-						time.Sleep(60 * time.Millisecond)
-						break resend
-					}
-					migrated = true
-					pkt.message.setChatID(migrateToChatID)
-					chatID = migrateToChatID
-					continue resend
-				case messageNoPhotoRights:
-					if p, ok := pkt.message.(*photoParams); ok {
-						heap.Push(&h, &outgoingPacket{
-							message:     p.toText(),
-							endpoint:    pkt.endpoint,
-							requestedAt: pkt.requestedAt,
-							kind:        pkt.kind,
-							priority:    pkt.priority,
-						})
-					}
-					time.Sleep(60 * time.Millisecond)
-					break resend
-				default:
-					time.Sleep(60 * time.Millisecond)
-					break resend
-				}
-			}
+		case <-time.After(backoff):
+		case <-w.shutdownCh:
+			return
 		}
 	}
+	// The cooldown tail runs detached,
+	// so the deliverWG wait at shutdown covers the POST and its result,
+	// not a pacing sleep.
+	// A non-private chat (chatID < 0) caps tighter than the 1s per-chat gap:
+	// a group is 20 messages/min.
+	// Pace groups, supergroups, and channels at the slower gap
+	// to avoid self-triggering a 429.
+	cooldown := chatCooldown
+	if q.message.chatID() < 0 {
+		cooldown = groupCooldown
+	}
+	// Capture just the id: closing over q would pin the whole message,
+	// image payload included, for the sleep.
+	id := q.chatID
+	go func() {
+		time.Sleep(cooldown - commonCooldown)
+		// Release the id trySend cooled.
+		// A migrate resend target is deliberately never cooled:
+		// its cool and release would pair across two channels, which can race.
+		// The rare price is one un-paced send to the new id, a 429 at worst,
+		// absorbed by the retry backoff.
+		// Give up if the shutdown drain stopped reading cooledChats,
+		// so this detached tail never blocks forever on the send.
+		select {
+		case w.cooledChats <- id:
+		case <-w.shutdownCh:
+		}
+	}()
 }

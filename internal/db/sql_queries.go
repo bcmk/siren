@@ -1170,6 +1170,12 @@ func (d *Database) DeleteNotification(id int) {
 	d.MustExec("delete from notification_queue where id = $1", id)
 }
 
+// RequeueNotification puts a notification back in the queue,
+// so a later fetch picks it up again.
+func (d *Database) RequeueNotification(id int) {
+	d.MustExec("update notification_queue set sending = 0 where id = $1", id)
+}
+
 // IncrementReports increments the reports count for a user
 func (d *Database) IncrementReports(chatID int64) {
 	d.MustExec("update users set reports=reports+1 where chat_id = $1", chatID)

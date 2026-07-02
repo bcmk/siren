@@ -616,7 +616,7 @@ func TestAddStreamer(t *testing.T) {
 		t.Error("expected pending subscription for new streamer")
 	}
 	// Drain the "checking streamer" message
-	<-w.outgoingMsgCh
+	w.nextOutgoing()
 
 	// Add streamer that exists with online status — should return non-nil
 	insertTestStreamer(&w.db, db.Streamer{Nickname: "onlinemodel", ConfirmedStatus: cmdlib.StatusOnline})
@@ -630,7 +630,7 @@ func TestAddStreamer(t *testing.T) {
 		t.Error("expected subscription for existing streamer")
 	}
 	// Drain messages
-	<-w.outgoingMsgCh
+	w.nextOutgoing()
 	nots := w.db.NewNotifications()
 	if len(nots) != 1 || nots[0].Status != cmdlib.StatusOnline {
 		t.Errorf("expected online notification, got %+v", nots)
@@ -923,8 +923,8 @@ func TestUserReferral(t *testing.T) {
 		w.start("test", 21, "ref-abc", 100, "private")
 
 		// Drain outgoing messages
-		for len(w.outgoingMsgCh) > 0 {
-			<-w.outgoingMsgCh
+		for w.sendQueue.Len() > 0 {
+			w.nextOutgoing()
 		}
 
 		// Verify referral event was created with referrer
@@ -971,8 +971,8 @@ func TestUserReferral(t *testing.T) {
 		w.start("test", 30, "nonexistent-ref", 100, "private")
 
 		// Drain outgoing messages
-		for len(w.outgoingMsgCh) > 0 {
-			<-w.outgoingMsgCh
+		for w.sendQueue.Len() > 0 {
+			w.nextOutgoing()
 		}
 
 		// Verify no referral event
@@ -998,8 +998,8 @@ func TestUserReferral(t *testing.T) {
 		w.start("test", 41, "ref-xyz", 100, "private")
 
 		// Drain outgoing messages
-		for len(w.outgoingMsgCh) > 0 {
-			<-w.outgoingMsgCh
+		for w.sendQueue.Len() > 0 {
+			w.nextOutgoing()
 		}
 
 		// Verify no referral event
@@ -1029,8 +1029,8 @@ func TestUserReferral(t *testing.T) {
 		w.start("test", 50, "ref-own", 100, "private")
 
 		// Drain outgoing messages
-		for len(w.outgoingMsgCh) > 0 {
-			<-w.outgoingMsgCh
+		for w.sendQueue.Len() > 0 {
+			w.nextOutgoing()
 		}
 
 		// Verify no referral event
@@ -1054,8 +1054,8 @@ func TestStreamerReferral(t *testing.T) {
 		w.start("test", 10, "m-known_model", 100, "private")
 
 		// Drain outgoing messages
-		for len(w.outgoingMsgCh) > 0 {
-			<-w.outgoingMsgCh
+		for w.sendQueue.Len() > 0 {
+			w.nextOutgoing()
 		}
 
 		// Verify subscription was created
@@ -1085,8 +1085,8 @@ func TestStreamerReferral(t *testing.T) {
 		w.start("test", 11, "m-unknown_model", 100, "private")
 
 		// Drain outgoing messages
-		for len(w.outgoingMsgCh) > 0 {
-			<-w.outgoingMsgCh
+		for w.sendQueue.Len() > 0 {
+			w.nextOutgoing()
 		}
 
 		// Verify pending subscription was created with referral flag
@@ -1436,7 +1436,7 @@ func TestUnknownStreamerFirstOfflineSaved(t *testing.T) {
 		t.Error("expected addStreamer to return nil for unknown streamer")
 	}
 	// Drain the "checking streamer" message
-	<-w.outgoingMsgCh
+	w.nextOutgoing()
 
 	// Verify pending subscription exists
 	if w.db.MustInt("select count(*) from pending_subscriptions where nickname = $1", "unknown_model") != 1 {
@@ -1757,15 +1757,15 @@ func TestNotifyOfStatuses(t *testing.T) {
 		{ChatID: 201, Endpoint: "test", Nickname: "d", Status: cmdlib.StatusOnline, Priority: db.PriorityHigh},
 	}
 
-	w.notifyOfStatuses(nots)
+	w.enqueueNotifications(notificationBatch{notifications: nots})
 
-	if len(w.outgoingMsgCh) != 4 {
-		t.Errorf("expected 4 outgoing messages, got %d", len(w.outgoingMsgCh))
+	if w.sendQueue.Len() != 4 {
+		t.Errorf("expected 4 outgoing messages, got %d", w.sendQueue.Len())
 	}
 	lowCount := 0
 	highCount := 0
-	for range len(w.outgoingMsgCh) {
-		p := <-w.outgoingMsgCh
+	for range w.sendQueue.Len() {
+		p := w.nextOutgoing()
 		if p.priority == db.PriorityLow {
 			lowCount++
 		} else {

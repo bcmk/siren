@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/bcmk/siren/v3/internal/botconfig"
@@ -41,32 +42,79 @@ func receiveResult(t *testing.T, ch chan msgSendResult) msgSendResult {
 	}
 }
 
-// TestSenderResendsOnMigrate drives the sender loop through a migrate error
+// TestSenderResendsOnMigrate calls deliver with a migrate error
 // and checks it reports the new id and resends there, not to the old one.
 func TestSenderResendsOnMigrate(t *testing.T) {
 	const oldID, newID = int64(-100), int64(-1001234)
 	w := &worker{
-		cfg:                &botconfig.Config{},
-		bots:               map[string]*bot.Bot{"ep": nil},
-		outgoingMsgCh:      make(chan outgoingPacket, 16),
-		outgoingMsgResults: make(chan msgSendResult, 16),
+		cfg:         &botconfig.Config{},
+		bots:        map[string]*bot.Bot{"ep": nil},
+		sendResults: make(chan msgSendResult, 16),
+		cooledChats: make(chan int64, 16),
 	}
-	go w.sender()
 
+	// We drive deliver directly with the chat preset,
+	// exercising the migrate and resend path without a database.
 	msg := &migrateThenOK{id: oldID, target: int(newID)}
-	w.enqueueMessage(db.PriorityHigh, "ep", msg, db.MessagePacket)
+	go w.deliver(&queuedMessage{
+		chatID:   oldID,
+		endpoint: "ep",
+		message:  msg,
+		priority: db.PriorityHigh,
+		kind:     db.MessagePacket,
+	})
 
 	// First result: the bounce off the old id, carrying the new id.
-	if r := receiveResult(t, w.outgoingMsgResults); r.result != messageMigrate ||
+	if r := receiveResult(t, w.sendResults); r.result != messageMigrate ||
 		r.chatID != oldID || r.migrateToChatID != newID {
 		t.Fatalf("bounce = {result %d, chat %d, migrateTo %d}, want {%d, %d, %d}",
 			r.result, r.chatID, r.migrateToChatID, messageMigrate, oldID, newID)
 	}
 	// Second result: the resend, delivered to the new id.
-	if r := receiveResult(t, w.outgoingMsgResults); r.result != messageSent || r.chatID != newID {
+	if r := receiveResult(t, w.sendResults); r.result != messageSent || r.chatID != newID {
 		t.Fatalf("resend = {result %d, chat %d}, want {messageSent, %d}", r.result, r.chatID, newID)
 	}
 	if got := msg.chatID(); got != newID {
 		t.Errorf("message not retargeted: chatID = %d, want %d", got, newID)
 	}
+}
+
+// TestDeliverReleasesOriginalIDOnMigrate checks that after a resend
+// to the new supergroup id, deliver frees exactly the id trySend cooled,
+// the original one.
+// The new id is deliberately never cooled, so releasing it would be stray.
+func TestDeliverReleasesOriginalIDOnMigrate(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		const oldID, newID = int64(-100), int64(-1001234)
+		w := &worker{
+			cfg:         &botconfig.Config{},
+			bots:        map[string]*bot.Bot{"ep": nil},
+			sendResults: make(chan msgSendResult, 16),
+			cooledChats: make(chan int64, 16),
+		}
+		go w.deliver(&queuedMessage{
+			chatID:   oldID,
+			endpoint: "ep",
+			message:  &migrateThenOK{id: oldID, target: int(newID)},
+			priority: db.PriorityHigh,
+			kind:     db.MessagePacket,
+		})
+		// Drain the bounce and the resend so deliver reaches its release.
+		receiveResult(t, w.sendResults)
+		receiveResult(t, w.sendResults)
+
+		// The migrated chat is a supergroup, released after groupCooldown;
+		// synctest's fake clock makes that wait instant.
+		if id := <-w.cooledChats; id != oldID {
+			t.Errorf("released id = %d, want %d", id, oldID)
+		}
+		// An extra release would follow at once; settle all goroutines
+		// and confirm none arrives.
+		synctest.Wait()
+		select {
+		case id := <-w.cooledChats:
+			t.Errorf("unexpected extra release of %d", id)
+		default:
+		}
+	})
 }

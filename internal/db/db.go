@@ -26,10 +26,11 @@ type QueryDurationsData struct {
 
 // Database represents a database and operatons with it
 type Database struct {
-	Durations      map[string]QueryDurationsData
-	db             *pgx.Conn
-	mainGID        int
-	shouldCheckGID bool
+	Durations         map[string]QueryDurationsData
+	db                *pgx.Conn
+	mainGID           int
+	shouldCheckGID    bool
+	gidCheckSuspended bool
 }
 
 // NewDatabase creates a new database object
@@ -62,7 +63,7 @@ func gid() int {
 }
 
 func (d *Database) checkTID() {
-	if !d.shouldCheckGID {
+	if !d.shouldCheckGID || d.gidCheckSuspended {
 		return
 	}
 	current := gid()
@@ -70,6 +71,16 @@ func (d *Database) checkTID() {
 		checkErr(fmt.Errorf("database queries should be run from single thread, expected: %d, actual: %d", d.mainGID, current))
 	}
 }
+
+// SuspendGIDCheck and ResumeGIDCheck bracket startup:
+// the database is created and initialized on a dedicated goroutine,
+// off the main loop, while the loop's DB arms stay dormant.
+// That goroutine alone touches the connection then,
+// a coordinated handoff the single-goroutine check would otherwise reject.
+func (d *Database) SuspendGIDCheck() { d.gidCheckSuspended = true }
+
+// ResumeGIDCheck restores the check after the startup handoff.
+func (d *Database) ResumeGIDCheck() { d.gidCheckSuspended = false }
 
 // Measure measures query duration
 func (d *Database) Measure(query string) func() {

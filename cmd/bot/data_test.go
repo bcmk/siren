@@ -1,6 +1,7 @@
 package main
 
 import (
+	"container/heap"
 	"context"
 	"text/template"
 
@@ -10,6 +11,13 @@ import (
 	"github.com/bcmk/siren/v3/lib/cmdlib"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
+
+// nextOutgoing pops the message the sender would send next.
+// The test worker sets commonCooling, so enqueue parks messages in the heap;
+// tests read them there rather than from a channel.
+func (w *testWorker) nextOutgoing() *queuedMessage {
+	return heap.Pop(&w.sendQueue).(*queuedMessage)
+}
 
 var testConfig = botconfig.Config{
 	CheckGID:             true,
@@ -97,7 +105,11 @@ func newTestWorker() *testWorker {
 			client:        nil,
 			tr:            map[string]*cmdlib.Translations{"test": &testTranslations},
 			tpl:           map[string]*template.Template{"test": tpl},
-			outgoingMsgCh: make(chan outgoingPacket, maxHeapLen),
+			sendQueue:     newSendHeap(),
+			sendResults:   make(chan msgSendResult, sendChanCap),
+			cooledChats:   make(chan int64, sendChanCap),
+			shutdownCh:    make(chan struct{}),
+			commonCooling: true,
 			checker:       &checkers.RandomChecker{BaseChecker: checkers.NewBaseChecker(&checkers.TestCheckerConfig{})},
 		},
 	}

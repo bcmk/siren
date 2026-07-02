@@ -3,564 +3,299 @@ package main
 import (
 	"container/heap"
 	"context"
+	"slices"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
+	"github.com/bcmk/siren/v3/internal/botconfig"
 	"github.com/bcmk/siren/v3/internal/db"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
 
-type stubMessage struct{ id int64 }
+// countingMessage records concurrent sends so a test can assert single-flight.
+type countingMessage struct {
+	id          int64
+	inflight    *int32
+	maxInflight *int32
+}
 
-func (s *stubMessage) chatID() int64 { return s.id }
+func (m *countingMessage) chatID() int64      { return m.id }
+func (m *countingMessage) setChatID(id int64) { m.id = id }
 
-func (s *stubMessage) setChatID(id int64) { s.id = id }
-
-func (s *stubMessage) send(_ context.Context, _ *bot.Bot) (*models.Message, error) {
+func (m *countingMessage) send(context.Context, *bot.Bot) (*models.Message, error) {
+	n := atomic.AddInt32(m.inflight, 1)
+	for {
+		peak := atomic.LoadInt32(m.maxInflight)
+		if n <= peak || atomic.CompareAndSwapInt32(m.maxInflight, peak, n) {
+			break
+		}
+	}
+	time.Sleep(2 * time.Millisecond)
+	atomic.AddInt32(m.inflight, -1)
 	return nil, nil
 }
 
-func newPacketHeap() packetHeap {
-	return packetHeap{
-		maxReadyAt:  map[int64]readyAtValue{},
-		chatPackets: map[int64]map[*outgoingPacket]struct{}{},
+// TestSenderScheduling drives the real worker and checks priority order,
+// per-chat cooldown and the single-flight slot.
+func TestSenderScheduling(t *testing.T) {
+	type enq struct {
+		chatIdx int
+		pri     db.Priority
 	}
-}
-
-func pushPacket(h *packetHeap, chatID int64, priority db.Priority) {
-	heap.Push(h, &outgoingPacket{
-		message:  &stubMessage{chatID},
-		priority: priority,
-		kind:     db.NotificationPacket,
-	})
-}
-
-func chatID(id int64) *int64 { return &id }
-
-type testPush struct {
-	chatID   int64
-	priority db.Priority
-}
-
-type testReady struct {
-	chatID int64
-	offset time.Duration
-}
-
-type nextActionStep struct {
-	name         string
-	now          time.Time
-	setupHeap    []testPush
-	setupReadyAt []testReady
-	wantPacket   *int64
-	wantWait     time.Duration
-	wantHeapLen  int
-	wantReadyAt  map[int64]time.Time
-}
-
-func TestNextAction(t *testing.T) {
-	t0 := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
-	t1 := t0.Add(time.Second)
-	t2 := t0.Add(2 * time.Second)
-
 	tests := []struct {
-		name  string
-		steps []nextActionStep
+		name    string
+		chats   int
+		enqueue []enq
+		want    []int
 	}{
 		{
-			name: "empty heap",
-			steps: []nextActionStep{
-				{
-					name:        "returns nil and zero wait",
-					now:         t0,
-					wantPacket:  nil,
-					wantWait:    0,
-					wantHeapLen: 0,
-					wantReadyAt: nil,
-				},
-			},
+			// 0 sends at once; its second message waits out the cooldown,
+			// so 1 slips in front.
+			name:    "per-chat cooldown defers the same chat",
+			chats:   2,
+			enqueue: []enq{{0, db.PriorityLow}, {0, db.PriorityLow}, {1, db.PriorityLow}},
+			want:    []int{0, 1, 0},
 		},
 		{
-			name: "ready packet",
-			steps: []nextActionStep{
-				{
-					name:        "pops and returns it",
-					now:         t0,
-					setupHeap:   []testPush{{100, db.PriorityLow}},
-					wantPacket:  chatID(100),
-					wantWait:    0,
-					wantHeapLen: 0,
-					wantReadyAt: nil,
-				},
-			},
-		},
-		{
-			name: "rate-limited packet",
-			steps: []nextActionStep{
-				{
-					name:         "returns wait duration",
-					now:          t0,
-					setupHeap:    []testPush{{100, db.PriorityLow}},
-					setupReadyAt: []testReady{{100, time.Second}},
-					wantPacket:   nil,
-					wantWait:     time.Second,
-					wantHeapLen:  1,
-					wantReadyAt:  map[int64]time.Time{100: t1},
-				},
-			},
-		},
-		{
-			name: "readyAt beats priority",
-			steps: []nextActionStep{
-				{
-					name:         "set earlier readyAt for low priority chat",
-					now:          t0,
-					setupReadyAt: []testReady{{200, time.Second}},
-					wantPacket:   nil,
-					wantWait:     0,
-					wantHeapLen:  0,
-					wantReadyAt:  map[int64]time.Time{200: t1},
-				},
-				{
-					name:         "set later readyAt for high priority chat",
-					now:          t0,
-					setupReadyAt: []testReady{{100, 2 * time.Second}},
-					wantPacket:   nil,
-					wantWait:     0,
-					wantHeapLen:  0,
-					wantReadyAt:  map[int64]time.Time{100: t2, 200: t1},
-				},
-				{
-					name: "low priority with earlier readyAt goes first",
-					now:  t1,
-					setupHeap: []testPush{
-						{100, db.PriorityHigh},
-						{200, db.PriorityLow},
-					},
-					wantPacket:  chatID(200),
-					wantWait:    0,
-					wantHeapLen: 1,
-					wantReadyAt: map[int64]time.Time{100: t2},
-				},
-				{
-					name:        "high priority with later readyAt waits",
-					now:         t1,
-					wantPacket:  nil,
-					wantWait:    time.Second,
-					wantHeapLen: 1,
-					wantReadyAt: map[int64]time.Time{100: t2},
-				},
-				{
-					name:        "high priority ready after expiry",
-					now:         t2,
-					wantPacket:  chatID(100),
-					wantWait:    0,
-					wantHeapLen: 0,
-					wantReadyAt: nil,
-				},
-			},
-		},
-		{
-			name: "priority beats seq",
-			steps: []nextActionStep{
-				{
-					name:        "high priority pushed second still goes first",
-					now:         t0,
-					setupHeap:   []testPush{{100, db.PriorityLow}, {200, db.PriorityHigh}},
-					wantPacket:  chatID(200),
-					wantWait:    0,
-					wantHeapLen: 1,
-					wantReadyAt: nil,
-				},
-				{
-					name:        "low priority second",
-					now:         t0,
-					wantPacket:  chatID(100),
-					wantWait:    0,
-					wantHeapLen: 0,
-					wantReadyAt: nil,
-				},
-			},
-		},
-		{
-			name: "seq preserves FIFO within same priority",
-			steps: []nextActionStep{
-				{
-					name:        "first pushed goes first",
-					now:         t0,
-					setupHeap:   []testPush{{100, db.PriorityLow}, {200, db.PriorityLow}},
-					wantPacket:  chatID(100),
-					wantWait:    0,
-					wantHeapLen: 1,
-					wantReadyAt: nil,
-				},
-				{
-					name:        "second pushed goes second",
-					now:         t0,
-					wantPacket:  chatID(200),
-					wantWait:    0,
-					wantHeapLen: 0,
-					wantReadyAt: nil,
-				},
-			},
-		},
-		{
-			name: "rate-limited skips to ready",
-			steps: []nextActionStep{
-				{
-					name:         "returns ready packet from different chat",
-					now:          t0,
-					setupHeap:    []testPush{{100, db.PriorityHigh}, {200, db.PriorityLow}},
-					setupReadyAt: []testReady{{100, time.Second}},
-					wantPacket:   chatID(200),
-					wantWait:     0,
-					wantHeapLen:  1,
-					wantReadyAt:  map[int64]time.Time{100: t1},
-				},
-			},
-		},
-		{
-			name: "cleanup expired",
-			steps: []nextActionStep{
-				{
-					name:         "removes expired readyAt",
-					now:          t0,
-					setupHeap:    []testPush{{200, db.PriorityLow}},
-					setupReadyAt: []testReady{{100, -time.Second}},
-					wantPacket:   chatID(200),
-					wantWait:     0,
-					wantHeapLen:  0,
-					wantReadyAt:  nil,
-				},
-			},
-		},
-		{
-			name: "same chat multiple packets",
-			steps: []nextActionStep{
-				{
-					name:        "first packet is ready",
-					now:         t0,
-					setupHeap:   []testPush{{100, db.PriorityLow}, {100, db.PriorityLow}},
-					wantPacket:  chatID(100),
-					wantWait:    0,
-					wantHeapLen: 1,
-					wantReadyAt: nil,
-				},
-				{
-					name:         "second packet is rate-limited",
-					now:          t0,
-					setupReadyAt: []testReady{{100, time.Second}},
-					wantPacket:   nil,
-					wantWait:     time.Second,
-					wantHeapLen:  1,
-					wantReadyAt:  map[int64]time.Time{100: t1},
-				},
-				{
-					name:        "second packet ready after expiry",
-					now:         t1,
-					wantPacket:  chatID(100),
-					wantWait:    0,
-					wantHeapLen: 0,
-					wantReadyAt: nil,
-				},
-			},
-		},
-		{
-			name: "readyAt expiry",
-			steps: []nextActionStep{
-				{
-					name:         "set readyAt",
-					now:          t0,
-					setupReadyAt: []testReady{{100, time.Second}},
-					wantPacket:   nil,
-					wantWait:     0,
-					wantHeapLen:  0,
-					wantReadyAt:  map[int64]time.Time{100: t1},
-				},
-				{
-					name:        "entry removed after expiry",
-					now:         t2,
-					wantPacket:  nil,
-					wantWait:    0,
-					wantHeapLen: 0,
-					wantReadyAt: nil,
-				},
-			},
-		},
-		{
-			name: "readyAt not expired prematurely",
-			steps: []nextActionStep{
-				{
-					name:         "set two readyAt values",
-					now:          t0,
-					setupReadyAt: []testReady{{100, time.Second}, {100, 2 * time.Second}},
-					wantPacket:   nil,
-					wantWait:     0,
-					wantHeapLen:  0,
-					wantReadyAt:  map[int64]time.Time{100: t2},
-				},
-				{
-					name:        "second setReadyAt survives first expiry",
-					now:         t0.Add(time.Second + 500*time.Millisecond),
-					wantPacket:  nil,
-					wantWait:    0,
-					wantHeapLen: 0,
-					wantReadyAt: map[int64]time.Time{100: t2},
-				},
-			},
-		},
-		{
-			name: "single packet pushed and returned",
-			steps: []nextActionStep{
-				{
-					name:        "ready packet is sent",
-					now:         t0,
-					setupHeap:   []testPush{{100, db.PriorityHigh}},
-					wantPacket:  chatID(100),
-					wantWait:    0,
-					wantHeapLen: 0,
-					wantReadyAt: nil,
-				},
-			},
-		},
-		{
-			name: "new packet sorted by priority",
-			steps: []nextActionStep{
-				{
-					name:        "high priority goes first",
-					now:         t0,
-					setupHeap:   []testPush{{200, db.PriorityLow}, {100, db.PriorityHigh}},
-					wantPacket:  chatID(100),
-					wantWait:    0,
-					wantHeapLen: 1,
-					wantReadyAt: nil,
-				},
-				{
-					name:        "low priority sent second",
-					now:         t0,
-					wantPacket:  chatID(200),
-					wantWait:    0,
-					wantHeapLen: 0,
-					wantReadyAt: nil,
-				},
-			},
-		},
-		{
-			name: "new packet does not disrupt existing order",
-			steps: []nextActionStep{
-				{
-					name:        "high priority still first after low priority push",
-					now:         t0,
-					setupHeap:   []testPush{{100, db.PriorityHigh}, {200, db.PriorityLow}, {300, db.PriorityLow}},
-					wantPacket:  chatID(100),
-					wantWait:    0,
-					wantHeapLen: 2,
-					wantReadyAt: nil,
-				},
-				{
-					name:        "earlier low priority before later",
-					now:         t0,
-					wantPacket:  chatID(200),
-					wantWait:    0,
-					wantHeapLen: 1,
-					wantReadyAt: nil,
-				},
-				{
-					name:        "later low priority last",
-					now:         t0,
-					wantPacket:  chatID(300),
-					wantWait:    0,
-					wantHeapLen: 0,
-					wantReadyAt: nil,
-				},
-			},
-		},
-		{
-			name: "rate limit reorders same-chat packets",
-			steps: []nextActionStep{
-				{
-					name:        "send to 100 first",
-					now:         t0,
-					setupHeap:   []testPush{{100, db.PriorityLow}, {200, db.PriorityLow}, {100, db.PriorityLow}, {300, db.PriorityLow}},
-					wantPacket:  chatID(100),
-					wantWait:    0,
-					wantHeapLen: 3,
-					wantReadyAt: nil,
-				},
-				{
-					name:         "100 is rate-limited, 200 goes next",
-					now:          t0,
-					setupReadyAt: []testReady{{100, time.Second}},
-					wantPacket:   chatID(200),
-					wantWait:     0,
-					wantHeapLen:  2,
-					wantReadyAt:  map[int64]time.Time{100: t1},
-				},
-				{
-					name:        "300 goes next",
-					now:         t0,
-					wantPacket:  chatID(300),
-					wantWait:    0,
-					wantHeapLen: 1,
-					wantReadyAt: map[int64]time.Time{100: t1},
-				},
-				{
-					name:        "100 is still rate-limited",
-					now:         t0,
-					wantPacket:  nil,
-					wantWait:    time.Second,
-					wantHeapLen: 1,
-					wantReadyAt: map[int64]time.Time{100: t1},
-				},
-				{
-					name:        "100 ready after expiry",
-					now:         t1,
-					wantPacket:  chatID(100),
-					wantWait:    0,
-					wantHeapLen: 0,
-					wantReadyAt: nil,
-				},
-			},
-		},
-		{
-			name: "slow send expires multiple readyAt entries",
-			steps: []nextActionStep{
-				{
-					name: "rate-limited chats wait while ready chat is popped",
-					now:  t0,
-					setupHeap: []testPush{
-						{100, db.PriorityLow},
-						{200, db.PriorityHigh},
-						{300, db.PriorityLow},
-					},
-					setupReadyAt: []testReady{{100, time.Second}, {200, 2 * time.Second}},
-					wantPacket:   chatID(300),
-					wantWait:     0,
-					wantHeapLen:  2,
-					wantReadyAt:  map[int64]time.Time{100: t1, 200: t2},
-				},
-				{
-					name:        "high priority goes first after both expire",
-					now:         t2,
-					wantPacket:  chatID(200),
-					wantWait:    0,
-					wantHeapLen: 1,
-					wantReadyAt: nil,
-				},
-			},
-		},
-		{
-			name: "shorter rate limit expires before longer",
-			steps: []nextActionStep{
-				{
-					name: "different rate limit durations",
-					now:  t0,
-					setupHeap: []testPush{
-						{100, db.PriorityLow},
-						{200, db.PriorityLow},
-					},
-					setupReadyAt: []testReady{{100, 2 * time.Second}, {200, time.Second}},
-					wantPacket:   nil,
-					wantWait:     time.Second,
-					wantHeapLen:  2,
-					wantReadyAt:  map[int64]time.Time{100: t2, 200: t1},
-				},
-				{
-					name:        "shorter limit expires first",
-					now:         t1,
-					wantPacket:  chatID(200),
-					wantWait:    0,
-					wantHeapLen: 1,
-					wantReadyAt: map[int64]time.Time{100: t2},
-				},
-				{
-					name:        "longer limit expires second",
-					now:         t2,
-					wantPacket:  chatID(100),
-					wantWait:    0,
-					wantHeapLen: 0,
-					wantReadyAt: nil,
-				},
-			},
-		},
-		{
-			name: "out-of-order rate limits both expire at once",
-			steps: []nextActionStep{
-				{
-					name: "longer limit added first, shorter second",
-					now:  t0,
-					setupHeap: []testPush{
-						{100, db.PriorityLow},
-						{200, db.PriorityHigh},
-					},
-					setupReadyAt: []testReady{{100, 2 * time.Second}, {200, time.Second}},
-					wantPacket:   nil,
-					wantWait:     time.Second,
-					wantHeapLen:  2,
-					wantReadyAt:  map[int64]time.Time{100: t2, 200: t1},
-				},
-				{
-					name:        "both expire, high priority first",
-					now:         t2,
-					wantPacket:  chatID(200),
-					wantWait:    0,
-					wantHeapLen: 1,
-					wantReadyAt: nil,
-				},
-			},
+			// 0 sends at once; 1 and 2 queue behind it,
+			// and the high-priority 2 jumps the low-priority 1.
+			name:    "priority wins among queued messages",
+			chats:   3,
+			enqueue: []enq{{0, db.PriorityLow}, {1, db.PriorityLow}, {2, db.PriorityHigh}},
+			want:    []int{0, 2, 1},
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h := newPacketHeap()
+			w := newTestWorker()
+			defer w.terminate()
+			w.createDatabase()
+			w.commonCooling = false
 
-			for _, step := range tt.steps {
-				t.Run(step.name, func(t *testing.T) {
-					for _, p := range step.setupHeap {
-						pushPacket(&h, p.chatID, p.priority)
-					}
-					for _, r := range step.setupReadyAt {
-						h.setReadyAt(r.chatID, step.now.Add(r.offset))
-					}
+			chatIDs := make([]int64, tt.chats)
+			idxOf := map[int64]int{}
+			for i := range chatIDs {
+				chatIDs[i] = int64(100 + i)
+				idxOf[chatIDs[i]] = i
+			}
 
-					pkt, wait := h.nextAction(step.now)
+			var inflight, maxInflight int32
+			for _, e := range tt.enqueue {
+				w.enqueueMessage(e.pri, "test",
+					&countingMessage{id: chatIDs[e.chatIdx], inflight: &inflight, maxInflight: &maxInflight},
+					db.MessagePacket, 0)
+			}
 
-					if step.wantPacket == nil {
-						if pkt != nil {
-							t.Errorf("expected nil packet, got chatID %d", pkt.message.chatID())
-						}
-					} else {
-						if pkt == nil {
-							t.Fatal("expected a packet, got nil")
-						}
-						if pkt.message.chatID() != *step.wantPacket {
-							t.Errorf("expected chatID %d, got %d", *step.wantPacket, pkt.message.chatID())
-						}
-					}
+			var order []int
+			for len(order) < len(tt.enqueue) {
+				select {
+				case r := <-w.sendResults:
+					order = append(order, idxOf[r.chatID])
+					w.onSendDone()
+				case c := <-w.cooledChats:
+					w.onChatCooled(c)
+				}
+			}
 
-					if wait != step.wantWait {
-						t.Errorf("expected wait %v, got %v", step.wantWait, wait)
-					}
-
-					if h.Len() != step.wantHeapLen {
-						t.Errorf("expected heap len %d, got %d", step.wantHeapLen, h.Len())
-					}
-
-					if len(h.maxReadyAt) != len(step.wantReadyAt) {
-						t.Errorf("expected %d readyAt entries, got %d", len(step.wantReadyAt), len(h.maxReadyAt))
-					}
-					for id, want := range step.wantReadyAt {
-						got, ok := h.maxReadyAt[id]
-						if !ok {
-							t.Errorf("missing readyAt entry for chatID %d", id)
-						} else if !got.t.Equal(want) {
-							t.Errorf("readyAt[%d] = %v, want %v", id, got.t, want)
-						}
-					}
-				})
+			if !slices.Equal(order, tt.want) {
+				t.Errorf("delivery order = %v, want %v", order, tt.want)
+			}
+			if maxInflight != 1 {
+				t.Errorf("max concurrent sends = %d, want 1", maxInflight)
 			}
 		})
 	}
+}
+
+// okMessage delivers successfully and instantly, for timing assertions.
+type okMessage struct{ id int64 }
+
+func (m *okMessage) chatID() int64      { return m.id }
+func (m *okMessage) setChatID(id int64) { m.id = id }
+
+func (m *okMessage) send(context.Context, *bot.Bot) (*models.Message, error) {
+	return nil, nil
+}
+
+// TestSendHeapOrder checks the ordering the old packetHeap test covered:
+// a cooling chat sinks below every ready one, then priority wins,
+// then push sequence breaks ties.
+func TestSendHeapOrder(t *testing.T) {
+	type item struct {
+		chatID   int64
+		priority db.Priority
+		seq      uint64
+	}
+	tests := []struct {
+		name    string
+		items   []item
+		cooling []int64
+		want    []int64
+	}{
+		{
+			name:  "priority beats push sequence",
+			items: []item{{1, db.PriorityLow, 1}, {2, db.PriorityHigh, 2}},
+			want:  []int64{2, 1},
+		},
+		{
+			name:  "sequence preserves FIFO within a priority",
+			items: []item{{1, db.PriorityLow, 1}, {2, db.PriorityLow, 2}},
+			want:  []int64{1, 2},
+		},
+		{
+			name:    "a cooling chat sinks below a ready one despite higher priority",
+			items:   []item{{1, db.PriorityHigh, 1}, {2, db.PriorityLow, 2}},
+			cooling: []int64{1},
+			want:    []int64{2, 1},
+		},
+		{
+			name:    "ready chats drain before the cooling one",
+			items:   []item{{1, db.PriorityLow, 1}, {2, db.PriorityLow, 2}, {3, db.PriorityLow, 3}},
+			cooling: []int64{1},
+			want:    []int64{2, 3, 1},
+		},
+		{
+			name:  "a single message pops",
+			items: []item{{7, db.PriorityLow, 1}},
+			want:  []int64{7},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newSendHeap()
+			for _, c := range tt.cooling {
+				h.chatCooling[c] = struct{}{}
+			}
+			for _, it := range tt.items {
+				heap.Push(&h, &queuedMessage{chatID: it.chatID, priority: it.priority, seq: it.seq})
+			}
+			var got []int64
+			for h.Len() > 0 {
+				got = append(got, heap.Pop(&h).(*queuedMessage).chatID)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("pop order = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestSendHeapChatCount checks the per-chat counter the heap keeps,
+// so a cooling flip can skip the O(n) re-init when the chat has
+// nothing else queued.
+func TestSendHeapChatCount(t *testing.T) {
+	h := newSendHeap()
+	for _, chatID := range []int64{1, 1, 2} {
+		heap.Push(&h, &queuedMessage{chatID: chatID})
+	}
+	if h.chatCount[1] != 2 || h.chatCount[2] != 1 {
+		t.Fatalf("chatCount = %v, want {1:2, 2:1}", h.chatCount)
+	}
+	for h.Len() > 0 {
+		heap.Pop(&h)
+	}
+	if len(h.chatCount) != 0 {
+		t.Errorf("chatCount not drained to empty: %v", h.chatCount)
+	}
+}
+
+// TestEnqueueAtPreservesRequestTime checks that a re-queued message keeps
+// the request time of its first attempt, so its latency log spans the whole
+// journey rather than restarting at the re-queue.
+func TestEnqueueAtPreservesRequestTime(t *testing.T) {
+	w := &worker{
+		sendQueue:     newSendHeap(),
+		commonCooling: true, // parks the message instead of sending it
+	}
+	past := time.Now().Add(-42 * time.Second)
+	w.enqueueMessageAt(past, db.PriorityHigh, "ep", &okMessage{id: 1}, db.MessagePacket, 0)
+	q := heap.Pop(&w.sendQueue).(*queuedMessage)
+	if !q.requestedAt.Equal(past) {
+		t.Errorf("requestedAt = %v, want the preserved %v", q.requestedAt, past)
+	}
+}
+
+// TestDeliverTiming runs a delivery on a fake clock and checks the durations
+// the old readyAt test asserted: the result is reported after the global
+// pacing gap, and the chat is freed only after the full per-chat cooldown.
+func TestDeliverTiming(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		w := &worker{
+			cfg:         &botconfig.Config{},
+			bots:        map[string]*bot.Bot{"ep": nil},
+			sendResults: make(chan msgSendResult, 16),
+			cooledChats: make(chan int64, 16),
+		}
+		start := time.Now()
+		go w.deliver(&queuedMessage{
+			chatID:   1,
+			endpoint: "ep",
+			message:  &okMessage{id: 1},
+			priority: db.PriorityHigh,
+			kind:     db.MessagePacket,
+		})
+
+		if r := <-w.sendResults; r.result != messageSent {
+			t.Fatalf("result = %d, want messageSent", r.result)
+		}
+		if d := time.Since(start); d != commonCooldown {
+			t.Errorf("result reported after %v, want the %v pacing gap", d, commonCooldown)
+		}
+
+		<-w.cooledChats
+		if d := time.Since(start); d != chatCooldown {
+			t.Errorf("chat freed after %v, want the %v cooldown", d, chatCooldown)
+		}
+	})
+}
+
+// tooManyRequests always 429s, so deliver keeps retrying on the 8s backoff.
+type tooManyRequests struct{ id int64 }
+
+func (m *tooManyRequests) chatID() int64      { return m.id }
+func (m *tooManyRequests) setChatID(id int64) { m.id = id }
+func (m *tooManyRequests) send(context.Context, *bot.Bot) (*models.Message, error) {
+	return nil, &bot.TooManyRequestsError{}
+}
+
+// deliver must abandon the retry the instant shutdown starts,
+// not sleep the whole 8s backoff and eat the shared grace window.
+func TestDeliverAbandonsBackoffOnShutdown(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		w := &worker{
+			cfg:         &botconfig.Config{},
+			bots:        map[string]*bot.Bot{"ep": nil},
+			sendResults: make(chan msgSendResult, 16),
+			cooledChats: make(chan int64, 16),
+			shutdownCh:  make(chan struct{}),
+		}
+		done := make(chan struct{})
+		go func() {
+			w.deliver(&queuedMessage{
+				chatID:   1,
+				endpoint: "ep",
+				message:  &tooManyRequests{id: 1},
+				priority: db.PriorityHigh,
+				kind:     db.MessagePacket,
+			})
+			close(done)
+		}()
+
+		// The first 429 result lands, then deliver settles into the backoff wait.
+		if r := <-w.sendResults; r.result != messageTooManyRequests {
+			t.Fatalf("result = %d, want messageTooManyRequests", r.result)
+		}
+		synctest.Wait()
+
+		// Shutdown wakes it at once, well before the 8s backoff would elapse.
+		start := time.Now()
+		close(w.shutdownCh)
+		<-done
+		if d := time.Since(start); d != 0 {
+			t.Errorf("deliver returned after %v, want immediately on shutdown", d)
+		}
+	})
 }

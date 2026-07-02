@@ -53,6 +53,11 @@ const (
 
 	// MessagePacket represents a message packet
 	MessagePacket PacketKind = 3
+
+	// MaintenancePacket represents a maintenance-window message.
+	// Its send results skip all database bookkeeping,
+	// so it can be sent while migrations run.
+	MaintenancePacket PacketKind = 4
 )
 
 // PerformanceLogKind represents a performance log entry kind
