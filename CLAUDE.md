@@ -11,6 +11,12 @@
 - Use one-line commit messages only
 - Don't use heredocs for commit messages, use `git commit -m "message"`
 - Use conventional commit style
+- When fixing review findings on not-yet-pushed commits,
+  land each fix as a `git commit --fixup=<sha>`
+  into the commit that introduced the issue,
+  then autosquash — don't amend the tip or add a follow-up commit,
+  so every commit in the stack stays independently correct.
+  Judge the target commit by what the fix relates to, not by where it compiles.
 - Use site scope for single-site changes, e.g. `feat(chaturbate): add room subject`
   or `refactor(myfreecams): ...` for bot-side MyFreeCams code in
   `internal/checkers/` (the `adapter-mfc` scope is only for the
@@ -56,6 +62,8 @@
   match the surrounding Go indentation
 - ALWAYS use lowercase SQL keywords,
   including in documentation and conversations
+- Don't extract shared SQL fragments for DRY; write each query out in full.
+  Build dynamically only when the query itself must vary at runtime.
 - For doc comments containing code blocks, use `/* */` instead of `//`
   so gofmt's tab indent renders cleanly without the `//` eating columns
 - Use true em-dash (—) in comments when grammar requires.
@@ -67,6 +75,7 @@
   prefer breaking at full stops over semicolons over em-dashes
   over commas over natural pauses over spaces.
   Never break a line mid-phrase; break only at the boundaries above.
+  The `wrap-docs` skill applies this rule — see Skills.
 - Prefer short comments: one line is the default.
   Add more lines only when required to understand the code.
 - Keep lines no longer than 120 characters
@@ -214,6 +223,16 @@
   that could affect physical row order on a BRIN-indexed table.
 - Read `docs/telegram-stars.md` before changing Telegram Stars payment handling
   (buying subscriptions, invoices, pre-checkout, refunds).
+
+## Skills
+
+- Skills live in `.claude/skills/<name>/SKILL.md`;
+  each skill's description names the rule it applies.
+  Here "docs" covers markdown documentation and code comments both.
+- `wrap-docs` — applies the 80-char docs splitting rule
+  (Code Style: "Wrap documentation ... and comments at 80 characters").
+  Run it before committing doc or comment changes;
+  prefer a subagent so the reflow stays out of the main context.
 
 ## Code Locations
 
