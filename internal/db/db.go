@@ -121,18 +121,25 @@ func (d *Database) MustExecScript(script string) {
 	checkErr(err)
 }
 
-// ResetQueryStats clears the pg_stat_statements counters so its numbers
-// cover only the current process's lifetime.
+// ResetQueryStats clears the pg_stat_statements counters
+// so its numbers cover only the current process's lifetime.
+// The reset is scoped to the current database via the dbid argument
+// (pg_stat_statements counters are cluster-wide otherwise).
 // It is best-effort: the extension must be created
 // (see the pg_stat_statements migration)
 // and loaded via shared_preload_libraries,
 // and a reset failure must never take down startup.
 func (d *Database) ResetQueryStats() {
-	if _, err := d.db.Exec(context.Background(), "select pg_stat_statements_reset()"); err != nil {
+	const query = `
+		select pg_stat_statements_reset(
+			0,
+			(select oid from pg_database where datname = current_database()),
+			0)`
+	if _, err := d.db.Exec(context.Background(), query); err != nil {
 		lerr("cannot reset pg_stat_statements: %v", err)
 		return
 	}
-	linf("reset pg_stat_statements counters")
+	linf("reset pg_stat_statements counters for the current database")
 }
 
 // MustInt executes the query and returns single integer
