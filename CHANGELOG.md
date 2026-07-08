@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v3.9.0 — 2026-07-08
+
+### Added
+
+- Reset pg_stat_statements counters on startup, with a migration creating
+  the extension if absent.
+- Configurable image download timeout (image_download_timeout_seconds),
+  default 5s.
+
 ## v3.8.0 — 2026-07-08
 
 ### Changed
