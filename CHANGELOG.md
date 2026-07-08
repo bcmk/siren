@@ -3,6 +3,21 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v3.8.0 — 2026-07-08
+
+### Changed
+
+- Give each user a stable surrogate id and key sends and the child tables
+  on it, so a group-to-supergroup upgrade keeps history intact.
+- Schedule outgoing sends on the main loop, single-flight, with per-user
+  and per-group pacing (groups at Telegram's 20 messages/minute cap).
+- Bump golang.org/x/crypto to 0.52.0 and golang.org/x/image to 0.41.0.
+
+### Fixed
+
+- Resurrect subscription and message-log history stranded at the old chat id
+  by the v3.7.0 group-to-supergroup migration.
+
 ## v3.7.0 — 2026-06-23
 
 ### Added
