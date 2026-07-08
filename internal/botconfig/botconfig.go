@@ -58,6 +58,7 @@ type Config struct {
 	EnableWeek                      bool                      `mapstructure:"enable_week"`                        // enable week command
 	AffiliateLink                   string                    `mapstructure:"affiliate_link"`                     // affiliate link template
 	TelegramTimeoutSeconds          int                       `mapstructure:"telegram_timeout_seconds"`           // the timeout for Telegram queries
+	ImageDownloadTimeoutSeconds     int                       `mapstructure:"image_download_timeout_seconds"`     // the timeout for image downloads, defaults to 5
 	MaxSubscriptionsForPics         int                       `mapstructure:"max_subscriptions_for_pics"`         // the maximum amount of subscriptions for pics in a group chat
 	SubsConfirmationPeriodSeconds   int                       `mapstructure:"subs_confirmation_period_seconds"`   // subscriptions confirmation period
 	NotificationsReadyPeriodSeconds int                       `mapstructure:"notifications_ready_period_seconds"` // notifications ready check period
@@ -145,6 +146,9 @@ func checkConfig(cfg *Config) error {
 	if cfg.TelegramTimeoutSeconds == 0 {
 		return errors.New("configure telegram_timeout_seconds")
 	}
+	if cfg.ImageDownloadTimeoutSeconds == 0 {
+		cfg.ImageDownloadTimeoutSeconds = 5
+	}
 	if cfg.MaxSubscriptionsForPics == 0 {
 		return errors.New("configure max_subscriptions_for_pics")
 	}
@@ -187,6 +191,11 @@ func (c *Config) BuySubsEnabled() bool {
 // TelegramTimeout returns the configured Telegram HTTP timeout.
 func (c *Config) TelegramTimeout() time.Duration {
 	return time.Duration(c.TelegramTimeoutSeconds) * time.Second
+}
+
+// ImageDownloadTimeout returns the configured image download HTTP timeout.
+func (c *Config) ImageDownloadTimeout() time.Duration {
+	return time.Duration(c.ImageDownloadTimeoutSeconds) * time.Second
 }
 
 // ChatWhitelisted returns true if the chat is whitelisted or if no whitelist

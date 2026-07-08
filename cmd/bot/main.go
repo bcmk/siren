@@ -201,7 +201,7 @@ type imageDownloadLog struct {
 }
 
 func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
-	client := cmdlib.HTTPClientWithTimeout(checker.Config().Timeout())
+	client := cmdlib.HTTPClientWithTimeout(cfg.ImageDownloadTimeout())
 
 	incomingPackets := make(chan incomingPacket, incomingBufferSize*len(cfg.Endpoints))
 	telegramClient := cmdlib.HTTPClientWithTimeout(cfg.TelegramTimeout())
