@@ -74,6 +74,14 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/no-bare-go-build.sh"
+          },
+          {
+            "type": "agent",
+            "if": "Bash(git commit *)",
+            "model": "claude-sonnet-4-6",
+            "timeout": 180,
+            "statusMessage": "Running wrap-docs on staged changes",
+            "prompt": "A git commit is about to run in this repo. In your empty context, apply the wrap-docs skill to the STAGED changes so the commit lands already wrapped. 1) Read .claude/skills/wrap-docs/SKILL.md and follow it. 2) Scope strictly to the staged diff: run `git diff --cached --name-only` for files and `git diff --cached` for content. Cover Go comments in staged .go files and prose in staged .md files. 3) Reflow only the comments/prose this commit adds or changes: break at discourse boundaries, keep every line <= 80 columns, and change only line breaks and whitespace — never wording, code, or meaning. 4) Leave aligned trailing struct-field comments, fenced code, tables, and long URLs alone. 5) For each file you edit, run `git add <file>` so the reflow is included in this commit; never stage a file you did not edit. 6) If nothing needs reflowing, change nothing. Reply with one line: the files you rewrapped, or 'no changes'."
           }
         ]
       }
