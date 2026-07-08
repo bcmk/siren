@@ -589,6 +589,10 @@ func (w *worker) createDatabase() {
 	linf("ensuring database created...")
 	for _, prelude := range w.cfg.SQLPrelude {
 		w.db.MustExec(prelude)
+		// fuzzySearchDaemon also owns this connection.
+		// It touches the connection only to serve a search request,
+		// and no request arrives until registerWebApp, which runs after this.
+		// fuzzySearchDB has no GID check to catch a slip in that ordering.
 		w.fuzzySearchDB.MustExec(prelude)
 	}
 	w.db.ApplyMigrations()
