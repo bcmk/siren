@@ -17,6 +17,7 @@ import (
 var (
 	checkErr = cmdlib.CheckErr
 	linf     = cmdlib.Linf
+	lerr     = cmdlib.Lerr
 )
 
 // QueryDurationsData represents duration parameters of specific query
@@ -118,6 +119,20 @@ func (d *Database) MustExec(query string, args ...interface{}) int64 {
 func (d *Database) MustExecScript(script string) {
 	_, err := d.db.PgConn().Exec(context.Background(), script).ReadAll()
 	checkErr(err)
+}
+
+// ResetQueryStats clears the pg_stat_statements counters so its numbers
+// cover only the current process's lifetime.
+// It is best-effort: the extension must be created
+// (see the pg_stat_statements migration)
+// and loaded via shared_preload_libraries,
+// and a reset failure must never take down startup.
+func (d *Database) ResetQueryStats() {
+	if _, err := d.db.Exec(context.Background(), "select pg_stat_statements_reset()"); err != nil {
+		lerr("cannot reset pg_stat_statements: %v", err)
+		return
+	}
+	linf("reset pg_stat_statements counters")
 }
 
 // MustInt executes the query and returns single integer

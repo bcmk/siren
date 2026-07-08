@@ -596,6 +596,7 @@ func (w *worker) createDatabase() {
 		w.fuzzySearchDB.MustExec(prelude)
 	}
 	w.db.ApplyMigrations()
+	w.db.ResetQueryStats()
 }
 
 func (w *worker) initCache() {
