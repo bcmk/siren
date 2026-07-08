@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v3.9.1 — 2026-07-08
+
+### Fixed
+
+- Scope the startup pg_stat_statements reset to the current database
+  instead of the whole cluster.
+
 ## v3.9.0 — 2026-07-08
 
 ### Added
