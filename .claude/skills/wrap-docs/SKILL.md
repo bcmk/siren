@@ -57,6 +57,9 @@ Cover both kinds of docs in that change set:
    Use the highest-precedence boundary that still keeps the line
    within 80 columns.
    Drop to a lower one only when no higher boundary fits.
+   80 columns is a ceiling, not a target:
+   never fill to 80 and break at the last space
+   when a higher-precedence boundary sits earlier in the line.
 
 ## Preserve, do not touch
 
