@@ -85,7 +85,7 @@ type worker struct {
 	imageDownloadLogs          chan imageDownloadLog
 	unconfirmedOnlineStreamers map[string]cmdlib.StreamerInfo
 	botNames                   map[string]string
-	sendQueue                  sendHeap
+	sendQueue                  sendQueue
 	commonCooling              bool
 	sendSeq                    uint64
 	sendResults                chan msgSendResult
@@ -160,27 +160,26 @@ type msgSendResult struct {
 	latency         int
 	kind            db.PacketKind
 	notificationID  int
-	requestedAt     time.Time
-	retry           bool
-	retryAsText     sendable
+	// resend is the original queued message,
+	// handed back whole for the main loop to re-queue,
+	// so no field is lost in a copy on the way.
+	resend *queuedMessage
 }
 
 type sendDisposition int
 
 const (
-	dispFinalize   sendDisposition = iota // truly done: delete the row
-	dispResendText                        // photo-to-text fallback: re-queue
-	dispRearm                             // migrate bounce: re-arm the row
-	dispLeave                             // reply/maintenance migrate: skip
+	dispFinalize sendDisposition = iota // truly done: delete the row
+	dispResend                          // fallback, postponed, or migrated message: re-queue
+	dispRearm                           // targetless migrate: re-arm the row
+	dispLeave                           // targetless reply migrate or any maintenance migrate: skip
 )
 
-// disposition classifies a finished (non-retry) send.
-// Retry is handled by the caller's !r.retry gate:
-// a retry frees nothing and touches no row.
+// disposition classifies a delivery's result.
 func (r msgSendResult) disposition() sendDisposition {
 	switch {
-	case r.retryAsText != nil:
-		return dispResendText
+	case r.resend != nil:
+		return dispResend
 	case r.result != messageMigrate:
 		return dispFinalize
 	case r.notificationID != 0:
@@ -237,7 +236,7 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 		imageDownloadLogs:          make(chan imageDownloadLog),
 		unconfirmedOnlineStreamers: map[string]cmdlib.StreamerInfo{},
 		botNames:                   map[string]string{},
-		sendQueue:                  newSendHeap(),
+		sendQueue:                  newSendQueue(),
 		sendResults:                make(chan msgSendResult, sendChanCap),
 		cooledUsers:                make(chan db.UserID, sendChanCap),
 		shutdownCh:                 make(chan struct{}),
@@ -431,60 +430,65 @@ func (w *worker) sendMaintenance(endpoint string, chatID int64, notify bool, tex
 	w.enqueueMessage(db.PriorityHigh, endpoint, msg, db.MaintenancePacket, 0, 0)
 }
 
-func (w *worker) sendMessageInternal(endpoint string, msg sendable) (int, int64) {
+// sendMessageInternal sends one message and classifies the outcome.
+// retryAfter is Telegram's requested 429 pause in seconds, 0 otherwise.
+func (w *worker) sendMessageInternal(
+	endpoint string,
+	msg sendable,
+) (result int, migrateTo int64, retryAfter int) {
 	chatID := msg.chatID()
 	if !w.cfg.ChatWhitelisted(chatID) {
-		return messageSkipped, 0
+		return messageSkipped, 0, 0
 	}
 	ctx := context.Background()
 	if _, err := msg.send(ctx, w.bots[endpoint]); err != nil {
 		var migrateErr *bot.MigrateError
 		if errors.As(err, &migrateErr) {
 			ldbg("cannot send a message, group migration")
-			return messageMigrate, int64(migrateErr.MigrateToChatID)
+			return messageMigrate, int64(migrateErr.MigrateToChatID), 0
 		}
 		var tooManyErr *bot.TooManyRequestsError
 		if errors.As(err, &tooManyErr) {
-			ldbg("cannot send a message, too many requests")
-			return messageTooManyRequests, 0
+			ldbg("cannot send a message, too many requests: retry_after = %d", tooManyErr.RetryAfter)
+			return messageTooManyRequests, 0, tooManyErr.RetryAfter
 		}
 		if errors.Is(err, bot.ErrorForbidden) {
 			ldbg("cannot send a message, bot blocked")
-			return messageBlocked, 0
+			return messageBlocked, 0, 0
 		}
 		if errors.Is(err, bot.ErrorBadRequest) {
 			if strings.Contains(err.Error(), "chat not found") {
 				ldbg("cannot send a message, chat not found")
-				return messageChatNotFound, 0
+				return messageChatNotFound, 0, 0
 			}
 			if strings.Contains(err.Error(), "not enough rights to send photos") {
 				ldbg("cannot send a message, no photo rights")
-				return messageNoPhotoRights, 0
+				return messageNoPhotoRights, 0, 0
 			}
 			if strings.Contains(err.Error(), "not enough rights to send text messages") {
 				ldbg("cannot send a message, no text rights")
-				return messageNoTextRights, 0
+				return messageNoTextRights, 0, 0
 			}
 			if strings.Contains(err.Error(), "TOPIC_CLOSED") {
 				ldbg("cannot send a message, topic closed")
-				return messageTopicClosed, 0
+				return messageTopicClosed, 0, 0
 			}
 			lerr("cannot send a message, bad request, error: %v", err)
-			return messageBadRequest, 0
+			return messageBadRequest, 0, 0
 		}
 		var netErr net.Error
 		if errors.As(err, &netErr) {
 			if netErr.Timeout() {
 				ldbg("cannot send a message, timeout")
-				return messageTimeout, 0
+				return messageTimeout, 0, 0
 			}
 			lerr("cannot send a message, unknown network error")
-			return messageUnknownNetworkError, 0
+			return messageUnknownNetworkError, 0, 0
 		}
 		lerr("unexpected error type while sending a message to %d, %v", chatID, err)
-		return messageUnknownError, 0
+		return messageUnknownError, 0, 0
 	}
-	return messageSent, 0
+	return messageSent, 0, 0
 }
 
 func templateToString(t *texttemplate.Template, key string, data map[string]interface{}) string {
@@ -2585,7 +2589,11 @@ const webhookRemovalTimeout = 2 * time.Second
 // and waits for the in-flight send.
 func (w *worker) shutdown(incoming chan incomingPacket) {
 	w.shuttingDown.Store(true)
-	// Wake any retry sleeping on its backoff so it abandons at once.
+	// Wake both watchers of shutdownCh: the in-flight global pace inside deliver,
+	// so the drain never sleeps out its 1s,
+	// and any cooldown-release callback parked on the cooledUsers send
+	// once the drain stops reading it.
+	// The long postpone waits sit in detached timers that shutdown never fires.
 	close(w.shutdownCh)
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownWaitTimeout)
 	defer cancel()
@@ -2628,10 +2636,11 @@ func (w *worker) waitForInflightSends(ctx context.Context) {
 	}
 }
 
-// handleSendResult runs the bookkeeping for one send result:
-// block counters, chat-data migration, member count, and the send log.
+// handleSendResult runs the database bookkeeping for one send result:
+// block counters, chat-data migration, and the send log.
 // A maintenance send skips it all: it may run before the database exists.
-// The member-count lookup is a network call, skipped during shutdown.
+// The member-count lookup is a network call and deliberately not here —
+// completeSendResult runs it only after freeing the send slot.
 func (w *worker) handleSendResult(r msgSendResult) {
 	if r.kind == db.MaintenancePacket {
 		return
@@ -2641,9 +2650,8 @@ func (w *worker) handleSendResult(r msgSendResult) {
 		w.db.IncrementBlock(r.endpoint, r.userID)
 	case messageSent:
 		w.db.ResetBlock(r.endpoint, r.userID)
-		w.refreshMemberCount(r.endpoint, r.chatID, r.userID)
 	case messageMigrate:
-		// Move the chat's data so later sends go to the new ID, not the old.
+		// Move the chat's data so later sends go to the new id, not the old.
 		if r.migrateToChatID != 0 {
 			w.migrateChatAndLog(r.timestamp, r.endpoint, r.chatID, r.migrateToChatID)
 		}
@@ -2660,33 +2668,48 @@ func (w *worker) resolveResultUser(r *msgSendResult) {
 	}
 }
 
-// completeSendResult finalizes the notification, frees the send slot,
-// and runs the result bookkeeping — in that order.
-// getChatMemberCount is a network round-trip on the main goroutine by choice;
-// freeing the slot first lets the next POST overlap and hide it.
-// A retry result frees nothing: its deliver still owns the slot.
+// completeSendResult applies the result's database bookkeeping,
+// finalizes the notification, frees the send slot,
+// and only then refreshes the member count — in that order.
+// The whole bookkeeping (handleSendResult) runs before the slot frees.
+// Migrate requires it: a stalled main loop can let the user's cooling release
+// overtake this result and dispatch the resend the moment onSendDone frees
+// the slot, so the chat row must already point at the migrated chat's new id.
+// The log and block-counter writes do not need that ordering,
+// but stay here deliberately rather than split off to overlap the next POST:
+// they are fast local writes that single-flight pacing (commonCooldown)
+// already dwarfs, so recording the whole result before the next send
+// beats a sub-millisecond overlap and keeps the ordering trivial.
+// Only the member-count lookup, a network round-trip, is deferred past
+// onSendDone so the next POST overlaps and hides it.
 // Main goroutine only.
 func (w *worker) completeSendResult(r msgSendResult) {
 	w.resolveResultUser(&r)
-	if !r.retry {
-		switch r.disposition() {
-		case dispFinalize:
-			w.finalizeNotification(r.notificationID, r.userID, true)
-		case dispResendText:
-			// Re-queue the text fallback (waits out the cooldown),
-			// keeping the original request time for the latency log.
-			w.enqueueMessageAt(r.requestedAt, r.priority, r.endpoint, r.retryAsText, r.kind, r.userID, r.notificationID)
-		case dispRearm:
-			// The migrate bounced again on the resend, so nothing was delivered.
-			// Re-arm the notification rather than finalizing it as sent;
-			// the next fetch resolves the migrated chat fresh.
-			w.db.RequeueNotification(r.notificationID)
-		case dispLeave:
-			// A reply or maintenance migrate (notificationID 0): no row to re-arm.
-		}
-		w.onSendDone()
-	}
 	w.handleSendResult(r)
+	switch r.disposition() {
+	case dispFinalize:
+		w.finalizeNotification(r.notificationID, r.userID, true)
+	case dispResend:
+		// Re-queue the original queued message:
+		// its seq keeps the queue position against later same-user messages,
+		// its requestedAt keeps the latency baseline,
+		// and its userID keeps it parked behind the cooling user,
+		// even when a merge migration has re-keyed the live user meanwhile
+		// (dispatch resolves the chat id through the tombstone chain).
+		w.enqueue(r.resend)
+	case dispRearm:
+		// A migrate without a target delivered nothing.
+		// Re-arm the notification rather than finalizing it as sent;
+		// the next fetch retries it fresh.
+		w.db.RequeueNotification(r.notificationID)
+	case dispLeave:
+		// A targetless reply migrate or any maintenance migrate (notificationID 0):
+		// no row to re-arm.
+	}
+	w.onSendDone()
+	if r.result == messageSent && r.kind != db.MaintenancePacket {
+		w.refreshMemberCount(r.endpoint, r.chatID, r.userID)
+	}
 }
 
 // drainSendResults handles sends that completed after the drain stopped
@@ -2694,7 +2717,8 @@ func (w *worker) completeSendResult(r msgSendResult) {
 // run their bookkeeping and finalize them here.
 // Without finalizing, the rows stay sending=1
 // and re-arm into duplicates on restart.
-// Retries and photo-to-text fallbacks are left to re-arm, their normal path.
+// Re-queued sends (fallback, postpone, migrate) are left to re-arm,
+// their normal path.
 // Unlike completeSendResult, it never frees the slot:
 // no new send may start while exiting.
 func (w *worker) drainSendResults() {
@@ -2703,10 +2727,15 @@ func (w *worker) drainSendResults() {
 		case r := <-w.sendResults:
 			w.resolveResultUser(&r)
 			w.handleSendResult(r)
-			// A retry, fallback, or migrate bounce re-arms next start;
+			// A resend or a targetless migrate re-arms next start;
 			// finalize only a genuinely finished send.
-			if !r.retry && r.disposition() == dispFinalize {
+			switch d := r.disposition(); {
+			case d == dispFinalize:
 				w.finalizeNotification(r.notificationID, r.userID, true)
+			case d == dispResend && r.notificationID == 0:
+				// A postponed reply cannot re-arm (no row) and is not queued
+				// for logShutdownLoss to count, so note the drop here.
+				ldbg("shutdown dropped a postponed reply")
 			}
 		default:
 			return
@@ -2717,13 +2746,19 @@ func (w *worker) drainSendResults() {
 // logShutdownLoss reports what exiting drops.
 // Queued notifications re-send next start;
 // other queued messages and the buffered updates are lost.
+// The re-send count reads the queue only,
+// so a notification drained as a re-arm
+// (a postpone or fallback landing mid-shutdown) is not counted:
+// an accepted undercount in a log line.
 func (w *worker) logShutdownLoss(bufferedUpdates int) {
 	var messages, notifications int
-	for _, q := range w.sendQueue.items {
-		if q.notificationID == 0 {
-			messages++
-		} else {
-			notifications++
+	for _, u := range w.sendQueue.byUser {
+		for _, q := range u.items {
+			if q.notificationID == 0 {
+				messages++
+			} else {
+				notifications++
+			}
 		}
 	}
 	if messages+notifications+bufferedUpdates == 0 {

@@ -11,17 +11,31 @@ import (
 )
 
 const (
-	commonCooldown         = 60 * time.Millisecond // minimum gap between any two sends
-	userCooldown           = time.Second           // minimum gap between sends to one user
-	groupCooldown          = 3 * time.Second       // minimum gap to one group (Telegram's 20 msg/min cap)
-	tooManyRequestsBackoff = 8 * time.Second       // wait after a 429 before retrying
-	networkErrorBackoff    = time.Second           // wait after a timeout or network error before retrying
-	// maxHeapLen caps the outgoing queue; a broadcast past it drops its tail.
+	commonCooldown = 60 * time.Millisecond // minimum gap between any two sends
+	userCooldown   = time.Second           // minimum gap between sends to one user
+	groupCooldown  = 3 * time.Second       // minimum gap to one group (Telegram's 20 msg/min cap)
+	// tooManyRequestsBackoff paces a 429 redelivery
+	// when Telegram sends no retry_after;
+	// otherwise retry_after wins, capped at tooManyRequestsMaxBackoff.
+	tooManyRequestsBackoff    = 8 * time.Second
+	tooManyRequestsMaxBackoff = 20 * time.Minute
+	// transientErrorPostpone delays a timed-out or network-failed message
+	// before its redelivery.
+	transientErrorPostpone = 10 * time.Second
+	// tooManyRequestsGlobalPause is the global gap held after any 429,
+	// so a rate limit backs off the whole bot, not just the failing user.
+	tooManyRequestsGlobalPause = time.Second
+	// maxQueueLen caps the outgoing queue; a broadcast past it drops its tail.
 	// A streamer's image is shared across subscribers,
 	// so even a full queue is cheap in memory.
-	maxHeapLen = 100000
+	maxQueueLen = 100000
 	// sendChanCap sizes sendResults and cooledUsers.
-	// Single-flight delivery keeps both nearly empty.
+	// sendResults stays near-empty under single-flight delivery.
+	// cooledUsers can briefly exceed 64: per-user postpones leave many
+	// release timers pending, and a bot-wide 429 anchored to one deadline
+	// fires a batch together. The overflow only parks a few blocked timer
+	// goroutines on the send until trySend drains cooledUsers — no deadlock,
+	// self-healing — so 64 sizes the common near-empty case, not the burst.
 	sendChanCap = 64
 )
 
@@ -36,62 +50,159 @@ type queuedMessage struct {
 	seq            uint64
 }
 
-// sendHeap keeps the best sendable message at the top. A cooling-down user
-// sinks below every ready one, so the top is sendable
-// whenever any ready message exists.
-type sendHeap struct {
-	items       []*queuedMessage
-	userCooling map[db.UserID]struct{}
-	// userCount tracks queued messages per user,
-	// so a cooling flip for a user with nothing else queued
-	// can skip the O(n) re-init.
-	userCount map[db.UserID]int
-}
-
-func newSendHeap() sendHeap {
-	return sendHeap{
-		userCooling: map[db.UserID]struct{}{},
-		userCount:   map[db.UserID]int{},
+// messageLess orders messages for dispatch: priority, then FIFO by seq.
+func messageLess(a, b *queuedMessage) bool {
+	if a.priority != b.priority {
+		return a.priority < b.priority
 	}
+	return a.seq < b.seq
 }
 
-func (h *sendHeap) Len() int { return len(h.items) }
+// msgHeap is one user's pending messages, ordered by messageLess.
+type msgHeap []*queuedMessage
 
-func (h *sendHeap) Less(i, j int) bool {
-	_, ci := h.userCooling[h.items[i].userID]
-	_, cj := h.userCooling[h.items[j].userID]
-	if ci != cj {
-		return !ci
-	}
-	if h.items[i].priority != h.items[j].priority {
-		return h.items[i].priority < h.items[j].priority
-	}
-	return h.items[i].seq < h.items[j].seq
-}
+func (h msgHeap) Len() int           { return len(h) }
+func (h msgHeap) Less(i, j int) bool { return messageLess(h[i], h[j]) }
+func (h msgHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
 
-func (h *sendHeap) Swap(i, j int) {
-	h.items[i], h.items[j] = h.items[j], h.items[i]
-}
+func (h *msgHeap) Push(x any) { *h = append(*h, x.(*queuedMessage)) }
 
-func (h *sendHeap) Push(x any) {
-	it := x.(*queuedMessage)
-	h.userCount[it.userID]++
-	h.items = append(h.items, it)
-}
-
-func (h *sendHeap) Pop() any {
-	n := len(h.items)
-	it := h.items[n-1]
-	h.items[n-1] = nil
-	h.items = h.items[:n-1]
-	h.userCount[it.userID]--
-	if h.userCount[it.userID] == 0 {
-		delete(h.userCount, it.userID)
-	}
+func (h *msgHeap) Pop() any {
+	n := len(*h)
+	it := (*h)[n-1]
+	(*h)[n-1] = nil
+	*h = (*h)[:n-1]
 	return it
 }
 
-// enqueueMessage adds a message and tries to start a send. Main goroutine only.
+// userQueue is one user's message heap plus its ready-heap position.
+type userQueue struct {
+	items msgHeap
+	// heapIndex is the index in sendQueue.ready, or -1 while cooling or empty.
+	heapIndex int
+}
+
+func (u *userQueue) head() *queuedMessage { return u.items[0] }
+
+// readyHeap ranks dispatchable users by their head message,
+// so the top user holds the globally best sendable message.
+type readyHeap []*userQueue
+
+func (h readyHeap) Len() int           { return len(h) }
+func (h readyHeap) Less(i, j int) bool { return messageLess(h[i].head(), h[j].head()) }
+
+func (h readyHeap) Swap(i, j int) {
+	h[i], h[j] = h[j], h[i]
+	h[i].heapIndex = i
+	h[j].heapIndex = j
+}
+
+func (h *readyHeap) Push(x any) {
+	u := x.(*userQueue)
+	u.heapIndex = len(*h)
+	*h = append(*h, u)
+}
+
+func (h *readyHeap) Pop() any {
+	n := len(*h)
+	u := (*h)[n-1]
+	(*h)[n-1] = nil
+	*h = (*h)[:n-1]
+	u.heapIndex = -1
+	return u
+}
+
+// sendQueue is a heap of per-user heaps.
+// Each user's messages are ordered by (priority, seq);
+// the ready heap ranks non-cooling users with pending messages
+// by their head message.
+// Every operation — push, pop, cooling flip — costs O(log n),
+// so no cooling transition ever rebuilds a whole heap.
+type sendQueue struct {
+	ready   readyHeap
+	byUser  map[db.UserID]*userQueue
+	cooling map[db.UserID]struct{}
+	size    int
+}
+
+func newSendQueue() sendQueue {
+	return sendQueue{
+		byUser:  map[db.UserID]*userQueue{},
+		cooling: map[db.UserID]struct{}{},
+	}
+}
+
+// Len returns the total number of queued messages.
+func (s *sendQueue) Len() int { return s.size }
+
+// hasReady reports whether any message is dispatchable now.
+func (s *sendQueue) hasReady() bool { return len(s.ready) > 0 }
+
+// push adds a message to its user's queue
+// and surfaces the user in the ready heap unless it is cooling.
+func (s *sendQueue) push(q *queuedMessage) {
+	u := s.byUser[q.userID]
+	if u == nil {
+		u = &userQueue{heapIndex: -1}
+		s.byUser[q.userID] = u
+	}
+	heap.Push(&u.items, q)
+	s.size++
+	if _, cooling := s.cooling[q.userID]; cooling {
+		return
+	}
+	if u.heapIndex == -1 {
+		heap.Push(&s.ready, u)
+	} else if u.head() == q {
+		// The new message displaced the head; re-rank the user.
+		heap.Fix(&s.ready, u.heapIndex)
+	}
+}
+
+// pop removes and returns the best dispatchable message,
+// or nil when every queued user is cooling or the queue is empty.
+func (s *sendQueue) pop() *queuedMessage {
+	if len(s.ready) == 0 {
+		return nil
+	}
+	u := s.ready[0]
+	q := heap.Pop(&u.items).(*queuedMessage)
+	s.size--
+	if len(u.items) == 0 {
+		heap.Pop(&s.ready)
+		// Every message in u shared this userID, so the popped one identifies it.
+		delete(s.byUser, q.userID)
+	} else {
+		heap.Fix(&s.ready, 0)
+	}
+	return q
+}
+
+// startCooling parks a user: it leaves the ready heap
+// and its messages wait until stopCooling.
+func (s *sendQueue) startCooling(userID db.UserID) {
+	s.cooling[userID] = struct{}{}
+	if u := s.byUser[userID]; u != nil && u.heapIndex != -1 {
+		heap.Remove(&s.ready, u.heapIndex)
+	}
+}
+
+// stopCooling frees a user, surfacing its queue in the ready heap again.
+// The heapIndex guard only protects heap integrity —
+// a second insert of the same queue would corrupt it.
+// It does not make a stale release safe:
+// one racing a re-park would un-park a fresh penalty early.
+// Safe today because at most one release is ever pending per user
+// (cooling-gated dispatch arms no second timer while one is outstanding).
+func (s *sendQueue) stopCooling(userID db.UserID) {
+	delete(s.cooling, userID)
+	if u := s.byUser[userID]; u != nil && u.heapIndex == -1 {
+		heap.Push(&s.ready, u)
+	}
+}
+
+// enqueueMessage adds a new message and tries to start a send.
+// Main goroutine only.
 // A MaintenancePacket kind marks a maintenance send:
 // it keeps the chat id it was built with, skips the per-user cooldown,
 // and never touches the database.
@@ -104,55 +215,44 @@ func (w *worker) enqueueMessage(
 	userID db.UserID,
 	notificationID int,
 ) {
-	w.enqueueMessageAt(time.Now(), priority, endpoint, msg, kind, userID, notificationID)
-}
-
-// enqueueMessageAt is enqueueMessage with an explicit request time,
-// so a re-queued message (the photo-to-text fallback)
-// keeps the latency baseline of its first attempt.
-func (w *worker) enqueueMessageAt(
-	requestedAt time.Time,
-	priority db.Priority,
-	endpoint string,
-	msg sendable,
-	kind db.PacketKind,
-	userID db.UserID,
-	notificationID int,
-) {
-	if w.sendQueue.Len() >= maxHeapLen {
-		lerr("the outgoing message heap is full")
-		// A notification (notificationID != 0) is put back for a later fetch.
-		// A reply or broadcast (notificationID 0) is dropped here, logged above:
-		// an accepted, bounded loss when the queue overflows.
-		if notificationID != 0 {
-			w.db.RequeueNotification(notificationID)
-		}
-		return
-	}
 	w.sendSeq++
-	q := &queuedMessage{
+	w.enqueue(&queuedMessage{
 		userID:         userID,
 		endpoint:       endpoint,
 		message:        msg,
 		priority:       priority,
 		kind:           kind,
 		notificationID: notificationID,
-		requestedAt:    requestedAt,
+		requestedAt:    time.Now(),
 		seq:            w.sendSeq,
+	})
+}
+
+// enqueue inserts a prebuilt message and tries to start a send.
+// Main goroutine only.
+// A re-queued message (a fallback, postpone, or migrate) arrives here
+// as the original envelope: its seq keeps the queue position,
+// so a later same-priority message cannot overtake it
+// and deliver a stale status last
+// (all status notifications share PriorityLow).
+func (w *worker) enqueue(q *queuedMessage) {
+	if w.sendQueue.Len() >= maxQueueLen {
+		lerr("the outgoing message queue is full")
+		// A notification (notificationID != 0) is put back for a later fetch.
+		// A reply or broadcast (notificationID 0) is dropped here, logged above:
+		// an accepted, bounded loss when the queue overflows.
+		if q.notificationID != 0 {
+			w.db.RequeueNotification(q.notificationID)
+		}
+		return
 	}
-	heap.Push(&w.sendQueue, q)
+	w.sendQueue.push(q)
 	w.trySend()
 }
 
 // onUserCooled frees a user after the per-user cooldown. Main goroutine only.
 func (w *worker) onUserCooled(userID db.UserID) {
-	delete(w.sendQueue.userCooling, userID)
-	// userID's queued items all flip back to ready at once;
-	// re-init the whole queue, as trySend does on the cooling flip.
-	// With nothing queued for the user, no key changed and no re-init is due.
-	if w.sendQueue.userCount[userID] > 0 {
-		heap.Init(&w.sendQueue)
-	}
+	w.sendQueue.stopCooling(userID)
 	w.trySend()
 }
 
@@ -164,13 +264,10 @@ func (w *worker) onSendDone() {
 }
 
 func (w *worker) trySend() {
-	if w.commonCooling || w.sendQueue.Len() == 0 {
+	if w.commonCooling || !w.sendQueue.hasReady() {
 		return
 	}
-	if _, cooling := w.sendQueue.userCooling[w.sendQueue.items[0].userID]; cooling {
-		return // every queued user is cooling down
-	}
-	q := heap.Pop(&w.sendQueue).(*queuedMessage)
+	q := w.sendQueue.pop()
 	if q.kind != db.MaintenancePacket {
 		chatID, ok := w.db.ChatIDForUser(q.userID)
 		if !ok {
@@ -182,19 +279,7 @@ func (w *worker) trySend() {
 			w.trySend()
 			return
 		}
-		w.sendQueue.userCooling[q.userID] = struct{}{}
-		// q.userID's remaining items all flip to cooling at once,
-		// but heap.Fix only repairs a single changed key, so per-item fixing
-		// can leave a cooling item at the root, starving a ready one.
-		// With no remaining items for the user, no key changed at all.
-		// The re-init is O(n) in the queue length.
-		// The guard limits it to a user with several items queued;
-		// a single-message user is already optimized away.
-		// A lazy pop-time skip would avoid the O(n) but is more complex,
-		// and is warranted only if storm-time main-loop latency is measured.
-		if w.sendQueue.userCount[q.userID] > 0 {
-			heap.Init(&w.sendQueue)
-		}
+		w.sendQueue.startCooling(q.userID)
 		// Resolve the chat id from the user at dispatch, on every send.
 		// Deliberate, not a missed optimization:
 		// userID is the single source of truth,
@@ -212,107 +297,148 @@ func (w *worker) trySend() {
 	})
 }
 
-// isRetriableSendError reports whether a send result is a transient failure
-// worth retrying: a timeout, a network blip, or a rate-limit.
-func isRetriableSendError(result int) bool {
-	return result == messageTimeout ||
-		result == messageUnknownNetworkError ||
-		result == messageTooManyRequests
+// tooManyRequestsDelay returns Telegram's requested 429 pause
+// capped at tooManyRequestsMaxBackoff, or the fallback when it is absent.
+// Capping in the seconds domain keeps an absurd retry_after
+// from overflowing the nanosecond conversion.
+func tooManyRequestsDelay(retryAfterSeconds int) time.Duration {
+	if retryAfterSeconds <= 0 {
+		return tooManyRequestsBackoff
+	}
+	capped := min(retryAfterSeconds, int(tooManyRequestsMaxBackoff/time.Second))
+	return time.Duration(capped) * time.Second
 }
 
-// deliver sends one message on its own goroutine, retrying and pacing,
+// transientDelay maps a transient send failure to the pause
+// before its next attempt: Telegram's retry_after for a 429,
+// transientErrorPostpone for a timeout or network error.
+// Any other result is not transient and gets no pause.
+func transientDelay(result int, retryAfterSeconds int) (pause time.Duration, transient bool) {
+	switch result {
+	case messageTooManyRequests:
+		return tooManyRequestsDelay(retryAfterSeconds), true
+	case messageTimeout, messageUnknownNetworkError:
+		return transientErrorPostpone, true
+	}
+	return 0, false
+}
+
+// deliver sends one message on its own goroutine — a single attempt, paced —
 // then reports back. It touches no shared state.
+// Every failure worth another try comes back as a resend
+// for the main loop to re-queue.
 func (w *worker) deliver(q *queuedMessage) {
-	migrated := false
-	for {
-		now := time.Now()
-		result, migrateTo := w.sendMessageInternal(q.endpoint, q.message)
-		latency := int(time.Since(q.requestedAt).Milliseconds())
-		retry := isRetriableSendError(result) ||
-			(result == messageMigrate && migrateTo != 0 && !migrated)
-		// A photo to a no-photo-rights group falls back to text,
-		// re-queued so it waits out the user's cooldown, not resent in place.
-		var retryAsText sendable
+	// Captured at entry: the main loop owns the envelope once the result is sent,
+	// so the cooldown tail works only from these locals, never from q.
+	// Not a live race today — the resend cannot dispatch
+	// until the tail itself releases the cooling user —
+	// but ownership by capture keeps the property structural.
+	// Capturing just the id also keeps the release closure
+	// from pinning the whole message, image payload included, for the whole pause.
+	// isGroup survives the fallback's payload swap: toText copies the chat id.
+	isGroup := q.message.chatID() < 0
+	kind := q.kind
+	userID := q.userID
+	now := time.Now()
+	result, migrateTo, retryAfter := w.sendMessageInternal(q.endpoint, q.message)
+	latency := int(time.Since(q.requestedAt).Milliseconds())
+	// A 429, timeout, or network blip postpones the message:
+	// the main loop re-queues it,
+	// and the cooldown tail below keeps its user cooling for the whole postpone,
+	// so other sends keep flowing meanwhile.
+	// The failing user parks; a 429 also holds the global slot 1s below.
+	// A migrate re-queues the same way: dispatch re-resolves the chat id
+	// from the user, which by then points at the migrated chat
+	// (ChatIDForUser follows migrated_to);
+	// migrations are one-way, so this cannot loop.
+	// A maintenance send is never redelivered — any failure drops it.
+	// It has no user cooldown to pace a re-queue,
+	// so an immediate redispatch would hammer Telegram on a 429.
+	// A migrate bounce does carry the fresh chat id,
+	// so retargeting it would be possible;
+	// it is dropped anyway: the notice is best-effort,
+	// and a group migrating mid-notice is not worth a special path.
+	pause, transient := transientDelay(result, retryAfter)
+	// A migrate to the same chat id is degenerate (Telegram breaking its
+	// one-way migration contract): re-queuing it would loop forever
+	// on the same address, so require a genuinely new target.
+	migrated := result == messageMigrate && migrateTo != 0 && migrateTo != q.message.chatID()
+	var resend *queuedMessage
+	if kind != db.MaintenancePacket {
+		if transient || migrated {
+			resend = q
+		}
+		// A photo to a no-photo-rights group falls back to text:
+		// swap the payload and re-queue the same envelope,
+		// so it waits out the user's cooldown.
+		// The swap precedes the result send, which orders it for the main loop.
 		if p, ok := q.message.(*photoParams); ok && result == messageNoPhotoRights {
-			retryAsText = p.toText()
-		}
-		if !retry {
-			// Pace the global rate before releasing the slot.
-			time.Sleep(commonCooldown)
-		}
-		w.sendResults <- msgSendResult{
-			priority:        q.priority,
-			timestamp:       int(now.Unix()),
-			result:          result,
-			endpoint:        q.endpoint,
-			chatID:          q.message.chatID(),
-			userID:          q.userID,
-			migrateToChatID: migrateTo,
-			latency:         latency,
-			kind:            q.kind,
-			notificationID:  q.notificationID,
-			requestedAt:     q.requestedAt,
-			retry:           retry,
-			retryAsText:     retryAsText,
-		}
-		if !retry {
-			break
-		}
-		// No attempt cap: this retries in place until success or shutdown.
-		// A retry keeps retry=true, so the slot stays held for the whole loop,
-		// and one recipient that keeps failing blocks every other send.
-		// Deliberate: a 429, timeout, or network error never says
-		// whether its cause is this chat or the whole bot,
-		// so we back off for everyone rather than risk hammering a global limit.
-		// The stall on a chat that never recovers is the accepted cost.
-		var backoff time.Duration
-		switch result {
-		case messageTooManyRequests:
-			backoff = tooManyRequestsBackoff
-		case messageMigrate:
-			migrated = true
-			q.message.setChatID(migrateTo)
-			backoff = commonCooldown
-		default:
-			backoff = networkErrorBackoff
-		}
-		// Wake at once on shutdown instead of sleeping the whole backoff
-		// (a 429 is 8s), which would eat the shared grace window.
-		// The retry is abandoned; a notification row stays sending=1
-		// and re-arms next start.
-		select {
-		case <-time.After(backoff):
-		case <-w.shutdownCh:
-			return
+			q.message = p.toText()
+			resend = q
 		}
 	}
-	if q.kind == db.MaintenancePacket {
+	// Pace the global rate before releasing the slot.
+	// A 429 holds it a full second, so a rate limit backs off the whole bot,
+	// not just the failing user.
+	// The wait ends at once on shutdown, so the drain never sleeps out the 1s.
+	globalPace := commonCooldown
+	if result == messageTooManyRequests {
+		globalPace = tooManyRequestsGlobalPause
+	}
+	select {
+	case <-time.After(globalPace):
+	case <-w.shutdownCh:
+	}
+	w.sendResults <- msgSendResult{
+		priority:        q.priority,
+		timestamp:       int(now.Unix()),
+		result:          result,
+		endpoint:        q.endpoint,
+		chatID:          q.message.chatID(),
+		userID:          userID,
+		migrateToChatID: migrateTo,
+		latency:         latency,
+		kind:            kind,
+		notificationID:  q.notificationID,
+		resend:          resend,
+	}
+	if kind == db.MaintenancePacket {
 		// A maintenance send cools no user, so there is nothing to release.
 		return
 	}
 	// The cooldown tail runs detached,
 	// so the deliverWG wait at shutdown covers the POST and its result,
 	// not a pacing sleep.
+	// The timer spawns the release goroutine only when it fires,
+	// so a long postpone parks a timer entry, not a goroutine stack.
 	// A non-private chat (chatID < 0) caps tighter than the 1s per-user gap:
 	// a group is 20 messages/min.
 	// Pace groups, supergroups, and channels at the slower gap
 	// to avoid self-triggering a 429.
 	cooldown := userCooldown
-	if q.message.chatID() < 0 {
+	if isGroup {
 		cooldown = groupCooldown
 	}
-	// Capture just the id: closing over q would pin the whole message,
-	// image payload included, for the sleep.
-	id := q.userID
-	go func() {
-		time.Sleep(cooldown - commonCooldown)
+	// A postponed message's user stays cooling for the whole postpone,
+	// so its re-queued send dispatches no sooner than that.
+	// A small retry_after must not undercut the chat's pacing gap,
+	// so the larger of the two wins.
+	if transient {
+		cooldown = max(cooldown, pause)
+	}
+	// globalPace was already slept before the result, so charge it against
+	// the user's total cooldown, not commonCooldown.
+	time.AfterFunc(cooldown-globalPace, func() {
 		// Release the user trySend cooled; the id is stable across
 		// a chat migration, so there is nothing else to release.
-		// Give up if the shutdown drain stopped reading cooledUsers,
-		// so this detached tail never blocks forever on the send.
+		// The select may pick shutdownCh even while the drain still reads
+		// cooledUsers (both arms ready), dropping the release and leaving that
+		// user cooling for its remaining drain-window sends.
+		// Accepted: those sends stay queued and re-arm (notifications)
+		// or are dropped (replies) at shutdown anyway.
 		select {
-		case w.cooledUsers <- id:
+		case w.cooledUsers <- userID:
 		case <-w.shutdownCh:
 		}
-	}()
+	})
 }

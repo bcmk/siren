@@ -1,7 +1,6 @@
 package main
 
 import (
-	"container/heap"
 	"context"
 	"text/template"
 
@@ -13,10 +12,10 @@ import (
 )
 
 // nextOutgoing pops the message the sender would send next.
-// The test worker sets commonCooling, so enqueue parks messages in the heap;
+// The test worker sets commonCooling, so enqueue parks messages in the queue;
 // tests read them there rather than from a channel.
 func (w *testWorker) nextOutgoing() *queuedMessage {
-	return heap.Pop(&w.sendQueue).(*queuedMessage)
+	return w.sendQueue.pop()
 }
 
 var testConfig = botconfig.Config{
@@ -105,7 +104,7 @@ func newTestWorker() *testWorker {
 			client:        nil,
 			tr:            map[string]*cmdlib.Translations{"test": &testTranslations},
 			tpl:           map[string]*template.Template{"test": tpl},
-			sendQueue:     newSendHeap(),
+			sendQueue:     newSendQueue(),
 			sendResults:   make(chan msgSendResult, sendChanCap),
 			cooledUsers:   make(chan db.UserID, sendChanCap),
 			shutdownCh:    make(chan struct{}),

@@ -509,7 +509,12 @@ func (d *Database) MigrateChat(fromID, toID int64) *ChatMigration {
 	del("delete from subscriptions where user_id = $1")
 	del("delete from pending_subscriptions where user_id = $1")
 	del("delete from block where user_id = $1")
-	del("delete from notification_queue where user_id = $1")
+	// Keep an in-flight notification (sending = 1): a send is mid-delivery
+	// for it and the resend carries its id, so dropping the row here
+	// would leave a crash or an overflowed resend with nothing to re-arm.
+	// The tombstone still resolves to the destination chat,
+	// so a re-armed row redelivers there.
+	del("delete from notification_queue where user_id = $1 and sending = 0")
 	// Keep the source's referral key when the destination has none:
 	// move it, so links shared for the old chat still credit the merged user.
 	// Otherwise drop it, since a user has a single key.

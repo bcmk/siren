@@ -260,7 +260,7 @@ func TestNotificationsStorage(t *testing.T) {
 	}
 }
 
-// A migrate arriving as a final (non-retry) result re-arms the notification
+// A targetless migrate result re-arms the notification
 // instead of finalizing it as delivered: nothing was actually sent.
 func TestCompleteSendResultMigrateReArms(t *testing.T) {
 	w := newTestWorker()

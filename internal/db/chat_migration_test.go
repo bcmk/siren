@@ -46,6 +46,16 @@ func (d *Database) addNotification(chatID int64, nickname, endpoint string) {
 		chatID, nickname, endpoint)
 }
 
+// markNotificationSending flags a chat's queued notification as in-flight.
+func (d *Database) markNotificationSending(chatID int64, nickname string) {
+	d.MustExec(`
+		update notification_queue nq set sending = 1
+		from users u, streamers s
+		where nq.user_id = u.id and nq.streamer_id = s.id
+		and u.chat_id = $1 and s.nickname = $2`,
+		chatID, nickname)
+}
+
 func (d *Database) subNicknames(chatID int64, endpoint string) []string {
 	return d.MustStrings(`
 		select s.nickname
@@ -320,6 +330,28 @@ func TestMigrateChat(t *testing.T) {
 		}
 		if got := d.notificationCount(oldID); got != 0 {
 			t.Errorf("source still has %d notifications", got)
+		}
+	})
+
+	t.Run("destination present keeps an in-flight notification", func(t *testing.T) {
+		tdb := newTestDB(t)
+		defer tdb.terminate()
+		d := tdb.Database
+
+		const oldID, newID = int64(-250), int64(-250500)
+		d.AddUser(oldID, 5, 1000, "group")
+		d.AddUser(newID, 20, 2000, "supergroup")
+		// alice is mid-delivery (sending = 1), bob is idle (sending = 0).
+		d.addNotification(oldID, "alice", ep)
+		d.markNotificationSending(oldID, "alice")
+		d.addNotification(oldID, "bob", ep)
+
+		d.MigrateChat(oldID, newID)
+
+		// The in-flight row survives so a crash can re-arm it;
+		// the idle one is dropped with the rest of the source's operational rows.
+		if got := d.notificationCount(oldID); got != 1 {
+			t.Errorf("source notifications = %d, want 1 (only the in-flight row survives)", got)
 		}
 	})
 
