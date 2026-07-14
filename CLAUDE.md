@@ -71,6 +71,8 @@
   Do not use em-dashes in log messages — prefer `:` or `,` there.
 - In log messages, write `key = value` with spaces around `=`
   (e.g., `@uid = %d`, `head = %s`), not `key=%s`.
+  Introduce the key = value list with a colon after the event description,
+  e.g. `lookup requested: @uid = %d, @qid = %d`.
 - Wrap documentation (including CLAUDE.md) and comments at 80 characters max.
   Keep elementary discourse units on the same line —
   prefer breaking at full stops over semicolons over em-dashes
