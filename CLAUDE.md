@@ -12,11 +12,12 @@
 - Don't use heredocs for commit messages, use `git commit -m "message"`
 - Use conventional commit style
 - When fixing review findings on not-yet-pushed commits,
-  land each fix as a `git commit --fixup=<sha>`
-  into the commit that introduced the issue,
-  then autosquash — don't amend the tip or add a follow-up commit,
+  land each fix in the commit that introduced the issue,
+  judged by what the fix relates to, not by where it compiles,
   so every commit in the stack stays independently correct.
-  Judge the target commit by what the fix relates to, not by where it compiles.
+  When that commit is the tip, `git commit --amend` is fine.
+  When it is deeper in the stack,
+  use `git commit --fixup=<sha>` then autosquash.
 - Use site scope for single-site changes, e.g. `feat(chaturbate): add room subject`
   or `refactor(myfreecams): ...` for bot-side MyFreeCams code in
   `internal/checkers/` (the `adapter-mfc` scope is only for the
