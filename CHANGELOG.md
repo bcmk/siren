@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v3.10.0 — 2026-07-18
+
+### Changed
+
+- Postpone a send that hits a 429, timeout, or network error,
+  re-queuing it per user instead of retrying in place.
+- Honor Telegram's retry_after on a 429, capped at 20 minutes.
+- Pause all sends for 1 second after any 429 to back off a bot-wide limit.
+
 ## v3.9.1 — 2026-07-08
 
 ### Fixed
