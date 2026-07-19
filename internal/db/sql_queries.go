@@ -11,6 +11,15 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+// nullableCommand maps an absent command to a sql null,
+// so every command column spells "no command" the same way.
+func nullableCommand(command string) *string {
+	if command == "" {
+		return nil
+	}
+	return &command
+}
+
 // NewNotifications returns new notifications
 func (d *Database) NewNotifications() []Notification {
 	var nots []Notification
@@ -19,7 +28,7 @@ func (d *Database) NewNotifications() []Notification {
 		select
 			n.id, n.endpoint, u.id, n.streamer_id, s.nickname, n.status,
 			n.time_diff, n.image_url, n.viewers, n.show_kind, n.social, n.priority,
-			n.sound, n.kind, n.subject, u.silent_messages
+			n.sound, n.kind, coalesce(n.command, ''), n.subject, u.silent_messages
 		from notification_queue n
 		join users u on u.id = n.user_id
 		join streamers s on s.id = n.streamer_id
@@ -41,6 +50,7 @@ func (d *Database) NewNotifications() []Notification {
 			&iter.Priority,
 			&iter.Sound,
 			&iter.Kind,
+			&iter.Command,
 			&iter.Subject,
 			&iter.SilentMessages,
 		},
@@ -70,10 +80,12 @@ func (d *Database) StoreNotifications(nots []Notification) {
 				priority,
 				sound,
 				kind,
+				command,
 				subject
 			)
-			values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-			n.Endpoint, int64(n.UserID), n.StreamerID, n.Status, n.TimeDiff, n.ImageURL, n.Viewers, n.ShowKind, n.Social, n.Priority, n.Sound, n.Kind, n.Subject,
+			values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+			n.Endpoint, int64(n.UserID), n.StreamerID, n.Status, n.TimeDiff, n.ImageURL, n.Viewers,
+			n.ShowKind, n.Social, n.Priority, n.Sound, n.Kind, nullableCommand(n.Command), n.Subject,
 		)
 	}
 	d.SendBatch(batch)
@@ -1229,14 +1241,21 @@ func (d *Database) AddSubscription(userID UserID, streamerID int, endpoint strin
 }
 
 // AddPendingSubscription inserts a pending subscription for an unknown streamer
-func (d *Database) AddPendingSubscription(userID UserID, nickname string, endpoint string, referral bool) {
+func (d *Database) AddPendingSubscription(
+	userID UserID,
+	nickname string,
+	endpoint string,
+	referral bool,
+	command string,
+) {
 	d.MustExec(`
-		insert into pending_subscriptions (user_id, nickname, endpoint, referral)
-		values ($1, $2, $3, $4)`,
+		insert into pending_subscriptions (user_id, nickname, endpoint, referral, command)
+		values ($1, $2, $3, $4, $5)`,
 		int64(userID),
 		nickname,
 		endpoint,
-		referral)
+		referral,
+		nullableCommand(command))
 }
 
 // SetShowImages updates the show_images setting for a user
@@ -1359,14 +1378,16 @@ func (d *Database) AddReferral(userID UserID, referralID string) {
 
 // LogReceivedMessage records a received message.
 // The caller resolves the user id, so logging never hides a create.
-func (d *Database) LogReceivedMessage(timestamp int, endpoint string, userID UserID, command *string) {
+// An untracked command stores a null,
+// leaving the row counted with no name against it.
+func (d *Database) LogReceivedMessage(timestamp int, endpoint string, userID UserID, command string) {
 	d.MustExec(`
 		insert into received_message_log (timestamp, endpoint, user_id, command)
 		values ($1, $2, $3, $4)`,
 		timestamp,
 		endpoint,
 		int64(userID),
-		command)
+		nullableCommand(command))
 }
 
 // LogPerformance logs performance data for queries and updates
@@ -1403,18 +1424,30 @@ func (d *Database) ResetNotificationSending() {
 	d.MustExec("update notification_queue set sending=0")
 }
 
-// LogSentMessage logs a sent message
-func (d *Database) LogSentMessage(timestamp int, userID UserID, result int, endpoint string, priority Priority, latency int, kind PacketKind) {
+// LogSentMessage logs a sent message.
+// An unprompted send stores a null command,
+// matching how received_message_log spells an absent one.
+func (d *Database) LogSentMessage(
+	timestamp int,
+	userID UserID,
+	result int,
+	endpoint string,
+	priority Priority,
+	latency int,
+	kind PacketKind,
+	command string,
+) {
 	d.MustExec(`
-		insert into sent_message_log (timestamp, user_id, result, endpoint, priority, latency, kind)
-		values ($1, $2, $3, $4, $5, $6, $7)`,
+		insert into sent_message_log (timestamp, user_id, result, endpoint, priority, latency, kind, command)
+		values ($1, $2, $3, $4, $5, $6, $7, $8)`,
 		timestamp,
 		int64(userID),
 		result,
 		endpoint,
 		priority,
 		latency,
-		kind)
+		kind,
+		nullableCommand(command))
 }
 
 // DeleteNotification deletes a notification by ID

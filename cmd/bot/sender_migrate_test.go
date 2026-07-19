@@ -57,7 +57,7 @@ func TestDeliverDropsMigrateToSelf(t *testing.T) {
 			endpoint: "ep",
 			message:  &migrateToSelf{id: -100},
 			priority: db.PriorityHigh,
-			kind:     db.MessagePacket,
+			tag:      unprompted(db.MessagePacket),
 		})
 
 		r := <-w.sendResults
@@ -89,7 +89,7 @@ func TestDeliverReportsMigrateForRequeue(t *testing.T) {
 			endpoint: "ep",
 			message:  &migrateThenOK{id: oldID, target: int(newID)},
 			priority: db.PriorityHigh,
-			kind:     db.MessagePacket,
+			tag:      unprompted(db.MessagePacket),
 		}
 		go w.deliver(q)
 
@@ -136,13 +136,13 @@ func TestMigrateAppliesBeforeResendDispatch(t *testing.T) {
 		chatID:          oldID,
 		userID:          userID,
 		migrateToChatID: newID,
-		kind:            db.MessagePacket,
+		tag:             unprompted(db.MessagePacket),
 		resend: &queuedMessage{
 			userID:   userID,
 			endpoint: "test",
 			message:  msg,
 			priority: db.PriorityHigh,
-			kind:     db.MessagePacket,
+			tag:      unprompted(db.MessagePacket),
 		},
 	})
 
@@ -168,7 +168,7 @@ func TestSenderRedeliversAcrossMigrate(t *testing.T) {
 
 	userID, _ := w.db.AddUser(oldID, 3, 0, "group")
 	msg := &migrateThenOK{target: int(newID)}
-	w.enqueueMessage(db.PriorityHigh, "test", msg, db.MessagePacket, userID, 0)
+	w.enqueueMessage(db.PriorityHigh, "test", msg, unprompted(db.MessagePacket), userID, 0)
 
 	// One timer for the whole wait:
 	// a per-iteration time.After would re-arm on every event,

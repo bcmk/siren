@@ -149,8 +149,8 @@ func checkConfig(cfg *Config) error {
 	if cfg.ImageDownloadTimeoutSeconds == 0 {
 		cfg.ImageDownloadTimeoutSeconds = 5
 	}
-	if cfg.MaxSubscriptionsForPics == 0 {
-		return errors.New("configure max_subscriptions_for_pics")
+	if cfg.MaxSubscriptionsForPics <= 0 {
+		return errors.New("configure a positive max_subscriptions_for_pics")
 	}
 	if cfg.SubsConfirmationPeriodSeconds == 0 {
 		return errors.New("configure subs_confirmation_period_seconds")

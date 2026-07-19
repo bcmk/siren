@@ -88,7 +88,7 @@ func TestSenderScheduling(t *testing.T) {
 			for _, e := range tt.enqueue {
 				w.enqueueMessage(e.pri, "test",
 					&countingMessage{inflight: &inflight, maxInflight: &maxInflight},
-					db.MessagePacket, userIDs[e.userIdx], 0)
+					unprompted(db.MessagePacket), userIDs[e.userIdx], 0)
 			}
 
 			var order []int
@@ -294,7 +294,7 @@ func TestDeliverTiming(t *testing.T) {
 			endpoint: "ep",
 			message:  &okMessage{id: 1},
 			priority: db.PriorityHigh,
-			kind:     db.MessagePacket,
+			tag:      unprompted(db.MessagePacket),
 		})
 
 		if r := <-w.sendResults; r.result != messageSent {
@@ -341,7 +341,7 @@ func TestDeliverDropsMaintenanceOnTransientFailure(t *testing.T) {
 				endpoint: "ep",
 				message:  &tooManyRequests{id: 1},
 				priority: db.PriorityHigh,
-				kind:     db.MaintenancePacket,
+				tag:      unprompted(db.MaintenancePacket),
 			})
 			close(done)
 		}()
@@ -382,7 +382,7 @@ func TestDeliverPostponesTooManyRequests(t *testing.T) {
 			endpoint: "ep",
 			message:  &tooManyRequests{id: 1, retryAfter: 30},
 			priority: db.PriorityHigh,
-			kind:     db.MessagePacket,
+			tag:      unprompted(db.MessagePacket),
 		}
 		start := time.Now()
 		done := make(chan struct{})
@@ -441,7 +441,7 @@ func TestDeliverGlobalPaceOn429(t *testing.T) {
 						endpoint: "ep",
 						message:  tt.message,
 						priority: db.PriorityHigh,
-						kind:     db.MessagePacket,
+						tag:      unprompted(db.MessagePacket),
 					})
 					close(done)
 				}()
@@ -476,7 +476,7 @@ func TestDeliverPaceEndsOnShutdown(t *testing.T) {
 				endpoint: "ep",
 				message:  &tooManyRequests{id: 1, retryAfter: 30},
 				priority: db.PriorityHigh,
-				kind:     db.MessagePacket,
+				tag:      unprompted(db.MessagePacket),
 			})
 			close(done)
 		}()
@@ -515,13 +515,13 @@ func TestDrainKeepsPostponedNotificationArmed(t *testing.T) {
 		result:         messageTimeout,
 		endpoint:       "test",
 		userID:         userID,
-		kind:           db.NotificationPacket,
+		tag:            unprompted(db.NotificationPacket),
 		notificationID: postponed.ID,
 		resend: &queuedMessage{
 			userID:         userID,
 			endpoint:       "test",
 			message:        &okMessage{id: 100},
-			kind:           db.NotificationPacket,
+			tag:            unprompted(db.NotificationPacket),
 			notificationID: postponed.ID,
 		},
 	}
@@ -529,7 +529,7 @@ func TestDrainKeepsPostponedNotificationArmed(t *testing.T) {
 		result:         messageSent,
 		endpoint:       "test",
 		userID:         userID,
-		kind:           db.NotificationPacket,
+		tag:            unprompted(db.NotificationPacket),
 		notificationID: delivered.ID,
 	}
 	w.drainSendResults()

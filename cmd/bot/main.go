@@ -99,7 +99,7 @@ type worker struct {
 	ourIDs                     []int64
 	searchHTML                 *htmltemplate.Template
 	searchRequests             chan searchRequest
-	addRequests                chan addRequest
+	webAppAddRequests          chan webAppAddRequest
 	incomingPackets            chan incomingPacket
 	maintenance                atomic.Bool
 	shuttingDown               atomic.Bool
@@ -110,14 +110,28 @@ type searchRequest struct {
 	endpoint string
 	chatID   int64
 	term     string
-	resultCh chan []string
+	resultCh chan searchResult
 }
 
-type addRequest struct {
+// searchResult answers a searchRequest.
+// allowed is false when the daemon finds the chat unvetted,
+// so a refusal reads the same whichever layer catches it.
+type searchResult struct {
+	streamers []string
+	allowed   bool
+}
+
+type webAppAddRequest struct {
 	endpoint string
 	chatID   int64
 	nickname string
-	doneCh   chan struct{}
+	// admittedCh reports whether the request was admitted,
+	// not whether it subscribed:
+	// an admitted add answers in the chat itself,
+	// having subscribed, parked a pending subscription, or explained a refusal.
+	// Only a chat outside the whitelist is dropped in silence,
+	// and that alone must not read as success.
+	admittedCh chan bool
 }
 
 type incomingPacket struct {
@@ -158,7 +172,7 @@ type msgSendResult struct {
 	userID          db.UserID
 	migrateToChatID int64
 	latency         int
-	kind            db.PacketKind
+	tag             sendTag
 	notificationID  int
 	// resend is the original queued message,
 	// handed back whole for the main loop to re-queue,
@@ -246,7 +260,7 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 		imagedNotifications:        make(chan notificationBatch),
 		ourIDs:                     getOurIDs(cfg),
 		searchRequests:             make(chan searchRequest),
-		addRequests:                make(chan addRequest),
+		webAppAddRequests:          make(chan webAppAddRequest),
 		incomingPackets:            incomingPackets,
 	}
 	// The bot starts in maintenance: the database is not created yet.
@@ -398,10 +412,10 @@ func (w *worker) sendText(
 	disablePreview bool,
 	parse cmdlib.ParseKind,
 	text string,
-	kind db.PacketKind,
+	tag sendTag,
 ) {
 	msg := textMessage(text, notify, disablePreview, parse)
-	w.enqueueMessage(priority, endpoint, msg, kind, userID, 0)
+	w.enqueueMessage(priority, endpoint, msg, tag, userID, 0)
 }
 
 func (w *worker) sendImage(
@@ -412,10 +426,10 @@ func (w *worker) sendImage(
 	parse cmdlib.ParseKind,
 	text string,
 	img []byte,
-	kind db.PacketKind,
+	tag sendTag,
 ) {
 	msg := photoMessage(text, notify, parse, img)
-	w.enqueueMessage(priority, endpoint, msg, kind, userID, 0)
+	w.enqueueMessage(priority, endpoint, msg, tag, userID, 0)
 }
 
 // sendMaintenance queues a maintenance-window notice
@@ -427,7 +441,7 @@ func (w *worker) sendImage(
 func (w *worker) sendMaintenance(endpoint string, chatID int64, notify bool, text string) {
 	msg := textMessage(text, notify, true, cmdlib.ParseRaw)
 	msg.setChatID(chatID)
-	w.enqueueMessage(db.PriorityHigh, endpoint, msg, db.MaintenancePacket, 0, 0)
+	w.enqueueMessage(db.PriorityHigh, endpoint, msg, unprompted(db.MaintenancePacket), 0, 0)
 }
 
 // sendMessageInternal sends one message and classifies the outcome.
@@ -545,7 +559,7 @@ func (w *worker) enqueueTr(
 	translation *cmdlib.Translation,
 	data map[string]interface{},
 	image []byte,
-	kind db.PacketKind,
+	tag sendTag,
 	notificationID int,
 ) {
 	text := templateToString(w.tpl[endpoint], translation.Key, data)
@@ -555,7 +569,7 @@ func (w *worker) enqueueTr(
 	} else {
 		msg = photoMessage(text, notify, translation.Parse, image)
 	}
-	w.enqueueMessage(priority, endpoint, msg, kind, userID, notificationID)
+	w.enqueueMessage(priority, endpoint, msg, tag, userID, notificationID)
 }
 
 func (w *worker) sendTr(
@@ -565,11 +579,11 @@ func (w *worker) sendTr(
 	notify bool,
 	translation *cmdlib.Translation,
 	data map[string]interface{},
-	kind db.PacketKind,
+	tag sendTag,
 ) {
 	// Replies leave the chat id to trySend;
 	// a single reply per command makes the per-dispatch lookup negligible.
-	w.enqueueTr(priority, endpoint, userID, notify, translation, data, nil, kind, 0)
+	w.enqueueTr(priority, endpoint, userID, notify, translation, data, nil, tag, 0)
 }
 
 func (w *worker) sendAdsTr(
@@ -578,14 +592,15 @@ func (w *worker) sendAdsTr(
 	userID db.UserID,
 	notify bool,
 	translation *cmdlib.Translation,
-	data map[string]interface{},
+	command string,
 ) {
+	tag := adTag(command)
 	tpl := w.tplAds[endpoint]
-	text := templateToString(tpl, translation.Key, data)
+	text := templateToString(tpl, translation.Key, nil)
 	if translation.Image == "" {
-		w.sendText(priority, endpoint, userID, notify, translation.DisablePreview, translation.Parse, text, db.AdPacket)
+		w.sendText(priority, endpoint, userID, notify, translation.DisablePreview, translation.Parse, text, tag)
 	} else {
-		w.sendImage(priority, endpoint, userID, notify, translation.Parse, text, translation.ImageBytes, db.AdPacket)
+		w.sendImage(priority, endpoint, userID, notify, translation.Parse, text, translation.ImageBytes, tag)
 	}
 }
 
@@ -615,11 +630,20 @@ func (w *worker) initCache() {
 
 func (w *worker) notifyOfAddResults(priority db.Priority, notifications []db.Notification) {
 	for _, n := range notifications {
+		if w.tr[n.Endpoint] == nil {
+			// An orphaned endpoint (removed from config)
+			// can still hold a pending subscription,
+			// which nothing purges by endpoint;
+			// drop the result rather than panic the main goroutine,
+			// as notifyOfStatus does.
+			lerr("dropping add result for unknown endpoint %s", n.Endpoint)
+			continue
+		}
 		data := tplData{"streamer": n.Nickname}
 		if n.Status&(cmdlib.StatusOnline|cmdlib.StatusOffline|cmdlib.StatusDenied) != 0 {
-			w.sendTr(priority, n.Endpoint, n.UserID, false, w.tr[n.Endpoint].StreamerAdded, data, db.ReplyPacket)
+			w.sendTr(priority, n.Endpoint, n.UserID, false, w.tr[n.Endpoint].StreamerAdded, data, notificationTag(n))
 		} else {
-			w.sendTr(priority, n.Endpoint, n.UserID, false, w.tr[n.Endpoint].AddError, data, db.ReplyPacket)
+			w.sendTr(priority, n.Endpoint, n.UserID, false, w.tr[n.Endpoint].AddError, data, notificationTag(n))
 		}
 	}
 }
@@ -667,7 +691,7 @@ func (w *worker) trAdsSlice(endpoint string) []*cmdlib.Translation {
 	return res
 }
 
-func (w *worker) ad(priority db.Priority, endpoint string, userID db.UserID) {
+func (w *worker) ad(priority db.Priority, endpoint string, userID db.UserID, command string) {
 	trAds := w.trAdsSlice(endpoint)
 	if len(trAds) == 0 {
 		return
@@ -680,7 +704,7 @@ func (w *worker) ad(priority db.Priority, endpoint string, userID db.UserID) {
 	for _, a := range trAds {
 		r -= adWeight(a)
 		if r < 0 {
-			w.sendAdsTr(priority, endpoint, userID, false, a, nil)
+			w.sendAdsTr(priority, endpoint, userID, false, a, command)
 			return
 		}
 	}
@@ -730,17 +754,21 @@ func (w *worker) notifyOfStatus(priority db.Priority, n db.Notification, image [
 	notify := !n.SilentMessages
 	switch n.Status {
 	case cmdlib.StatusOnline:
-		w.enqueueTr(priority, n.Endpoint, n.UserID, notify, w.tr[n.Endpoint].Online, data, image, n.Kind, n.ID)
+		w.enqueueTr(priority, n.Endpoint, n.UserID, notify, w.tr[n.Endpoint].Online, data, image, notificationTag(n), n.ID)
 	case cmdlib.StatusOffline:
-		w.enqueueTr(priority, n.Endpoint, n.UserID, false, w.tr[n.Endpoint].Offline, data, nil, n.Kind, n.ID)
+		w.enqueueTr(priority, n.Endpoint, n.UserID, false, w.tr[n.Endpoint].Offline, data, nil, notificationTag(n), n.ID)
 	case cmdlib.StatusDenied:
-		w.enqueueTr(priority, n.Endpoint, n.UserID, false, w.tr[n.Endpoint].Denied, data, nil, n.Kind, n.ID)
+		w.enqueueTr(priority, n.Endpoint, n.UserID, false, w.tr[n.Endpoint].Denied, data, nil, notificationTag(n), n.ID)
 	default:
 		// No message for this status; clear the queue row so it doesn't strand.
 		w.finalizeNotification(n.ID, 0, false)
 	}
 	if social && w.cfg.AdChancePercent > 0 && rand.Intn(100) < w.cfg.AdChancePercent {
-		w.ad(priority, n.Endpoint, n.UserID)
+		// Empty today: only a status notification is ever social,
+		// and no command asks for one.
+		// Carried rather than hardcoded, so an ad and the reply beside it
+		// still agree should a notification ever have both.
+		w.ad(priority, n.Endpoint, n.UserID, n.Command)
 	}
 }
 
@@ -752,34 +780,34 @@ func (w *worker) mustUserByID(userID db.UserID) (user db.User) {
 	return
 }
 
-func (w *worker) showWeek(endpoint string, userID db.UserID, nickname string) {
+func (w *worker) showWeek(m receivedMessage, nickname string) {
 	if nickname != "" {
 		nickname = w.checker.NicknamePreprocessing(nickname)
 		if !w.checker.NicknameRegexp().MatchString(nickname) {
-			w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].InvalidSymbols, tplData{"streamer": nickname}, db.ReplyPacket)
+			w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].InvalidSymbols, tplData{"streamer": nickname})
 			return
 		}
 		hours, start := w.week(nickname)
-		w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].Week, tplData{
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Week, tplData{
 			"hours":    hours,
 			"weekday":  int(start.UTC().Weekday()),
 			"streamer": nickname,
-		}, db.ReplyPacket)
+		})
 		return
 	}
-	streamers := w.db.StreamersForUser(endpoint, userID)
+	streamers := w.db.StreamersForUser(m.endpoint, m.userID)
 	if len(streamers) == 0 {
-		w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].ZeroSubscriptions, nil, db.ReplyPacket)
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].ZeroSubscriptions, nil)
 		return
 	}
-	w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].WeekRetrieving, nil, db.ReplyPacket)
+	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].WeekRetrieving, nil)
 	ids := make([]int, len(streamers))
 	for i, s := range streamers {
 		ids[i] = s.ID
 	}
 	now := time.Now()
 	hoursMap, start := w.weekForStreamers(ids, now)
-	statuses := w.db.UnconfirmedStatusesForUser(endpoint, userID)
+	statuses := w.db.UnconfirmedStatusesForUser(m.endpoint, m.userID)
 	statusMap := make(map[string]db.Streamer, len(statuses))
 	for _, s := range statuses {
 		statusMap[s.Nickname] = s
@@ -804,109 +832,123 @@ func (w *worker) showWeek(endpoint string, userID db.UserID, nickname string) {
 			})
 			continue
 		}
-		weeks = append(weeks, templateToString(w.tpl[endpoint], w.tr[endpoint].Week.Key, tplData{
+		weeks = append(weeks, templateToString(w.tpl[m.endpoint], w.tr[m.endpoint].Week.Key, tplData{
 			"hours":    hours,
 			"weekday":  int(start.UTC().Weekday()),
 			"streamer": s.Nickname,
 		}))
 	}
 	for chunk := range slices.Chunk(weeks, 10) {
-		w.sendText(db.PriorityLow, endpoint, userID, false, true, w.tr[endpoint].Week.Parse, strings.Join(chunk, "\n\n"), db.ReplyPacket)
+		w.replyText(m, db.PriorityLow, true, w.tr[m.endpoint].Week.Parse, strings.Join(chunk, "\n\n"))
 	}
 	for chunk := range slices.Chunk(neverOnline, 50) {
-		w.sendTr(db.PriorityLow, endpoint, userID, false, w.tr[endpoint].WeekNeverOnline, tplData{"streamers": chunk}, db.ReplyPacket)
+		w.replyTr(m, db.PriorityLow, false, w.tr[m.endpoint].WeekNeverOnline, tplData{"streamers": chunk})
 	}
 }
 
-func (w *worker) addStreamer(endpoint string, chatID int64, userID db.UserID, nickname string, now int, referral bool) *int {
+func (w *worker) addStreamer(m receivedMessage, nickname string, referral bool) *int {
 	if nickname == "" {
-		tr := w.tr[endpoint].SyntaxAdd
-		text := templateToString(w.tpl[endpoint], tr.Key, nil)
+		tr := w.tr[m.endpoint].SyntaxAdd
+		text := templateToString(w.tpl[m.endpoint], tr.Key, nil)
 		msg := textMessage(text, true, tr.DisablePreview, tr.Parse)
-		if chatID > 0 && !w.checker.Capabilities().UsesFixedListOnline() {
+		// A private chat, the only place a web app button works.
+		if !w.checker.Capabilities().UsesFixedListOnline() && w.mustUserByID(m.userID).ChatID > 0 {
 			msg.ReplyMarkup = &models.InlineKeyboardMarkup{
 				InlineKeyboard: [][]models.InlineKeyboardButton{{
 					{
-						Text:   w.tr[endpoint].SearchButton.Str,
-						WebApp: &models.WebAppInfo{URL: w.webAppURL(endpoint)},
+						Text:   w.tr[m.endpoint].SearchButton.Str,
+						WebApp: &models.WebAppInfo{URL: w.webAppURL(m.endpoint)},
 					},
 				}},
 			}
 		}
-		w.enqueueMessage(db.PriorityHigh, endpoint, msg, db.ReplyPacket, userID, 0)
+		w.replyMessage(m, db.PriorityHigh, msg)
 		return nil
 	}
 	nickname = w.checker.NicknamePreprocessing(nickname)
 	if !w.checker.NicknameRegexp().MatchString(nickname) {
-		w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].InvalidSymbols, tplData{"streamer": nickname}, db.ReplyPacket)
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].InvalidSymbols, tplData{"streamer": nickname})
 		return nil
 	}
 
-	if w.db.SubscribedOrPending(endpoint, userID, nickname) {
-		w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].AlreadyAdded, tplData{"streamer": nickname}, db.ReplyPacket)
+	if w.db.SubscribedOrPending(m.endpoint, m.userID, nickname) {
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].AlreadyAdded, tplData{"streamer": nickname})
 		return nil
 	}
-	subscriptionsNumber := w.db.SubscribedOrPendingCount(endpoint, userID)
-	user := w.mustUserByID(userID)
+	subscriptionsNumber := w.db.SubscribedOrPendingCount(m.endpoint, m.userID)
+	user := w.mustUserByID(m.userID)
 	if subscriptionsNumber >= user.MaxSubs {
-		w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].NotEnoughSubscriptions, nil, db.ReplyPacket)
-		w.subscriptionUsage(endpoint, userID, true)
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].NotEnoughSubscriptions, nil)
+		w.subscriptionUsage(m, true)
 		return nil
 	}
 	streamer := w.db.MaybeStreamer(nickname)
 	if streamer == nil {
 		caps := w.checker.Capabilities()
 		if !caps.SupportsQueryStatus && !caps.SupportsQueryFixedListStatuses {
-			w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].AddError, tplData{"streamer": nickname}, db.ReplyPacket)
+			w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].AddError, tplData{"streamer": nickname})
 			return nil
 		}
-		w.db.AddPendingSubscription(userID, nickname, endpoint, referral)
-		w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].CheckingStreamer, nil, db.ReplyPacket)
+		w.db.AddPendingSubscription(m.userID, nickname, m.endpoint, referral, m.command)
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].CheckingStreamer, nil)
 		return nil
 	}
 	confirmedStatus := streamer.ConfirmedStatus
 	if confirmedStatus != cmdlib.StatusOnline {
 		confirmedStatus = cmdlib.StatusOffline
 	}
-	w.db.AddSubscription(userID, streamer.ID, endpoint)
+	w.db.AddSubscription(m.userID, streamer.ID, m.endpoint)
 	subscriptionsNumber++
-	w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].StreamerAdded, tplData{"streamer": nickname}, db.ReplyPacket)
+	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].StreamerAdded, tplData{"streamer": nickname})
 	nots := []db.Notification{{
-		Endpoint:   endpoint,
-		UserID:     userID,
+		Endpoint:   m.endpoint,
+		UserID:     m.userID,
 		StreamerID: &streamer.ID,
 		Nickname:   nickname,
 		Status:     confirmedStatus,
-		TimeDiff:   w.streamerDuration(*streamer, now),
+		TimeDiff:   w.streamerDuration(*streamer, m.timestamp),
 		Social:     false,
 		Priority:   db.PriorityHigh,
-		Kind:       db.ReplyPacket}}
+		Kind:       db.ReplyPacket,
+		Command:    m.command}}
 	if subscriptionsNumber >= user.MaxSubs-w.cfg.HeavyUserRemainder {
-		w.subscriptionUsage(endpoint, userID, true)
+		w.subscriptionUsage(m, true)
 	}
 	w.db.StoreNotifications(nots)
 	return &streamer.ID
 }
 
-func (w *worker) subscriptionUsage(endpoint string, userID db.UserID, ad bool) {
-	subscriptionsNumber := w.db.SubscribedOrPendingCount(endpoint, userID)
-	user := w.mustUserByID(userID)
-	tr := w.tr[endpoint].SubscriptionUsage
+func (w *worker) subscriptionUsage(m receivedMessage, ad bool) {
+	subscriptionsNumber := w.db.SubscribedOrPendingCount(m.endpoint, m.userID)
+	user := w.mustUserByID(m.userID)
+	tr := w.tr[m.endpoint].SubscriptionUsage
 	if ad {
-		tr = w.tr[endpoint].SubscriptionUsageAd
+		tr = w.tr[m.endpoint].SubscriptionUsageAd
 	}
-	w.sendTr(db.PriorityHigh, endpoint, userID, false, tr,
-		tplData{
-			"subscriptions_used":  subscriptionsNumber,
-			"total_subscriptions": user.MaxSubs,
-		},
-		db.ReplyPacket)
+	w.replyTr(m, db.PriorityHigh, false, tr, tplData{
+		"subscriptions_used":  subscriptionsNumber,
+		"total_subscriptions": user.MaxSubs,
+	})
 }
 
-func (w *worker) wantMore(endpoint string, userID db.UserID) {
-	w.sendTr(db.PriorityHigh, endpoint, userID, false,
-		w.tr[endpoint].WantMore, w.referralData(endpoint, userID), db.ReplyPacket)
+func (w *worker) wantMore(m receivedMessage) {
+	w.replyTr(m, db.PriorityHigh, false,
+		w.tr[m.endpoint].WantMore, w.referralData(m.endpoint, m.userID))
 }
+
+// preCheckoutCommand names an admitted pre-checkout query.
+const preCheckoutCommand = "pre_checkout"
+
+// buyCallbackCommand names a tap on the buy menu, the funnel's first step.
+const buyCallbackCommand = "buy_callback"
+
+// invoiceCommand names the invoice event as a received message.
+// Only a sent invoice is recorded, so the log counts invoices, not attempts.
+const invoiceCommand = "invoice"
+
+// paymentCommand names the credited-payment event,
+// both as a received message and as what its replies answer.
+const paymentCommand = "successful_payment"
 
 // productSubs is the only product sold today.
 // handlePreCheckoutQuery and handleSuccessfulPayment guard on it,
@@ -922,18 +964,18 @@ func (w *worker) findSubsTier(count int) (botconfig.SubsTier, bool) {
 	return botconfig.SubsTier{}, false
 }
 
-func (w *worker) buySubs(endpoint string, userID db.UserID) {
+func (w *worker) buySubs(m receivedMessage) {
 	if len(w.cfg.SubsTiers) == 0 {
 		return
 	}
-	tr := w.tr[endpoint].BuySubs
-	text := templateToString(w.tpl[endpoint], tr.Key, nil)
-	buttonTpl := w.tr[endpoint].BuySubsPackageButton
+	tr := w.tr[m.endpoint].BuySubs
+	text := templateToString(w.tpl[m.endpoint], tr.Key, nil)
+	buttonTpl := w.tr[m.endpoint].BuySubsPackageButton
 	base := w.cfg.SubsTiers[0]
 	buttons := make([][]models.InlineKeyboardButton, 0, len(w.cfg.SubsTiers))
 	for _, t := range w.cfg.SubsTiers {
 		discount := (t.Count*base.Cost - t.Cost*base.Count) * 100 / (t.Count * base.Cost)
-		label := templateToString(w.tpl[endpoint], buttonTpl.Key, tplData{
+		label := templateToString(w.tpl[m.endpoint], buttonTpl.Key, tplData{
 			"count":    t.Count,
 			"stars":    t.Cost,
 			"discount": discount,
@@ -945,18 +987,25 @@ func (w *worker) buySubs(endpoint string, userID db.UserID) {
 	}
 	msg := textMessage(text, true, tr.DisablePreview, tr.Parse)
 	msg.ReplyMarkup = &models.InlineKeyboardMarkup{InlineKeyboard: buttons}
-	w.enqueueMessage(db.PriorityHigh, endpoint, msg, db.ReplyPacket, userID, 0)
+	w.replyMessage(m, db.PriorityHigh, msg)
 }
 
-func (w *worker) sendSubsInvoice(endpoint string, chatID int64, tier botconfig.SubsTier) {
-	userID := w.db.EnsureUser(chatID)
+func (w *worker) sendSubsInvoice(m receivedMessage, tier botconfig.SubsTier) {
+	// Derived, not passed: a chat id that disagreed with m.userID would send
+	// the invoice to one user and attribute its payload and rows to another.
+	chatID, ok := w.db.ChatIDForUser(m.userID)
+	if !ok {
+		lerr("cannot send invoice: no chat for user %d", m.userID)
+		return
+	}
 	stars := tier.Cost
-	title := templateToString(w.tpl[endpoint], w.tr[endpoint].BuySubsInvoiceTitle.Key, tplData{"count": tier.Count})
-	description := templateToString(w.tpl[endpoint], w.tr[endpoint].BuySubsInvoiceDescription.Key, tplData{"count": tier.Count})
-	label := templateToString(w.tpl[endpoint], w.tr[endpoint].BuySubsInvoiceLabel.Key, tplData{"count": tier.Count})
+	title := templateToString(w.tpl[m.endpoint], w.tr[m.endpoint].BuySubsInvoiceTitle.Key, tplData{"count": tier.Count})
+	description := templateToString(
+		w.tpl[m.endpoint], w.tr[m.endpoint].BuySubsInvoiceDescription.Key, tplData{"count": tier.Count})
+	label := templateToString(w.tpl[m.endpoint], w.tr[m.endpoint].BuySubsInvoiceLabel.Key, tplData{"count": tier.Count})
 	payload := fmt.Sprintf("stars:%s:%d:%d", productSubs, chatID, tier.Count)
 	ctx := context.Background()
-	_, err := w.bots[endpoint].SendInvoice(ctx, &bot.SendInvoiceParams{
+	_, err := w.bots[m.endpoint].SendInvoice(ctx, &bot.SendInvoiceParams{
 		ChatID:      chatID,
 		Title:       title,
 		Description: description,
@@ -966,13 +1015,15 @@ func (w *worker) sendSubsInvoice(endpoint string, chatID int64, tier botconfig.S
 	})
 	if err != nil {
 		lerr("cannot send invoice to %d: %v", chatID, err)
-		w.sendTr(db.PriorityHigh, endpoint, userID, false,
-			w.tr[endpoint].BuyInvoiceFailed, nil, db.ReplyPacket)
+		// The invoice row is never written, but the tap that asked for it was,
+		// so the reply answers that.
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].BuyInvoiceFailed, nil)
 		return
 	}
-	now := int(time.Now().Unix())
-	command := "invoice"
-	w.db.LogReceivedMessage(now, endpoint, userID, &command)
+	// A second event, not the tap m carries, so logReceived is not the call:
+	// it would name m.command, and the stamp is fresh, the invoice going out
+	// later than the tap that asked for it.
+	w.db.LogReceivedMessage(int(time.Now().Unix()), m.endpoint, m.userID, invoiceCommand)
 }
 
 // parseStarsPayload parses a "stars:<product>:<chat_id>:<count>" payload.
@@ -996,28 +1047,36 @@ func (w *worker) handleBuyCallback(endpoint string, chatID int64, data string) {
 	if !w.cfg.BuySubsEnabled() {
 		return
 	}
+	m := receivedMessage{
+		timestamp: int(time.Now().Unix()),
+		endpoint:  endpoint,
+		userID:    w.db.EnsureUser(chatID),
+	}
 	parts := strings.SplitN(data, ":", 3)
-	if len(parts) != 3 {
-		w.buySubs(endpoint, w.db.EnsureUser(chatID))
+	if len(parts) != 3 || parts[1] != "stars" {
+		// A payload we cannot read is no funnel entry,
+		// as handlePreCheckoutQuery skips a query it cannot parse,
+		// so the menu it re-shows names nothing either.
+		w.buySubs(m)
 		return
 	}
-	switch method, arg := parts[1], parts[2]; method {
-	case "stars":
-		w.handleStarsBuyCallback(endpoint, chatID, arg)
-	default:
-		w.buySubs(endpoint, w.db.EnsureUser(chatID))
-	}
+	// A menu tap is a command-like event, so it is recorded by name,
+	// keeping the tap, invoice and payment steps joinable as one funnel.
+	// A stale tier still counts: the user meant to buy and could not.
+	m.command = buyCallbackCommand
+	w.logReceived(m)
+	w.handleStarsBuyCallback(m, parts[2])
 }
 
-func (w *worker) handleStarsBuyCallback(endpoint string, chatID int64, arg string) {
+func (w *worker) handleStarsBuyCallback(m receivedMessage, arg string) {
 	count, err := strconv.Atoi(arg)
 	tier, found := w.findSubsTier(count)
 	if err != nil || !found {
 		// Stale callback (tier removed or button data malformed): re-show menu.
-		w.buySubs(endpoint, w.db.EnsureUser(chatID))
+		w.buySubs(m)
 		return
 	}
-	w.sendSubsInvoice(endpoint, chatID, tier)
+	w.sendSubsInvoice(m, tier)
 }
 
 func (w *worker) handlePreCheckoutQuery(endpoint string, q *models.PreCheckoutQuery) {
@@ -1028,8 +1087,7 @@ func (w *worker) handlePreCheckoutQuery(endpoint string, q *models.PreCheckoutQu
 	allowed := valid && w.cfg.BuySubsEnabled() && w.cfg.ChatWhitelisted(chatID)
 	if allowed {
 		now := int(time.Now().Unix())
-		command := "pre_checkout"
-		w.db.LogReceivedMessage(now, endpoint, w.db.EnsureUser(chatID), &command)
+		w.db.LogReceivedMessage(now, endpoint, w.db.EnsureUser(chatID), preCheckoutCommand)
 	}
 	ok := allowed &&
 		q.Currency == "XTR" &&
@@ -1083,28 +1141,29 @@ func (w *worker) handleSuccessfulPayment(endpoint string, chatID int64, p *model
 		now)
 	if !added {
 		lerr("duplicate successful_payment for chat %d, charge %s", chatID, p.TelegramPaymentChargeID)
+		// A duplicate returns before the received row is written,
+		// so this reply names nothing the received log could match.
 		w.sendTr(db.PriorityHigh, endpoint, userID, false,
-			w.tr[endpoint].BuyAlreadyCredited, nil, db.ReplyPacket)
+			w.tr[endpoint].BuyAlreadyCredited, nil, reply(""))
 		return
 	}
 	// Only a credited charge reaches here.
 	// A duplicate redelivery or unsupported product returned above,
 	// so the log counts credited payments, not every receipt.
-	command := "successful_payment"
-	w.db.LogReceivedMessage(now, endpoint, userID, &command)
+	w.db.LogReceivedMessage(now, endpoint, userID, paymentCommand)
 	w.sendTr(db.PriorityHigh, endpoint, userID, false,
 		w.tr[endpoint].SubsPurchased,
 		tplData{
 			"added":               count,
 			"total_subscriptions": maxSubs,
 		},
-		db.ReplyPacket)
+		reply(paymentCommand))
 }
 
-func (w *worker) settings(endpoint string, userID db.UserID) {
-	subscriptionsNumber := w.db.SubscribedOrPendingCount(endpoint, userID)
-	user := w.mustUserByID(userID)
-	w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].Settings, tplData{
+func (w *worker) settings(m receivedMessage) {
+	subscriptionsNumber := w.db.SubscribedOrPendingCount(m.endpoint, m.userID)
+	user := w.mustUserByID(m.userID)
+	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Settings, tplData{
 		"subscriptions_used":              subscriptionsNumber,
 		"total_subscriptions":             user.MaxSubs,
 		"show_images":                     user.ShowImages,
@@ -1113,50 +1172,50 @@ func (w *worker) settings(endpoint string, userID db.UserID) {
 		"subject_supported":               w.checker.Capabilities().SupportsSubject,
 		"show_subject":                    user.ShowSubject,
 		"silent_messages":                 user.SilentMessages,
-	}, db.ReplyPacket)
+	})
 }
 
-func (w *worker) enableImages(endpoint string, userID db.UserID, showImages bool) {
-	w.db.SetShowImages(userID, showImages)
-	w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].OK, nil, db.ReplyPacket)
+func (w *worker) enableImages(m receivedMessage, showImages bool) {
+	w.db.SetShowImages(m.userID, showImages)
+	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].OK, nil)
 }
 
-func (w *worker) enableOfflineNotifications(endpoint string, userID db.UserID, offlineNotifications bool) {
-	w.db.SetOfflineNotifications(userID, offlineNotifications)
-	w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].OK, nil, db.ReplyPacket)
+func (w *worker) enableOfflineNotifications(m receivedMessage, offlineNotifications bool) {
+	w.db.SetOfflineNotifications(m.userID, offlineNotifications)
+	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].OK, nil)
 }
 
-func (w *worker) enableSubject(endpoint string, userID db.UserID, showSubject bool) {
-	w.db.SetShowSubject(userID, showSubject)
-	w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].OK, nil, db.ReplyPacket)
+func (w *worker) enableSubject(m receivedMessage, showSubject bool) {
+	w.db.SetShowSubject(m.userID, showSubject)
+	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].OK, nil)
 }
 
-func (w *worker) enableSilentMessages(endpoint string, userID db.UserID, silentMessages bool) {
-	w.db.SetSilentMessages(userID, silentMessages)
-	w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].OK, nil, db.ReplyPacket)
+func (w *worker) enableSilentMessages(m receivedMessage, silentMessages bool) {
+	w.db.SetSilentMessages(m.userID, silentMessages)
+	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].OK, nil)
 }
 
-func (w *worker) removeStreamer(endpoint string, userID db.UserID, nickname string) {
+func (w *worker) removeStreamer(m receivedMessage, nickname string) {
 	if nickname == "" {
-		w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].SyntaxRemove, nil, db.ReplyPacket)
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].SyntaxRemove, nil)
 		return
 	}
 	nickname = w.checker.NicknamePreprocessing(nickname)
 	if !w.checker.NicknameRegexp().MatchString(nickname) {
-		w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].InvalidSymbols, tplData{"streamer": nickname}, db.ReplyPacket)
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].InvalidSymbols, tplData{"streamer": nickname})
 		return
 	}
-	if !w.db.SubscribedOrPending(endpoint, userID, nickname) {
-		w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].StreamerNotInList, tplData{"streamer": nickname}, db.ReplyPacket)
+	if !w.db.SubscribedOrPending(m.endpoint, m.userID, nickname) {
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].StreamerNotInList, tplData{"streamer": nickname})
 		return
 	}
-	w.db.RemoveSubscription(userID, nickname, endpoint)
-	w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].StreamerRemoved, tplData{"streamer": nickname}, db.ReplyPacket)
+	w.db.RemoveSubscription(m.userID, nickname, m.endpoint)
+	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].StreamerRemoved, tplData{"streamer": nickname})
 }
 
-func (w *worker) sureRemoveAll(endpoint string, userID db.UserID) {
-	w.db.RemoveAllSubscriptions(userID, endpoint)
-	w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].AllStreamersRemoved, nil, db.ReplyPacket)
+func (w *worker) sureRemoveAll(m receivedMessage) {
+	w.db.RemoveAllSubscriptions(m.userID, m.endpoint)
+	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].AllStreamersRemoved, nil)
 }
 
 // calcTimeDiff calculates time difference ignoring summer time and leap seconds
@@ -1203,10 +1262,10 @@ func listStreamersSortWeight(s cmdlib.StatusKind) int {
 	}
 }
 
-func (w *worker) listStreamers(endpoint string, userID db.UserID, now int) {
-	statuses := w.db.UnconfirmedStatusesForUser(endpoint, userID)
+func (w *worker) listStreamers(m receivedMessage) {
+	statuses := w.db.UnconfirmedStatusesForUser(m.endpoint, m.userID)
 	if len(statuses) == 0 {
-		w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].ZeroSubscriptions, nil, db.ReplyPacket)
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].ZeroSubscriptions, nil)
 		return
 	}
 	sort.SliceStable(statuses, func(i, j int) bool {
@@ -1218,7 +1277,7 @@ func (w *worker) listStreamers(endpoint string, userID db.UserID, now int) {
 		for _, s := range chunk {
 			entry := streamerListEntry{
 				Streamer: s.Nickname,
-				TimeDiff: w.streamerTimeDiff(s, now),
+				TimeDiff: w.streamerTimeDiff(s, m.timestamp),
 			}
 			switch s.UnconfirmedStatus {
 			case cmdlib.StatusOnline:
@@ -1228,7 +1287,7 @@ func (w *worker) listStreamers(endpoint string, userID db.UserID, now int) {
 			}
 		}
 		tplData := tplData{"online": online, "offline": offline}
-		w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].List, tplData, db.ReplyPacket)
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].List, tplData)
 	}
 }
 
@@ -1287,39 +1346,41 @@ func (w *worker) downloadImageInternal(url string) ([]byte, error) {
 	return data, nil
 }
 
-func (w *worker) listOnlineStreamers(endpoint string, chatID int64, userID db.UserID, now int) {
-	statuses := w.db.UnconfirmedStatusesForUser(endpoint, userID)
+func (w *worker) listOnlineStreamers(m receivedMessage) {
+	statuses := w.db.UnconfirmedStatusesForUser(m.endpoint, m.userID)
 	var online []db.Streamer
 	for _, s := range statuses {
 		if s.UnconfirmedStatus == cmdlib.StatusOnline {
 			online = append(online, s)
 		}
 	}
-	if len(online) > w.cfg.MaxSubscriptionsForPics && chatID < -1 {
-		data := tplData{"max_subs": w.cfg.MaxSubscriptionsForPics}
-		w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].TooManySubscriptionsForPics, data, db.ReplyPacket)
-		return
-	}
 	if len(online) == 0 {
-		w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].NoOnlineStreamers, nil, db.ReplyPacket)
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].NoOnlineStreamers, nil)
 		return
 	}
-	user := w.mustUserByID(userID)
+	user := w.mustUserByID(m.userID)
+	// A group or channel, where a pile of pictures is worth capping.
+	if len(online) > w.cfg.MaxSubscriptionsForPics && user.ChatID < 0 {
+		data := tplData{"max_subs": w.cfg.MaxSubscriptionsForPics}
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].TooManySubscriptionsForPics, data)
+		return
+	}
 	var nots []db.Notification
 	for _, s := range online {
 		info := w.unconfirmedOnlineStreamers[s.Nickname]
 		not := db.Notification{
 			Priority:   db.PriorityHigh,
-			Endpoint:   endpoint,
-			UserID:     userID,
+			Endpoint:   m.endpoint,
+			UserID:     m.userID,
 			StreamerID: &s.ID,
 			Nickname:   s.Nickname,
 			Status:     cmdlib.StatusOnline,
 			ImageURL:   info.ImageURL,
 			Viewers:    info.Viewers,
 			ShowKind:   info.ShowKind,
-			TimeDiff:   w.streamerDuration(s, now),
+			TimeDiff:   w.streamerDuration(s, m.timestamp),
 			Kind:       db.ReplyPacket,
+			Command:    m.command,
 		}
 		if user.ShowSubject {
 			not.Subject = info.Subject
@@ -1327,7 +1388,7 @@ func (w *worker) listOnlineStreamers(endpoint string, chatID int64, userID db.Us
 		nots = append(nots, not)
 	}
 	w.db.StoreNotifications(nots)
-	w.sendTr(db.PriorityLow, endpoint, userID, false, w.tr[endpoint].FieldsCustomizationHint, nil, db.ReplyPacket)
+	w.replyTr(m, db.PriorityLow, false, w.tr[m.endpoint].FieldsCustomizationHint, nil)
 }
 
 func (w *worker) week(nickname string) ([]bool, time.Time) {
@@ -1374,24 +1435,28 @@ func (w *worker) weekForStreamers(streamerIDs []int, now time.Time) (map[int][]b
 	return onlineCells(changesMap, from, to, 3600), start
 }
 
-func (w *worker) feedback(endpoint string, chatID int64, userID db.UserID, text string, now int) {
+func (w *worker) feedback(m receivedMessage, text string) {
 	if text == "" {
-		w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].SyntaxFeedback, nil, db.ReplyPacket)
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].SyntaxFeedback, nil)
 		return
 	}
-	w.db.AddFeedback(endpoint, userID, text, now)
-	w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].Feedback, nil, db.ReplyPacket)
-	user := w.mustUserByID(userID)
+	w.db.AddFeedback(m.endpoint, m.userID, text, m.timestamp)
+	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Feedback, nil)
+	user := w.mustUserByID(m.userID)
 	if !user.Blacklist {
-		finalText := fmt.Sprintf("Feedback from %d: %s", chatID, text)
-		w.sendText(db.PriorityHigh, endpoint, w.adminUserID, true, true, cmdlib.ParseRaw, finalText, db.ReplyPacket)
+		finalText := fmt.Sprintf("Feedback from %d: %s", user.ChatID, text)
+		// The admin issued no command, so this copy answers none,
+		// the same shape direct and broadcast use for a third party.
+		w.sendText(
+			db.PriorityHigh, m.endpoint, w.adminUserID, true, true, cmdlib.ParseRaw, finalText,
+			unprompted(db.MessagePacket))
 	}
 }
 
 func (w *worker) performanceStat(endpoint string, arguments string) {
 	parts := strings.Split(arguments, " ")
 	if len(parts) > 2 {
-		w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseRaw, "wrong number of arguments", db.ReplyPacket)
+		w.replyToAdmin(endpoint, "wrong number of arguments")
 		return
 	}
 	n := int64(10)
@@ -1399,7 +1464,7 @@ func (w *worker) performanceStat(endpoint string, arguments string) {
 		var err error
 		n, err = strconv.ParseInt(parts[1], 10, 32)
 		if err != nil {
-			w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseRaw, "cannot parse arguments", db.ReplyPacket)
+			w.replyToAdmin(endpoint, "cannot parse arguments")
 			return
 		}
 	}
@@ -1428,7 +1493,7 @@ func (w *worker) performanceStat(endpoint string, arguments string) {
 			fmt.Sprintf("<b>Count</b>: %d", durations[x].Count),
 		}
 		entry := strings.Join(lines, "\n")
-		w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseHTML, entry, db.ReplyPacket)
+		w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseHTML, entry, reply(""))
 		n--
 	}
 }
@@ -1446,20 +1511,23 @@ func (w *worker) broadcast(endpoint string, text string) {
 	ldbg("broadcasting")
 	users := w.db.BroadcastUsers(endpoint)
 	for _, userID := range users {
-		w.sendText(db.PriorityLow, endpoint, userID, true, false, cmdlib.ParseRaw, text, db.MessagePacket)
+		w.sendText(db.PriorityLow, endpoint, userID, true, false, cmdlib.ParseRaw, text, unprompted(db.MessagePacket))
 	}
-	w.sendText(db.PriorityLow, endpoint, w.adminUserID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
+	// The ack queues at the broadcast's own priority, behind its last message.
+	// Same-priority dispatch is FIFO, so this "OK" means sent, not queued;
+	// replyToAdmin would jump the queue and change what it claims.
+	w.sendText(db.PriorityLow, endpoint, w.adminUserID, false, true, cmdlib.ParseRaw, "OK", reply(""))
 }
 
 func (w *worker) direct(endpoint string, arguments string) {
 	parts := strings.SplitN(arguments, " ", 2)
 	if len(parts) < 2 {
-		w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseRaw, "usage: /direct chatID text", db.ReplyPacket)
+		w.replyToAdmin(endpoint, "usage: /direct chatID text")
 		return
 	}
 	whom, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
-		w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseRaw, "first argument is invalid", db.ReplyPacket)
+		w.replyToAdmin(endpoint, "first argument is invalid")
 		return
 	}
 	text := parts[1]
@@ -1471,30 +1539,30 @@ func (w *worker) direct(endpoint string, arguments string) {
 	// the only gap is a group the bot is in that has never sent a command.
 	user, found := w.db.User(whom)
 	if !found {
-		w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseRaw, "no such user", db.ReplyPacket)
+		w.replyToAdmin(endpoint, "no such user")
 		return
 	}
-	w.sendText(db.PriorityHigh, endpoint, user.UserID, true, false, cmdlib.ParseRaw, text, db.MessagePacket)
-	w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
+	w.sendText(db.PriorityHigh, endpoint, user.UserID, true, false, cmdlib.ParseRaw, text, unprompted(db.MessagePacket))
+	w.replyToAdmin(endpoint, "OK")
 }
 
 func (w *worker) blacklist(endpoint string, arguments string) {
 	whom, err := strconv.ParseInt(arguments, 10, 64)
 	if err != nil {
-		w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseRaw, "first argument is invalid", db.ReplyPacket)
+		w.replyToAdmin(endpoint, "first argument is invalid")
 		return
 	}
 	// EnsureUser creates the row when the chat is unknown,
 	// so blacklisting an unseen chat materializes a (blacklisted) row.
 	// Deliberate: pre-blacklisting before the chat ever starts the bot works.
 	w.db.BlacklistUser(w.db.EnsureUser(whom))
-	w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
+	w.replyToAdmin(endpoint, "OK")
 }
 
 func (w *worker) sendPolledList(endpoint string, now int) {
 	polled := w.db.PolledStreamersWithStatus()
 	if len(polled) == 0 {
-		w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseRaw, "no polled streamers", db.ReplyPacket)
+		w.replyToAdmin(endpoint, "no polled streamers")
 		return
 	}
 	chunks := chunkStreamers(polled, 50)
@@ -1512,19 +1580,21 @@ func (w *worker) sendPolledList(endpoint string, now int) {
 				offline = append(offline, entry)
 			}
 		}
-		w.sendTr(db.PriorityHigh, endpoint, w.adminUserID, false, w.tr[endpoint].List, tplData{"online": online, "offline": offline}, db.ReplyPacket)
+		w.sendTr(
+			db.PriorityHigh, endpoint, w.adminUserID, false, w.tr[endpoint].List,
+			tplData{"online": online, "offline": offline}, reply(""))
 	}
 }
 
 func (w *worker) poll(endpoint string, arguments string) {
 	caps := w.checker.Capabilities()
 	if caps.UsesFixedListOnline() || !caps.SupportsQueryStatus {
-		w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseRaw, "checker does not support per-streamer polling", db.ReplyPacket)
+		w.replyToAdmin(endpoint, "checker does not support per-streamer polling")
 		return
 	}
 	parts := strings.Fields(arguments)
 	if len(parts) != 2 {
-		w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseRaw, "expecting <streamer> <on|off>", db.ReplyPacket)
+		w.replyToAdmin(endpoint, "expecting <streamer> <on|off>")
 		if len(parts) == 0 {
 			w.sendPolledList(endpoint, int(time.Now().Unix()))
 		}
@@ -1532,7 +1602,7 @@ func (w *worker) poll(endpoint string, arguments string) {
 	}
 	nickname := w.checker.NicknamePreprocessing(parts[0])
 	if !w.checker.NicknameRegexp().MatchString(nickname) {
-		w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseRaw, "invalid nickname", db.ReplyPacket)
+		w.replyToAdmin(endpoint, "invalid nickname")
 		return
 	}
 	var on bool
@@ -1542,14 +1612,14 @@ func (w *worker) poll(endpoint string, arguments string) {
 	case "off":
 		on = false
 	default:
-		w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseRaw, "second argument must be on or off", db.ReplyPacket)
+		w.replyToAdmin(endpoint, "second argument must be on or off")
 		return
 	}
 	if !w.db.SetPoll(nickname, on) {
-		w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseRaw, "no such streamer", db.ReplyPacket)
+		w.replyToAdmin(endpoint, "no such streamer")
 		return
 	}
-	w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
+	w.replyToAdmin(endpoint, "OK")
 }
 
 func (w *worker) webAppURL(endpoint string) string {
@@ -1628,6 +1698,35 @@ func (w *worker) handleWebApp(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// webAppUserID reads the caller's id from signed web app init data.
+// Both endpoints of the web app read it the same way,
+// so neither can drift into a different idea of who is identifiable.
+func webAppUserID(values url.Values) (int64, bool) {
+	var user struct {
+		ID int64 `json:"id"`
+	}
+	if json.Unmarshal([]byte(values.Get("user")), &user) != nil || user.ID == 0 {
+		return 0, false
+	}
+	return user.ID, true
+}
+
+// searchCaller identifies the caller of a web app search,
+// answering with an HTTP status when it may not search at all.
+// An unidentifiable caller is rejected as handleWebAppAdd rejects one,
+// and a chat outside the whitelist is refused like every inbound path.
+// Both are decided before the search term, so the endpoint answers one way.
+func (w *worker) searchCaller(values url.Values) (chatID int64, status int) {
+	userID, ok := webAppUserID(values)
+	if !ok {
+		return 0, http.StatusBadRequest
+	}
+	if !w.cfg.ChatWhitelisted(userID) {
+		return userID, http.StatusForbidden
+	}
+	return userID, 0
+}
+
 func (w *worker) handleSearch(rw http.ResponseWriter, r *http.Request) {
 	endpoint := r.URL.Query().Get("endpoint")
 	if _, ok := w.cfg.Endpoints[endpoint]; !ok {
@@ -1642,24 +1741,31 @@ func (w *worker) handleSearch(rw http.ResponseWriter, r *http.Request) {
 		http.Error(rw, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+	chatID, status := w.searchCaller(values)
+	if status != 0 {
+		// Debug, not info: a typeahead endpoint refuses once per keystroke.
+		ldbg("search refused: chat = %d, status = %d", chatID, status)
+		http.Error(rw, http.StatusText(status), status)
+		return
+	}
 	term := strings.TrimSpace(strings.ToLower(r.URL.Query().Get("term")))
 	var results []string
 	if len(term) >= 1 && len(term) <= 32 {
-		var userID int64
-		var user struct {
-			ID int64 `json:"id"`
-		}
-		if json.Unmarshal([]byte(values.Get("user")), &user) == nil {
-			userID = user.ID
-		}
 		req := searchRequest{
 			endpoint: endpoint,
-			chatID:   userID,
+			chatID:   chatID,
 			term:     term,
-			resultCh: make(chan []string, 1),
+			resultCh: make(chan searchResult, 1),
 		}
 		w.searchRequests <- req
-		results = <-req.resultCh
+		res := <-req.resultCh
+		if !res.allowed {
+			// The daemon caught what searchCaller should have;
+			// answer as that layer would rather than serve an empty list.
+			http.Error(rw, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			return
+		}
+		results = res.streamers
 	}
 	if results == nil {
 		results = []string{}
@@ -1676,6 +1782,62 @@ func (w *worker) serveEndpoints() {
 		err := http.ListenAndServe(w.cfg.ListenAddress, nil)
 		checkErr(err)
 	}()
+}
+
+// webAppAddCommand names an add made from the search web app's submit button.
+// It is distinct from /add so the two are not conflated in the log.
+const webAppAddCommand = "web_app_add"
+
+// performWebAppAdd carries out an add submitted from the search web app.
+// Main goroutine only.
+// It vets the chat before EnsureUser can materialize a row for it,
+// on the whitelist as every inbound path does, and against zero:
+// an empty whitelist admits every chat, and EnsureUser has no zero check.
+// It has no maintenance divert, unlike a Telegram update:
+// registerWebApp runs only once the database and caches are ready.
+// The event is logged here, not in handleWebAppAdd,
+// which runs on an HTTP goroutine where w.db is off limits.
+func (w *worker) performWebAppAdd(req webAppAddRequest) {
+	// handleWebAppAdd rejects a missing user id, so zero here is a bug,
+	// not a caller the whitelist would ever have admitted.
+	if req.chatID == 0 {
+		lerr("web app add without a chat, rejected before EnsureUser")
+		req.admittedCh <- false
+		return
+	}
+	if !w.cfg.ChatWhitelisted(req.chatID) {
+		linf("web app add not whitelisted: chat = %d", req.chatID)
+		req.admittedCh <- false
+		return
+	}
+	m := receivedMessage{
+		timestamp: int(time.Now().Unix()),
+		endpoint:  req.endpoint,
+		userID:    w.db.EnsureUser(req.chatID),
+		command:   webAppAddCommand,
+	}
+	w.logReceived(m)
+	// The streamer id is discarded:
+	// it is nil for a refusal and for a parked pending subscription alike,
+	// so it cannot tell admitted from performed.
+	// Either way addStreamer has answered in the chat.
+	_ = w.addStreamer(m, req.nickname, false)
+	req.admittedCh <- true
+}
+
+// submitWebAppAdd hands a request to the main loop and waits for its verdict.
+// alive is false once the loop has stopped selecting that arm:
+// the send would otherwise park this goroutine for good,
+// where the Telegram route gets a 503 from rejectForRedeliveryWhileMigrating.
+// Waiting on the verdict needs no such escape:
+// admittedCh is buffered, and performWebAppAdd answers on every path.
+func (w *worker) submitWebAppAdd(req webAppAddRequest) (admitted, alive bool) {
+	select {
+	case w.webAppAddRequests <- req:
+	case <-w.shutdownCh:
+		return false, false
+	}
+	return <-req.admittedCh, true
 }
 
 func (w *worker) handleWebAppAdd(rw http.ResponseWriter, r *http.Request) {
@@ -1697,22 +1859,27 @@ func (w *worker) handleWebAppAdd(rw http.ResponseWriter, r *http.Request) {
 		http.Error(rw, "empty streamer", http.StatusBadRequest)
 		return
 	}
-	var user struct {
-		ID int64 `json:"id"`
-	}
-	if json.Unmarshal([]byte(values.Get("user")), &user) != nil || user.ID == 0 {
+	userID, ok := webAppUserID(values)
+	if !ok {
 		lerr("web app add: missing user id")
 		http.Error(rw, "missing user id", http.StatusBadRequest)
 		return
 	}
-	req := addRequest{
-		endpoint: endpoint,
-		chatID:   user.ID,
-		nickname: nickname,
-		doneCh:   make(chan struct{}, 1),
+	req := webAppAddRequest{
+		endpoint:   endpoint,
+		chatID:     userID,
+		nickname:   nickname,
+		admittedCh: make(chan bool, 1),
 	}
-	w.addRequests <- req
-	<-req.doneCh
+	admitted, alive := w.submitWebAppAdd(req)
+	if !alive {
+		http.Error(rw, "shutting down", http.StatusServiceUnavailable)
+		return
+	}
+	if !admitted {
+		http.Error(rw, "forbidden", http.StatusForbidden)
+		return
+	}
 	rw.WriteHeader(http.StatusOK)
 }
 
@@ -1742,8 +1909,10 @@ func (w *worker) logConfig() {
 	}
 }
 
+// Its replies go through replyToAdmin, which names no command:
+// an admin command is absent from loggedCommands,
+// so the received log never names one either.
 func (w *worker) processAdminMessage(endpoint string, command, arguments string) bool {
-	userID := w.adminUserID
 	switch command {
 	case "performance":
 		w.performanceStat(endpoint, arguments)
@@ -1763,21 +1932,21 @@ func (w *worker) processAdminMessage(endpoint string, command, arguments string)
 	case "set_max_subs":
 		parts := strings.Fields(arguments)
 		if len(parts) != 2 {
-			w.sendText(db.PriorityHigh, endpoint, userID, false, true, cmdlib.ParseRaw, "expecting two arguments", db.ReplyPacket)
+			w.replyToAdmin(endpoint, "expecting two arguments")
 			return true
 		}
 		who, err := strconv.ParseInt(parts[0], 10, 64)
 		if err != nil {
-			w.sendText(db.PriorityHigh, endpoint, userID, false, true, cmdlib.ParseRaw, "first argument is invalid", db.ReplyPacket)
+			w.replyToAdmin(endpoint, "first argument is invalid")
 			return true
 		}
 		maxSubs, err := strconv.Atoi(parts[1])
 		if err != nil {
-			w.sendText(db.PriorityHigh, endpoint, userID, false, true, cmdlib.ParseRaw, "second argument is invalid", db.ReplyPacket)
+			w.replyToAdmin(endpoint, "second argument is invalid")
 			return true
 		}
 		w.db.SetLimit(w.db.EnsureUser(who), maxSubs)
-		w.sendText(db.PriorityHigh, endpoint, userID, false, true, cmdlib.ParseRaw, "OK", db.ReplyPacket)
+		w.replyToAdmin(endpoint, "OK")
 		return true
 	}
 	return false
@@ -1829,7 +1998,7 @@ func (w *worker) refreshMemberCount(endpoint string, chatID int64, userID db.Use
 	}
 }
 
-func (w *worker) refer(followerChatID int64, referrer string, now int, followerCreated bool) (applied appliedKind) {
+func (w *worker) refer(followerUserID db.UserID, referrer string, now int, followerCreated bool) (applied appliedKind) {
 	referrerUserID := w.db.UserForReferralID(referrer)
 	if referrerUserID == nil {
 		return invalidReferral
@@ -1837,7 +2006,6 @@ func (w *worker) refer(followerChatID int64, referrer string, now int, followerC
 	if !followerCreated {
 		return followerExists
 	}
-	followerUserID := w.db.EnsureUser(followerChatID)
 	w.db.SetLimit(followerUserID, w.cfg.MaxSubs+w.cfg.FollowerBonus)
 	w.db.AddReferrerBonus(*referrerUserID, w.cfg.ReferralBonus)
 	w.db.IncrementReferredUsers(*referrerUserID)
@@ -1865,12 +2033,12 @@ func (w *worker) referralData(endpoint string, userID db.UserID) tplData {
 	}
 }
 
-func (w *worker) showReferral(endpoint string, userID db.UserID) {
-	w.sendTr(db.PriorityHigh, endpoint, userID, false,
-		w.tr[endpoint].ReferralLink, w.referralData(endpoint, userID), db.ReplyPacket)
+func (w *worker) showReferral(m receivedMessage) {
+	w.replyTr(m, db.PriorityHigh, false,
+		w.tr[m.endpoint].ReferralLink, w.referralData(m.endpoint, m.userID))
 }
 
-func (w *worker) start(endpoint string, chatID int64, userID db.UserID, referrer string, now int, created bool) {
+func (w *worker) start(m receivedMessage, referrer string, created bool) {
 	nickname := ""
 	switch {
 	case strings.HasPrefix(referrer, "m-"):
@@ -1878,134 +2046,128 @@ func (w *worker) start(endpoint string, chatID int64, userID db.UserID, referrer
 		nickname = w.checker.NicknamePreprocessing(nickname)
 		referrer = ""
 	case referrer != "":
-		referralID := w.db.ReferralID(userID)
+		referralID := w.db.ReferralID(m.userID)
 		if referralID != nil && *referralID == referrer {
-			w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].OwnReferralLinkHit, nil, db.ReplyPacket)
+			w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].OwnReferralLinkHit, nil)
 			return
 		}
 	}
-	w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].Start, tplData{
+	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Start, tplData{
 		"website_link": w.cfg.WebsiteLink,
-	}, db.ReplyPacket)
-	if chatID > 0 && referrer != "" {
-		applied := w.refer(chatID, referrer, now, created)
+	})
+	if referrer != "" && w.mustUserByID(m.userID).ChatID > 0 {
+		applied := w.refer(m.userID, referrer, m.timestamp, created)
 		switch applied {
 		case referralApplied:
-			w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].ReferralApplied, nil, db.ReplyPacket)
+			w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].ReferralApplied, nil)
 		case invalidReferral:
-			w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].InvalidReferralLink, nil, db.ReplyPacket)
+			w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].InvalidReferralLink, nil)
 		case followerExists:
-			w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].FollowerExists, nil, db.ReplyPacket)
+			w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].FollowerExists, nil)
 		}
 	}
 	if nickname != "" {
-		if streamerID := w.addStreamer(endpoint, chatID, userID, nickname, now, true); streamerID != nil {
-			w.db.AddReferralEvent(now, nil, userID, streamerID)
+		if streamerID := w.addStreamer(m, nickname, true); streamerID != nil {
+			w.db.AddReferralEvent(m.timestamp, nil, m.userID, streamerID)
 		}
 	}
 }
 
-func (w *worker) help(endpoint string, userID db.UserID) {
-	w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].Help, tplData{
+func (w *worker) help(m receivedMessage) {
+	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Help, tplData{
 		"website_link": w.cfg.WebsiteLink,
-	}, db.ReplyPacket)
+	})
 }
 
+// processIncomingCommand dispatches on command, which the caller lowercases.
+// Every reply is logged against m.command, which the caller has already
+// gated: a name the received log skipped must not surface here either.
 func (w *worker) processIncomingCommand(
-	endpoint string,
+	m receivedMessage,
 	chatID int64,
-	userID db.UserID,
 	command, arguments string,
-	now int,
 	created bool,
 ) {
-	w.db.ResetBlock(endpoint, userID)
-	command = strings.ToLower(command)
 	linf("chat: %d, command: %s %s", chatID, command, arguments)
+	w.db.ResetBlock(m.endpoint, m.userID)
 
 	if chatID == w.cfg.AdminID {
-		if w.processAdminMessage(endpoint, command, arguments) {
+		if w.processAdminMessage(m.endpoint, command, arguments) {
 			return
 		}
 	}
 
 	unknown := func() {
-		w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].UnknownCommand, nil, db.ReplyPacket)
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].UnknownCommand, nil)
 	}
 
 	switch command {
 	case "add":
 		arguments = strings.ReplaceAll(arguments, "—", "--")
-		_ = w.addStreamer(endpoint, chatID, userID, arguments, now, false)
+		_ = w.addStreamer(m, arguments, false)
 	case "remove":
 		arguments = strings.ReplaceAll(arguments, "—", "--")
-		w.removeStreamer(endpoint, userID, arguments)
+		w.removeStreamer(m, arguments)
 	case "list":
-		w.listStreamers(endpoint, userID, now)
+		w.listStreamers(m)
 	case "pics", "online":
-		w.listOnlineStreamers(endpoint, chatID, userID, now)
+		w.listOnlineStreamers(m)
 	case "start":
-		w.start(endpoint, chatID, userID, arguments, now, created)
+		w.start(m, arguments, created)
 	case "help":
-		w.help(endpoint, userID)
+		w.help(m)
 	case "ad":
-		w.ad(db.PriorityHigh, endpoint, userID)
+		w.ad(db.PriorityHigh, m.endpoint, m.userID, m.command)
 	case "faq":
-		w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].FAQ, tplData{
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].FAQ, tplData{
 			"max_subs":         w.cfg.MaxSubs,
 			"buy_subs_enabled": w.cfg.BuySubsEnabled(),
-		}, db.ReplyPacket)
+		})
 	case "feedback":
-		w.feedback(endpoint, chatID, userID, arguments, now)
+		w.feedback(m, arguments)
 	case "social":
-		w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].Social, nil, db.ReplyPacket)
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Social, nil)
 	case "version":
-		w.sendTr(
-			db.PriorityHigh,
-			endpoint,
-			userID,
-			false,
-			w.tr[endpoint].Version,
-			tplData{"version": cmdlib.Version},
-			db.ReplyPacket)
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Version,
+			tplData{"version": cmdlib.Version})
 	case "remove_all", "stop":
-		w.sendTr(db.PriorityHigh, endpoint, userID, false, w.tr[endpoint].RemoveAll, nil, db.ReplyPacket)
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].RemoveAll, nil)
 	case "sure_remove_all":
-		w.sureRemoveAll(endpoint, userID)
+		w.sureRemoveAll(m)
 	case "want_more":
-		w.wantMore(endpoint, userID)
+		w.wantMore(m)
 	case "buy_subs":
 		if !w.cfg.BuySubsEnabled() {
 			unknown()
 			return
 		}
-		w.buySubs(endpoint, userID)
+		w.buySubs(m)
 	case "settings":
-		w.settings(endpoint, userID)
+		w.settings(m)
 	case "enable_images":
-		w.enableImages(endpoint, userID, true)
+		w.enableImages(m, true)
 	case "disable_images":
-		w.enableImages(endpoint, userID, false)
+		w.enableImages(m, false)
 	case "enable_offline_notifications":
-		w.enableOfflineNotifications(endpoint, userID, true)
+		w.enableOfflineNotifications(m, true)
 	case "disable_offline_notifications":
-		w.enableOfflineNotifications(endpoint, userID, false)
+		w.enableOfflineNotifications(m, false)
 	case "enable_subject":
-		w.enableSubject(endpoint, userID, true)
+		w.enableSubject(m, true)
 	case "disable_subject":
-		w.enableSubject(endpoint, userID, false)
+		w.enableSubject(m, false)
 	case "enable_silent_messages":
-		w.enableSilentMessages(endpoint, userID, true)
+		w.enableSilentMessages(m, true)
 	case "disable_silent_messages":
-		w.enableSilentMessages(endpoint, userID, false)
+		w.enableSilentMessages(m, false)
 	case "referral":
-		w.showReferral(endpoint, userID)
+		w.showReferral(m)
 	case "week":
 		if !w.cfg.EnableWeek {
 			unknown()
 			return
 		}
-		w.showWeek(endpoint, userID, arguments)
+		w.showWeek(m, arguments)
 	default:
 		unknown()
 	}
@@ -2324,13 +2486,15 @@ var loggedCommands = map[string]bool{
 	"week":                          true,
 }
 
+// migrateCommand names a completed group-to-supergroup migration.
+const migrateCommand = "migrate"
+
 // migrateChatAndLog migrates the chat and, only when it actually migrated,
 // logs one migrate event attributed to the destination user,
 // so a redelivery or the pair's second message does not double-count.
 func (w *worker) migrateChatAndLog(timestamp int, endpoint string, fromID, toID int64) {
 	if w.migrateChat(fromID, toID) {
-		command := "migrate"
-		w.db.LogReceivedMessage(timestamp, endpoint, w.db.EnsureUser(toID), &command)
+		w.db.LogReceivedMessage(timestamp, endpoint, w.db.EnsureUser(toID), migrateCommand)
 	}
 }
 
@@ -2424,9 +2588,12 @@ func (w *worker) processTGUpdate(p incomingPacket) {
 	if command == "" {
 		return
 	}
-	var loggedCommand *string
+	// Lowercase before the gate: loggedCommands holds lowercase names,
+	// so a capitalized command must not read as untracked.
+	command = strings.ToLower(command)
+	var loggedCommand string
 	if loggedCommands[command] {
-		loggedCommand = &command
+		loggedCommand = command
 	}
 	var chatType string
 	if u.Message != nil {
@@ -2435,8 +2602,14 @@ func (w *worker) processTGUpdate(p incomingPacket) {
 		chatType = string(u.ChannelPost.Chat.Type)
 	}
 	userID, created := w.db.AddUser(chatID, w.cfg.MaxSubs, now, chatType)
-	w.db.LogReceivedMessage(now, p.endpoint, userID, loggedCommand)
-	w.processIncomingCommand(p.endpoint, chatID, userID, command, args, now, created)
+	m := receivedMessage{
+		timestamp: now,
+		endpoint:  p.endpoint,
+		userID:    userID,
+		command:   loggedCommand,
+	}
+	w.logReceived(m)
+	w.processIncomingCommand(m, chatID, command, args, created)
 	w.refreshMemberCount(p.endpoint, chatID, userID)
 }
 
@@ -2642,7 +2815,7 @@ func (w *worker) waitForInflightSends(ctx context.Context) {
 // The member-count lookup is a network call and deliberately not here —
 // completeSendResult runs it only after freeing the send slot.
 func (w *worker) handleSendResult(r msgSendResult) {
-	if r.kind == db.MaintenancePacket {
+	if r.tag.kind == db.MaintenancePacket {
 		return
 	}
 	switch r.result {
@@ -2656,14 +2829,15 @@ func (w *worker) handleSendResult(r msgSendResult) {
 			w.migrateChatAndLog(r.timestamp, r.endpoint, r.chatID, r.migrateToChatID)
 		}
 	}
-	w.db.LogSentMessage(r.timestamp, r.userID, r.result, r.endpoint, r.priority, r.latency, r.kind)
+	w.db.LogSentMessage(
+		r.timestamp, r.userID, r.result, r.endpoint, r.priority, r.latency, r.tag.kind, r.tag.command)
 }
 
 // resolveResultUser resolves a non-maintenance result's user to the live one,
 // so bookkeeping after a mid-flight migrate lands on the live row,
 // not a tombstone. A maintenance send carries no user.
 func (w *worker) resolveResultUser(r *msgSendResult) {
-	if r.kind != db.MaintenancePacket {
+	if r.tag.kind != db.MaintenancePacket {
 		r.userID = w.db.LiveUserID(r.userID)
 	}
 }
@@ -2707,7 +2881,7 @@ func (w *worker) completeSendResult(r msgSendResult) {
 		// no row to re-arm.
 	}
 	w.onSendDone()
-	if r.result == messageSent && r.kind != db.MaintenancePacket {
+	if r.result == messageSent && r.tag.kind != db.MaintenancePacket {
 		w.refreshMemberCount(r.endpoint, r.chatID, r.userID)
 	}
 }
@@ -2842,18 +3016,32 @@ func (w *worker) notificationFetcher() {
 
 func (w *worker) fuzzySearchDaemon() {
 	for req := range w.searchRequests {
-		if req.chatID != 0 {
-			now := int(time.Now().Unix())
-			command := "search"
-			// A search means the user found the bot on their own,
-			// so create the row now;
-			// a later referral /start then correctly earns no follower bonus.
-			w.fuzzySearchDB.LogReceivedMessage(
-				now, req.endpoint,
-				w.fuzzySearchDB.EnsureUser(req.chatID), &command)
-		}
-		req.resultCh <- w.fuzzySearchDB.SearchStreamers(req.term)
+		w.handleSearchRequest(req)
 	}
+}
+
+// searchCommand names a search made from the web app.
+const searchCommand = "search"
+
+// handleSearchRequest serves one search from the web app.
+// It runs on the search daemon's goroutine, which owns fuzzySearchDB.
+// searchCaller vets the chat before the request is queued;
+// the guard repeats here because EnsureUser is the write it protects,
+// and addUser has no zero check, so chat 0 would materialize a row.
+func (w *worker) handleSearchRequest(req searchRequest) {
+	if req.chatID == 0 || !w.cfg.ChatWhitelisted(req.chatID) {
+		lerr("search request not vetted: chat = %d", req.chatID)
+		req.resultCh <- searchResult{}
+		return
+	}
+	now := int(time.Now().Unix())
+	// A search means the user found the bot on their own,
+	// so create the row now;
+	// a later referral /start then correctly earns no follower bonus.
+	w.fuzzySearchDB.LogReceivedMessage(
+		now, req.endpoint,
+		w.fuzzySearchDB.EnsureUser(req.chatID), searchCommand)
+	req.resultCh <- searchResult{streamers: w.fuzzySearchDB.SearchStreamers(req.term), allowed: true}
 }
 
 func (w *worker) queryUnconfirmedSubs() {
@@ -2884,12 +3072,12 @@ func (w *worker) processSubsConfirmations(res *cmdlib.ExistenceListResults) {
 	var iter db.PendingSubscription
 	w.db.MustQuery(
 		`
-			select ps.endpoint, ps.nickname, ps.user_id, ps.referral
+			select ps.endpoint, ps.nickname, ps.user_id, ps.referral, coalesce(ps.command, '')
 			from pending_subscriptions ps
 			where ps.checking and ps.nickname = any($1)
 		`,
 		db.QueryParams{nicknames},
-		db.ScanTo{&iter.Endpoint, &iter.Nickname, &iter.UserID, &iter.Referral},
+		db.ScanTo{&iter.Endpoint, &iter.Nickname, &iter.UserID, &iter.Referral, &iter.Command},
 		func() { confirmationsInWork[iter.Nickname] = append(confirmationsInWork[iter.Nickname], iter) })
 	var nots []db.Notification
 	var confirmedNots []db.Notification
@@ -2917,6 +3105,7 @@ func (w *worker) processSubsConfirmations(res *cmdlib.ExistenceListResults) {
 					Social:     false,
 					Priority:   db.PriorityHigh,
 					Kind:       db.ReplyPacket,
+					Command:    sub.Command,
 				}
 				nots = append(nots, n)
 				if confirmed {
@@ -2968,7 +3157,9 @@ func (w *worker) finishStartup(
 		cancel()
 	}()
 	for user := range waitingUsers {
-		w.sendTr(db.PriorityHigh, user.endpoint, w.db.EnsureUser(user.chatID), false, w.tr[user.endpoint].WeAreUp, nil, db.MessagePacket)
+		w.sendTr(
+			db.PriorityHigh, user.endpoint, w.db.EnsureUser(user.chatID), false,
+			w.tr[user.endpoint].WeAreUp, nil, unprompted(db.MessagePacket))
 	}
 	w.sendText(
 		db.PriorityHigh,
@@ -2978,7 +3169,7 @@ func (w *worker) finishStartup(
 		true,
 		cmdlib.ParseRaw,
 		"bot is up",
-		db.MessagePacket)
+		unprompted(db.MessagePacket))
 	w.pushOnlineRequest()
 	// Leave maintenance last: it opens the payment gate,
 	// so an admitted payment is consumed at once.
@@ -3094,10 +3285,8 @@ func main() {
 				"store_notifications_ms":               processed.storeNotificationsMs,
 			})
 			ldbg("status updates processed in %v", processed.elapsed)
-		case req := <-w.addRequests:
-			now := int(time.Now().Unix())
-			w.addStreamer(req.endpoint, req.chatID, w.db.EnsureUser(req.chatID), req.nickname, now, false)
-			req.doneCh <- struct{}{}
+		case req := <-w.webAppAddRequests:
+			w.performWebAppAdd(req)
 		case u := <-incoming:
 			if w.maintenance.Load() {
 				w.maintenanceReply(u, waitingUsers)

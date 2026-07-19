@@ -67,6 +67,31 @@ var testTranslations = cmdlib.Translations{
 	InvalidReferralLink:    &cmdlib.Translation{Key: "invalid_referral_link", Str: "InvalidReferralLink", Parse: cmdlib.ParseRaw},
 	FollowerExists:         &cmdlib.Translation{Key: "follower_exists", Str: "FollowerExists", Parse: cmdlib.ParseRaw},
 	OwnReferralLinkHit:     &cmdlib.Translation{Key: "own_referral_link_hit", Str: "OwnReferralLinkHit", Parse: cmdlib.ParseRaw},
+	BuySubs: &cmdlib.Translation{
+		Key:   "buy_subs",
+		Str:   "BuySubs",
+		Parse: cmdlib.ParseRaw,
+	},
+	BuySubsPackageButton: &cmdlib.Translation{
+		Key:   "buy_subs_package_button",
+		Str:   "BuySubsPackageButton",
+		Parse: cmdlib.ParseRaw,
+	},
+	SubsPurchased: &cmdlib.Translation{
+		Key:   "subs_purchased",
+		Str:   "SubsPurchased",
+		Parse: cmdlib.ParseRaw,
+	},
+	BuyAlreadyCredited: &cmdlib.Translation{
+		Key:   "buy_already_credited",
+		Str:   "BuyAlreadyCredited",
+		Parse: cmdlib.ParseRaw,
+	},
+	FieldsCustomizationHint: &cmdlib.Translation{
+		Key:   "fields_customization_hint",
+		Str:   "FieldsCustomizationHint",
+		Parse: cmdlib.ParseRaw,
+	},
 }
 
 type testWorker struct {
@@ -147,6 +172,17 @@ func connStrFor(dbName string) string {
 	return u.String()
 }
 
+// testMessage builds the inbound message a handler answers,
+// resolving the chat to its user as processTGUpdate does.
+func testMessage(w *testWorker, chatID int64, command string, now int) receivedMessage {
+	return receivedMessage{
+		timestamp: now,
+		endpoint:  "test",
+		userID:    w.db.EnsureUser(chatID),
+		command:   command,
+	}
+}
+
 // newTestWorker clones the migrated template into a database of its own,
 // so tests stay isolated and can run in parallel.
 func newTestWorker() *testWorker {
@@ -176,6 +212,14 @@ func newTestWorker() *testWorker {
 	template.Must(tpl.New("invalid_referral_link").Parse("InvalidReferralLink"))
 	template.Must(tpl.New("follower_exists").Parse("FollowerExists"))
 	template.Must(tpl.New("own_referral_link_hit").Parse("OwnReferralLinkHit"))
+	template.Must(tpl.New("fields_customization_hint").Parse("FieldsCustomizationHint"))
+	template.Must(tpl.New("unknown_command").Parse("UnknownCommand"))
+	template.Must(tpl.New("feedback").Parse("Feedback"))
+	template.Must(tpl.New("subs_purchased").Parse("SubsPurchased"))
+	template.Must(tpl.New("buy_already_credited").Parse("BuyAlreadyCredited"))
+	template.Must(tpl.New("already_added").Parse("AlreadyAdded"))
+	template.Must(tpl.New("buy_subs").Parse("BuySubs"))
+	template.Must(tpl.New("buy_subs_package_button").Parse("BuySubsPackageButton"))
 
 	w := &testWorker{
 		worker: worker{

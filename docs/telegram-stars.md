@@ -16,6 +16,13 @@ so larger packages are cheaper per subscription and discounts stay non-negative.
 3. `pre_checkout_query` is validated and answered (10s deadline).
 4. `successful_payment` triggers `GrantStarPaymentSubs` (idempotent).
 
+Each step is named in `received_message_log`:
+`buy_callback`, `invoice`, `pre_checkout`, `successful_payment`.
+The `buy_callback` and `successful_payment` replies
+carry that name in `sent_message_log.command`;
+the invoice and pre-checkout answers go straight to the Bot API,
+so they are not logged as sent.
+
 During the startup migration window,
 `rejectForRedeliveryWhileMigrating` rejects payments
 and group-to-supergroup migration messages with HTTP 503,

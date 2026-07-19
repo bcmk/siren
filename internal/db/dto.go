@@ -14,15 +14,20 @@ type Notification struct {
 	// Only populated when joined with streamers
 	Nickname string
 
-	Status         cmdlib.StatusKind
-	TimeDiff       *int
-	ImageURL       string
-	Viewers        *int
-	ShowKind       cmdlib.ShowKind
-	Social         bool
-	Sound          bool
-	Priority       Priority
-	Kind           PacketKind
+	Status   cmdlib.StatusKind
+	TimeDiff *int
+	ImageURL string
+	Viewers  *int
+	ShowKind cmdlib.ShowKind
+	Social   bool
+	Sound    bool
+	Priority Priority
+	Kind     PacketKind
+	// Command is the command this notification answers, empty if none.
+	// A deferred reply (an add result, an online-list picture)
+	// carries it across the queue,
+	// so its send logs the command that asked for it.
+	Command        string
 	Subject        string
 	SilentMessages bool
 }
@@ -130,4 +135,8 @@ type PendingSubscription struct {
 	Nickname string
 	Endpoint string
 	Referral bool
+	// Command is the command that asked for the subscription.
+	// The confirmation reply lands much later,
+	// so it is kept here to tag that reply with what it answers.
+	Command string
 }

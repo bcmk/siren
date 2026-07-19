@@ -16,6 +16,14 @@ taps a result, and the Mini App calls the add API directly.
 See [siren-fuzzy-search](https://github.com/bcmk/siren-fuzzy-search)
 for the multi-leg approach used in the code.
 
+## Web app logging
+
+A search is named `search` in `received_message_log`,
+and the submit button's add is named `web_app_add`,
+distinct from `add` so a typed command is not conflated with a tap.
+Both paths are whitelist-gated and refused outright when the chat is outside it,
+so a refused request appears in neither log.
+
 ## Why a separate nicknames table
 
 The GIN trigram index is the largest and most expensive index

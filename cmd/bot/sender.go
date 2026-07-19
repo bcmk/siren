@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bcmk/siren/v3/internal/db"
+	"github.com/bcmk/siren/v3/lib/cmdlib"
 )
 
 const (
@@ -39,12 +40,106 @@ const (
 	sendChanCap = 64
 )
 
+// sendTag identifies an outgoing message:
+// its kind, and the command it answers, empty when neither log names one.
+type sendTag struct {
+	kind    db.PacketKind
+	command string
+}
+
+// reply tags a message answering an inbound event.
+// The command names that event when the received log names it,
+// and is empty when neither log does, as for an admin command.
+func reply(command string) sendTag {
+	return sendTag{kind: db.ReplyPacket, command: command}
+}
+
+// receivedMessage is the inbound message a handler answers.
+// Its command is the name both logs record, empty when neither does,
+// so a reply can never name a command the received log lacks.
+// Record it with logReceived rather than calling the database directly:
+// every field is a plain string or int, so a hand-written call
+// can transpose two of them and still compile.
+type receivedMessage struct {
+	timestamp int
+	endpoint  string
+	userID    db.UserID
+	command   string
+}
+
+// logReceived records the inbound message that replies are tagged from,
+// keeping the row and the tag in step.
+func (w *worker) logReceived(m receivedMessage) {
+	w.db.LogReceivedMessage(m.timestamp, m.endpoint, m.userID, m.command)
+}
+
+// tag marks a send as answering this message.
+func (m receivedMessage) tag() sendTag { return reply(m.command) }
+
+// replyTr answers with a translation, always to the sender.
+// A send to anyone else is not a reply and must say so at its own call site.
+func (w *worker) replyTr(
+	m receivedMessage,
+	priority db.Priority,
+	notify bool,
+	translation *cmdlib.Translation,
+	data map[string]interface{},
+) {
+	w.enqueueTr(priority, m.endpoint, m.userID, notify, translation, data, nil, m.tag(), 0)
+}
+
+// replyText answers with raw text, always to the sender.
+// It never notifies, unlike replyTr:
+// its one caller chunks a long listing,
+// and a notification per chunk would buzz the phone repeatedly.
+func (w *worker) replyText(
+	m receivedMessage,
+	priority db.Priority,
+	disablePreview bool,
+	parse cmdlib.ParseKind,
+	text string,
+) {
+	msg := textMessage(text, false, disablePreview, parse)
+	w.enqueueMessage(priority, m.endpoint, msg, m.tag(), m.userID, 0)
+}
+
+// replyToAdmin answers an admin command with raw text.
+// Admin commands are absent from loggedCommands,
+// so the received log names none and neither can this.
+func (w *worker) replyToAdmin(endpoint, text string) {
+	w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseRaw, text, reply(""))
+}
+
+// replyMessage answers with a prebuilt message, always to the sender.
+func (w *worker) replyMessage(m receivedMessage, priority db.Priority, msg sendable) {
+	w.enqueueMessage(priority, m.endpoint, msg, m.tag(), m.userID, 0)
+}
+
+// adTag tags an advertisement,
+// naming the command that triggered it when one did.
+func adTag(command string) sendTag {
+	return sendTag{kind: db.AdPacket, command: command}
+}
+
+// unprompted tags a message no inbound event asked for:
+// a status notification, a broadcast, a maintenance notice.
+// A reply is never one of those, named or not, and uses reply instead.
+func unprompted(kind db.PacketKind) sendTag {
+	return sendTag{kind: kind}
+}
+
+// notificationTag rebuilds the tag a queued notification was stored with,
+// so a deferred reply still names the command it answers.
+func notificationTag(n db.Notification) sendTag {
+	return sendTag{kind: n.Kind, command: n.Command}
+}
+
 type queuedMessage struct {
 	userID         db.UserID
 	endpoint       string
 	message        sendable
 	priority       db.Priority
-	kind           db.PacketKind
+	tag            sendTag
 	notificationID int
 	requestedAt    time.Time
 	seq            uint64
@@ -211,7 +306,7 @@ func (w *worker) enqueueMessage(
 	priority db.Priority,
 	endpoint string,
 	msg sendable,
-	kind db.PacketKind,
+	tag sendTag,
 	userID db.UserID,
 	notificationID int,
 ) {
@@ -221,7 +316,7 @@ func (w *worker) enqueueMessage(
 		endpoint:       endpoint,
 		message:        msg,
 		priority:       priority,
-		kind:           kind,
+		tag:            tag,
 		notificationID: notificationID,
 		requestedAt:    time.Now(),
 		seq:            w.sendSeq,
@@ -268,7 +363,7 @@ func (w *worker) trySend() {
 		return
 	}
 	q := w.sendQueue.pop()
-	if q.kind != db.MaintenancePacket {
+	if q.tag.kind != db.MaintenancePacket {
 		chatID, ok := w.db.ChatIDForUser(q.userID)
 		if !ok {
 			// The user has no chat row (no delete path today, so defensive).
@@ -337,7 +432,7 @@ func (w *worker) deliver(q *queuedMessage) {
 	// from pinning the whole message, image payload included, for the whole pause.
 	// isGroup survives the fallback's payload swap: toText copies the chat id.
 	isGroup := q.message.chatID() < 0
-	kind := q.kind
+	tag := q.tag
 	userID := q.userID
 	now := time.Now()
 	result, migrateTo, retryAfter := w.sendMessageInternal(q.endpoint, q.message)
@@ -364,7 +459,7 @@ func (w *worker) deliver(q *queuedMessage) {
 	// on the same address, so require a genuinely new target.
 	migrated := result == messageMigrate && migrateTo != 0 && migrateTo != q.message.chatID()
 	var resend *queuedMessage
-	if kind != db.MaintenancePacket {
+	if tag.kind != db.MaintenancePacket {
 		if transient || migrated {
 			resend = q
 		}
@@ -398,11 +493,11 @@ func (w *worker) deliver(q *queuedMessage) {
 		userID:          userID,
 		migrateToChatID: migrateTo,
 		latency:         latency,
-		kind:            kind,
+		tag:             tag,
 		notificationID:  q.notificationID,
 		resend:          resend,
 	}
-	if kind == db.MaintenancePacket {
+	if tag.kind == db.MaintenancePacket {
 		// A maintenance send cools no user, so there is nothing to release.
 		return
 	}

@@ -288,7 +288,7 @@ func TestCompleteSendResultMigrateReArms(t *testing.T) {
 		result:         messageMigrate,
 		userID:         not.UserID,
 		notificationID: not.ID,
-		kind:           db.NotificationPacket,
+		tag:            unprompted(db.NotificationPacket),
 	})
 
 	// Re-armed, not finalized: it returns on the next fetch.
@@ -651,7 +651,7 @@ func TestAddStreamer(t *testing.T) {
 	w.db.AddUser(1, 3, 0, "private")
 
 	// Add streamer that doesn't exist — should insert into pending_subscriptions and return nil
-	if w.addStreamer("test", 1, w.db.EnsureUser(1), "newmodel", 100, false) != nil {
+	if w.addStreamer(testMessage(w, 1, "add", 100), "newmodel", false) != nil {
 		t.Error("expected addStreamer to return nil when streamer is not in the database and subscription is pending verification")
 	}
 	if w.db.MustInt("select count(*) from pending_subscriptions where nickname = $1", "newmodel") != 1 {
@@ -662,7 +662,7 @@ func TestAddStreamer(t *testing.T) {
 
 	// Add streamer that exists with online status — should return non-nil
 	insertTestStreamer(&w.db, db.Streamer{Nickname: "onlinemodel", ConfirmedStatus: cmdlib.StatusOnline})
-	if w.addStreamer("test", 1, w.db.EnsureUser(1), "onlinemodel", 100, false) == nil {
+	if w.addStreamer(testMessage(w, 1, "add", 100), "onlinemodel", false) == nil {
 		t.Error("expected addStreamer to return non-nil for existing streamer")
 	}
 	if w.db.MustInt(`
@@ -680,7 +680,7 @@ func TestAddStreamer(t *testing.T) {
 
 	// Add streamer that exists with offline status — should return non-nil
 	insertTestStreamer(&w.db, db.Streamer{Nickname: "offlinemodel", ConfirmedStatus: cmdlib.StatusOffline})
-	if w.addStreamer("test", 1, w.db.EnsureUser(1), "offlinemodel", 100, false) == nil {
+	if w.addStreamer(testMessage(w, 1, "add", 100), "offlinemodel", false) == nil {
 		t.Error("expected addStreamer to return non-nil for existing offline streamer")
 	}
 	nots = w.db.NewNotifications()
@@ -942,7 +942,7 @@ func TestUserReferral(t *testing.T) {
 
 		// New user clicks referral link
 		_, created := w.db.AddUser(21, w.cfg.MaxSubs, 100, "private")
-		w.start("test", 21, w.db.EnsureUser(21), "ref-abc", 100, created)
+		w.start(testMessage(w, 21, "start", 100), "ref-abc", created)
 
 		// Drain outgoing messages
 		for w.sendQueue.Len() > 0 {
@@ -995,7 +995,7 @@ func TestUserReferral(t *testing.T) {
 		w.createDatabase()
 
 		_, created := w.db.AddUser(30, w.cfg.MaxSubs, 100, "private")
-		w.start("test", 30, w.db.EnsureUser(30), "nonexistent-ref", 100, created)
+		w.start(testMessage(w, 30, "start", 100), "nonexistent-ref", created)
 
 		// Drain outgoing messages
 		for w.sendQueue.Len() > 0 {
@@ -1024,7 +1024,7 @@ func TestUserReferral(t *testing.T) {
 		w.db.AddUser(41, w.cfg.MaxSubs, 0, "private")
 
 		_, created := w.db.AddUser(41, w.cfg.MaxSubs, 100, "private")
-		w.start("test", 41, w.db.EnsureUser(41), "ref-xyz", 100, created)
+		w.start(testMessage(w, 41, "start", 100), "ref-xyz", created)
 
 		// Drain outgoing messages
 		for w.sendQueue.Len() > 0 {
@@ -1057,7 +1057,7 @@ func TestUserReferral(t *testing.T) {
 		w.db.AddReferral(w.db.EnsureUser(50), "ref-own")
 
 		_, created := w.db.AddUser(50, w.cfg.MaxSubs, 100, "private")
-		w.start("test", 50, w.db.EnsureUser(50), "ref-own", 100, created)
+		w.start(testMessage(w, 50, "start", 100), "ref-own", created)
 
 		// Drain outgoing messages
 		for w.sendQueue.Len() > 0 {
@@ -1085,7 +1085,7 @@ func TestStreamerReferral(t *testing.T) {
 		insertTestStreamer(&w.db, db.Streamer{Nickname: "known_model", ConfirmedStatus: cmdlib.StatusOnline})
 
 		_, created := w.db.AddUser(10, w.cfg.MaxSubs, 100, "private")
-		w.start("test", 10, w.db.EnsureUser(10), "m-known_model", 100, created)
+		w.start(testMessage(w, 10, "start", 100), "m-known_model", created)
 
 		// Drain outgoing messages
 		for w.sendQueue.Len() > 0 {
@@ -1122,7 +1122,7 @@ func TestStreamerReferral(t *testing.T) {
 		w.createDatabase()
 
 		_, created := w.db.AddUser(11, w.cfg.MaxSubs, 100, "private")
-		w.start("test", 11, w.db.EnsureUser(11), "m-unknown_model", 100, created)
+		w.start(testMessage(w, 11, "start", 100), "m-unknown_model", created)
 
 		// Drain outgoing messages
 		for w.sendQueue.Len() > 0 {
@@ -1489,7 +1489,7 @@ func TestUnknownStreamerFirstOfflineSaved(t *testing.T) {
 
 	// 1. User subscribes to a streamer we don't know yet — creates unconfirmed subscription
 	// This simulates subscribing to a Twitch streamer or a new unknown model
-	if w.addStreamer("test", 1, w.db.EnsureUser(1), "unknown_model", 100, false) != nil {
+	if w.addStreamer(testMessage(w, 1, "add", 100), "unknown_model", false) != nil {
 		t.Error("expected addStreamer to return nil for unknown streamer")
 	}
 	// Drain the "checking streamer" message
@@ -1858,7 +1858,7 @@ func TestDeliverOffMainGoroutine(t *testing.T) {
 			endpoint: "test",
 			message:  &migrateThenOK{id: 100, target: 200},
 			priority: db.PriorityHigh,
-			kind:     db.MessagePacket,
+			tag:      unprompted(db.MessagePacket),
 		})
 	}()
 	if r := <-done; r != nil {
