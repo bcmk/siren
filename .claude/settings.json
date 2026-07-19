@@ -17,7 +17,6 @@
       "WebSearch",
       "WebFetch",
       "Read(/tmp/**)",
-      "Write(/tmp/**)",
       "Bash(go build *)",
       "Bash(go test *)",
       "Bash(go mod graph *)",
