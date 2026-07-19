@@ -138,9 +138,10 @@ var cellsTests = []cellsTestCase{
 }
 
 func TestOnlineCells(t *testing.T) {
+	t.Parallel()
 	for _, tc := range cellsTests {
 		t.Run(tc.name, func(t *testing.T) {
-			cmdlib.Verbosity = cmdlib.SilentVerbosity
+			t.Parallel()
 			w := newTestWorker()
 			defer w.terminate()
 			w.createDatabase()
@@ -182,7 +183,7 @@ func TestOnlineCells(t *testing.T) {
 }
 
 func TestOnlineCellsEmpty(t *testing.T) {
-	cmdlib.Verbosity = cmdlib.SilentVerbosity
+	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()

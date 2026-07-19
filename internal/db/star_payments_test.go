@@ -3,6 +3,7 @@ package db
 import "testing"
 
 func TestGrantStarPaymentSubs(t *testing.T) {
+	t.Parallel()
 	tdb := newTestDB(t)
 	defer tdb.terminate()
 	d := tdb.Database
@@ -44,6 +45,7 @@ func TestGrantStarPaymentSubs(t *testing.T) {
 // A duplicate charge creates no user: creation is inside the charge tx,
 // so a rejected charge rolls it back too.
 func TestGrantStarPaymentSubsNoUserOnDuplicate(t *testing.T) {
+	t.Parallel()
 	tdb := newTestDB(t)
 	defer tdb.terminate()
 	d := tdb.Database

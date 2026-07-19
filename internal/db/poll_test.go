@@ -15,6 +15,7 @@ func insertStreamer(t *testing.T, d *Database, nickname string) {
 }
 
 func TestSetPollAndStreamersToPoll(t *testing.T) {
+	t.Parallel()
 	db := newTestDB(t)
 	defer db.terminate()
 

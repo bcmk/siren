@@ -160,9 +160,11 @@ func equalStrings(a, b []string) bool {
 }
 
 func TestMigrateChat(t *testing.T) {
+	t.Parallel()
 	const ep = "ep"
 
 	t.Run("destination absent renames the chat", func(t *testing.T) {
+		t.Parallel()
 		tdb := newTestDB(t)
 		defer tdb.terminate()
 		d := tdb.Database
@@ -237,6 +239,7 @@ func TestMigrateChat(t *testing.T) {
 	})
 
 	t.Run("destination present drops the source's operational rows", func(t *testing.T) {
+		t.Parallel()
 		tdb := newTestDB(t)
 		defer tdb.terminate()
 		d := tdb.Database
@@ -334,6 +337,7 @@ func TestMigrateChat(t *testing.T) {
 	})
 
 	t.Run("destination present keeps an in-flight notification", func(t *testing.T) {
+		t.Parallel()
 		tdb := newTestDB(t)
 		defer tdb.terminate()
 		d := tdb.Database
@@ -356,6 +360,7 @@ func TestMigrateChat(t *testing.T) {
 	})
 
 	t.Run("destination present without a referral inherits the source's", func(t *testing.T) {
+		t.Parallel()
 		tdb := newTestDB(t)
 		defer tdb.terminate()
 		d := tdb.Database
@@ -384,6 +389,7 @@ func TestMigrateChat(t *testing.T) {
 	})
 
 	t.Run("redelivered or sourceless migration is harmless", func(t *testing.T) {
+		t.Parallel()
 		tdb := newTestDB(t)
 		defer tdb.terminate()
 		d := tdb.Database
@@ -418,6 +424,7 @@ func TestMigrateChat(t *testing.T) {
 	})
 
 	t.Run("zero id is ignored", func(t *testing.T) {
+		t.Parallel()
 		tdb := newTestDB(t)
 		defer tdb.terminate()
 		d := tdb.Database
@@ -443,6 +450,7 @@ func TestMigrateChat(t *testing.T) {
 	})
 
 	t.Run("destination present moves the source's history", func(t *testing.T) {
+		t.Parallel()
 		tdb := newTestDB(t)
 		defer tdb.terminate()
 		d := tdb.Database
@@ -480,6 +488,7 @@ func TestMigrateChat(t *testing.T) {
 	})
 
 	t.Run("tombstoned source resolves to the live chat; redelivery is a no-op", func(t *testing.T) {
+		t.Parallel()
 		tdb := newTestDB(t)
 		defer tdb.terminate()
 		d := tdb.Database
@@ -514,6 +523,7 @@ func TestMigrateChat(t *testing.T) {
 	})
 
 	t.Run("ChatIDForUser breaks a migrated_to cycle instead of hanging", func(t *testing.T) {
+		t.Parallel()
 		tdb := newTestDB(t)
 		defer tdb.terminate()
 		d := tdb.Database

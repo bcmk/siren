@@ -5,6 +5,7 @@ import "testing"
 // LiveUserID follows migrated_to, so send-result bookkeeping for a user
 // tombstoned mid-flight lands on the live user it merged into.
 func TestLiveUserID(t *testing.T) {
+	t.Parallel()
 	tdb := newTestDB(t)
 	defer tdb.terminate()
 	d := tdb.Database

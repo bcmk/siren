@@ -6,6 +6,7 @@ import "testing"
 // SuspendGIDCheck lifts it for the startup handoff,
 // where init runs on its own goroutine off the main loop.
 func TestGIDCheckSuspend(t *testing.T) {
+	t.Parallel()
 	d := Database{shouldCheckGID: true, mainGID: gid()}
 
 	// Off the owning goroutine, the check rejects by default.

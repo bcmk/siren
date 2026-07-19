@@ -143,8 +143,10 @@ var changesTests = []changesTestCase{
 }
 
 func TestChangesFromToForStreamers(t *testing.T) {
+	t.Parallel()
 	for _, tc := range changesTests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			db := newTestDB(t)
 			defer db.terminate()
 
@@ -177,6 +179,7 @@ func TestChangesFromToForStreamers(t *testing.T) {
 }
 
 func TestChangesFromToForStreamersEmpty(t *testing.T) {
+	t.Parallel()
 	db := newTestDB(t)
 	defer db.terminate()
 
@@ -187,6 +190,7 @@ func TestChangesFromToForStreamersEmpty(t *testing.T) {
 }
 
 func TestChangesFromToForStreamersUnknownID(t *testing.T) {
+	t.Parallel()
 	db := newTestDB(t)
 	defer db.terminate()
 
@@ -200,6 +204,7 @@ func TestChangesFromToForStreamersUnknownID(t *testing.T) {
 }
 
 func TestChangesFromToForStreamersConsistency(t *testing.T) {
+	t.Parallel()
 	db := newTestDB(t)
 	defer db.terminate()
 

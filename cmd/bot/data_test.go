@@ -2,12 +2,19 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"net/url"
+	"os"
+	"sync"
+	"sync/atomic"
+	"testing"
 	"text/template"
 
 	"github.com/bcmk/siren/v3/internal/botconfig"
 	"github.com/bcmk/siren/v3/internal/checkers"
 	"github.com/bcmk/siren/v3/internal/db"
 	"github.com/bcmk/siren/v3/lib/cmdlib"
+	"github.com/jackc/pgx/v5"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
@@ -67,20 +74,94 @@ type testWorker struct {
 	terminate func()
 }
 
-func newTestWorker() *testWorker {
+// templateDBName is the database migrations are applied to once per run.
+// Each test clones it, so a test pays for a file copy
+// rather than a container start plus 60-odd migrations.
+const templateDBName = "test"
+
+var (
+	// pgOnce starts the container on first use, so a run with no database test
+	// — go test -run TestCommandParser — pays nothing for it.
+	pgOnce      sync.Once
+	pgContainer *postgres.PostgresContainer
+
+	// baseConnStr points at templateDBName on the shared container.
+	// connStrFor rewrites its path to reach the other databases.
+	baseConnStr string
+
+	// adminConn issues create database against the maintenance database.
+	// pgx connections are not goroutine safe, so adminMu guards it,
+	// which also keeps concurrent clones off the same template.
+	adminConn *pgx.Conn
+	adminMu   sync.Mutex
+
+	dbCounter atomic.Int64
+)
+
+func TestMain(m *testing.M) {
+	// Set once here: parallel tests must not race on this global.
+	cmdlib.Verbosity = cmdlib.SilentVerbosity
+	code := m.Run()
+	// Reached only after every test has returned, so the once is settled.
+	if pgContainer != nil {
+		ctx := context.Background()
+		_ = adminConn.Close(ctx)
+		_ = pgContainer.Terminate(ctx)
+	}
+	os.Exit(code)
+}
+
+// startPostgres boots the shared container and migrates the template.
+func startPostgres() {
 	ctx := context.Background()
-	pgContainer, err := postgres.Run(
+
+	var err error
+	pgContainer, err = postgres.Run(
 		ctx,
 		"postgres:18",
-		postgres.WithDatabase("test"),
+		postgres.WithDatabase(templateDBName),
 		postgres.WithUsername("test"),
 		postgres.WithPassword("test"),
 		postgres.BasicWaitStrategies(),
 	)
 	checkErr(err)
 
-	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
+	baseConnStr, err = pgContainer.ConnectionString(ctx, "sslmode=disable")
 	checkErr(err)
+
+	// Migrate the template, then disconnect:
+	// create database rejects a template that still has clients.
+	d := db.NewDatabase(baseConnStr, false, testConfig.MaxSubs)
+	d.ApplyMigrations()
+	checkErr(d.Close())
+
+	adminConn, err = pgx.Connect(ctx, connStrFor("postgres"))
+	checkErr(err)
+}
+
+// connStrFor returns baseConnStr pointed at another database on the container.
+func connStrFor(dbName string) string {
+	u, err := url.Parse(baseConnStr)
+	checkErr(err)
+	u.Path = "/" + dbName
+	return u.String()
+}
+
+// newTestWorker clones the migrated template into a database of its own,
+// so tests stay isolated and can run in parallel.
+func newTestWorker() *testWorker {
+	pgOnce.Do(startPostgres)
+
+	ctx := context.Background()
+	// Generated, so it needs no quoting: identifiers cannot be query args.
+	name := fmt.Sprintf("test_%d", dbCounter.Add(1))
+
+	adminMu.Lock()
+	_, err := adminConn.Exec(ctx, fmt.Sprintf("create database %s template %s", name, templateDBName))
+	adminMu.Unlock()
+	checkErr(err)
+
+	connStr := connStrFor(name)
 
 	tpl := template.New("")
 	template.Must(tpl.New("start").Parse("Start"))
@@ -112,10 +193,8 @@ func newTestWorker() *testWorker {
 			checker:       &checkers.RandomChecker{BaseChecker: checkers.NewBaseChecker(&checkers.TestCheckerConfig{})},
 		},
 	}
-	w.terminate = func() {
-		checkErr(w.db.Close())
-		checkErr(pgContainer.Terminate(ctx))
-	}
+	// No drop database: the container's teardown takes every clone with it.
+	w.terminate = func() { checkErr(w.db.Close()) }
 	return w
 }
 

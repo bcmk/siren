@@ -41,6 +41,7 @@ func (m *countingMessage) send(context.Context, *bot.Bot) (*models.Message, erro
 // TestSenderScheduling drives the real worker and checks priority order,
 // per-user cooldown and the single-flight slot.
 func TestSenderScheduling(t *testing.T) {
+	t.Parallel()
 	type enq struct {
 		userIdx int
 		pri     db.Priority
@@ -70,6 +71,7 @@ func TestSenderScheduling(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			w := newTestWorker()
 			defer w.terminate()
 			w.createDatabase()
@@ -124,6 +126,7 @@ func (m *okMessage) send(context.Context, *bot.Bot) (*models.Message, error) {
 // a cooling user's messages wait until its release,
 // then priority wins, then push sequence breaks ties.
 func TestSendQueueOrder(t *testing.T) {
+	t.Parallel()
 	type item struct {
 		userID   db.UserID
 		priority db.Priority
@@ -195,6 +198,7 @@ func TestSendQueueOrder(t *testing.T) {
 // a cooling user's messages are withheld and resurface on release,
 // and the per-user map and size counter drain to empty.
 func TestSendQueueBookkeeping(t *testing.T) {
+	t.Parallel()
 	s := newSendQueue()
 	for i, userID := range []db.UserID{1, 1, 2} {
 		s.push(&queuedMessage{userID: userID, seq: uint64(i)})
@@ -224,6 +228,7 @@ func TestSendQueueBookkeeping(t *testing.T) {
 // the fallback when retry_after is absent, the value itself,
 // and the cap that also guards the nanosecond conversion from overflowing.
 func TestTooManyRequestsDelay(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		retryAfter int
@@ -246,6 +251,7 @@ func TestTooManyRequestsDelay(t *testing.T) {
 
 // TestTransientDelay pins the transient classification and its pauses.
 func TestTransientDelay(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		result        int
@@ -274,6 +280,7 @@ func TestTransientDelay(t *testing.T) {
 // the old readyAt test asserted: the result is reported after the global
 // pacing gap, and the user is freed only after the full per-user cooldown.
 func TestDeliverTiming(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		w := &worker{
 			cfg:         &botconfig.Config{},
@@ -320,6 +327,7 @@ func (m *tooManyRequests) send(context.Context, *bot.Bot) (*models.Message, erro
 // that a maintenance send's transient failure is dropped, not re-queued:
 // one result with no resend, and deliver returns at once.
 func TestDeliverDropsMaintenanceOnTransientFailure(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		w := &worker{
 			cfg:         &botconfig.Config{},
@@ -361,6 +369,7 @@ func TestDeliverDropsMaintenanceOnTransientFailure(t *testing.T) {
 // deliver reports a single non-retry result carrying the message to re-queue,
 // and frees the user only after Telegram's retry_after.
 func TestDeliverPostponesTooManyRequests(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		w := &worker{
 			cfg:         &botconfig.Config{},
@@ -405,6 +414,7 @@ func TestDeliverPostponesTooManyRequests(t *testing.T) {
 // any 429 widens it to throttle a bot-wide limit, regardless of chat type,
 // while a success keeps the common gap.
 func TestDeliverGlobalPaceOn429(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		message  sendable
@@ -448,6 +458,7 @@ func TestDeliverGlobalPaceOn429(t *testing.T) {
 // TestDeliverPaceEndsOnShutdown checks the 429 global pace is abandoned
 // at once on shutdown, so the drain never sleeps out the full second.
 func TestDeliverPaceEndsOnShutdown(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		w := &worker{
 			cfg:         &botconfig.Config{},
@@ -482,6 +493,7 @@ func TestDeliverPaceEndsOnShutdown(t *testing.T) {
 // so the sending=1 row re-arms next start instead of silently dropping;
 // a delivered send must finalize and delete its row.
 func TestDrainKeepsPostponedNotificationArmed(t *testing.T) {
+	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()

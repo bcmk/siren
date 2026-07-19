@@ -35,7 +35,7 @@ func checkUnconfirmedOnlineStreamers(w *testWorker, t *testing.T) {
 }
 
 func TestSql(t *testing.T) {
-	cmdlib.Verbosity = cmdlib.SilentVerbosity
+	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()
@@ -127,6 +127,7 @@ func TestSql(t *testing.T) {
 }
 
 func TestUpdateNotifications(t *testing.T) {
+	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()
@@ -186,6 +187,7 @@ func TestUpdateNotifications(t *testing.T) {
 }
 
 func TestNotificationsStorage(t *testing.T) {
+	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()
@@ -263,6 +265,7 @@ func TestNotificationsStorage(t *testing.T) {
 // A targetless migrate result re-arms the notification
 // instead of finalizing it as delivered: nothing was actually sent.
 func TestCompleteSendResultMigrateReArms(t *testing.T) {
+	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()
@@ -295,6 +298,7 @@ func TestCompleteSendResultMigrateReArms(t *testing.T) {
 }
 
 func TestStreamers(t *testing.T) {
+	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()
@@ -308,6 +312,7 @@ func TestStreamers(t *testing.T) {
 }
 
 func TestCopyFromAndBatchInTransaction(t *testing.T) {
+	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()
@@ -367,6 +372,7 @@ func TestCopyFromAndBatchInTransaction(t *testing.T) {
 }
 
 func TestCommandParser(t *testing.T) {
+	t.Parallel()
 	chatID, command, args := getCommandAndArgs(&models.Update{}, "", nil)
 	if chatID != 0 || command != "" || args != "" {
 		t.Error("unexpected result")
@@ -442,6 +448,7 @@ func TestCommandParser(t *testing.T) {
 }
 
 func TestUnconfirmedStatusConsistency(t *testing.T) {
+	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()
@@ -637,6 +644,7 @@ func checkInv(w *worker, t *testing.T) {
 }
 
 func TestAddStreamer(t *testing.T) {
+	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()
@@ -682,6 +690,7 @@ func TestAddStreamer(t *testing.T) {
 }
 
 func TestConfirmSub(t *testing.T) {
+	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()
@@ -719,6 +728,7 @@ func TestConfirmSub(t *testing.T) {
 }
 
 func TestDenySub(t *testing.T) {
+	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()
@@ -737,6 +747,7 @@ func TestDenySub(t *testing.T) {
 }
 
 func TestProcessSubsConfirmations(t *testing.T) {
+	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()
@@ -864,6 +875,7 @@ func TestProcessSubsConfirmations(t *testing.T) {
 // other still-checking rows must be left alone for their own future
 // result instead of being denied prematurely.
 func TestProcessSubsConfirmationsPartialList(t *testing.T) {
+	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()
@@ -917,7 +929,9 @@ func TestProcessSubsConfirmationsPartialList(t *testing.T) {
 }
 
 func TestUserReferral(t *testing.T) {
+	t.Parallel()
 	t.Run("valid referral creates event and bonuses", func(t *testing.T) {
+		t.Parallel()
 		w := newTestWorker()
 		defer w.terminate()
 		w.createDatabase()
@@ -975,6 +989,7 @@ func TestUserReferral(t *testing.T) {
 	})
 
 	t.Run("invalid referral ID", func(t *testing.T) {
+		t.Parallel()
 		w := newTestWorker()
 		defer w.terminate()
 		w.createDatabase()
@@ -996,6 +1011,7 @@ func TestUserReferral(t *testing.T) {
 	})
 
 	t.Run("existing user ignores referral", func(t *testing.T) {
+		t.Parallel()
 		w := newTestWorker()
 		defer w.terminate()
 		w.createDatabase()
@@ -1031,6 +1047,7 @@ func TestUserReferral(t *testing.T) {
 	})
 
 	t.Run("own referral link is rejected", func(t *testing.T) {
+		t.Parallel()
 		w := newTestWorker()
 		defer w.terminate()
 		w.createDatabase()
@@ -1057,7 +1074,9 @@ func TestUserReferral(t *testing.T) {
 }
 
 func TestStreamerReferral(t *testing.T) {
+	t.Parallel()
 	t.Run("known streamer creates referral event", func(t *testing.T) {
+		t.Parallel()
 		w := newTestWorker()
 		defer w.terminate()
 		w.createDatabase()
@@ -1097,6 +1116,7 @@ func TestStreamerReferral(t *testing.T) {
 	})
 
 	t.Run("unknown streamer defers referral to pending", func(t *testing.T) {
+		t.Parallel()
 		w := newTestWorker()
 		defer w.terminate()
 		w.createDatabase()
@@ -1134,6 +1154,7 @@ func TestStreamerReferral(t *testing.T) {
 }
 
 func TestStatusConfirmations(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		confirmed   cmdlib.StatusKind
@@ -1202,6 +1223,7 @@ func TestStatusConfirmations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			w := newTestWorker()
 			defer w.terminate()
 			w.createDatabase()
@@ -1263,6 +1285,7 @@ func TestStatusConfirmations(t *testing.T) {
 }
 
 func TestQueryLastSubscriptionStatuses(t *testing.T) {
+	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()
@@ -1305,6 +1328,7 @@ func TestQueryLastSubscriptionStatuses(t *testing.T) {
 }
 
 func TestHandleStatusUpdates(t *testing.T) {
+	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()
@@ -1395,6 +1419,7 @@ func TestHandleStatusUpdates(t *testing.T) {
 }
 
 func TestUnsubscribeBeforeRestart(t *testing.T) {
+	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()
@@ -1453,6 +1478,7 @@ func TestUnsubscribeBeforeRestart(t *testing.T) {
 }
 
 func TestUnknownStreamerFirstOfflineSaved(t *testing.T) {
+	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()
@@ -1543,6 +1569,7 @@ func TestUnknownStreamerFirstOfflineSaved(t *testing.T) {
 }
 
 func TestStatusTransitions(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		subscribed    bool
@@ -1646,6 +1673,7 @@ func TestStatusTransitions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			w := newTestWorker()
 			defer w.terminate()
 			w.createDatabase()
@@ -1772,6 +1800,7 @@ func TestStatusTransitions(t *testing.T) {
 func ptr[T any](v T) *T { return &v }
 
 func TestNotifyOfStatuses(t *testing.T) {
+	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()
@@ -1812,6 +1841,7 @@ func TestNotifyOfStatuses(t *testing.T) {
 }
 
 func TestDeliverOffMainGoroutine(t *testing.T) {
+	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()

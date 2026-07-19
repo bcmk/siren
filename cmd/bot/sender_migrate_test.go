@@ -44,6 +44,7 @@ func (m *migrateToSelf) send(_ context.Context, _ *bot.Bot) (*models.Message, er
 // TestDeliverDropsMigrateToSelf checks the loop guard: a migrate whose target
 // is the id just addressed does not re-queue, so it cannot loop in place.
 func TestDeliverDropsMigrateToSelf(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		w := &worker{
 			cfg:         &botconfig.Config{},
@@ -73,6 +74,7 @@ func TestDeliverDropsMigrateToSelf(t *testing.T) {
 // a single result carrying the new chat id and the message to re-queue,
 // and exactly one user release.
 func TestDeliverReportsMigrateForRequeue(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		const oldID, newID = int64(-100), int64(-1001234)
 		const userID = db.UserID(42)
@@ -119,6 +121,7 @@ func TestDeliverReportsMigrateForRequeue(t *testing.T) {
 // The test simulates the post-stall state — the user is not cooling —
 // so the resend dispatches synchronously inside completeSendResult.
 func TestMigrateAppliesBeforeResendDispatch(t *testing.T) {
+	t.Parallel()
 	const oldID, newID = int64(-100), int64(-1001234)
 	w := newTestWorker()
 	defer w.terminate()
@@ -154,6 +157,7 @@ func TestMigrateAppliesBeforeResendDispatch(t *testing.T) {
 // and after the cooldown the re-dispatch resolves the new chat id
 // and delivers there.
 func TestSenderRedeliversAcrossMigrate(t *testing.T) {
+	t.Parallel()
 	const oldID, newID = int64(-100), int64(-1001234)
 	w := newTestWorker()
 	defer w.terminate()

@@ -7,6 +7,7 @@ import "testing"
 // addUser must read chat_type into a *string,
 // so a null scans to nil instead of panicking.
 func TestAddUserNullChatType(t *testing.T) {
+	t.Parallel()
 	tdb := newTestDB(t)
 	defer tdb.terminate()
 	d := tdb.Database
@@ -35,6 +36,7 @@ func TestAddUserNullChatType(t *testing.T) {
 // AddUser with an empty chat_type stores null, not ”,
 // so unset has a single encoding.
 func TestAddUserEmptyChatTypeIsNull(t *testing.T) {
+	t.Parallel()
 	tdb := newTestDB(t)
 	defer tdb.terminate()
 	d := tdb.Database

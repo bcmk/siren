@@ -10,6 +10,7 @@ import (
 // A non-whitelisted chat's command during the startup window must not register
 // a waitingUser, or finishStartup's EnsureUser would materialize a row for it.
 func TestMaintenanceReplyWhitelistGate(t *testing.T) {
+	t.Parallel()
 	w := &worker{
 		cfg:      &botconfig.Config{WhitelistChats: []int64{1}}, // 999 is not listed
 		botNames: map[string]string{"ep": "bot"},

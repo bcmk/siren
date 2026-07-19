@@ -10,6 +10,7 @@ import (
 // finishes cleanly, the bound the old unbounded drain lacked. Neither case
 // reads an update, so processTGUpdate never runs and no database is needed.
 func TestDrainIncomingStops(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		setup func(cancel context.CancelFunc, botsDone chan struct{})

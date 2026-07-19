@@ -11,6 +11,7 @@ import (
 )
 
 func TestRejectForRedeliveryWhileMigrating(t *testing.T) {
+	t.Parallel()
 	const paymentBody = `{"message":{"chat":{"id":123},"successful_payment":{"telegram_payment_charge_id":"ch_1"}}}`
 	const plainBody = `{"message":{"chat":{"id":123},"text":"/start"}}`
 	const migrateToBody = `{"message":{"chat":{"id":123},"migrate_to_chat_id":-1001234}}`
@@ -70,6 +71,7 @@ func TestRejectForRedeliveryWhileMigrating(t *testing.T) {
 // after the payload validates.
 // The DB-level test can't catch a stray user made here, above that call.
 func TestHandleSuccessfulPaymentMalformedCreatesNoUser(t *testing.T) {
+	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()
@@ -87,6 +89,7 @@ func TestHandleSuccessfulPaymentMalformedCreatesNoUser(t *testing.T) {
 }
 
 func TestParseStarsPayload(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		payload     string
