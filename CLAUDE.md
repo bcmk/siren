@@ -155,6 +155,10 @@
 - When asked to "remember" or "write somewhere",
   save to CLAUDE.md or docs/\* files, not memory files,
   unless specifically asked for memory files
+- Enumerate code review findings and never renumber them.
+  Dropping one leaves a gap; a new one takes the next unused number.
+- Re-render the whole findings list on every change:
+  number, `file:line`, category, summary, failure scenario.
 
 ## Platform Notes
 
