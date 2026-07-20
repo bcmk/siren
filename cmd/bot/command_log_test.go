@@ -93,6 +93,24 @@ func commandsInLog(w *testWorker, query string, params db.QueryParams) []string 
 	return commands
 }
 
+// drainSeqsToLog completes every queued message
+// and returns the reply positions recorded for them, sorted.
+// It clears the log on the way out, like drainSendQueueToLog.
+func drainSeqsToLog(t *testing.T, w *testWorker) []int {
+	t.Helper()
+	completeQueuedSends(t, w)
+	var seq int
+	var seqs []int
+	w.db.MustQuery(
+		"select reply_seq from sent_message_log",
+		nil,
+		db.ScanTo{&seq},
+		func() { seqs = append(seqs, seq) })
+	slices.Sort(seqs)
+	w.db.MustExec("delete from sent_message_log")
+	return seqs
+}
+
 // drainSendQueueToLog completes every queued message
 // and returns the commands recorded in sent_message_log.
 // It clears the log on the way out,
@@ -202,9 +220,6 @@ func TestDeferredOnlinePicsLogItsCommand(t *testing.T) {
 		t.Fatalf("notification_queue did not keep the command, got %d rows", stored)
 	}
 
-	// Drop the immediate hint, so the next drain sees the queued picture alone.
-	drainSendQueueToLog(t, w)
-
 	nots := w.db.NewNotifications()
 	if len(nots) != 1 {
 		t.Fatalf("expected 1 notification, got %d", len(nots))
@@ -214,9 +229,10 @@ func TestDeferredOnlinePicsLogItsCommand(t *testing.T) {
 	}
 	w.enqueueNotifications(notificationBatch{notifications: nots, images: map[string][]byte{}})
 
+	// The picture and the hint that trails it, both named by the command.
 	commands := drainSendQueueToLog(t, w)
 	t.Logf("deferred picture logged: %q", commands)
-	if !slices.Equal(commands, []string{"pics"}) {
+	if !slices.Equal(commands, []string{"pics", "pics"}) {
 		t.Errorf("the deferred picture lost its command, got %q", commands)
 	}
 }
@@ -749,6 +765,195 @@ func TestWebAppAddGivesUpOnShutdown(t *testing.T) {
 	}()
 	if admitted, alive := running.submitWebAppAdd(newReq()); !alive || !admitted {
 		t.Errorf("a live loop reported alive=%v admitted=%v", alive, admitted)
+	}
+}
+
+// A listing runs to several messages, which are numbered in order,
+// so the one the user waited for is the zero.
+func TestChunkedListNumbersItsReplies(t *testing.T) {
+	t.Parallel()
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase()
+	w.initCache()
+
+	// Chunks are 50 streamers, so 120 fills three of them.
+	for i := range 120 {
+		nickname := fmt.Sprintf("model_%03d", i)
+		insertTestStreamer(&w.db, db.Streamer{Nickname: nickname})
+		insertSubscription(&w.db, "test", 1, nickname)
+	}
+	w.listStreamers(testMessage(w, 1, "list", 100))
+
+	seqs := drainSeqsToLog(t, w)
+	t.Logf("list reply positions: %v", seqs)
+	if !slices.Equal(seqs, []int{0, 1, 2}) {
+		t.Errorf("the chunks were not numbered in order, got %v", seqs)
+	}
+}
+
+// The hint explains the pictures, so it is delivered after them,
+// and the whole answer is numbered in that order.
+func TestOnlinePicsSendTheHintLast(t *testing.T) {
+	t.Parallel()
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase()
+	w.initCache()
+
+	for i := range 3 {
+		nickname := fmt.Sprintf("online_%d", i)
+		insertTestStreamer(&w.db, db.Streamer{
+			Nickname:          nickname,
+			UnconfirmedStatus: cmdlib.StatusOnline,
+		})
+		insertSubscription(&w.db, "test", 1, nickname)
+	}
+	w.listOnlineStreamers(testMessage(w, 1, "pics", 100))
+
+	// Nothing goes out now: the hint waits with the pictures.
+	if got := drainSeqsToLog(t, w); len(got) != 0 {
+		t.Errorf("the answer did not wait for the pictures, got %v", got)
+	}
+
+	nots := w.db.NewNotifications()
+	if len(nots) != 3 {
+		t.Fatalf("expected 3 notifications, got %d", len(nots))
+	}
+	w.enqueueNotifications(notificationBatch{notifications: nots, images: map[string][]byte{}})
+
+	// Queued pictures first, then the hint, in that order.
+	var queued []int
+	for {
+		q := w.sendQueue.pop()
+		if q == nil {
+			break
+		}
+		queued = append(queued, q.tag.replySeq)
+	}
+	t.Logf("delivery order: %v", queued)
+	if !slices.Equal(queued, []int{0, 1, 2, 3}) {
+		t.Errorf("the hint did not come last, got %v", queued)
+	}
+}
+
+// A pending add answers three times, minutes apart:
+// the checking notice, then the result, then the streamer's status.
+// All three belong to one answer, so none may share a number.
+func TestPendingAddNumbersItsWholeAnswer(t *testing.T) {
+	t.Parallel()
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase()
+	w.initCache()
+
+	// The streamer is unknown, so this parks a pending subscription.
+	w.addStreamer(testMessage(w, 1, "add", 100), "pending_model", false)
+	if got := drainSeqsToLog(t, w); !slices.Equal(got, []int{0}) {
+		t.Errorf("the checking notice was not the zero, got %v", got)
+	}
+
+	w.db.MarkUnconfirmedAsChecking()
+	w.processSubsConfirmations(&cmdlib.ExistenceListResults{
+		Streamers: map[string]cmdlib.StreamerInfoWithStatus{
+			"pending_model": {Status: cmdlib.StatusOnline},
+		},
+	})
+	if got := drainSeqsToLog(t, w); !slices.Equal(got, []int{1}) {
+		t.Errorf("the add result did not follow the checking notice, got %v", got)
+	}
+
+	nots := w.db.NewNotifications()
+	if len(nots) != 1 {
+		t.Fatalf("expected 1 notification, got %d", len(nots))
+	}
+	w.enqueueNotifications(notificationBatch{notifications: nots, images: map[string][]byte{}})
+	if got := drainSeqsToLog(t, w); !slices.Equal(got, []int{2}) {
+		t.Errorf("the status collided with the add result, got %v", got)
+	}
+}
+
+// The admin listing chunks like the user-facing one,
+// so its messages are numbered too, from wherever the caller left off.
+func TestPolledListNumbersItsChunks(t *testing.T) {
+	t.Parallel()
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase()
+	w.initCache()
+	w.adminUserID = w.db.EnsureUser(99)
+
+	// Chunks are 50 streamers, so 60 fills two of them.
+	for i := range 60 {
+		nickname := fmt.Sprintf("polled_%02d", i)
+		insertTestStreamer(&w.db, db.Streamer{Nickname: nickname})
+		if !w.db.SetPoll(nickname, true) {
+			t.Fatalf("cannot poll %s", nickname)
+		}
+	}
+
+	w.sendPolledList("test", 100, 0)
+	if got := drainSeqsToLog(t, w); !slices.Equal(got, []int{0, 1}) {
+		t.Errorf("the chunks were not numbered, got %v", got)
+	}
+
+	// Behind a usage line, the listing continues that answer's numbering.
+	w.sendPolledList("test", 100, 1)
+	if got := drainSeqsToLog(t, w); !slices.Equal(got, []int{1, 2}) {
+		t.Errorf("the listing restarted instead of continuing, got %v", got)
+	}
+}
+
+// Adding a known streamer at the subscription limit answers three times:
+// the confirmation, the streamer's status, then the usage warning.
+func TestAddedStreamerNumbersItsWholeAnswer(t *testing.T) {
+	t.Parallel()
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase()
+	w.initCache()
+
+	insertTestStreamer(&w.db, db.Streamer{
+		Nickname:        "known_model",
+		ConfirmedStatus: cmdlib.StatusOnline,
+	})
+	// Two already held, a limit of three and a heavy-user remainder of one,
+	// so this add lands in the band that warns about the usage.
+	for _, nickname := range []string{"filler_a", "filler_b"} {
+		insertTestStreamer(&w.db, db.Streamer{Nickname: nickname})
+		insertSubscription(&w.db, "test", 1, nickname)
+	}
+	w.db.SetLimit(w.db.EnsureUser(1), 3)
+	w.addStreamer(testMessage(w, 1, "add", 100), "known_model", false)
+
+	// The confirmation is the zero, the usage warning the two.
+	if got := drainSeqsToLog(t, w); !slices.Equal(got, []int{0, 2}) {
+		t.Errorf("the direct replies were not numbered around the status, got %v", got)
+	}
+
+	nots := w.db.NewNotifications()
+	if len(nots) != 1 {
+		t.Fatalf("expected 1 notification, got %d", len(nots))
+	}
+	w.enqueueNotifications(notificationBatch{notifications: nots, images: map[string][]byte{}})
+	if got := drainSeqsToLog(t, w); !slices.Equal(got, []int{1}) {
+		t.Errorf("the status did not sit between the two, got %v", got)
+	}
+}
+
+// An empty listing is still a reply in its answer,
+// so it takes the number the caller gives it rather than restarting.
+func TestEmptyPolledListKeepsItsNumber(t *testing.T) {
+	t.Parallel()
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase()
+	w.initCache()
+	w.adminUserID = w.db.EnsureUser(99)
+
+	w.sendPolledList("test", 100, 1)
+	if got := drainSeqsToLog(t, w); !slices.Equal(got, []int{1}) {
+		t.Errorf("the empty listing restarted the numbering, got %v", got)
 	}
 }
 

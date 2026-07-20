@@ -763,6 +763,13 @@ func (w *worker) notifyOfStatus(priority db.Priority, n db.Notification, image [
 		// No message for this status; clear the queue row so it doesn't strand.
 		w.finalizeNotification(n.ID, 0, false)
 	}
+	if n.FieldsHint {
+		// A requeued picture repeats its hint, as it repeats itself.
+		w.enqueueTr(
+			db.PriorityLow, n.Endpoint, n.UserID, false,
+			w.tr[n.Endpoint].FieldsCustomizationHint, nil, nil,
+			replyNth(n.Command, n.ReplySeq+1), 0)
+	}
 	if social && w.cfg.AdChancePercent > 0 && rand.Intn(100) < w.cfg.AdChancePercent {
 		// Empty today: only a status notification is ever social,
 		// and no command asks for one.
@@ -801,6 +808,7 @@ func (w *worker) showWeek(m receivedMessage, nickname string) {
 		return
 	}
 	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].WeekRetrieving, nil)
+	m = m.next()
 	ids := make([]int, len(streamers))
 	for i, s := range streamers {
 		ids[i] = s.ID
@@ -840,9 +848,11 @@ func (w *worker) showWeek(m receivedMessage, nickname string) {
 	}
 	for chunk := range slices.Chunk(weeks, 10) {
 		w.replyText(m, db.PriorityLow, true, w.tr[m.endpoint].Week.Parse, strings.Join(chunk, "\n\n"))
+		m = m.next()
 	}
 	for chunk := range slices.Chunk(neverOnline, 50) {
 		w.replyTr(m, db.PriorityLow, false, w.tr[m.endpoint].WeekNeverOnline, tplData{"streamers": chunk})
+		m = m.next()
 	}
 }
 
@@ -879,7 +889,7 @@ func (w *worker) addStreamer(m receivedMessage, nickname string, referral bool) 
 	user := w.mustUserByID(m.userID)
 	if subscriptionsNumber >= user.MaxSubs {
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].NotEnoughSubscriptions, nil)
-		w.subscriptionUsage(m, true)
+		w.subscriptionUsage(m.next(), true)
 		return nil
 	}
 	streamer := w.db.MaybeStreamer(nickname)
@@ -889,7 +899,8 @@ func (w *worker) addStreamer(m receivedMessage, nickname string, referral bool) 
 			w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].AddError, tplData{"streamer": nickname})
 			return nil
 		}
-		w.db.AddPendingSubscription(m.userID, nickname, m.endpoint, referral, m.command)
+		// The confirmation lands later, so it takes the next number.
+		w.db.AddPendingSubscription(m.userID, nickname, m.endpoint, referral, m.command, m.replySeq+1)
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].CheckingStreamer, nil)
 		return nil
 	}
@@ -900,6 +911,7 @@ func (w *worker) addStreamer(m receivedMessage, nickname string, referral bool) 
 	w.db.AddSubscription(m.userID, streamer.ID, m.endpoint)
 	subscriptionsNumber++
 	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].StreamerAdded, tplData{"streamer": nickname})
+	m = m.next()
 	nots := []db.Notification{{
 		Endpoint:   m.endpoint,
 		UserID:     m.userID,
@@ -910,9 +922,10 @@ func (w *worker) addStreamer(m receivedMessage, nickname string, referral bool) 
 		Social:     false,
 		Priority:   db.PriorityHigh,
 		Kind:       db.ReplyPacket,
-		Command:    m.command}}
+		Command:    m.command,
+		ReplySeq:   m.replySeq}}
 	if subscriptionsNumber >= user.MaxSubs-w.cfg.HeavyUserRemainder {
-		w.subscriptionUsage(m, true)
+		w.subscriptionUsage(m.next(), true)
 	}
 	w.db.StoreNotifications(nots)
 	return &streamer.ID
@@ -1288,6 +1301,7 @@ func (w *worker) listStreamers(m receivedMessage) {
 		}
 		tplData := tplData{"online": online, "offline": offline}
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].List, tplData)
+		m = m.next()
 	}
 }
 
@@ -1381,14 +1395,18 @@ func (w *worker) listOnlineStreamers(m receivedMessage) {
 			TimeDiff:   w.streamerDuration(s, m.timestamp),
 			Kind:       db.ReplyPacket,
 			Command:    m.command,
+			ReplySeq:   m.replySeq,
 		}
 		if user.ShowSubject {
 			not.Subject = info.Subject
 		}
 		nots = append(nots, not)
+		m = m.next()
 	}
+	// Carried by the last picture, so the hint is queued behind them all
+	// rather than sent now and delivered a tick ahead of them.
+	nots[len(nots)-1].FieldsHint = true
 	w.db.StoreNotifications(nots)
-	w.replyTr(m, db.PriorityLow, false, w.tr[m.endpoint].FieldsCustomizationHint, nil)
 }
 
 func (w *worker) week(nickname string) ([]bool, time.Time) {
@@ -1482,7 +1500,7 @@ func (w *worker) performanceStat(endpoint string, arguments string) {
 			return durations[queries[i]].Total() > durations[queries[j]].Total()
 		})
 	}
-	for _, x := range queries {
+	for i, x := range queries {
 		if n == 0 {
 			return
 		}
@@ -1493,7 +1511,7 @@ func (w *worker) performanceStat(endpoint string, arguments string) {
 			fmt.Sprintf("<b>Count</b>: %d", durations[x].Count),
 		}
 		entry := strings.Join(lines, "\n")
-		w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseHTML, entry, reply(""))
+		w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseHTML, entry, replyNth("", i))
 		n--
 	}
 }
@@ -1559,14 +1577,16 @@ func (w *worker) blacklist(endpoint string, arguments string) {
 	w.replyToAdmin(endpoint, "OK")
 }
 
-func (w *worker) sendPolledList(endpoint string, now int) {
+// seq numbers the first chunk, so a listing that follows another reply
+// continues its numbering.
+func (w *worker) sendPolledList(endpoint string, now int, seq int) {
 	polled := w.db.PolledStreamersWithStatus()
 	if len(polled) == 0 {
-		w.replyToAdmin(endpoint, "no polled streamers")
+		w.replyToAdminNth(endpoint, seq, "no polled streamers")
 		return
 	}
 	chunks := chunkStreamers(polled, 50)
-	for _, chunk := range chunks {
+	for i, chunk := range chunks {
 		var online, offline []streamerListEntry
 		for _, s := range chunk {
 			entry := streamerListEntry{
@@ -1582,7 +1602,7 @@ func (w *worker) sendPolledList(endpoint string, now int) {
 		}
 		w.sendTr(
 			db.PriorityHigh, endpoint, w.adminUserID, false, w.tr[endpoint].List,
-			tplData{"online": online, "offline": offline}, reply(""))
+			tplData{"online": online, "offline": offline}, replyNth("", seq+i))
 	}
 }
 
@@ -1596,7 +1616,7 @@ func (w *worker) poll(endpoint string, arguments string) {
 	if len(parts) != 2 {
 		w.replyToAdmin(endpoint, "expecting <streamer> <on|off>")
 		if len(parts) == 0 {
-			w.sendPolledList(endpoint, int(time.Now().Unix()))
+			w.sendPolledList(endpoint, int(time.Now().Unix()), 1)
 		}
 		return
 	}
@@ -2055,6 +2075,7 @@ func (w *worker) start(m receivedMessage, referrer string, created bool) {
 	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Start, tplData{
 		"website_link": w.cfg.WebsiteLink,
 	})
+	m = m.next()
 	if referrer != "" && w.mustUserByID(m.userID).ChatID > 0 {
 		applied := w.refer(m.userID, referrer, m.timestamp, created)
 		switch applied {
@@ -2830,7 +2851,8 @@ func (w *worker) handleSendResult(r msgSendResult) {
 		}
 	}
 	w.db.LogSentMessage(
-		r.timestamp, r.userID, r.result, r.endpoint, r.priority, r.latency, r.tag.kind, r.tag.command)
+		r.timestamp, r.userID, r.result, r.endpoint, r.priority, r.latency, r.tag.kind, r.tag.command,
+		r.tag.replySeq)
 }
 
 // resolveResultUser resolves a non-maintenance result's user to the live one,
@@ -3072,12 +3094,12 @@ func (w *worker) processSubsConfirmations(res *cmdlib.ExistenceListResults) {
 	var iter db.PendingSubscription
 	w.db.MustQuery(
 		`
-			select ps.endpoint, ps.nickname, ps.user_id, ps.referral, coalesce(ps.command, '')
+			select ps.endpoint, ps.nickname, ps.user_id, ps.referral, coalesce(ps.command, ''), ps.reply_seq
 			from pending_subscriptions ps
 			where ps.checking and ps.nickname = any($1)
 		`,
 		db.QueryParams{nicknames},
-		db.ScanTo{&iter.Endpoint, &iter.Nickname, &iter.UserID, &iter.Referral, &iter.Command},
+		db.ScanTo{&iter.Endpoint, &iter.Nickname, &iter.UserID, &iter.Referral, &iter.Command, &iter.ReplySeq},
 		func() { confirmationsInWork[iter.Nickname] = append(confirmationsInWork[iter.Nickname], iter) })
 	var nots []db.Notification
 	var confirmedNots []db.Notification
@@ -3106,9 +3128,12 @@ func (w *worker) processSubsConfirmations(res *cmdlib.ExistenceListResults) {
 					Priority:   db.PriorityHigh,
 					Kind:       db.ReplyPacket,
 					Command:    sub.Command,
+					ReplySeq:   sub.ReplySeq,
 				}
 				nots = append(nots, n)
 				if confirmed {
+					// The status follows the add result, so it takes the next number.
+					n.ReplySeq++
 					confirmedNots = append(confirmedNots, n)
 				}
 			}

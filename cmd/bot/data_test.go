@@ -67,6 +67,11 @@ var testTranslations = cmdlib.Translations{
 	InvalidReferralLink:    &cmdlib.Translation{Key: "invalid_referral_link", Str: "InvalidReferralLink", Parse: cmdlib.ParseRaw},
 	FollowerExists:         &cmdlib.Translation{Key: "follower_exists", Str: "FollowerExists", Parse: cmdlib.ParseRaw},
 	OwnReferralLinkHit:     &cmdlib.Translation{Key: "own_referral_link_hit", Str: "OwnReferralLinkHit", Parse: cmdlib.ParseRaw},
+	List: &cmdlib.Translation{
+		Key:   "list",
+		Str:   "List",
+		Parse: cmdlib.ParseRaw,
+	},
 	BuySubs: &cmdlib.Translation{
 		Key:   "buy_subs",
 		Str:   "BuySubs",
@@ -218,6 +223,7 @@ func newTestWorker() *testWorker {
 	template.Must(tpl.New("subs_purchased").Parse("SubsPurchased"))
 	template.Must(tpl.New("buy_already_credited").Parse("BuyAlreadyCredited"))
 	template.Must(tpl.New("already_added").Parse("AlreadyAdded"))
+	template.Must(tpl.New("list").Parse("List"))
 	template.Must(tpl.New("buy_subs").Parse("BuySubs"))
 	template.Must(tpl.New("buy_subs_package_button").Parse("BuySubsPackageButton"))
 

@@ -41,17 +41,24 @@ const (
 )
 
 // sendTag identifies an outgoing message:
-// its kind, and the command it answers, empty when neither log names one.
+// its kind, the command it answers, empty when neither log names one,
+// and the reply's place in the answer.
 type sendTag struct {
-	kind    db.PacketKind
-	command string
+	kind     db.PacketKind
+	command  string
+	replySeq int
 }
 
-// reply tags a message answering an inbound event.
+// reply tags the first message answering an inbound event.
 // The command names that event when the received log names it,
 // and is empty when neither log does, as for an admin command.
 func reply(command string) sendTag {
-	return sendTag{kind: db.ReplyPacket, command: command}
+	return replyNth(command, 0)
+}
+
+// replyNth tags the seq-th message of an answer that runs to several.
+func replyNth(command string, seq int) sendTag {
+	return sendTag{kind: db.ReplyPacket, command: command, replySeq: seq}
 }
 
 // receivedMessage is the inbound message a handler answers.
@@ -65,6 +72,14 @@ type receivedMessage struct {
 	endpoint  string
 	userID    db.UserID
 	command   string
+	// replySeq is this reply's place in the answer, zero for the first.
+	replySeq int
+}
+
+// next returns the message tagged as the reply after this one.
+func (m receivedMessage) next() receivedMessage {
+	m.replySeq++
+	return m
 }
 
 // logReceived records the inbound message that replies are tagged from,
@@ -74,7 +89,9 @@ func (w *worker) logReceived(m receivedMessage) {
 }
 
 // tag marks a send as answering this message.
-func (m receivedMessage) tag() sendTag { return reply(m.command) }
+func (m receivedMessage) tag() sendTag {
+	return replyNth(m.command, m.replySeq)
+}
 
 // replyTr answers with a translation, always to the sender.
 // A send to anyone else is not a reply and must say so at its own call site.
@@ -107,7 +124,12 @@ func (w *worker) replyText(
 // Admin commands are absent from loggedCommands,
 // so the received log names none and neither can this.
 func (w *worker) replyToAdmin(endpoint, text string) {
-	w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseRaw, text, reply(""))
+	w.replyToAdminNth(endpoint, 0, text)
+}
+
+// replyToAdminNth answers as the seq-th message of an admin answer.
+func (w *worker) replyToAdminNth(endpoint string, seq int, text string) {
+	w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseRaw, text, replyNth("", seq))
 }
 
 // replyMessage answers with a prebuilt message, always to the sender.
@@ -131,7 +153,7 @@ func unprompted(kind db.PacketKind) sendTag {
 // notificationTag rebuilds the tag a queued notification was stored with,
 // so a deferred reply still names the command it answers.
 func notificationTag(n db.Notification) sendTag {
-	return sendTag{kind: n.Kind, command: n.Command}
+	return sendTag{kind: n.Kind, command: n.Command, replySeq: n.ReplySeq}
 }
 
 type queuedMessage struct {

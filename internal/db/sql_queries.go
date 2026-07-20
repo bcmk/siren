@@ -28,7 +28,8 @@ func (d *Database) NewNotifications() []Notification {
 		select
 			n.id, n.endpoint, u.id, n.streamer_id, s.nickname, n.status,
 			n.time_diff, n.image_url, n.viewers, n.show_kind, n.social, n.priority,
-			n.sound, n.kind, coalesce(n.command, ''), n.subject, u.silent_messages
+			n.sound, n.kind, coalesce(n.command, ''), n.reply_seq, n.fields_hint,
+			n.subject, u.silent_messages
 		from notification_queue n
 		join users u on u.id = n.user_id
 		join streamers s on s.id = n.streamer_id
@@ -51,6 +52,8 @@ func (d *Database) NewNotifications() []Notification {
 			&iter.Sound,
 			&iter.Kind,
 			&iter.Command,
+			&iter.ReplySeq,
+			&iter.FieldsHint,
 			&iter.Subject,
 			&iter.SilentMessages,
 		},
@@ -81,11 +84,14 @@ func (d *Database) StoreNotifications(nots []Notification) {
 				sound,
 				kind,
 				command,
+				reply_seq,
+				fields_hint,
 				subject
 			)
-			values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+			values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
 			n.Endpoint, int64(n.UserID), n.StreamerID, n.Status, n.TimeDiff, n.ImageURL, n.Viewers,
-			n.ShowKind, n.Social, n.Priority, n.Sound, n.Kind, nullableCommand(n.Command), n.Subject,
+			n.ShowKind, n.Social, n.Priority, n.Sound, n.Kind, nullableCommand(n.Command), n.ReplySeq,
+			n.FieldsHint, n.Subject,
 		)
 	}
 	d.SendBatch(batch)
@@ -1247,15 +1253,17 @@ func (d *Database) AddPendingSubscription(
 	endpoint string,
 	referral bool,
 	command string,
+	replySeq int,
 ) {
 	d.MustExec(`
-		insert into pending_subscriptions (user_id, nickname, endpoint, referral, command)
-		values ($1, $2, $3, $4, $5)`,
+		insert into pending_subscriptions (user_id, nickname, endpoint, referral, command, reply_seq)
+		values ($1, $2, $3, $4, $5, $6)`,
 		int64(userID),
 		nickname,
 		endpoint,
 		referral,
-		nullableCommand(command))
+		nullableCommand(command),
+		replySeq)
 }
 
 // SetShowImages updates the show_images setting for a user
@@ -1436,10 +1444,12 @@ func (d *Database) LogSentMessage(
 	latency int,
 	kind PacketKind,
 	command string,
+	replySeq int,
 ) {
 	d.MustExec(`
-		insert into sent_message_log (timestamp, user_id, result, endpoint, priority, latency, kind, command)
-		values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		insert into sent_message_log (
+			timestamp, user_id, result, endpoint, priority, latency, kind, command, reply_seq)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 		timestamp,
 		int64(userID),
 		result,
@@ -1447,7 +1457,8 @@ func (d *Database) LogSentMessage(
 		priority,
 		latency,
 		kind,
-		nullableCommand(command))
+		nullableCommand(command),
+		replySeq)
 }
 
 // DeleteNotification deletes a notification by ID

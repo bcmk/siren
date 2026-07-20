@@ -27,7 +27,12 @@ type Notification struct {
 	// A deferred reply (an add result, an online-list picture)
 	// carries it across the queue,
 	// so its send logs the command that asked for it.
-	Command        string
+	Command string
+	// ReplySeq is the message's place in one answer, zero for the first.
+	ReplySeq int
+	// FieldsHint asks for the customization hint after this message,
+	// so it lands behind the pictures it explains rather than ahead of them.
+	FieldsHint     bool
 	Subject        string
 	SilentMessages bool
 }
@@ -139,4 +144,6 @@ type PendingSubscription struct {
 	// The confirmation reply lands much later,
 	// so it is kept here to tag that reply with what it answers.
 	Command string
+	// ReplySeq is the confirmation's place in that command's answer.
+	ReplySeq int
 }
