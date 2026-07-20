@@ -3,6 +3,19 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v3.12.0 — 2026-07-20
+
+### Added
+
+- Record a reply's place in its answer in `sent_message_log.reply_seq`,
+  carried through `notification_queue` and `pending_subscriptions`
+  so a deferred reply keeps its position.
+
+### Changed
+
+- Send the field customization hint after the pictures it explains,
+  rather than ahead of them.
+
 ## v3.11.0 — 2026-07-20
 
 ### Added
