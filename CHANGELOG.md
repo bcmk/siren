@@ -3,6 +3,26 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v3.11.0 — 2026-07-20
+
+### Added
+
+- Record the command a reply answers in `sent_message_log.command`,
+  carried through `notification_queue` and `pending_subscriptions`
+  so a deferred reply keeps it.
+- Record a buy menu tap as `buy_callback`
+  and a search web app add as `web_app_add` in `received_message_log`.
+
+### Changed
+
+- Refuse a search or an add from a chat outside the whitelist,
+  rather than serving it and skipping the log.
+- Require a positive `max_subscriptions_for_pics`.
+
+### Fixed
+
+- Track a capitalized command instead of counting it unnamed.
+
 ## v3.10.0 — 2026-07-18
 
 ### Changed
