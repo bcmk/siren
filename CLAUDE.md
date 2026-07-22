@@ -88,12 +88,14 @@
 ## Checks and Tests
 
 - Run `npx prettier --write` on markdown files after changes
-- Before committing, rewrap changed docs and comments
-  to the 80-char discourse-boundary rules under Code Style.
-  Run the `wrap-docs` skill via a subagent that follows
-  `.claude/skills/wrap-docs/SKILL.md`,
-  so the reflow stays out of the main context;
-  or run `/wrap-docs` inline.
+- When the diff touches a comment or a doc line,
+  running `wrap-docs` is a precondition of `git commit`, not a reminder.
+  Judging the lines yourself or checking their width does not count.
+  Run it inline, never in a subagent:
+  delegating costs a hop and a fresh read of the skill for every run.
+  A commit hook blocks the commit
+  until `.claude/hooks/wrap-docs-ok.sh` records a run
+  against the staged content.
 - Run `go fmt ./...` after changes and before committing
 - Run `golangci-lint run ./...` before committing
 - Run `go test ./...` to ensure changes work
@@ -238,8 +240,7 @@
   Here "docs" covers markdown documentation and code comments both.
 - `wrap-docs` — applies the 80-char docs splitting rule
   (Code Style: "Wrap documentation ... and comments at 80 characters").
-  Run it before committing doc or comment changes;
-  prefer a subagent so the reflow stays out of the main context.
+  Run it inline before committing doc or comment changes.
 
 ## Code Locations
 

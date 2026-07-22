@@ -87,18 +87,7 @@ Cover both kinds of docs in that change set:
    `awk '{ if (length > 80) print FILENAME":"NR": "length }' <files>`
    then eyeball the hits — long URLs and code are allowed.
 5. Report the files touched in one line. Do not paste file contents.
-
-## Running in a fresh context (save tokens)
-
-The reflow reads and rewrites whole files,
-which is noisy in the main conversation.
-To keep those tokens out of the main context, dispatch a subagent:
-
-- Launch a `general-purpose` agent.
-- Tell it to read this file (`.claude/skills/wrap-docs/SKILL.md`)
-  and apply it to the changed docs and comments.
-- The subagent edits the files in place
-  and returns only a one-line summary of what it touched.
-
-That way the file bodies live in the subagent's context,
-and the main conversation only sees the summary.
+6. When the reflow precedes a commit, stage it,
+   then record the run with `.claude/hooks/wrap-docs-ok.sh`.
+   A commit hook blocks the commit until that record exists,
+   and restaging anything afterwards invalidates it.
