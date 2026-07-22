@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"math"
+	"net"
+	"os"
 	"slices"
 	"sync/atomic"
 	"testing"
@@ -194,6 +197,99 @@ func TestSendQueueOrder(t *testing.T) {
 	}
 }
 
+// TestSendQueueDemotesStalledUsers checks the stalls tier:
+// it demotes a user against others but never reorders one user's own messages.
+func TestSendQueueDemotesStalledUsers(t *testing.T) {
+	t.Parallel()
+	type item struct {
+		userID   db.UserID
+		priority db.Priority
+		seq      uint64
+		stalls   int
+	}
+	tests := []struct {
+		name  string
+		items []item
+		want  []uint64
+	}{
+		{
+			name:  "a stalled head yields to a healthy user",
+			items: []item{{1, db.PriorityLow, 1, 1}, {2, db.PriorityLow, 2, 0}},
+			want:  []uint64{2, 1},
+		},
+		{
+			name:  "priority outranks a stall",
+			items: []item{{1, db.PriorityHigh, 1, 2}, {2, db.PriorityLow, 2, 0}},
+			want:  []uint64{1, 2},
+		},
+		{
+			name:  "fewer stalls win at equal priority",
+			items: []item{{1, db.PriorityLow, 1, 3}, {2, db.PriorityLow, 2, 1}},
+			want:  []uint64{2, 1},
+		},
+		{
+			// The stalled message is the head by seq and stays there.
+			name:  "a user's own messages keep seq order",
+			items: []item{{1, db.PriorityLow, 1, 1}, {1, db.PriorityLow, 2, 0}},
+			want:  []uint64{1, 2},
+		},
+		{
+			// The last push takes user 1's head, so its rank is recomputed.
+			name: "a displacing head re-ranks a queued user",
+			items: []item{
+				{1, db.PriorityLow, 2, 0},
+				{2, db.PriorityLow, 3, 0},
+				{1, db.PriorityLow, 1, 1},
+			},
+			want: []uint64{3, 1, 2},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newSendQueue()
+			for _, it := range tt.items {
+				s.push(&queuedMessage{
+					userID:   it.userID,
+					priority: it.priority,
+					seq:      it.seq,
+					stalls:   it.stalls,
+				})
+			}
+			var got []uint64
+			for s.Len() > 0 {
+				got = append(got, s.pop().seq)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("pop order = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestSendQueueDemotesStalledResend walks the path a real resend takes:
+// its user is cooling when it is pushed,
+// so it re-enters through stopCooling rather than the re-rank in push,
+// and must still yield to a healthy user.
+func TestSendQueueDemotesStalledResend(t *testing.T) {
+	t.Parallel()
+	s := newSendQueue()
+	s.push(&queuedMessage{userID: 1, priority: db.PriorityLow, seq: 1})
+	q := s.pop()
+	s.startCooling(q.userID) // as trySend cools the user it dispatches
+	q.stalls++               // as deliver counts the stall
+	s.push(q)                // as the main loop re-queues it, still cooling
+	s.push(&queuedMessage{userID: 2, priority: db.PriorityLow, seq: 3})
+	s.stopCooling(q.userID)
+
+	var got []uint64
+	for s.Len() > 0 {
+		got = append(got, s.pop().seq)
+	}
+	if want := []uint64{3, 1}; !slices.Equal(got, want) {
+		t.Errorf("pop order = %v, want %v", got, want)
+	}
+}
+
 // TestSendQueueBookkeeping checks the queue's internal accounting:
 // a cooling user's messages are withheld and resurface on release,
 // and the per-user map and size counter drain to empty.
@@ -258,19 +354,21 @@ func TestTransientDelay(t *testing.T) {
 		retryAfter    int
 		wantPause     time.Duration
 		wantTransient bool
+		wantStalled   bool
 	}{
-		{"429 waits out retry_after", messageTooManyRequests, 30, 30 * time.Second, true},
-		{"timeout postpones", messageTimeout, 0, transientErrorPostpone, true},
-		{"network error postpones", messageUnknownNetworkError, 0, transientErrorPostpone, true},
-		{"sent is not transient", messageSent, 30, 0, false},
-		{"migrate is not transient", messageMigrate, 30, 0, false},
+		{"429 waits out retry_after", messageTooManyRequests, 30, 30 * time.Second, true, false},
+		{"timeout postpones and stalls", messageTimeout, 0, transientErrorPostpone, true, true},
+		{"network error postpones and stalls", messageUnknownNetworkError, 0, transientErrorPostpone, true, true},
+		{"sent is not transient", messageSent, 30, 0, false, false},
+		{"migrate is not transient", messageMigrate, 30, 0, false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pause, transient := transientDelay(tt.result, tt.retryAfter)
-			if pause != tt.wantPause || transient != tt.wantTransient {
-				t.Errorf("transientDelay(%d, %d) = (%v, %t), want (%v, %t)",
-					tt.result, tt.retryAfter, pause, transient, tt.wantPause, tt.wantTransient)
+			pause, transient, stalled := transientDelay(tt.result, tt.retryAfter)
+			if pause != tt.wantPause || transient != tt.wantTransient || stalled != tt.wantStalled {
+				t.Errorf("transientDelay(%d, %d) = (%v, %t, %t), want (%v, %t, %t)",
+					tt.result, tt.retryAfter, pause, transient, stalled,
+					tt.wantPause, tt.wantTransient, tt.wantStalled)
 			}
 		})
 	}
@@ -449,6 +547,75 @@ func TestDeliverGlobalPaceOn429(t *testing.T) {
 				<-done
 				if d := time.Since(start); d != tt.wantPace {
 					t.Errorf("deliver returned after %v, want %v", d, tt.wantPace)
+				}
+			})
+		})
+	}
+}
+
+// timeoutMessage always fails with a net.Error reporting a timeout.
+type timeoutMessage struct{ id int64 }
+
+func (m *timeoutMessage) chatID() int64      { return m.id }
+func (m *timeoutMessage) setChatID(id int64) { m.id = id }
+func (m *timeoutMessage) send(context.Context, *bot.Bot) (*models.Message, error) {
+	return nil, os.ErrDeadlineExceeded
+}
+
+// networkErrorMessage always fails with a net.Error that is not a timeout.
+type networkErrorMessage struct{ id int64 }
+
+func (m *networkErrorMessage) chatID() int64      { return m.id }
+func (m *networkErrorMessage) setChatID(id int64) { m.id = id }
+func (m *networkErrorMessage) send(context.Context, *bot.Bot) (*models.Message, error) {
+	return nil, &net.OpError{Op: "dial", Err: errors.New("connection refused")}
+}
+
+// TestDeliverCountsStalls checks
+// that a stall raises the re-queued message's count,
+// that repeats accumulate, and that a prompt 429 leaves it alone.
+func TestDeliverCountsStalls(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		message    sendable
+		stalls     int
+		wantResult int
+		wantStalls int
+	}{
+		{"a timeout counts", &timeoutMessage{id: 1}, 0, messageTimeout, 1},
+		{"a network error counts", &networkErrorMessage{id: 1}, 0, messageUnknownNetworkError, 1},
+		{"stalls accumulate", &timeoutMessage{id: 1}, 2, messageTimeout, 3},
+		{"a 429 leaves the count alone", &tooManyRequests{id: 1, retryAfter: 30}, 1, messageTooManyRequests, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				w := &worker{
+					cfg:         &botconfig.Config{},
+					bots:        map[string]*bot.Bot{"ep": nil},
+					sendResults: make(chan msgSendResult, 16),
+					cooledUsers: make(chan db.UserID, 16),
+				}
+				q := &queuedMessage{
+					userID:   1,
+					endpoint: "ep",
+					message:  tt.message,
+					priority: db.PriorityLow,
+					tag:      unprompted(db.NotificationPacket),
+					stalls:   tt.stalls,
+				}
+				go w.deliver(q)
+
+				r := <-w.sendResults
+				if r.result != tt.wantResult {
+					t.Fatalf("result = %d, want %d", r.result, tt.wantResult)
+				}
+				if r.resend != q {
+					t.Fatalf("resend set = %t, want the original message re-queued", r.resend != nil)
+				}
+				if q.stalls != tt.wantStalls {
+					t.Errorf("stalls = %d, want %d", q.stalls, tt.wantStalls)
 				}
 			})
 		})

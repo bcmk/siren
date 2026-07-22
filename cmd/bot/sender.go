@@ -165,9 +165,11 @@ type queuedMessage struct {
 	notificationID int
 	requestedAt    time.Time
 	seq            uint64
+	stalls         int
 }
 
-// messageLess orders messages for dispatch: priority, then FIFO by seq.
+// messageLess orders one user's messages: priority, then FIFO by seq.
+// Stalls are absent on purpose: a newer status must not pass a stalled one.
 func messageLess(a, b *queuedMessage) bool {
 	if a.priority != b.priority {
 		return a.priority < b.priority
@@ -201,12 +203,24 @@ type userQueue struct {
 
 func (u *userQueue) head() *queuedMessage { return u.items[0] }
 
-// readyHeap ranks dispatchable users by their head message,
+// userLess ranks a stalling chat behind healthy ones of the same priority.
+func userLess(a, b *userQueue) bool {
+	x, y := a.head(), b.head()
+	if x.priority != y.priority {
+		return x.priority < y.priority
+	}
+	if x.stalls != y.stalls {
+		return x.stalls < y.stalls
+	}
+	return x.seq < y.seq
+}
+
+// readyHeap ranks dispatchable users by userLess,
 // so the top user holds the globally best sendable message.
 type readyHeap []*userQueue
 
 func (h readyHeap) Len() int           { return len(h) }
-func (h readyHeap) Less(i, j int) bool { return messageLess(h[i].head(), h[j].head()) }
+func (h readyHeap) Less(i, j int) bool { return userLess(h[i], h[j]) }
 
 func (h readyHeap) Swap(i, j int) {
 	h[i], h[j] = h[j], h[i]
@@ -232,7 +246,7 @@ func (h *readyHeap) Pop() any {
 // sendQueue is a heap of per-user heaps.
 // Each user's messages are ordered by (priority, seq);
 // the ready heap ranks non-cooling users with pending messages
-// by their head message.
+// by their head message, sinking one whose head has stalled.
 // Every operation — push, pop, cooling flip — costs O(log n),
 // so no cooling transition ever rebuilds a whole heap.
 type sendQueue struct {
@@ -430,14 +444,15 @@ func tooManyRequestsDelay(retryAfterSeconds int) time.Duration {
 // before its next attempt: Telegram's retry_after for a 429,
 // transientErrorPostpone for a timeout or network error.
 // Any other result is not transient and gets no pause.
-func transientDelay(result int, retryAfterSeconds int) (pause time.Duration, transient bool) {
+// stalled marks a transport failure, as against a 429 Telegram answered.
+func transientDelay(result int, retryAfterSeconds int) (pause time.Duration, transient, stalled bool) {
 	switch result {
 	case messageTooManyRequests:
-		return tooManyRequestsDelay(retryAfterSeconds), true
+		return tooManyRequestsDelay(retryAfterSeconds), true, false
 	case messageTimeout, messageUnknownNetworkError:
-		return transientErrorPostpone, true
+		return transientErrorPostpone, true, true
 	}
-	return 0, false
+	return 0, false, false
 }
 
 // deliver sends one message on its own goroutine — a single attempt, paced —
@@ -475,7 +490,7 @@ func (w *worker) deliver(q *queuedMessage) {
 	// so retargeting it would be possible;
 	// it is dropped anyway: the notice is best-effort,
 	// and a group migrating mid-notice is not worth a special path.
-	pause, transient := transientDelay(result, retryAfter)
+	pause, transient, stalled := transientDelay(result, retryAfter)
 	// A migrate to the same chat id is degenerate (Telegram breaking its
 	// one-way migration contract): re-queuing it would loop forever
 	// on the same address, so require a genuinely new target.
@@ -483,6 +498,9 @@ func (w *worker) deliver(q *queuedMessage) {
 	var resend *queuedMessage
 	if tag.kind != db.MaintenancePacket {
 		if transient || migrated {
+			if stalled {
+				q.stalls++
+			}
 			resend = q
 		}
 		// A photo to a no-photo-rights group falls back to text:
