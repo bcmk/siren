@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v3.12.1 — 2026-07-22
+
+### Fixed
+
+- Rank a chat whose sends keep failing behind healthy ones,
+  so a repeatedly timing-out message no longer starves the outgoing queue.
+
 ## v3.12.0 — 2026-07-20
 
 ### Added
