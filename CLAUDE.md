@@ -73,14 +73,15 @@
   (e.g., `@uid = %d`, `head = %s`), not `key=%s`.
   Introduce the key = value list with a colon after the event description,
   e.g. `lookup requested: @uid = %d, @qid = %d`.
-- Wrap documentation (including CLAUDE.md) and comments at 80 characters max.
+- Wrap documentation (including CLAUDE.md) and comments at 100 characters max.
   Keep elementary discourse units on the same line —
   prefer breaking at full stops over semicolons over em-dashes
   over commas over natural pauses over spaces.
   Never break a line mid-phrase; break only at the boundaries above.
-  The `wrap-docs` skill applies this rule — see Skills.
+  The `tidy-docs` skill applies this rule — see Skills.
 - Prefer short comments: one line is the default.
   Add more lines only when required to understand the code.
+  The `tidy-docs` skill applies this rule too — see Skills.
 - Keep lines no longer than 120 characters
 - Never hardcode user-facing strings — always use
   the translation system (`res/translations/`)
@@ -89,13 +90,13 @@
 
 - Run `npx prettier --write` on markdown files after changes
 - When the diff touches a comment or a doc line,
-  running `wrap-docs` is a precondition of `git commit`, not a reminder.
-  Judging the lines yourself or checking their width does not count.
+  running `tidy-docs` is a precondition of `git commit`, not a reminder.
+  It first trims each comment to the terse minimum, then wraps what remains;
+  judging the lines yourself does not count.
   Run it inline, never in a subagent:
   delegating costs a hop and a fresh read of the skill for every run.
-  A commit hook blocks the commit
-  until `.claude/hooks/wrap-docs-ok.sh` records a run
-  against the staged content.
+  Only the wrap is gated: a commit hook blocks the commit
+  until `.claude/hooks/tidy-docs-approve.sh` approves the staged content.
 - Run `go fmt ./...` after changes and before committing
 - Run `golangci-lint run ./...` before committing
 - Run `go test ./...` to ensure changes work
@@ -238,9 +239,11 @@
 - Skills live in `.claude/skills/<name>/SKILL.md`;
   each skill's description names the rule it applies.
   Here "docs" covers markdown documentation and code comments both.
-- `wrap-docs` — applies the 80-char docs splitting rule
-  (Code Style: "Wrap documentation ... and comments at 80 characters").
+- `tidy-docs` — applies two Code Style rules to changed docs and comments:
+  "Prefer short comments" (trim)
+  then "Wrap documentation ... and comments at 100 characters" (wrap).
   Run it inline before committing doc or comment changes.
+  Only the wrap is gated; trimming is a judgment call.
 
 ## Code Locations
 
