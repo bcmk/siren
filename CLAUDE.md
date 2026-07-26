@@ -11,6 +11,7 @@
 - Use one-line commit messages only
 - Don't use heredocs for commit messages, use `git commit -m "message"`
 - Use conventional commit style
+- Prefer English words to symbols in commit messages, e.g. "and" not "+"
 - When fixing review findings on not-yet-pushed commits,
   land each fix in the commit that introduced the issue,
   judged by what the fix relates to, not by where it compiles,
@@ -158,6 +159,8 @@
 - When asked to "remember" or "write somewhere",
   save to CLAUDE.md or docs/\* files, not memory files,
   unless specifically asked for memory files
+- When doing a code review, only report findings;
+  never fix anything automatically. Fix only when explicitly asked.
 - Enumerate code review findings and never renumber them.
   Dropping one leaves a gap; a new one takes the next unused number.
 - Re-render the whole findings list on every change:
@@ -233,6 +236,8 @@
   that could affect physical row order on a BRIN-indexed table.
 - Read `docs/telegram-stars.md` before changing Telegram Stars payment handling
   (buying subscriptions, invoices, pre-checkout, refunds).
+- Read `docs/writing-translations.md` every time you add or edit a message
+  in `res/translations/` (punctuation, commands, parse modes, en/ru sync).
 
 ## Skills
 
