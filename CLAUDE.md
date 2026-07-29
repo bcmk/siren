@@ -25,7 +25,9 @@
   `cmd/adapter-mfc` daemon).
 - When stashing, use a descriptive name
 - Never push to remote without explicit permission
-- Never delete tags after pushing to the container registry
+- Deleting or moving a tag is fine while its version is unreleased,
+  even when the registry already holds an image for it — those publishes are tests.
+  A released tag is permanent
 - After a mistake is corrected, ask if a new guideline
   should be added to CLAUDE.md to prevent it in the future
 - Before modifying a file using an ad-hoc script (e.g. `sed`),
@@ -134,6 +136,13 @@
   Commit the CHANGELOG update as `chore: release v<version>`,
   then `git tag v<version>` on that commit and run the publish
   scripts.
+- Publishing to the registry is not releasing.
+  Iterate with test publishes as needed,
+  but land exactly one `chore: release v<version>` commit, at the very end.
+  Never leave an intermediate release commit in the history.
+- Never publish different content under a version the registry already holds.
+  Bump the patch version instead:
+  two images sharing a tag cannot be told apart in Kubernetes.
 - Keep CHANGELOG entries terse — ideally one line per change,
   no rationale paragraphs. State what changed, not why.
 - Bump major on user-visible breaking changes (config layout splits,
@@ -144,6 +153,7 @@
   `bump-all-bots v<version>` (covers prod/test bot charts) plus a
   `sed` on `prod/prod-adapter-mfc/values.yaml` when the adapter ships.
 - Pushing tags to origin requires explicit permission, like any push.
+- Never push a tag that is not reachable from `master`.
 
 ## Go Module Version
 
