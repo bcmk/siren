@@ -3,6 +3,31 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v3.13.2 — 2026-07-29
+
+### Added
+
+- `/affiliate`: let a group or channel admin set its own affiliate link by pasting a promo link,
+  Chaturbate only. Reset with `/reset_affiliate`.
+- `affiliate_base` config: build the affiliate link in the bot;
+  supersedes `affiliate_link` and `website_link`.
+- Chaturbate in-bot ad promoting the custom affiliate link.
+
+### Changed
+
+- In a group or channel, only admins may use `/settings`, `/add`, `/remove`, `/remove_all`,
+  `/stop` and the `/enable_*` and `/disable_*` toggles.
+
+### Fixed
+
+- Commands print with the bot name in groups and channels,
+  and a command addressed to another bot is ignored rather than answered.
+- Keep a translation's preview setting when a photo falls back to text
+  in a chat that forbids photos.
+- Carry a chat's affiliate link over a group-to-supergroup upgrade that merges into a known chat.
+- With `whitelist_chats` set, stop logging a not-in-whitelist line
+  for every update without a command.
+
 ## v3.12.1 — 2026-07-22
 
 ### Fixed
