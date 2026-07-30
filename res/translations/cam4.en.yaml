@@ -35,7 +35,7 @@ sites:
     MyFreeCams: <a href="https://t.me/MyFreeCamsSirenBot">MyFreeCamsSirenBot</a>
 add_example:
   parse: html
-  str: /add eva_alson
+  str: '{{ command "add" }} eva_alson'
 faq_direct_subscriptions:
   parse: html
   str: >

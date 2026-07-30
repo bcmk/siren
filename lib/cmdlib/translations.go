@@ -88,6 +88,7 @@ type Translations struct {
 	SubscriptionUsageAd         *Translation `yaml:"subscription_usage_ad"`
 	NotEnoughSubscriptions      *Translation `yaml:"not_enough_subscriptions"`
 	Week                        *Translation `yaml:"week"`
+	WeekChunk                   *Translation `yaml:"week_chunk"`
 	WeekNeverOnline             *Translation `yaml:"week_never_online"`
 	WeekRetrieving              *Translation `yaml:"week_retrieving"`
 	ZeroSubscriptions           *Translation `yaml:"zero_subscriptions"`
@@ -132,7 +133,9 @@ func LoadEndpointTranslations(files []string) (*Translations, AllTranslations) {
 }
 
 // LoadAllTranslations loads all translations
-func LoadAllTranslations(files map[string][]string) (trMap map[string]*Translations, tpl map[string]*template.Template) {
+func LoadAllTranslations(
+	files map[string][]string,
+) (trMap map[string]*Translations, tpl map[string]*template.Template) {
 	trMap = make(map[string]*Translations)
 	tpl = make(map[string]*template.Template)
 	for endpoint, x := range files {
@@ -157,7 +160,9 @@ func LoadAds(files []string) AllTranslations {
 }
 
 // LoadAllAds loads all ads
-func LoadAllAds(files map[string][]string) (trMap map[string]map[string]*Translation, tpl map[string]*template.Template) {
+func LoadAllAds(
+	files map[string][]string,
+) (trMap map[string]map[string]*Translation, tpl map[string]*template.Template) {
 	trMap = make(map[string]map[string]*Translation)
 	tpl = make(map[string]*template.Template)
 	for endpoint, x := range files {
@@ -180,10 +185,56 @@ func (x *Translations) ToMap() map[string]*Translation {
 	return result
 }
 
+// TemplateFuncs are the functions every translation template is parsed with.
+// command writes a command mention: {{ command "add" }}, naming it as the bot registers it.
+// short_command writes the shortest form that still reaches the bot.
+// Both refuse here: the names must resolve at parse time, but only the send path knows the chat,
+// so executing this set without CommandFuncs fails instead of writing a command bare.
+func TemplateFuncs() template.FuncMap {
+	return template.FuncMap{
+		"mod":           func(i, j int) int { return i % j },
+		"add":           func(i, j int) int { return i + j },
+		"command":       unboundCommand("command"),
+		"short_command": unboundCommand("short_command"),
+	}
+}
+
+// unboundCommand refuses a command no chat was bound for, naming the writer that refused.
+// A bare command is dropped by a channel and answered by every bot in a group,
+// so it must not reach a reader.
+func unboundCommand(writer string) func(string) (string, error) {
+	return func(name string) (string, error) {
+		return "", fmt.Errorf("%s %q rendered with no chat bound", writer, name)
+	}
+}
+
+// CommandFuncs rebinds the command writers for one chat.
+// mention is empty where a bare command reaches the bot, or where no chat is in play.
+func CommandFuncs(mention string) template.FuncMap {
+	return template.FuncMap{
+		"command":       commandWriter(mention),
+		"short_command": shortCommandWriter(mention),
+	}
+}
+
+func commandWriter(mention string) func(string) string {
+	return func(name string) string { return "/" + name + mention }
+}
+
+// shortCommandWriter drops the slash where a bare name reaches the bot, which is a private chat.
+// A listing is read to be typed, so it shows the least a reader must type.
+func shortCommandWriter(mention string) func(string) string {
+	return func(name string) string {
+		if mention == "" {
+			return name
+		}
+		return "/" + name + mention
+	}
+}
+
 func setupTemplates(trs AllTranslations) *template.Template {
 	tpl := template.New("")
-	tpl.Funcs(template.FuncMap{"mod": func(i, j int) int { return i % j }})
-	tpl.Funcs(template.FuncMap{"add": func(i, j int) int { return i + j }})
+	tpl.Funcs(TemplateFuncs())
 	for k, v := range trs {
 		template.Must(tpl.New(k).Parse(v.Str))
 	}

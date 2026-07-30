@@ -9,7 +9,7 @@ add_error:
   str: |-
     Could not add the channel {{ .streamer }}
     Check the channel name or try later
-    Syntax: /add <code>CHANNEL</code>
+    Syntax: {{ command "add" }} <code>CHANNEL</code>
 checking_streamer:
   parse: raw
   str: Give us a second. We are checking this channel
@@ -40,7 +40,7 @@ sites:
     MyFreeCams: <a href="https://t.me/MyFreeCamsSirenBot">MyFreeCamsSirenBot</a>
 add_example:
   parse: html
-  str: /add morecrown
+  str: '{{ command "add" }} morecrown'
 syntax_add:
   parse: html
   str: |-
@@ -53,13 +53,13 @@ syntax_remove:
   str: |-
     Enter
 
-    /remove <code>CHANNEL</code>
+    {{ command "remove" }} <code>CHANNEL</code>
 unknown_command:
   parse: html
   str: |-
     Unknown command. To subscribe to a channel enter
 
-    /add <code>CHANNEL</code>
+    {{ command "add" }} <code>CHANNEL</code>
 
     Example
 
@@ -70,7 +70,7 @@ zero_subscriptions:
     You are not subscribed to any channel
     To subscribe enter
 
-    /add <code>CHANNEL</code>
+    {{ command "add" }} <code>CHANNEL</code>
 faq:
   parse: html
   str: |-
@@ -97,15 +97,15 @@ commands:
   str: |-
     <b>Commands</b>
 
-    <b>add</b> <code>CHANNEL</code> — Add a channel
-    <b>remove</b> <code>CHANNEL</code> — Remove a channel
-    <b>remove_all</b> — Remove all channels
-    <b>list</b> — Your subscriptions
-    <b>pics</b> — Thumbnails of your channels online
-    <b>week</b> <code>CHANNEL</code> — Online hours in the previous 7 days
-    <b>help</b> — Help
-    <b>settings</b> — Show settings
-    <b>feedback</b> <code>YOUR_MESSAGE</code> — Send feedback
+    <b>{{ short_command "add" }}</b> <code>CHANNEL</code> — Add a channel
+    <b>{{ short_command "remove" }}</b> <code>CHANNEL</code> — Remove a channel
+    <b>{{ short_command "remove_all" }}</b> — Remove all channels
+    <b>{{ short_command "list" }}</b> — Your subscriptions
+    <b>{{ short_command "pics" }}</b> — Thumbnails of your channels online
+    <b>{{ short_command "week" }}</b> <code>CHANNEL</code> — Online hours in the previous 7 days
+    <b>{{ short_command "help" }}</b> — Help
+    <b>{{ short_command "settings" }}</b> — Show settings
+    <b>{{ short_command "feedback" }}</b> <code>YOUR_MESSAGE</code> — Send feedback
 languages:
   parse: raw
   str: ""
@@ -129,7 +129,9 @@ faq_pricing:
     <b>Pricing</b>
 
     The basic service is free.
-    If you need to subscribe to more than {{ .max_subs }} channels you may earn additional subscriptions by sharing this service{{ if .buy_subs_enabled }} or buy them with Telegram Stars via /buy_subs{{ end }}.
+    If you need to subscribe to more than {{ .max_subs }} channels you may earn
+    additional subscriptions by sharing this service
+    {{- if .buy_subs_enabled }} or buy them with Telegram Stars via {{ command "buy_subs" }}{{ end }}.
 invalid_symbols:
   parse: raw
   disable_preview: true

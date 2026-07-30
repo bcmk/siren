@@ -5,10 +5,10 @@ telegram_channel:
   str: Подписывайтесь на наш канал в Telegram https://t.me/siren_telegram_bot
   weight: 10
 other:
-  str: У нас есть боты и для других стриминговых сайтов! Наберите /help, чтобы увидеть полный список
+  str: У нас есть боты и для других стриминговых сайтов! Наберите {{ command "help" }}, чтобы увидеть полный список
   weight: 10
 buy_subs:
-  str: "Покупайте дополнительные подписки за звёзды Telegram: /buy_subs"
+  str: 'Покупайте дополнительные подписки за звёзды Telegram: {{ command "buy_subs" }}'
   weight: 10
 ukraine:
   str: >-

@@ -22,6 +22,7 @@ type migrateThenOK struct {
 
 func (m *migrateThenOK) chatID() int64      { return m.id }
 func (m *migrateThenOK) setChatID(id int64) { m.id = id }
+func (m *migrateThenOK) render(string)      {}
 
 func (m *migrateThenOK) send(_ context.Context, _ *bot.Bot) (*models.Message, error) {
 	m.sends++
@@ -37,6 +38,7 @@ type migrateToSelf struct{ id int64 }
 
 func (m *migrateToSelf) chatID() int64      { return m.id }
 func (m *migrateToSelf) setChatID(id int64) { m.id = id }
+func (m *migrateToSelf) render(string)      {}
 func (m *migrateToSelf) send(_ context.Context, _ *bot.Bot) (*models.Message, error) {
 	return nil, &bot.MigrateError{MigrateToChatID: int(m.id)}
 }

@@ -59,6 +59,8 @@ var testTranslations = cmdlib.Translations{
 	Version:                &cmdlib.Translation{Key: "version", Str: "Version %s", Parse: cmdlib.ParseRaw},
 	ProfileRemoved:         &cmdlib.Translation{Key: "profile_removed", Str: "ProfileRemoved %s", Parse: cmdlib.ParseRaw},
 	WeekRetrieving:         &cmdlib.Translation{Key: "week_retrieving", Str: "WeekRetrieving", Parse: cmdlib.ParseRaw},
+	Week:                   &cmdlib.Translation{Key: "week", Str: "Week", Parse: cmdlib.ParseRaw},
+	WeekChunk:              &cmdlib.Translation{Key: "week_chunk", Str: "WeekChunk", Parse: cmdlib.ParseRaw},
 	CheckingStreamer:       &cmdlib.Translation{Key: "checking_streamer", Str: "CheckingStreamer", Parse: cmdlib.ParseRaw},
 	NotEnoughSubscriptions: &cmdlib.Translation{Key: "not_enough_subscriptions", Str: "NotEnoughSubscriptions", Parse: cmdlib.ParseRaw},
 	SubscriptionUsage:      &cmdlib.Translation{Key: "subscription_usage", Str: "SubscriptionUsage", Parse: cmdlib.ParseRaw},
@@ -180,12 +182,8 @@ func connStrFor(dbName string) string {
 // testMessage builds the inbound message a handler answers,
 // resolving the chat to its user as processTGUpdate does.
 func testMessage(w *testWorker, chatID int64, command string, now int) receivedMessage {
-	return receivedMessage{
-		timestamp: now,
-		endpoint:  "test",
-		userID:    w.db.EnsureUser(chatID),
-		command:   command,
-	}
+	m, _ := w.newReceivedMessage(now, "test", chatID, "", command)
+	return m
 }
 
 // newTestWorker clones the migrated template into a database of its own,
@@ -224,6 +222,8 @@ func newTestWorker() *testWorker {
 	template.Must(tpl.New("buy_already_credited").Parse("BuyAlreadyCredited"))
 	template.Must(tpl.New("already_added").Parse("AlreadyAdded"))
 	template.Must(tpl.New("list").Parse("List"))
+	template.Must(tpl.New("week").Parse("Week"))
+	template.Must(tpl.New("week_chunk").Parse("WeekChunk"))
 	template.Must(tpl.New("buy_subs").Parse("BuySubs"))
 	template.Must(tpl.New("buy_subs_package_button").Parse("BuySubsPackageButton"))
 
@@ -234,6 +234,7 @@ func newTestWorker() *testWorker {
 			cfg:           &testConfig,
 			client:        nil,
 			tr:            map[string]*cmdlib.Translations{"test": &testTranslations},
+			botNames:      map[string]string{"test": "bot"},
 			tpl:           map[string]*template.Template{"test": tpl},
 			sendQueue:     newSendQueue(),
 			sendResults:   make(chan msgSendResult, sendChanCap),

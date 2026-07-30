@@ -6,7 +6,7 @@ add_error:
   str: |-
     Не получилось добавить модель {{ .streamer }}
     Проверьте идентификатор модели или попробуйте позже
-    Формат команды: /add <code>МОДЕЛЬ</code>
+    Формат команды: {{ command "add" }} <code>МОДЕЛЬ</code>
     {{ template "address_line" }}
 help:
   parse: html
@@ -44,7 +44,7 @@ sites:
     MyFreeCams: <a href="https://t.me/MyFreeCamsSirenBot">MyFreeCamsSirenBot</a>
 add_example:
   parse: html
-  str: /add bbbweb
+  str: '{{ command "add" }} bbbweb'
 address_line:
   parse: html
   str: Используйте идентификатор модели из адресной строки браузера
@@ -57,7 +57,7 @@ syntax_remove:
   str: |-
     Наберите
 
-    /remove <code>МОДЕЛЬ</code>
+    {{ command "remove" }} <code>МОДЕЛЬ</code>
 
     {{ template "address_line" }}
 unknown_command:
@@ -65,7 +65,7 @@ unknown_command:
   str: |-
     Такой команде не обучен. Чтобы подписаться на модель, наберите
 
-    /add <code>МОДЕЛЬ</code>
+    {{ command "add" }} <code>МОДЕЛЬ</code>
 
     {{ template "address_line" }}
 
@@ -78,7 +78,7 @@ zero_subscriptions:
     Вы не подписаны ни на одну модель
     Чтобы подписаться, наберите
 
-    /add <code>МОДЕЛЬ</code>
+    {{ command "add" }} <code>МОДЕЛЬ</code>
 
     {{ template "address_line" }}
 faq_no_notifications:

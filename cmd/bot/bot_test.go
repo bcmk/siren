@@ -445,6 +445,35 @@ func TestCommandParser(t *testing.T) {
 	if chatID != 1 || command != "command" || args != "" {
 		t.Error("unexpected result")
 	}
+	// A chat is a group or a channel by the sign of its id, whatever type Telegram names.
+	group := models.Chat{ID: -1}
+	addressed := []struct {
+		name    string
+		text    string
+		chatID  int64
+		command string
+		args    string
+	}{
+		{"a command for another bot", "/command@otherbot", 0, "", ""},
+		{"our name trailing another", "/command@otherbot@bot", 0, "", ""},
+		{"our name, with arguments", "/command@bot args", -1, "command", "args"},
+		{"a bare command", "/command", -1, "command", ""},
+		{"chatter carrying an at", "see you@work", 0, "", ""},
+		{"chatter", "hello", 0, "", ""},
+	}
+	for _, tc := range addressed {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			update := &models.Update{Message: &models.Message{Text: tc.text, Chat: group}}
+			chatID, command, args := getCommandAndArgs(update, "@bot", nil)
+			if chatID != tc.chatID || command != tc.command || args != tc.args {
+				t.Errorf(
+					"got (%d, %q, %q), want (%d, %q, %q)",
+					chatID, command, args,
+					tc.chatID, tc.command, tc.args)
+			}
+		})
+	}
 }
 
 func TestUnconfirmedStatusConsistency(t *testing.T) {

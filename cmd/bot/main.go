@@ -418,20 +418,6 @@ func (w *worker) sendText(
 	w.enqueueMessage(priority, endpoint, msg, tag, userID, 0)
 }
 
-func (w *worker) sendImage(
-	priority db.Priority,
-	endpoint string,
-	userID db.UserID,
-	notify bool,
-	parse cmdlib.ParseKind,
-	text string,
-	img []byte,
-	tag sendTag,
-) {
-	msg := photoMessage(text, notify, parse, img)
-	w.enqueueMessage(priority, endpoint, msg, tag, userID, 0)
-}
-
 // sendMaintenance queues a maintenance-window notice
 // addressed by a literal chat id.
 // Its userID is 0,
@@ -505,7 +491,7 @@ func (w *worker) sendMessageInternal(
 	return messageSent, 0, 0
 }
 
-func templateToString(t *texttemplate.Template, key string, data map[string]interface{}) string {
+func templateToString(t *texttemplate.Template, key string, data tplData) string {
 	buf := &bytes.Buffer{}
 	err := t.ExecuteTemplate(buf, key, data)
 	checkErr(err)
@@ -522,8 +508,6 @@ func parseMode(parse cmdlib.ParseKind) models.ParseMode {
 	return ""
 }
 
-// The chat id is left unset: trySend resolves it from userID at dispatch.
-// sendMaintenance is the one caller that sets it, with setChatID.
 func textMessage(text string, notify, disablePreview bool, parse cmdlib.ParseKind) *messageParams {
 	params := &bot.SendMessageParams{
 		Text:                text,
@@ -533,42 +517,26 @@ func textMessage(text string, notify, disablePreview bool, parse cmdlib.ParseKin
 	if disablePreview {
 		params.LinkPreviewOptions = &models.LinkPreviewOptions{IsDisabled: bot.True()}
 	}
-	return &messageParams{params}
+	return &messageParams{SendMessageParams: params}
 }
 
-// The chat id is left unset: trySend resolves it from userID at dispatch.
-func photoMessage(text string, notify bool, parse cmdlib.ParseKind, img []byte) *photoParams {
-	return &photoParams{
-		SendPhotoParams: &bot.SendPhotoParams{
-			Caption:             text,
-			DisableNotification: !notify,
-			ParseMode:           parseMode(parse),
-		},
-		imageData: img,
-	}
-}
-
-// enqueueTr renders a translation and queues it,
+// enqueueTr queues a translation to render at dispatch,
 // tagged with the notification_queue row to clear once sent (0 for replies).
-// The message carries no chat id; trySend resolves it from userID at dispatch.
+// The message carries no chat id; trySend resolves it from userID,
+// and the chat kind decides what a command mention carries.
 func (w *worker) enqueueTr(
 	priority db.Priority,
 	endpoint string,
 	userID db.UserID,
 	notify bool,
 	translation *cmdlib.Translation,
-	data map[string]interface{},
+	data tplData,
 	image []byte,
 	tag sendTag,
 	notificationID int,
 ) {
-	text := templateToString(w.tpl[endpoint], translation.Key, data)
-	var msg sendable
-	if image == nil {
-		msg = textMessage(text, notify, translation.DisablePreview, translation.Parse)
-	} else {
-		msg = photoMessage(text, notify, translation.Parse, image)
-	}
+	params := &renderParams{templates: w.tpl[endpoint], key: translation.Key, data: data}
+	msg := params.asDeferredSendable(translation, notify, image)
 	w.enqueueMessage(priority, endpoint, msg, tag, userID, notificationID)
 }
 
@@ -578,7 +546,7 @@ func (w *worker) sendTr(
 	userID db.UserID,
 	notify bool,
 	translation *cmdlib.Translation,
-	data map[string]interface{},
+	data tplData,
 	tag sendTag,
 ) {
 	// Replies leave the chat id to trySend;
@@ -595,13 +563,9 @@ func (w *worker) sendAdsTr(
 	command string,
 ) {
 	tag := adTag(command)
-	tpl := w.tplAds[endpoint]
-	text := templateToString(tpl, translation.Key, nil)
-	if translation.Image == "" {
-		w.sendText(priority, endpoint, userID, notify, translation.DisablePreview, translation.Parse, text, tag)
-	} else {
-		w.sendImage(priority, endpoint, userID, notify, translation.Parse, text, translation.ImageBytes, tag)
-	}
+	params := &renderParams{templates: w.tplAds[endpoint], key: translation.Key}
+	msg := params.asDeferredSendable(translation, notify, translation.ImageBytes)
+	w.enqueueMessage(priority, endpoint, msg, tag, userID, 0)
 }
 
 func (w *worker) createDatabase() {
@@ -824,7 +788,7 @@ func (w *worker) showWeek(m receivedMessage, nickname string) {
 		Streamer string
 		TimeDiff *timeDiff
 	}
-	var weeks []string
+	var weeks []tplData
 	var neverOnline []streamerData
 	nowUnix := int(now.Unix())
 	for _, s := range streamers {
@@ -840,14 +804,14 @@ func (w *worker) showWeek(m receivedMessage, nickname string) {
 			})
 			continue
 		}
-		weeks = append(weeks, templateToString(w.tpl[m.endpoint], w.tr[m.endpoint].Week.Key, tplData{
+		weeks = append(weeks, tplData{
 			"hours":    hours,
 			"weekday":  int(start.UTC().Weekday()),
 			"streamer": s.Nickname,
-		}))
+		})
 	}
 	for chunk := range slices.Chunk(weeks, 10) {
-		w.replyText(m, db.PriorityLow, true, w.tr[m.endpoint].Week.Parse, strings.Join(chunk, "\n\n"))
+		w.replyTr(m, db.PriorityLow, false, w.tr[m.endpoint].WeekChunk, tplData{"rows": chunk})
 		m = m.next()
 	}
 	for chunk := range slices.Chunk(neverOnline, 50) {
@@ -859,10 +823,10 @@ func (w *worker) showWeek(m receivedMessage, nickname string) {
 func (w *worker) addStreamer(m receivedMessage, nickname string, referral bool) *int {
 	if nickname == "" {
 		tr := w.tr[m.endpoint].SyntaxAdd
-		text := templateToString(w.tpl[m.endpoint], tr.Key, nil)
-		msg := textMessage(text, true, tr.DisablePreview, tr.Parse)
+		params := &renderParams{templates: w.tpl[m.endpoint], key: tr.Key}
+		msg := params.asDeferredText(true, tr.DisablePreview, tr.Parse)
 		// A private chat, the only place a web app button works.
-		if !w.checker.Capabilities().UsesFixedListOnline() && w.mustUserByID(m.userID).ChatID > 0 {
+		if !w.checker.Capabilities().UsesFixedListOnline() && !m.inGroupOrChannel() {
 			msg.ReplyMarkup = &models.InlineKeyboardMarkup{
 				InlineKeyboard: [][]models.InlineKeyboardButton{{
 					{
@@ -982,7 +946,7 @@ func (w *worker) buySubs(m receivedMessage) {
 		return
 	}
 	tr := w.tr[m.endpoint].BuySubs
-	text := templateToString(w.tpl[m.endpoint], tr.Key, nil)
+	params := &renderParams{templates: w.tpl[m.endpoint], key: tr.Key}
 	buttonTpl := w.tr[m.endpoint].BuySubsPackageButton
 	base := w.cfg.SubsTiers[0]
 	buttons := make([][]models.InlineKeyboardButton, 0, len(w.cfg.SubsTiers))
@@ -998,7 +962,7 @@ func (w *worker) buySubs(m receivedMessage) {
 			CallbackData: fmt.Sprintf("buy:stars:%d", t.Count),
 		}})
 	}
-	msg := textMessage(text, true, tr.DisablePreview, tr.Parse)
+	msg := params.asDeferredText(true, tr.DisablePreview, tr.Parse)
 	msg.ReplyMarkup = &models.InlineKeyboardMarkup{InlineKeyboard: buttons}
 	w.replyMessage(m, db.PriorityHigh, msg)
 }
@@ -1012,10 +976,14 @@ func (w *worker) sendSubsInvoice(m receivedMessage, tier botconfig.SubsTier) {
 		return
 	}
 	stars := tier.Cost
-	title := templateToString(w.tpl[m.endpoint], w.tr[m.endpoint].BuySubsInvoiceTitle.Key, tplData{"count": tier.Count})
+	// Invoice fields reach no chat, so they must name no command: the unbound writer fails here.
+	invoiceTpl := w.tpl[m.endpoint]
+	title := templateToString(
+		invoiceTpl, w.tr[m.endpoint].BuySubsInvoiceTitle.Key, tplData{"count": tier.Count})
 	description := templateToString(
-		w.tpl[m.endpoint], w.tr[m.endpoint].BuySubsInvoiceDescription.Key, tplData{"count": tier.Count})
-	label := templateToString(w.tpl[m.endpoint], w.tr[m.endpoint].BuySubsInvoiceLabel.Key, tplData{"count": tier.Count})
+		invoiceTpl, w.tr[m.endpoint].BuySubsInvoiceDescription.Key, tplData{"count": tier.Count})
+	label := templateToString(
+		invoiceTpl, w.tr[m.endpoint].BuySubsInvoiceLabel.Key, tplData{"count": tier.Count})
 	payload := fmt.Sprintf("stars:%s:%d:%d", productSubs, chatID, tier.Count)
 	ctx := context.Background()
 	_, err := w.bots[m.endpoint].SendInvoice(ctx, &bot.SendInvoiceParams{
@@ -1060,11 +1028,7 @@ func (w *worker) handleBuyCallback(endpoint string, chatID int64, data string) {
 	if !w.cfg.BuySubsEnabled() {
 		return
 	}
-	m := receivedMessage{
-		timestamp: int(time.Now().Unix()),
-		endpoint:  endpoint,
-		userID:    w.db.EnsureUser(chatID),
-	}
+	m, _ := w.newReceivedMessage(int(time.Now().Unix()), endpoint, chatID, "", "")
 	parts := strings.SplitN(data, ":", 3)
 	if len(parts) != 3 || parts[1] != "stars" {
 		// A payload we cannot read is no funnel entry,
@@ -1206,6 +1170,26 @@ func (w *worker) enableSubject(m receivedMessage, showSubject bool) {
 func (w *worker) enableSilentMessages(m receivedMessage, silentMessages bool) {
 	w.db.SetSilentMessages(m.userID, silentMessages)
 	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].OK, nil)
+}
+
+// isGroupOrChannel reports whether a chat id belongs to a group or a channel.
+// Telegram gives those negative ids and private chats positive ones.
+func isGroupOrChannel(chatID int64) bool {
+	return chatID < 0
+}
+
+// botMentionIfNeeded is the bot's @name in a group or channel, nothing in a private chat.
+func (w *worker) botMentionIfNeeded(endpoint string, chatID int64) string {
+	if isGroupOrChannel(chatID) {
+		return w.botMention(endpoint)
+	}
+	return ""
+}
+
+// botMention is the bot's @name: appended to a command the bot prints,
+// stripped from a command it receives. Both sides must spell it the same.
+func (w *worker) botMention(endpoint string) string {
+	return "@" + w.botNames[endpoint]
 }
 
 func (w *worker) removeStreamer(m receivedMessage, nickname string) {
@@ -1372,13 +1356,13 @@ func (w *worker) listOnlineStreamers(m receivedMessage) {
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].NoOnlineStreamers, nil)
 		return
 	}
-	user := w.mustUserByID(m.userID)
 	// A group or channel, where a pile of pictures is worth capping.
-	if len(online) > w.cfg.MaxSubscriptionsForPics && user.ChatID < 0 {
+	if len(online) > w.cfg.MaxSubscriptionsForPics && m.inGroupOrChannel() {
 		data := tplData{"max_subs": w.cfg.MaxSubscriptionsForPics}
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].TooManySubscriptionsForPics, data)
 		return
 	}
+	user := w.mustUserByID(m.userID)
 	var nots []db.Notification
 	for _, s := range online {
 		info := w.unconfirmedOnlineStreamers[s.Nickname]
@@ -1830,12 +1814,7 @@ func (w *worker) performWebAppAdd(req webAppAddRequest) {
 		req.admittedCh <- false
 		return
 	}
-	m := receivedMessage{
-		timestamp: int(time.Now().Unix()),
-		endpoint:  req.endpoint,
-		userID:    w.db.EnsureUser(req.chatID),
-		command:   webAppAddCommand,
-	}
+	m, _ := w.newReceivedMessage(int(time.Now().Unix()), req.endpoint, req.chatID, "", webAppAddCommand)
 	w.logReceived(m)
 	// The streamer id is discarded:
 	// it is nil for a refusal and for a parked pending subscription alike,
@@ -1994,7 +1973,7 @@ func (w *worker) newRandReferralID() (id string) {
 }
 
 func (w *worker) getChatMemberCount(endpoint string, chatID int64) *int {
-	if chatID > 0 { // private chats don't have member count
+	if !isGroupOrChannel(chatID) { // a private chat has no member count
 		return nil
 	}
 	ctx := context.Background()
@@ -2076,7 +2055,7 @@ func (w *worker) start(m receivedMessage, referrer string, created bool) {
 		"website_link": w.cfg.WebsiteLink,
 	})
 	m = m.next()
-	if referrer != "" && w.mustUserByID(m.userID).ChatID > 0 {
+	if referrer != "" && !m.inGroupOrChannel() {
 		applied := w.refer(m.userID, referrer, m.timestamp, created)
 		switch applied {
 		case referralApplied:
@@ -2105,14 +2084,13 @@ func (w *worker) help(m receivedMessage) {
 // gated: a name the received log skipped must not surface here either.
 func (w *worker) processIncomingCommand(
 	m receivedMessage,
-	chatID int64,
 	command, arguments string,
 	created bool,
 ) {
-	linf("chat: %d, command: %s %s", chatID, command, arguments)
+	linf("command received: chat = %d, command = %s, arguments = %s", m.chatID, command, arguments)
 	w.db.ResetBlock(m.endpoint, m.userID)
 
-	if chatID == w.cfg.AdminID {
+	if m.chatID == w.cfg.AdminID {
 		if w.processAdminMessage(m.endpoint, command, arguments) {
 			return
 		}
@@ -2419,7 +2397,7 @@ func (w *worker) buildNotifications(
 					StreamerID: &c.StreamerID,
 					Nickname:   c.Nickname,
 					Status:     c.Status,
-					Social:     user.ChatID > 0,
+					Social:     !isGroupOrChannel(user.ChatID),
 					Sound:      c.Status == cmdlib.StatusOnline,
 					Priority:   db.PriorityLow,
 					Kind:       db.NotificationPacket}
@@ -2451,8 +2429,8 @@ func getCommandAndArgs(update *models.Update, mention string, ourIDs []int64) (i
 				}
 			}
 		}
-		chatType := update.Message.Chat.Type
-		if (chatType == "group" || chatType == "supergroup") && !strings.HasPrefix(text, "/") {
+		// Chatter is not for the bot; in a group it answers commands only.
+		if isGroupOrChannel(chatID) && !strings.HasPrefix(text, "/") {
 			return 0, "", ""
 		}
 	} else if update.ChannelPost != nil {
@@ -2465,9 +2443,14 @@ func getCommandAndArgs(update *models.Update, mention string, ourIDs []int64) (i
 		return 0, "", ""
 	}
 	parts := strings.SplitN(text, " ", 2)
-	if strings.HasSuffix(parts[0], mention) {
-		parts[0] = parts[0][:len(parts[0])-len(mention)]
-	} else if forceMention {
+	// Telegram matches a username case-insensitively but relays the text as typed,
+	// so /settings@sirenbot must reach a bot registered as SirenBot.
+	name, addressee, addressed := strings.Cut(parts[0], "@")
+	switch {
+	case addressed && strings.EqualFold("@"+addressee, mention):
+		parts[0] = name
+	case forceMention || (addressed && isGroupOrChannel(chatID)):
+		// A command naming another bot is that bot's, and a group delivers it to every bot.
 		return 0, "", ""
 	}
 	for len(parts) < 2 {
@@ -2600,7 +2583,7 @@ func (w *worker) processTGUpdate(p incomingPacket) {
 		w.handleChatMigration(p.endpoint, now, m)
 		return
 	}
-	mention := "@" + w.botNames[p.endpoint]
+	mention := w.botMention(p.endpoint)
 	chatID, command, args := getCommandAndArgs(u, mention, w.ourIDs)
 	if !w.cfg.ChatWhitelisted(chatID) {
 		linf("message from chat %d ignored, not in whitelist", chatID)
@@ -2622,16 +2605,10 @@ func (w *worker) processTGUpdate(p incomingPacket) {
 	} else if u.ChannelPost != nil {
 		chatType = string(u.ChannelPost.Chat.Type)
 	}
-	userID, created := w.db.AddUser(chatID, w.cfg.MaxSubs, now, chatType)
-	m := receivedMessage{
-		timestamp: now,
-		endpoint:  p.endpoint,
-		userID:    userID,
-		command:   loggedCommand,
-	}
+	m, created := w.newReceivedMessage(now, p.endpoint, chatID, chatType, loggedCommand)
 	w.logReceived(m)
-	w.processIncomingCommand(m, chatID, command, args, created)
-	w.refreshMemberCount(p.endpoint, chatID, userID)
+	w.processIncomingCommand(m, command, args, created)
+	w.refreshMemberCount(p.endpoint, chatID, m.userID)
 }
 
 func (w *worker) incoming() chan incomingPacket {
@@ -2751,7 +2728,7 @@ func (w *worker) maintenanceReply(u incomingPacket, waitingUsers map[waitingUser
 	}
 	// successful_payment is rejected at the webhook layer during maintenance,
 	// so it never reaches here.
-	mention := "@" + w.botNames[u.endpoint]
+	mention := w.botMention(u.endpoint)
 	chatID, command, args := getCommandAndArgs(u.message, mention, w.ourIDs)
 	if command != "" {
 		// Gate on the whitelist like processTGUpdate:

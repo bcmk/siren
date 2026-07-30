@@ -17,7 +17,7 @@ sites:
     Kick: <a href="https://t.me/KickSirenBot">KickSirenBot</a>
 add_example:
   parse: html
-  str: /add ohbabykelly
+  str: '{{ command "add" }} ohbabykelly'
 faq_no_notifications:
   parse: html
   str: >

@@ -27,6 +27,7 @@ type countingMessage struct {
 
 func (m *countingMessage) chatID() int64      { return m.id }
 func (m *countingMessage) setChatID(id int64) { m.id = id }
+func (m *countingMessage) render(string)      {}
 
 func (m *countingMessage) send(context.Context, *bot.Bot) (*models.Message, error) {
 	n := atomic.AddInt32(m.inflight, 1)
@@ -120,6 +121,7 @@ type okMessage struct{ id int64 }
 
 func (m *okMessage) chatID() int64      { return m.id }
 func (m *okMessage) setChatID(id int64) { m.id = id }
+func (m *okMessage) render(string)      {}
 
 func (m *okMessage) send(context.Context, *bot.Bot) (*models.Message, error) {
 	return nil, nil
@@ -417,6 +419,7 @@ type tooManyRequests struct {
 
 func (m *tooManyRequests) chatID() int64      { return m.id }
 func (m *tooManyRequests) setChatID(id int64) { m.id = id }
+func (m *tooManyRequests) render(string)      {}
 func (m *tooManyRequests) send(context.Context, *bot.Bot) (*models.Message, error) {
 	return nil, &bot.TooManyRequestsError{RetryAfter: m.retryAfter}
 }
@@ -558,6 +561,7 @@ type timeoutMessage struct{ id int64 }
 
 func (m *timeoutMessage) chatID() int64      { return m.id }
 func (m *timeoutMessage) setChatID(id int64) { m.id = id }
+func (m *timeoutMessage) render(string)      {}
 func (m *timeoutMessage) send(context.Context, *bot.Bot) (*models.Message, error) {
 	return nil, os.ErrDeadlineExceeded
 }
@@ -567,6 +571,7 @@ type networkErrorMessage struct{ id int64 }
 
 func (m *networkErrorMessage) chatID() int64      { return m.id }
 func (m *networkErrorMessage) setChatID(id int64) { m.id = id }
+func (m *networkErrorMessage) render(string)      {}
 func (m *networkErrorMessage) send(context.Context, *bot.Bot) (*models.Message, error) {
 	return nil, &net.OpError{Op: "dial", Err: errors.New("connection refused")}
 }

@@ -27,7 +27,7 @@ add_error:
   str: |-
     Не получилось добавить модель {{ .streamer }}
     Проверьте ник модели или попробуйте позже
-    Формат команды: /add <code>МОДЕЛЬ</code>
+    Формат команды: {{ command "add" }} <code>МОДЕЛЬ</code>
 checking_streamer:
   parse: raw
   str: Одну секунду. Мы проверяем эту модель
@@ -65,15 +65,15 @@ commands:
   str: |-
     <b>Команды</b>
 
-    <b>add</b> <code>МОДЕЛЬ</code> — Добавить модель
-    <b>remove</b> <code>МОДЕЛЬ</code> — Удалить модель
-    <b>remove_all</b> — Удалить всех моделей
-    <b>list</b> — Ваши модели
-    <b>pics</b> — Кадры трансляций в этот момент
-    <b>week</b> <code>МОДЕЛЬ</code> — График модели в предыдущие 7 дней
-    <b>help</b> — Список команд
-    <b>settings</b> — Настройки
-    <b>feedback</b> <code>ВАШЕ_СООБЩЕНИЕ</code> — Обратная связь
+    <b>{{ short_command "add" }}</b> <code>МОДЕЛЬ</code> — Добавить модель
+    <b>{{ short_command "remove" }}</b> <code>МОДЕЛЬ</code> — Удалить модель
+    <b>{{ short_command "remove_all" }}</b> — Удалить всех моделей
+    <b>{{ short_command "list" }}</b> — Ваши модели
+    <b>{{ short_command "pics" }}</b> — Кадры трансляций в этот момент
+    <b>{{ short_command "week" }}</b> <code>МОДЕЛЬ</code> — График модели в предыдущие 7 дней
+    <b>{{ short_command "help" }}</b> — Список команд
+    <b>{{ short_command "settings" }}</b> — Настройки
+    <b>{{ short_command "feedback" }}</b> <code>ВАШЕ_СООБЩЕНИЕ</code> — Обратная связь
 invalid_command:
   parse: raw
   str: Ошибка в команде
@@ -139,7 +139,7 @@ zero_subscriptions:
     Вы не подписаны ни на одну модель
     Чтобы подписаться, наберите
 
-    /add <code>МОДЕЛЬ</code>
+    {{ command "add" }} <code>МОДЕЛЬ</code>
 list:
   parse: html
   disable_preview: true
@@ -204,14 +204,14 @@ want_more:
     {{ template "referral_link" . }}
     {{- if .buy_subs_enabled }}
 
-    Или купите подписки за звёзды Telegram: /buy_subs
+    Или купите подписки за звёзды Telegram: {{ command "buy_subs" }}
     {{- end }}
 remove_all:
   parse: raw
   str: |-
     Если вы действительно хотите удалить всех моделей, наберите
 
-    /sure_remove_all
+    {{ command "sure_remove_all" }}
 social:
   disable_preview: true
   parse: raw
@@ -230,19 +230,19 @@ subscription_usage_ad:
     Использовано подписок: {{ .subscriptions_used }}/{{ .total_subscriptions }}
     Хотите больше подписок? Наберите
 
-    /want_more
+    {{ command "want_more" }}
 settings:
   parse: html
   str: |-
     {{ template "subscription_usage" . }}
-    Не хватает? Наберите /want_more
+    Не хватает? Наберите {{ command "want_more" }}
 
     Кадры трансляций в оповещениях: <b>{{ template "yes_no" .show_images }}</b>
     {{- print "\n" -}}
     {{- if .show_images  -}}
-      Отключить: /disable_images
+      Отключить: {{ command "disable_images" }}
     {{- else -}}
-      Включить: /enable_images
+      Включить: {{ command "enable_images" }}
     {{- end -}}
 
     {{- if .offline_notifications_supported -}}
@@ -251,9 +251,9 @@ settings:
       Оповещения о выходе из сети: <b>{{ template "yes_no" .offline_notifications }}</b>
       {{- print "\n" -}}
       {{- if .offline_notifications  -}}
-        Отключить: /disable_offline_notifications
+        Отключить: {{ command "disable_offline_notifications" }}
       {{- else -}}
-        Включить: /enable_offline_notifications
+        Включить: {{ command "enable_offline_notifications" }}
       {{- end -}}
     {{- end -}}
 
@@ -263,9 +263,9 @@ settings:
       Показывать тему комнаты: <b>{{ template "yes_no" .show_subject }}</b>
       {{- print "\n" -}}
       {{- if .show_subject -}}
-        Отключить: /disable_subject
+        Отключить: {{ command "disable_subject" }}
       {{- else -}}
-        Включить: /enable_subject
+        Включить: {{ command "enable_subject" }}
       {{- end -}}
     {{- end -}}
 
@@ -274,9 +274,9 @@ settings:
     Беззвучные сообщения: <b>{{ template "yes_no" .silent_messages }}</b>
     {{- print "\n" -}}
     {{- if .silent_messages -}}
-      Отключить: /disable_silent_messages
+      Отключить: {{ command "disable_silent_messages" }}
     {{- else -}}
-      Включить: /enable_silent_messages
+      Включить: {{ command "enable_silent_messages" }}
     {{- end -}}
 yes_no:
   parse: raw
@@ -286,7 +286,7 @@ syntax_feedback:
   str: |-
     Наберите
 
-    /feedback <code>ВАШЕ_СООБЩЕНИЕ</code>
+    {{ command "feedback" }} <code>ВАШЕ_СООБЩЕНИЕ</code>
 syntax_add:
   parse: html
   str: |-
@@ -314,13 +314,13 @@ syntax_remove:
   str: |-
     Наберите
 
-    /remove <code>МОДЕЛЬ</code>
+    {{ command "remove" }} <code>МОДЕЛЬ</code>
 unknown_command:
   parse: html
   str: |-
     Такой команде не обучен. Чтобы подписаться на модель, наберите
 
-    /add <code>МОДЕЛЬ</code>
+    {{ command "add" }} <code>МОДЕЛЬ</code>
 
     Пример
 
@@ -364,6 +364,14 @@ week:
       {{- $i = add $i 1 -}}
     {{- end -}}
     </code>
+week_chunk:
+  parse: html
+  disable_preview: true
+  str: |-
+    {{- range $i, $row := .rows -}}
+      {{- if $i }}{{ print "\n\n" }}{{ end -}}
+      {{- template "week" $row -}}
+    {{- end -}}
 week_never_online:
   parse: html
   disable_preview: true
@@ -397,7 +405,7 @@ faq_pricing:
     Если вы хотите подписаться на более чем {{ .max_subs }} моделей, вы
     можете зарабатывать дополнительные подписки, делясь реферальными
     ссылками на этот сервис
-    {{- if .buy_subs_enabled }}, или купить их за звёзды Telegram командой /buy_subs{{ end }}.
+    {{- if .buy_subs_enabled }}, или купить их за звёзды Telegram командой {{ command "buy_subs" }}{{ end }}.
 buy_subs:
   parse: html
   disable_preview: true
@@ -440,4 +448,4 @@ we_are_up:
   str: Мы снова работаем
 fields_customization_hint:
   parse: html
-  str: "<i>Совет: Вы можете настроить, что отображать, в /settings</i>"
+  str: '<i>Совет: Вы можете настроить, что отображать, в {{ command "settings" }}</i>'

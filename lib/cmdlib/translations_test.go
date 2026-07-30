@@ -44,6 +44,44 @@ func TestTranslationsNoUnknownFields(t *testing.T) {
 	}
 }
 
+// adsFile reports a file of ads: only ad entries, not a full translation set.
+func adsFile(base string) bool {
+	return len(base) >= 4 && base[:4] == "ads."
+}
+
+// TestAdTemplatesExecute parses and renders every ads file, which the endpoint combinations
+// skip: a broken action there would otherwise surface only as a startup panic.
+func TestAdTemplatesExecute(t *testing.T) {
+	covered := 0
+	for _, path := range translationFiles(t) {
+		base := filepath.Base(path)
+		if !adsFile(base) {
+			continue
+		}
+		covered++
+		t.Run(base, func(t *testing.T) {
+			allTr := LoadAds([]string{path})
+			tpl := template.New("")
+			tpl.Funcs(TemplateFuncs())
+			// The send path binds a chat before executing, and so must this.
+			tpl.Funcs(CommandFuncs("@bot"))
+			for k, v := range allTr {
+				if _, err := tpl.New(k).Parse(v.Str); err != nil {
+					t.Errorf("failed to parse template %q: %v", k, err)
+				}
+			}
+			for k := range allTr {
+				if err := tpl.ExecuteTemplate(io.Discard, k, nil); err != nil {
+					t.Errorf("failed to execute template %q: %v", k, err)
+				}
+			}
+		})
+	}
+	if covered == 0 {
+		t.Fatal("found no ads files; adsFile no longer matches them")
+	}
+}
+
 // translationCombinations returns all valid combinations of translation files
 // grouped by common + endpoint-specific files.
 func translationCombinations(t *testing.T) map[string][]string {
@@ -54,8 +92,7 @@ func translationCombinations(t *testing.T) map[string][]string {
 
 	for _, path := range files {
 		base := filepath.Base(path)
-		// Skip ads files
-		if len(base) >= 4 && base[:4] == "ads." {
+		if adsFile(base) {
 			continue
 		}
 		// Parse filename: endpoint.lang.yaml or common.lang.yaml
@@ -144,10 +181,9 @@ func TestTranslationTemplatesExecute(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			_, allTr := LoadEndpointTranslations(files)
 			tpl := template.New("")
-			tpl.Funcs(template.FuncMap{
-				"mod": func(i, j int) int { return i % j },
-				"add": func(i, j int) int { return i + j },
-			})
+			tpl.Funcs(TemplateFuncs())
+			// The send path binds a chat before executing, and so must this.
+			tpl.Funcs(CommandFuncs("@bot"))
 			// affiliate_link is a dynamic template from config
 			template.Must(tpl.New("affiliate_link").Parse("{{ . }}"))
 			for k, v := range allTr {

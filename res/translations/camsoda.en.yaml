@@ -6,7 +6,7 @@ add_error:
   str: |-
     Could not add the model {{ .streamer }}
     Check the camname or try later
-    Syntax: /add <code>CAMNAME</code>
+    Syntax: {{ command "add" }} <code>CAMNAME</code>
     {{ template "address_line" }}
 help:
   parse: html
@@ -47,7 +47,7 @@ sites:
     MyFreeCams: <a href="https://t.me/MyFreeCamsSirenBot">MyFreeCamsSirenBot</a>
 add_example:
   parse: html
-  str: /add gorgonmedusa
+  str: '{{ command "add" }} gorgonmedusa'
 syntax_add:
   parse: html
   str: |-
@@ -57,7 +57,7 @@ syntax_remove:
   str: |-
     Enter
 
-    /remove <code>CAMNAME</code>
+    {{ command "remove" }} <code>CAMNAME</code>
 
     {{ template "address_line" }}
 unknown_command:
@@ -65,7 +65,7 @@ unknown_command:
   str: |-
     Unknown command. To subscribe to a model enter
 
-    /add <code>CAMNAME</code>
+    {{ command "add" }} <code>CAMNAME</code>
 
     {{ template "address_line" }}
 
@@ -78,7 +78,7 @@ zero_subscriptions:
     You are not subscribed to any model
     To subscribe enter
 
-    /add <code>CAMNAME</code>
+    {{ command "add" }} <code>CAMNAME</code>
 
     {{ template "address_line" }}
 faq_direct_subscriptions:

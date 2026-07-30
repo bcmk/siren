@@ -22,7 +22,7 @@ sites:
     MyFreeCams: <a href="https://t.me/MyFreeCamsSirenBot">MyFreeCamsSirenBot</a>
 add_example:
   parse: html
-  str: /add bbweb
+  str: '{{ command "add" }} bbweb'
 faq_no_notifications:
   parse: html
   str: >

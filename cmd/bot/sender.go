@@ -5,6 +5,7 @@ package main
 
 import (
 	"container/heap"
+	"fmt"
 	"time"
 
 	"github.com/bcmk/siren/v3/internal/db"
@@ -27,8 +28,8 @@ const (
 	// so a rate limit backs off the whole bot, not just the failing user.
 	tooManyRequestsGlobalPause = time.Second
 	// maxQueueLen caps the outgoing queue; a broadcast past it drops its tail.
-	// A streamer's image is shared across subscribers,
-	// so even a full queue is cheap in memory.
+	// A streamer's image is shared across subscribers, but a message parks its render data,
+	// so a full queue costs tens of megabytes.
 	maxQueueLen = 100000
 	// sendChanCap sizes sendResults and cooledUsers.
 	// sendResults stays near-empty under single-flight delivery.
@@ -71,9 +72,40 @@ type receivedMessage struct {
 	timestamp int
 	endpoint  string
 	userID    db.UserID
+	chatID    int64
 	command   string
 	// replySeq is this reply's place in the answer, zero for the first.
 	replySeq int
+}
+
+// newReceivedMessage pairs the chat with its user, so the two cannot disagree,
+// and reports whether the chat is new. chatType is empty where the update does not name one.
+func (w *worker) newReceivedMessage(
+	now int,
+	endpoint string,
+	chatID int64,
+	chatType string,
+	command string,
+) (receivedMessage, bool) {
+	userID, created := w.db.AddUser(chatID, w.cfg.MaxSubs, now, chatType)
+	return receivedMessage{
+		timestamp: now,
+		endpoint:  endpoint,
+		userID:    userID,
+		chatID:    chatID,
+		command:   command,
+	}, created
+}
+
+// inGroupOrChannel reports the chat a message came from.
+// A zero chat id means a message built without one, which would read as a private chat
+// and wave it past every guard that asks.
+func (m receivedMessage) inGroupOrChannel() bool {
+	if m.chatID == 0 {
+		panic(fmt.Sprintf("receivedMessage has no chat id: @uid = %d, endpoint = %s, command = %s",
+			m.userID, m.endpoint, m.command))
+	}
+	return isGroupOrChannel(m.chatID)
 }
 
 // next returns the message tagged as the reply after this one.
@@ -100,24 +132,9 @@ func (w *worker) replyTr(
 	priority db.Priority,
 	notify bool,
 	translation *cmdlib.Translation,
-	data map[string]interface{},
+	data tplData,
 ) {
 	w.enqueueTr(priority, m.endpoint, m.userID, notify, translation, data, nil, m.tag(), 0)
-}
-
-// replyText answers with raw text, always to the sender.
-// It never notifies, unlike replyTr:
-// its one caller chunks a long listing,
-// and a notification per chunk would buzz the phone repeatedly.
-func (w *worker) replyText(
-	m receivedMessage,
-	priority db.Priority,
-	disablePreview bool,
-	parse cmdlib.ParseKind,
-	text string,
-) {
-	msg := textMessage(text, false, disablePreview, parse)
-	w.enqueueMessage(priority, m.endpoint, msg, m.tag(), m.userID, 0)
 }
 
 // replyToAdmin answers an admin command with raw text.
@@ -403,8 +420,8 @@ func (w *worker) trySend() {
 		chatID, ok := w.db.ChatIDForUser(q.userID)
 		if !ok {
 			// The user has no chat row (no delete path today, so defensive).
-			// Resolved before the slot is claimed, so just drop and move on
-			// rather than crash the goroutine.
+			// A missing row is recoverable state, not a broken invariant,
+			// and it lands before the slot is claimed, so drop this send and carry on.
 			lerr("dropping send: no chat for user %d", q.userID)
 			w.finalizeNotification(q.notificationID, q.userID, false)
 			w.trySend()
@@ -419,6 +436,8 @@ func (w *worker) trySend() {
 		// The lookup is cheap; single-flight pacing bounds dispatch.
 		q.message.setChatID(chatID)
 	}
+	// Outside the branch above: a message tagged maintenance renders here too.
+	q.message.render(w.botMentionIfNeeded(q.endpoint, q.message.chatID()))
 	// Claim the global slot only now the send is committed to dispatch,
 	// so the no-chat drop above just returns, no set-then-reset.
 	w.commonCooling = true
@@ -468,7 +487,7 @@ func (w *worker) deliver(q *queuedMessage) {
 	// Capturing just the id also keeps the release closure
 	// from pinning the whole message, image payload included, for the whole pause.
 	// isGroup survives the fallback's payload swap: toText copies the chat id.
-	isGroup := q.message.chatID() < 0
+	isGroup := isGroupOrChannel(q.message.chatID())
 	tag := q.tag
 	userID := q.userID
 	now := time.Now()
@@ -546,10 +565,8 @@ func (w *worker) deliver(q *queuedMessage) {
 	// not a pacing sleep.
 	// The timer spawns the release goroutine only when it fires,
 	// so a long postpone parks a timer entry, not a goroutine stack.
-	// A non-private chat (chatID < 0) caps tighter than the 1s per-user gap:
-	// a group is 20 messages/min.
-	// Pace groups, supergroups, and channels at the slower gap
-	// to avoid self-triggering a 429.
+	// A group or channel caps tighter than the 1s per-user gap, at 20 messages/min,
+	// so pace it slower to avoid self-triggering a 429.
 	cooldown := userCooldown
 	if isGroup {
 		cooldown = groupCooldown
