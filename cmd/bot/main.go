@@ -65,7 +65,8 @@ type timeDiff struct {
 	Nanoseconds int
 }
 
-// streamerListEntry is the per-row payload consumed by the tr.List template.
+// streamerListEntry is the per-row payload of the list and week_never_online templates,
+// so a field rename must reach both, or the loser fails at render.
 type streamerListEntry struct {
 	Streamer string
 	TimeDiff *timeDiff
@@ -787,12 +788,8 @@ func (w *worker) showWeek(m receivedMessage, nickname string) {
 	for _, s := range statuses {
 		statusMap[s.Nickname] = s
 	}
-	type streamerData struct {
-		Streamer string
-		TimeDiff *timeDiff
-	}
 	var weeks []tplData
-	var neverOnline []streamerData
+	var neverOnline []streamerListEntry
 	nowUnix := int(now.Unix())
 	for _, s := range streamers {
 		hours := hoursMap[s.ID]
@@ -801,7 +798,7 @@ func (w *worker) showWeek(m receivedMessage, nickname string) {
 			if st, ok := statusMap[s.Nickname]; ok {
 				td = w.streamerTimeDiff(st, nowUnix)
 			}
-			neverOnline = append(neverOnline, streamerData{
+			neverOnline = append(neverOnline, streamerListEntry{
 				Streamer: s.Nickname,
 				TimeDiff: td,
 			})
