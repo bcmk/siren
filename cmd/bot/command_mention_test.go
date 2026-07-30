@@ -76,8 +76,8 @@ func TestTranslationsMarkEveryCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot read translations: %v", err)
 	}
-	names := make([]string, 0, len(loggedCommands))
-	for name := range loggedCommands {
+	names := make([]string, 0, len(knownCommands))
+	for name := range knownCommands {
 		names = append(names, regexp.QuoteMeta(name))
 	}
 	// A map range is unordered, and a guard must not vary between runs.
@@ -103,7 +103,7 @@ func TestTranslationsMarkEveryCommand(t *testing.T) {
 				t.Errorf("%s: %s: %s", e.Name(), key, problem)
 			}
 			for _, name := range names {
-				if !loggedCommands[name] {
+				if _, ok := knownCommands[name]; !ok {
 					t.Errorf("%s: %s names unknown command %q", e.Name(), key, name)
 				}
 				if unaddressedKeys[key] {

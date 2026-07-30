@@ -59,6 +59,8 @@ var testTranslations = cmdlib.Translations{
 	Version:                &cmdlib.Translation{Key: "version", Str: "Version %s", Parse: cmdlib.ParseRaw},
 	ProfileRemoved:         &cmdlib.Translation{Key: "profile_removed", Str: "ProfileRemoved %s", Parse: cmdlib.ParseRaw},
 	WeekRetrieving:         &cmdlib.Translation{Key: "week_retrieving", Str: "WeekRetrieving", Parse: cmdlib.ParseRaw},
+	OK:                     &cmdlib.Translation{Key: "ok", Str: "OK", Parse: cmdlib.ParseRaw},
+	AdminsOnly:             &cmdlib.Translation{Key: "admins_only", Str: "AdminsOnly", Parse: cmdlib.ParseRaw},
 	Week:                   &cmdlib.Translation{Key: "week", Str: "Week", Parse: cmdlib.ParseRaw},
 	WeekChunk:              &cmdlib.Translation{Key: "week_chunk", Str: "WeekChunk", Parse: cmdlib.ParseRaw},
 	CheckingStreamer:       &cmdlib.Translation{Key: "checking_streamer", Str: "CheckingStreamer", Parse: cmdlib.ParseRaw},
@@ -223,6 +225,8 @@ func newTestWorker() *testWorker {
 	template.Must(tpl.New("already_added").Parse("AlreadyAdded"))
 	template.Must(tpl.New("list").Parse("List"))
 	template.Must(tpl.New("week").Parse("Week"))
+	template.Must(tpl.New("ok").Parse("OK"))
+	template.Must(tpl.New("admins_only").Parse("AdminsOnly"))
 	template.Must(tpl.New("week_chunk").Parse("WeekChunk"))
 	template.Must(tpl.New("buy_subs").Parse("BuySubs"))
 	template.Must(tpl.New("buy_subs_package_button").Parse("BuySubsPackageButton"))

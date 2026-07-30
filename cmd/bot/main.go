@@ -103,7 +103,9 @@ type worker struct {
 	incomingPackets            chan incomingPacket
 	maintenance                atomic.Bool
 	shuttingDown               atomic.Bool
-	shutdownCh                 chan struct{}
+	// chatMember is the admin gate's lookup, a field so tests can fake the answer.
+	chatMember func(endpoint string, chatID, userID int64) (*models.ChatMember, error)
+	shutdownCh chan struct{}
 }
 
 type searchRequest struct {
@@ -263,6 +265,7 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 		webAppAddRequests:          make(chan webAppAddRequest),
 		incomingPackets:            incomingPackets,
 	}
+	w.chatMember = w.getChatMember
 	// The bot starts in maintenance: the database is not created yet.
 	w.maintenance.Store(true)
 	for endpoint, a := range tr {
@@ -1172,6 +1175,87 @@ func (w *worker) enableSilentMessages(m receivedMessage, silentMessages bool) {
 	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].OK, nil)
 }
 
+// modelPayloadPrefix prefixes a deep-link payload naming a model to subscribe to.
+// The admin gate names it too, so the gate and the parser share one grammar.
+const modelPayloadPrefix = "m-"
+
+// groupAdminOnly reports whether a command needs group-admin rights.
+// A model deep-link start adds a subscription, so it is gated like /add.
+// A command the switch refuses is left ungated, so it answers the same to everyone.
+func (w *worker) groupAdminOnly(command, arguments string) bool {
+	if command == "start" {
+		return strings.HasPrefix(arguments, modelPayloadPrefix)
+	}
+	return knownCommands[command].groupAdminOnly
+}
+
+// chatMemberTimeout caps the admin lookup, which blocks the update loop.
+const chatMemberTimeout = 2 * time.Second
+
+// getChatMember asks Telegram, and is what worker.chatMember holds outside tests.
+func (w *worker) getChatMember(endpoint string, chatID, userID int64) (*models.ChatMember, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), chatMemberTimeout)
+	defer cancel()
+	return w.bots[endpoint].GetChatMember(ctx, &bot.GetChatMemberParams{
+		ChatID: chatID,
+		UserID: userID,
+	})
+}
+
+// sender is who sent an update, resolved once so the dispatch layer needs no raw update.
+// The chat it acts in stays on receivedMessage, which pairs it with the user.
+type sender struct {
+	channelPost bool
+	senderChat  *models.Chat
+	from        *models.User
+}
+
+// senderOf resolves an update's sender.
+func senderOf(u *models.Update) sender {
+	s := sender{channelPost: u.ChannelPost != nil}
+	if u.Message != nil {
+		s.senderChat = u.Message.SenderChat
+		s.from = u.Message.From
+	}
+	return s
+}
+
+// senderIsGroupAdmin reports whether the sender is a group admin, failing closed.
+func (w *worker) senderIsGroupAdmin(endpoint string, chatID int64, snd sender) bool {
+	if snd.channelPost {
+		return true // a channel post already requires admin post rights
+	}
+	if snd.senderChat != nil && snd.senderChat.ID == chatID {
+		return true // an anonymous admin posts as the chat itself
+	}
+	if snd.senderChat != nil {
+		// Any channel owner can post under the channel's identity, which hides the human,
+		// so a channel identity cannot pass an admin gate, admin behind it or not.
+		return false
+	}
+	if snd.from == nil {
+		return false
+	}
+	if w.shuttingDown.Load() {
+		// The shutdown drain replays buffered updates on a fixed budget,
+		// which a member lookup would burn for replies that can no longer send.
+		return false
+	}
+	member, err := w.chatMember(endpoint, chatID, snd.from.ID)
+	if err != nil {
+		lerr("cannot get chat member for the admin gate: chat = %d, @uid = %d, %v", chatID, snd.from.ID, err)
+		return false
+	}
+	if member == nil {
+		return false // a null result decodes without error
+	}
+	switch member.Type {
+	case models.ChatMemberTypeOwner, models.ChatMemberTypeAdministrator:
+		return true
+	}
+	return false
+}
+
 // isGroupOrChannel reports whether a chat id belongs to a group or a channel.
 // Telegram gives those negative ids and private chats positive ones.
 func isGroupOrChannel(chatID int64) bool {
@@ -1909,7 +1993,7 @@ func (w *worker) logConfig() {
 }
 
 // Its replies go through replyToAdmin, which names no command:
-// an admin command is absent from loggedCommands,
+// an admin command is absent from knownCommands,
 // so the received log never names one either.
 func (w *worker) processAdminMessage(endpoint string, command, arguments string) bool {
 	switch command {
@@ -2040,8 +2124,8 @@ func (w *worker) showReferral(m receivedMessage) {
 func (w *worker) start(m receivedMessage, referrer string, created bool) {
 	nickname := ""
 	switch {
-	case strings.HasPrefix(referrer, "m-"):
-		nickname = referrer[2:]
+	case strings.HasPrefix(referrer, modelPayloadPrefix):
+		nickname = referrer[len(modelPayloadPrefix):]
 		nickname = w.checker.NicknamePreprocessing(nickname)
 		referrer = ""
 	case referrer != "":
@@ -2079,11 +2163,51 @@ func (w *worker) help(m receivedMessage) {
 	})
 }
 
+// commandSpec declares what a command needs.
+// Membership means the switch dispatches it and its use is logged,
+// so a case the table omits answers "unknown command".
+type commandSpec struct {
+	// groupAdminOnly commands read or change the chat's own setup, which in a group is everyone's.
+	groupAdminOnly bool
+}
+
+var knownCommands = map[string]commandSpec{
+	"ad":                            {},
+	"add":                           {groupAdminOnly: true},
+	"buy_subs":                      {},
+	"disable_images":                {groupAdminOnly: true},
+	"disable_offline_notifications": {groupAdminOnly: true},
+	"disable_silent_messages":       {groupAdminOnly: true},
+	"disable_subject":               {groupAdminOnly: true},
+	"enable_images":                 {groupAdminOnly: true},
+	"enable_offline_notifications":  {groupAdminOnly: true},
+	"enable_silent_messages":        {groupAdminOnly: true},
+	"enable_subject":                {groupAdminOnly: true},
+	"faq":                           {},
+	"feedback":                      {},
+	"help":                          {},
+	"list":                          {},
+	"online":                        {},
+	"pics":                          {},
+	"referral":                      {},
+	"remove":                        {groupAdminOnly: true},
+	"remove_all":                    {groupAdminOnly: true},
+	"settings":                      {groupAdminOnly: true},
+	"social":                        {},
+	"start":                         {}, // the m- deep-link form is gated in groupAdminOnly
+	"stop":                          {groupAdminOnly: true},
+	"sure_remove_all":               {groupAdminOnly: true},
+	"version":                       {},
+	"want_more":                     {},
+	"week":                          {},
+}
+
 // processIncomingCommand dispatches on command, which the caller lowercases.
-// Every reply is logged against m.command, which the caller has already
-// gated: a name the received log skipped must not surface here either.
+// Every reply is logged against m.command, which the caller has already gated:
+// a name the received log skipped must not surface here either.
 func (w *worker) processIncomingCommand(
 	m receivedMessage,
+	snd sender,
 	command, arguments string,
 	created bool,
 ) {
@@ -2098,6 +2222,18 @@ func (w *worker) processIncomingCommand(
 
 	unknown := func() {
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].UnknownCommand, nil)
+	}
+
+	// The unknown-command answer for anything off the table;
+	// the switch's default answers only table-switch drift.
+	if _, known := knownCommands[command]; !known {
+		unknown()
+		return
+	}
+
+	if w.groupAdminOnly(command, arguments) && m.inGroupOrChannel() && !w.senderIsGroupAdmin(m.endpoint, m.chatID, snd) {
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].AdminsOnly, nil)
+		return
 	}
 
 	switch command {
@@ -2168,6 +2304,8 @@ func (w *worker) processIncomingCommand(
 		}
 		w.showWeek(m, arguments)
 	default:
+		// Unreachable while every knownCommands key has a case; table-switch drift lands here.
+		lerr("known command missing a handler: command = %s", command)
 		unknown()
 	}
 }
@@ -2420,6 +2558,19 @@ func getCommandAndArgs(update *models.Update, mention string, ourIDs []int64) (i
 	var chatID int64
 	var forceMention bool
 	if update.Message != nil {
+		if update.Message.IsAutomaticForward {
+			// The linked channel's relay: with the bot in the channel,
+			// the post was already handled there, and running the copy would execute one command twice.
+			// A bot only in the group drops channel commands by this same test,
+			// so to command the bot from a channel, add the bot to the channel.
+			// A command someone meant is worth a visible line; mirrored chatter is not.
+			if strings.HasPrefix(strings.TrimSpace(update.Message.Text), "/") {
+				linf("ignoring a command in an auto-forwarded channel post: chat = %d", update.Message.Chat.ID)
+			} else {
+				ldbg("ignoring an auto-forwarded channel post: chat = %d", update.Message.Chat.ID)
+			}
+			return update.Message.Chat.ID, "", ""
+		}
 		text = update.Message.Text
 		chatID = update.Message.Chat.ID
 		for _, m := range update.Message.NewChatMembers {
@@ -2453,41 +2604,10 @@ func getCommandAndArgs(update *models.Update, mention string, ourIDs []int64) (i
 		// A command naming another bot is that bot's, and a group delivers it to every bot.
 		return 0, "", ""
 	}
-	for len(parts) < 2 {
+	if len(parts) < 2 {
 		return chatID, parts[0], ""
 	}
 	return chatID, parts[0], strings.TrimSpace(parts[1])
-}
-
-var loggedCommands = map[string]bool{
-	"ad":                            true,
-	"add":                           true,
-	"buy_subs":                      true,
-	"disable_images":                true,
-	"disable_offline_notifications": true,
-	"disable_silent_messages":       true,
-	"disable_subject":               true,
-	"enable_images":                 true,
-	"enable_offline_notifications":  true,
-	"enable_silent_messages":        true,
-	"enable_subject":                true,
-	"faq":                           true,
-	"feedback":                      true,
-	"help":                          true,
-	"list":                          true,
-	"online":                        true,
-	"pics":                          true,
-	"referral":                      true,
-	"remove":                        true,
-	"remove_all":                    true,
-	"settings":                      true,
-	"social":                        true,
-	"start":                         true,
-	"stop":                          true,
-	"sure_remove_all":               true,
-	"version":                       true,
-	"want_more":                     true,
-	"week":                          true,
 }
 
 // migrateCommand names a completed group-to-supergroup migration.
@@ -2592,11 +2712,11 @@ func (w *worker) processTGUpdate(p incomingPacket) {
 	if command == "" {
 		return
 	}
-	// Lowercase before the gate: loggedCommands holds lowercase names,
+	// Lowercase before the gate: knownCommands holds lowercase names,
 	// so a capitalized command must not read as untracked.
 	command = strings.ToLower(command)
 	var loggedCommand string
-	if loggedCommands[command] {
+	if _, ok := knownCommands[command]; ok {
 		loggedCommand = command
 	}
 	var chatType string
@@ -2607,7 +2727,7 @@ func (w *worker) processTGUpdate(p incomingPacket) {
 	}
 	m, created := w.newReceivedMessage(now, p.endpoint, chatID, chatType, loggedCommand)
 	w.logReceived(m)
-	w.processIncomingCommand(m, command, args, created)
+	w.processIncomingCommand(m, senderOf(u), command, args, created)
 	w.refreshMemberCount(p.endpoint, chatID, m.userID)
 }
 

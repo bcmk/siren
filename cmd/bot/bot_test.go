@@ -474,6 +474,13 @@ func TestCommandParser(t *testing.T) {
 			}
 		})
 	}
+	autoForward := &models.Update{Message: &models.Message{
+		Text: "/command@bot", Chat: group, IsAutomaticForward: true,
+	}}
+	chatID, command, args = getCommandAndArgs(autoForward, "@bot", nil)
+	if chatID != -1 || command != "" || args != "" {
+		t.Error("an auto-forwarded channel post must drop with its real chat and no command")
+	}
 }
 
 func TestUnconfirmedStatusConsistency(t *testing.T) {

@@ -14,6 +14,8 @@ The bot treats the payload three ways.
 - **`m-<model>`** — a subscribe deep link.
   The bot strips the `m-` prefix, takes `<model>` as a nickname,
   and auto-subscribes the user to that streamer.
+  In a group or channel only a group admin can use it;
+  anyone else is refused, subscriptions being the chat's own setup.
   On success it also records a referral event for the model.
 
 So `start=m-<model>` is the "subscribe to this model" link shown on the site

@@ -281,6 +281,9 @@ settings:
 yes_no:
   parse: raw
   str: "{{- if . -}} да {{- else -}} нет {{- end -}}"
+admins_only:
+  parse: raw
+  str: Это могут делать только администраторы группы.
 syntax_feedback:
   parse: html
   str: |-

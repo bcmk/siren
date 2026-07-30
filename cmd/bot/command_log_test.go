@@ -320,8 +320,8 @@ func TestFeedbackCopyToAdminLogsNoCommand(t *testing.T) {
 	}
 }
 
-// An admin command is absent from loggedCommands, so the received log never
-// names it; its replies must not name it either, or the logs cannot be joined.
+// An admin command is absent from knownCommands, so the received log never names it;
+// its replies must not name it either, or the logs cannot be joined.
 func TestAdminReplyLogsNoCommand(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()

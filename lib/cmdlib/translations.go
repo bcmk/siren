@@ -74,6 +74,7 @@ type Translations struct {
 	InvalidCommand              *Translation `yaml:"invalid_command"`
 	Languages                   *Translation `yaml:"languages"`
 	Version                     *Translation `yaml:"version"`
+	AdminsOnly                  *Translation `yaml:"admins_only"`
 	ProfileRemoved              *Translation `yaml:"profile_removed"`
 	NoOnlineStreamers           *Translation `yaml:"no_online_streamers"`
 	RemoveAll                   *Translation `yaml:"remove_all"`

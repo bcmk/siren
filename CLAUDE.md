@@ -242,8 +242,11 @@
 
 ## Commands and Logging
 
-- When adding a command to the bot, add it to the `loggedCommands` map
-  so its usage gets logged.
+- When adding a command to the bot, add it to the `knownCommands` table
+  so the switch dispatches it and its usage gets logged,
+  and decide there whether only group admins may run it —
+  the zero value lets any group member.
+  An exception gated out of band gets a note on its row, as `start` has.
 - To log a command-like event (invoice, payment, pre-checkout, callback),
   call `LogReceivedMessage` directly with a name for it (as `search` does).
 - Two of our bots can share a group or channel, one per site.

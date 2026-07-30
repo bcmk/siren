@@ -138,7 +138,7 @@ func (w *worker) replyTr(
 }
 
 // replyToAdmin answers an admin command with raw text.
-// Admin commands are absent from loggedCommands,
+// Admin commands are absent from knownCommands,
 // so the received log names none and neither can this.
 func (w *worker) replyToAdmin(endpoint, text string) {
 	w.replyToAdminNth(endpoint, 0, text)
