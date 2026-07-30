@@ -2705,11 +2705,11 @@ func (w *worker) processTGUpdate(p incomingPacket) {
 	}
 	mention := w.botMention(p.endpoint)
 	chatID, command, args := getCommandAndArgs(u, mention, w.ourIDs)
-	if !w.cfg.ChatWhitelisted(chatID) {
-		linf("message from chat %d ignored, not in whitelist", chatID)
+	if command == "" {
 		return
 	}
-	if command == "" {
+	if !w.cfg.ChatWhitelisted(chatID) {
+		linf("message from chat %d ignored, not in whitelist", chatID)
 		return
 	}
 	// Lowercase before the gate: knownCommands holds lowercase names,

@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +17,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	texttemplate "text/template"
 	"time"
@@ -22,6 +25,7 @@ import (
 	"github.com/bcmk/siren/v3/internal/botconfig"
 	"github.com/bcmk/siren/v3/internal/db"
 	"github.com/bcmk/siren/v3/lib/cmdlib"
+	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
 
@@ -349,6 +353,124 @@ func TestAdminReplyLogsNoCommand(t *testing.T) {
 	if !slices.Equal(sent, []string{nullCommand}) {
 		t.Errorf("an admin reply named a command the received log lacks, got %q", sent)
 	}
+}
+
+// The processTGUpdate whitelist gate keeps a non-whitelisted chat out of the database
+// and out of both logs, whichever update kind carries it;
+// the web app, maintenance and search gates are pinned by their own tests.
+func TestProcessTGUpdateWhitelistGate(t *testing.T) {
+	t.Parallel()
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase()
+	w.initCache()
+	w.botNames = map[string]string{"test": "bot"}
+	cfg := testConfig
+	cfg.WhitelistChats = []int64{5}
+	cfg.SubsTiers = []botconfig.SubsTier{{Count: 1, Cost: 10}}
+	w.cfg = &cfg
+	// A real bot against a stub server: a deleted callback gate reaches
+	// AnswerCallbackQuery, which must not panic the run before the assertions.
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
+		_, _ = rw.Write([]byte(`{"ok":true,"result":true}`))
+	}))
+	defer srv.Close()
+	stub, err := bot.New("token", bot.WithServerURL(srv.URL), bot.WithSkipGetMe())
+	if err != nil {
+		t.Fatalf("cannot build the stub bot: %v", err)
+	}
+	w.bots = map[string]*bot.Bot{"test": stub}
+	message := func(chatID int64) *models.Update {
+		return &models.Update{Message: &models.Message{
+			Text: "/nosuch",
+			Chat: models.Chat{ID: chatID, Type: "private"},
+		}}
+	}
+	callback := func(chatID int64) *models.Update {
+		return &models.Update{CallbackQuery: &models.CallbackQuery{
+			// A buy payload, so a deleted gate walks the funnel and leaves a trace.
+			Data: "buy:x:y",
+			Message: models.MaybeInaccessibleMessage{
+				Type:    models.MaybeInaccessibleMessageTypeMessage,
+				Message: &models.Message{Chat: models.Chat{ID: chatID}},
+			},
+		}}
+	}
+	payment := func(chatID int64) *models.Update {
+		return &models.Update{Message: &models.Message{
+			Chat: models.Chat{ID: chatID},
+			// A parseable payload, so a deleted gate would reach the grant and leave a trace.
+			SuccessfulPayment: &models.SuccessfulPayment{
+				Currency:       "XTR",
+				InvoicePayload: fmt.Sprintf("stars:subs:%d:1", chatID),
+			},
+		}}
+	}
+	for _, u := range []*models.Update{message(999), callback(999), payment(999)} {
+		w.processTGUpdate(incomingPacket{endpoint: "test", message: u})
+	}
+	if users := w.db.MustInt("select count(*) from users"); users != 0 {
+		t.Errorf("a non-whitelisted chat reached the database: %d users", users)
+	}
+	if got := commandsInLog(w, "select command from received_message_log", nil); len(got) != 0 {
+		t.Errorf("a non-whitelisted chat was logged: %q", got)
+	}
+	w.processTGUpdate(incomingPacket{endpoint: "test", message: message(5)})
+	if users := w.db.MustInt("select count(*) from users"); users != 1 {
+		t.Errorf("the whitelisted chat did not reach the database: %d users", users)
+	}
+}
+
+// Ordinary chatter from a non-whitelisted group drops at the empty command,
+// before the whitelist gate can log a line per message in a busy group.
+func TestChatterSkipsTheWhitelistLog(t *testing.T) {
+	// Serial deliberately: it captures the global logger and raises its verbosity,
+	// without which the whitelist line never prints and the assertion is vacuous.
+	var buf syncBuffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+	was := cmdlib.Verbosity
+	cmdlib.Verbosity = cmdlib.InfVerbosity
+	t.Cleanup(func() { cmdlib.Verbosity = was })
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase()
+	w.initCache()
+	w.botNames = map[string]string{"test": "bot"}
+	cfg := testConfig
+	cfg.WhitelistChats = []int64{1}
+	w.cfg = &cfg
+	w.processTGUpdate(incomingPacket{
+		endpoint: "test",
+		message: &models.Update{Message: &models.Message{
+			Text: "hello",
+			Chat: models.Chat{ID: -999, Type: "group"},
+		}},
+	})
+	if out := buf.String(); strings.Contains(out, "not in whitelist") {
+		t.Errorf("chatter drew a whitelist log line: %q", out)
+	}
+	if users := w.db.MustInt("select count(*) from users"); users != 0 {
+		t.Errorf("chatter reached the database: %d users", users)
+	}
+}
+
+// syncBuffer is a locked buffer for capturing the global logger.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 // The search web app is an inbound path like any other,
