@@ -107,7 +107,7 @@ online:
   str: |-
     🟢
     {{- print " " -}}
-    {{- template "affiliate_link" .streamer }}
+    {{- .streamer_link }}
     {{- print " " -}}
     <i>online
     {{- if .time_diff }} for {{ template "duration" .time_diff }}{{ end -}}
@@ -130,7 +130,7 @@ offline:
   str: |-
     🔴
     {{- print " " -}}
-    {{- template "affiliate_link" .streamer }}
+    {{- .streamer_link }}
     {{- print " " -}}
     <i>offline {{- if .time_diff }}, last seen {{ template "duration" .time_diff }} ago {{- end -}}</i>
 zero_subscriptions:
@@ -152,7 +152,7 @@ list:
       <code>ONLINE</code>
       {{- print "\n" -}}
       {{- range .online -}}
-        {{- template "affiliate_link" .Streamer -}}
+        {{- .Link -}}
         {{- if .TimeDiff }}  <i>for {{ template "duration" .TimeDiff }}</i> {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
@@ -168,7 +168,7 @@ list:
       <code>OFFLINE</code>
       {{- print "\n" -}}
       {{- range .offline -}}
-        {{- template "affiliate_link" .Streamer -}}
+        {{- .Link -}}
         {{- if .TimeDiff }}  <i>last seen {{ template "duration" .TimeDiff }}</i> ago {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
@@ -278,12 +278,57 @@ settings:
     {{- else -}}
       Enable: {{ command "enable_silent_messages" }}
     {{- end -}}
+
+    {{- if .can_manage_affiliate -}}
+      {{- print "\n" -}}
+      {{- print "\n" -}}
+      Affiliate link: <b>{{ if .affiliate_params }}set{{ else }}not set{{ end }}</b>
+      {{- print "\n" -}}
+      Manage: {{ command "affiliate" }}{{ if .affiliate_params }}, reset: {{ command "reset_affiliate" }}{{ end }}
+    {{- end -}}
 yes_no:
   parse: raw
   str: "{{- if . -}} yes {{- else -}} no {{- end -}}"
+sample_streamer:
+  parse: raw
+  str: your_channel
+affiliate_status:
+  parse: html
+  disable_preview: true
+  str: |-
+    Your affiliate link is active.
+    Affiliate ID: <b>{{ .affiliate_id }}</b>
+
+    Your model links now look like this:
+    <code>{{ .affiliate_base }}/{{ template "sample_streamer" }}{{ with .affiliate_query }}?{{ . }}{{ end }}</code>
+    Each one redirects through your {{ template "site" }} affiliate link, so the payouts are yours.
+
+    To change it, send <code>{{ command "affiliate" }} LINK</code>
+    To reset, {{ command "reset_affiliate" }}
+affiliate_invalid:
+  parse: html
+  disable_preview: true
+  str: |-
+    Could not read that. Make sure you pasted the whole {{ template "site" }} affiliate link.
+
+    {{ template "affiliate_instructions" . }}
 admins_only:
   parse: raw
   str: Only group admins can do this.
+affiliate_groups_only:
+  parse: raw
+  str: Your own affiliate link is set per group or channel. Add the bot to yours and run this command there.
+affiliate_nothing_to_reset:
+  parse: raw
+  str: Nothing to reset — this chat has no custom affiliate link.
+affiliate_command:
+  parse: raw
+  str: Set your affiliate link so payouts go to you
+affiliate_instructions:
+  parse: html
+  str: |-
+    To use your own affiliate link, open your account on the site, generate an affiliate link to the home page, copy it, and send it here as:
+    <code>{{ command "affiliate" }} PASTE_LINK</code>
 syntax_feedback:
   parse: html
   str: |-
@@ -348,7 +393,7 @@ week:
   parse: html
   disable_preview: true
   str: |-
-    {{- template "affiliate_link" .streamer }}'s week (UTC):
+    {{- .streamer_link }}'s week (UTC):
     {{- print "\n\n" -}}
     <code>
     {{- printf "    00     06     12     18\n" -}}
@@ -384,7 +429,7 @@ week_never_online:
     <code>NEVER ONLINE THIS WEEK</code>
     {{- print "\n" -}}
     {{- range .streamers -}}
-      {{- template "affiliate_link" .Streamer -}}
+      {{- .Link -}}
       {{- if .TimeDiff }}  <i>last seen {{ template "duration" .TimeDiff }}</i> ago {{- end -}}
       {{- print "\n" -}}
     {{- end -}}

@@ -233,5 +233,45 @@ func (*ChaturbateChecker) Capabilities() Capabilities {
 		SupportsQueryStatus:                   true,
 		SupportsCLI:                           true,
 		SupportsSubject:                       true,
+		SupportsCustomAffiliateLink:           true,
 	}
+}
+
+const chaturbateAffiliateHost = "chaturbate.com"
+
+func isChaturbateAffiliateHost(host string) bool {
+	host = strings.ToLower(host)
+	return host == chaturbateAffiliateHost || strings.HasSuffix(host, "."+chaturbateAffiliateHost)
+}
+
+// campaign is the affiliate id, tour picks the payout program.
+var chaturbateAffiliateParams = []string{"campaign", "tour", "track"}
+
+var chaturbateAffiliateParamValueRegexp = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
+
+// ParseAffiliateParams reads a promo link from the /b or /affiliates/ pages.
+// All params must be present: they come from one generated link.
+func (*ChaturbateChecker) ParseAffiliateParams(input string) (map[string]string, bool) {
+	u, err := url.Parse(strings.TrimSpace(input))
+	if err != nil || u.Scheme != "https" {
+		return nil, false
+	}
+	if !isChaturbateAffiliateHost(u.Hostname()) {
+		return nil, false
+	}
+	query := u.Query()
+	out := make(map[string]string, len(chaturbateAffiliateParams))
+	for _, name := range chaturbateAffiliateParams {
+		value := query.Get(name)
+		if !chaturbateAffiliateParamValueRegexp.MatchString(value) {
+			return nil, false
+		}
+		out[name] = value
+	}
+	return out, true
+}
+
+// AffiliateID returns the campaign, the affiliate ID to show back.
+func (*ChaturbateChecker) AffiliateID(params map[string]string) string {
+	return params["campaign"]
 }

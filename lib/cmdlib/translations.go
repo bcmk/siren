@@ -45,6 +45,8 @@ type Translation struct {
 	Image          string    `yaml:"image"`
 	ImageBytes     []byte    `yaml:"-"`
 	Weight         int       `yaml:"weight"`
+	// NeedsCustomAffiliateLink drops an ad that pitches a feature the deployment disabled.
+	NeedsCustomAffiliateLink bool `yaml:"needs_custom_affiliate_link"`
 }
 
 // AllTranslations represents a collection of translated texts in all supported languages
@@ -74,7 +76,6 @@ type Translations struct {
 	InvalidCommand              *Translation `yaml:"invalid_command"`
 	Languages                   *Translation `yaml:"languages"`
 	Version                     *Translation `yaml:"version"`
-	AdminsOnly                  *Translation `yaml:"admins_only"`
 	ProfileRemoved              *Translation `yaml:"profile_removed"`
 	NoOnlineStreamers           *Translation `yaml:"no_online_streamers"`
 	RemoveAll                   *Translation `yaml:"remove_all"`
@@ -115,6 +116,13 @@ type Translations struct {
 	BuyInvoiceExpired           *Translation `yaml:"buy_invoice_expired"`
 	BuyAlreadyCredited          *Translation `yaml:"buy_already_credited"`
 	SubsPurchased               *Translation `yaml:"subs_purchased"`
+	AffiliateStatus             *Translation `yaml:"affiliate_status"`
+	AffiliateInvalid            *Translation `yaml:"affiliate_invalid"`
+	AdminsOnly                  *Translation `yaml:"admins_only"`
+	AffiliateNothingToReset     *Translation `yaml:"affiliate_nothing_to_reset"`
+	AffiliateInstructions       *Translation `yaml:"affiliate_instructions"`
+	AffiliateCommand            *Translation `yaml:"affiliate_command"`
+	AffiliateGroupsOnly         *Translation `yaml:"affiliate_groups_only"`
 }
 
 // LoadEndpointTranslations loads translations for a specific endpoint

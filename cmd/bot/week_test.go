@@ -22,8 +22,6 @@ func realTemplates(t *testing.T, lang string) *texttemplate.Template {
 		filepath.Join(base, "common."+lang+".yaml"),
 		filepath.Join(base, "chaturbate."+lang+".yaml"),
 	}})
-	// affiliate_link comes from config, not from the translation files.
-	texttemplate.Must(tpl["cb"].New("affiliate_link").Parse("{{ . }}"))
 	return tpl["cb"]
 }
 
@@ -39,8 +37,8 @@ func TestWeekChunkSeparatesRows(t *testing.T) {
 				params := &renderParams{templates: tpl, key: "week_chunk", data: tplData{"rows": rows}}
 				return params.render("")
 			}
-			first := tplData{"hours": make([]bool, 24), "weekday": 0, "streamer": "alica_webcam"}
-			second := tplData{"hours": make([]bool, 24), "weekday": 3, "streamer": "bob_cam"}
+			first := tplData{"hours": make([]bool, 24), "weekday": 0, "streamer_link": "alica_webcam"}
+			second := tplData{"hours": make([]bool, 24), "weekday": 3, "streamer_link": "bob_cam"}
 
 			one := chunk(first)
 			if !strings.Contains(one, "alica_webcam") {
@@ -100,16 +98,16 @@ func TestEntryTemplatesRender(t *testing.T) {
 		{
 			"never online", "week_never_online",
 			tplData{"streamers": []streamerListEntry{
-				{Streamer: "alica_webcam"},
-				{Streamer: "bob_cam", TimeDiff: &timeDiff{Hours: 3}},
+				{Link: "alica_webcam"},
+				{Link: "bob_cam", TimeDiff: &timeDiff{Hours: 3}},
 			}},
 			[]string{"alica_webcam", "bob_cam"},
 		},
 		{
 			"list", "list",
 			tplData{
-				"online":  []streamerListEntry{{Streamer: "alica_webcam", TimeDiff: &timeDiff{Hours: 3}}},
-				"offline": []streamerListEntry{{Streamer: "bob_cam"}},
+				"online":  []streamerListEntry{{Link: "alica_webcam", TimeDiff: &timeDiff{Hours: 3}}},
+				"offline": []streamerListEntry{{Link: "bob_cam"}},
 			},
 			[]string{"alica_webcam", "bob_cam"},
 		},

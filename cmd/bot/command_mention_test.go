@@ -57,6 +57,7 @@ var unaddressedKeys = map[string]bool{
 	"buy_subs_invoice_description": true,
 	"buy_subs_invoice_label":       true,
 	"buy_invoice_expired":          true,
+	"affiliate_command":            true,
 	"search_button":                true,
 	"search_header":                true,
 	"search_placeholder":           true,

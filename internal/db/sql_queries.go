@@ -29,7 +29,7 @@ func (d *Database) NewNotifications() []Notification {
 			n.id, n.endpoint, u.id, n.streamer_id, s.nickname, n.status,
 			n.time_diff, n.image_url, n.viewers, n.show_kind, n.social, n.priority,
 			n.sound, n.kind, coalesce(n.command, ''), n.reply_seq, n.fields_hint,
-			n.subject, u.silent_messages
+			n.subject, u.silent_messages, u.affiliate_params
 		from notification_queue n
 		join users u on u.id = n.user_id
 		join streamers s on s.id = n.streamer_id
@@ -56,6 +56,7 @@ func (d *Database) NewNotifications() []Notification {
 			&iter.FieldsHint,
 			&iter.Subject,
 			&iter.SilentMessages,
+			&iter.AffiliateParams,
 		},
 		func() { nots = append(nots, iter) },
 	)
@@ -246,7 +247,8 @@ func (d *Database) User(chatID int64) (user User, found bool) {
 			silent_messages,
 			created_at,
 			chat_type,
-			member_count
+			member_count,
+			affiliate_params
 		from users
 		where id = (select id from chain where migrated_to is null)
 	`,
@@ -264,6 +266,7 @@ func (d *Database) User(chatID int64) (user User, found bool) {
 			&user.CreatedAt,
 			&user.ChatType,
 			&user.MemberCount,
+			&user.AffiliateParams,
 		})
 	return
 }
@@ -283,7 +286,8 @@ func (d *Database) UserByID(userID UserID) (user User, found bool) {
 			silent_messages,
 			created_at,
 			chat_type,
-			member_count
+			member_count,
+			affiliate_params
 		from users
 		where id = $1
 	`,
@@ -301,6 +305,7 @@ func (d *Database) UserByID(userID UserID) (user User, found bool) {
 			&user.CreatedAt,
 			&user.ChatType,
 			&user.MemberCount,
+			&user.AffiliateParams,
 		})
 	return
 }
@@ -516,7 +521,9 @@ func (d *Database) MigrateChat(fromID, toID int64) *ChatMigration {
 	// then keep the source as a tombstone for its BRIN message logs,
 	// linked via migrated_to.
 	_, err = tx.Exec(ctx, `
-		update users d set max_subs = greatest(d.max_subs, s.max_subs)
+		update users d set
+		max_subs = greatest(d.max_subs, s.max_subs),
+		affiliate_params = coalesce(d.affiliate_params, s.affiliate_params)
 		from users s
 		where d.id = $1 and s.id = $2`,
 		dstID, srcID)
@@ -1285,6 +1292,15 @@ func (d *Database) SetShowSubject(userID UserID, showSubject bool) {
 // SetSilentMessages updates the silent_messages setting for a user
 func (d *Database) SetSilentMessages(userID UserID, silentMessages bool) {
 	d.MustExec("update users set silent_messages = $1 where id = $2", silentMessages, int64(userID))
+}
+
+// SetAffiliateParams updates a user's custom affiliate params, empty to clear.
+func (d *Database) SetAffiliateParams(userID UserID, params map[string]string) {
+	if len(params) == 0 {
+		d.MustExec("update users set affiliate_params = null where id = $1", int64(userID))
+		return
+	}
+	d.MustExec("update users set affiliate_params = $1 where id = $2", params, int64(userID))
 }
 
 // UpdateMemberCount updates the member_count for a user

@@ -35,6 +35,11 @@ type Notification struct {
 	FieldsHint     bool
 	Subject        string
 	SilentMessages bool
+
+	// AffiliateParams comes from the recipient's users row, which NewNotifications joins.
+	// A literal built for StoreNotifications may leave it nil,
+	// since the read path fills it before the send.
+	AffiliateParams map[string]string
 }
 
 // UserID is a user's stable surrogate id (users.id), distinct from the mutable
@@ -105,6 +110,7 @@ type User struct {
 	CreatedAt            int64
 	ChatType             *string
 	MemberCount          *int
+	AffiliateParams      map[string]string
 }
 
 // Streamer represents a streamer

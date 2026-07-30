@@ -68,7 +68,7 @@ type timeDiff struct {
 // streamerListEntry is the per-row payload of the list and week_never_online templates,
 // so a field rename must reach both, or the loser fails at render.
 type streamerListEntry struct {
-	Streamer string
+	Link     string
 	TimeDiff *timeDiff
 }
 
@@ -80,6 +80,7 @@ type worker struct {
 	cfg                        *botconfig.Config
 	tr                         map[string]*cmdlib.Translations
 	tpl                        map[string]*texttemplate.Template
+	legacyAffiliateTpl         *texttemplate.Template
 	trAds                      map[string]map[string]*cmdlib.Translation
 	tplAds                     map[string]*texttemplate.Template
 	checker                    checkers.Checker
@@ -238,8 +239,10 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 	}
 	tr, tpl := cmdlib.LoadAllTranslations(trsByEndpoint(cfg))
 	trAds, tplAds := cmdlib.LoadAllAds(trsAdsByEndpoint(cfg))
-	for _, t := range tpl {
-		texttemplate.Must(t.New("affiliate_link").Parse(cfg.AffiliateLink))
+	// A standalone template: affiliate_link gets no translation func or named template.
+	var legacyAffiliateTpl *texttemplate.Template
+	if cfg.AffiliateLink != "" {
+		legacyAffiliateTpl = texttemplate.Must(texttemplate.New("affiliate_link").Parse(cfg.AffiliateLink))
 	}
 	w := &worker{
 		bots:                       bots,
@@ -249,6 +252,7 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 		client:                     client,
 		tr:                         tr,
 		tpl:                        tpl,
+		legacyAffiliateTpl:         legacyAffiliateTpl,
 		trAds:                      trAds,
 		tplAds:                     tplAds,
 		imageDownloadLogs:          make(chan imageDownloadLog),
@@ -392,6 +396,22 @@ func (w *worker) setCommands() {
 		linf("setting commands for endpoint %s...", n)
 		_, err := w.bots[n].SetMyCommands(ctx, &bot.SetMyCommandsParams{Commands: commands})
 		checkErr(err)
+		if w.customAffiliateLinkEnabled() {
+			// Scopes do not merge, so admins get the defaults plus /affiliate.
+			adminCommands := append(commands[:len(commands):len(commands)],
+				models.BotCommand{Command: "affiliate", Description: w.tr[n].AffiliateCommand.Str})
+			_, err = w.bots[n].SetMyCommands(ctx, &bot.SetMyCommandsParams{
+				Commands: adminCommands,
+				Scope:    &models.BotCommandScopeAllChatAdministrators{},
+			})
+			checkErr(err)
+		} else {
+			// Telegram keeps a scope until it is deleted, so drop one an earlier run left.
+			_, err = w.bots[n].DeleteMyCommands(ctx, &bot.DeleteMyCommandsParams{
+				Scope: &models.BotCommandScopeAllChatAdministrators{},
+			})
+			checkErr(err)
+		}
 		linf("OK")
 	}
 }
@@ -655,6 +675,9 @@ func (w *worker) enqueueNotifications(batch notificationBatch) {
 func (w *worker) trAdsSlice(endpoint string) []*cmdlib.Translation {
 	var res []*cmdlib.Translation
 	for _, v := range w.trAds[endpoint] {
+		if v.NeedsCustomAffiliateLink && !w.customAffiliateLinkEnabled() {
+			continue
+		}
 		res = append(res, v)
 	}
 	sort.Slice(res, func(i, j int) bool { return res[i].Key < res[j].Key })
@@ -715,11 +738,12 @@ func (w *worker) notifyOfStatus(priority db.Priority, n db.Notification, image [
 		timeDiff = &temp
 	}
 	data := tplData{
-		"streamer":  n.Nickname,
-		"time_diff": timeDiff,
-		"viewers":   n.Viewers,
-		"show_kind": n.ShowKind,
-		"subject":   html.EscapeString(n.Subject),
+		"streamer":      n.Nickname,
+		"streamer_link": w.streamerLink(n.Nickname, w.gatedAffiliate(n.AffiliateParams)),
+		"time_diff":     timeDiff,
+		"viewers":       n.Viewers,
+		"show_kind":     n.ShowKind,
+		"subject":       html.EscapeString(n.Subject),
 	}
 	notify := !n.SilentMessages
 	switch n.Status {
@@ -757,6 +781,80 @@ func (w *worker) mustUserByID(userID db.UserID) (user db.User) {
 	return
 }
 
+// customAffiliateLinkEnabled reports whether chats may set their own affiliate link.
+// It needs affiliate_base, since only a Go-built link carries the params.
+func (w *worker) customAffiliateLinkEnabled() bool {
+	return w.cfg.EnableCustomAffiliateLink &&
+		w.cfg.AffiliateBase != "" &&
+		w.checker.Capabilities().SupportsCustomAffiliateLink
+}
+
+// affiliateBase is affiliate_base without its trailing slash, so every link spells it one way.
+func (w *worker) affiliateBase() string {
+	return strings.TrimRight(w.cfg.AffiliateBase, "/")
+}
+
+// siteHomeLink is the site's homepage link, affiliate_base over website_link.
+func (w *worker) siteHomeLink() string {
+	if w.cfg.AffiliateBase != "" {
+		return w.affiliateBase()
+	}
+	return w.cfg.WebsiteLink
+}
+
+// streamerLinker returns a link builder that encodes the affiliate query once.
+func (w *worker) streamerLinker(affiliate map[string]string) func(string) string {
+	if w.cfg.AffiliateBase != "" {
+		prefix := w.affiliateBase() + "/"
+		suffix := ""
+		if len(affiliate) > 0 {
+			suffix = "?" + affiliateQuery(affiliate)
+		}
+		return func(streamer string) string {
+			return "<a href='" + prefix + streamer + suffix + "'>" + streamer + "</a>"
+		}
+	}
+	if w.legacyAffiliateTpl == nil {
+		return func(streamer string) string { return streamer }
+	}
+	return func(streamer string) string {
+		var b bytes.Buffer
+		checkErr(w.legacyAffiliateTpl.Execute(&b, streamer))
+		return b.String()
+	}
+}
+
+// streamerLink renders one streamer's affiliate link as an HTML anchor.
+func (w *worker) streamerLink(streamer string, affiliate map[string]string) string {
+	return w.streamerLinker(affiliate)(streamer)
+}
+
+// affiliateQuery encodes affiliate params as an href-escaped URL query.
+func affiliateQuery(affiliate map[string]string) string {
+	values := url.Values{}
+	for name, value := range affiliate {
+		values.Set(name, value)
+	}
+	return html.EscapeString(values.Encode())
+}
+
+// gatedAffiliate returns a chat's own affiliate params, or nil when off.
+func (w *worker) gatedAffiliate(custom map[string]string) map[string]string {
+	if !w.customAffiliateLinkEnabled() {
+		return nil
+	}
+	return custom
+}
+
+// gatedAffiliateForUser loads a recipient chat's affiliate params.
+// Only a group or channel can hold them, so a private chat skips the lookup.
+func (w *worker) gatedAffiliateForUser(m receivedMessage) map[string]string {
+	if !isGroupOrChannel(m.chatID) || !w.customAffiliateLinkEnabled() {
+		return nil
+	}
+	return w.mustUserByID(m.userID).AffiliateParams
+}
+
 func (w *worker) showWeek(m receivedMessage, nickname string) {
 	if nickname != "" {
 		nickname = w.checker.NicknamePreprocessing(nickname)
@@ -764,11 +862,12 @@ func (w *worker) showWeek(m receivedMessage, nickname string) {
 			w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].InvalidSymbols, tplData{"streamer": nickname})
 			return
 		}
+		affiliate := w.gatedAffiliateForUser(m)
 		hours, start := w.week(nickname)
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Week, tplData{
-			"hours":    hours,
-			"weekday":  int(start.UTC().Weekday()),
-			"streamer": nickname,
+			"hours":         hours,
+			"weekday":       int(start.UTC().Weekday()),
+			"streamer_link": w.streamerLink(nickname, affiliate),
 		})
 		return
 	}
@@ -777,6 +876,7 @@ func (w *worker) showWeek(m receivedMessage, nickname string) {
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].ZeroSubscriptions, nil)
 		return
 	}
+	link := w.streamerLinker(w.gatedAffiliateForUser(m))
 	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].WeekRetrieving, nil)
 	m = m.next()
 	ids := make([]int, len(streamers))
@@ -801,15 +901,15 @@ func (w *worker) showWeek(m receivedMessage, nickname string) {
 				td = w.streamerTimeDiff(st, nowUnix)
 			}
 			neverOnline = append(neverOnline, streamerListEntry{
-				Streamer: s.Nickname,
+				Link:     link(s.Nickname),
 				TimeDiff: td,
 			})
 			continue
 		}
 		weeks = append(weeks, tplData{
-			"hours":    hours,
-			"weekday":  int(start.UTC().Weekday()),
-			"streamer": s.Nickname,
+			"hours":         hours,
+			"weekday":       int(start.UTC().Weekday()),
+			"streamer_link": link(s.Nickname),
 		})
 	}
 	for chunk := range slices.Chunk(weeks, 10) {
@@ -1151,6 +1251,8 @@ func (w *worker) settings(m receivedMessage) {
 		"subject_supported":               w.checker.Capabilities().SupportsSubject,
 		"show_subject":                    user.ShowSubject,
 		"silent_messages":                 user.SilentMessages,
+		"can_manage_affiliate":            w.customAffiliateLinkEnabled() && isGroupOrChannel(user.ChatID),
+		"affiliate_params":                w.gatedAffiliate(user.AffiliateParams),
 	})
 }
 
@@ -1178,14 +1280,46 @@ func (w *worker) enableSilentMessages(m receivedMessage, silentMessages bool) {
 // The admin gate names it too, so the gate and the parser share one grammar.
 const modelPayloadPrefix = "m-"
 
-// groupAdminOnly reports whether a command needs group-admin rights.
-// A model deep-link start adds a subscription, so it is gated like /add.
-// A command the switch refuses is left ungated, so it answers the same to everyone.
-func (w *worker) groupAdminOnly(command, arguments string) bool {
-	if command == "start" {
-		return strings.HasPrefix(arguments, modelPayloadPrefix)
+// setAffiliate handles /affiliate: show or set the chat's affiliate link.
+func (w *worker) setAffiliate(m receivedMessage, arg string) {
+	arg = strings.TrimSpace(arg)
+	if arg == "" {
+		user := w.mustUserByID(m.userID)
+		if len(user.AffiliateParams) == 0 {
+			w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].AffiliateInstructions, nil)
+			return
+		}
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].AffiliateStatus,
+			w.affiliateStatusData(user.AffiliateParams))
+		return
 	}
-	return knownCommands[command].groupAdminOnly
+	params, ok := w.checker.ParseAffiliateParams(arg)
+	if !ok {
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].AffiliateInvalid, nil)
+		return
+	}
+	w.db.SetAffiliateParams(m.userID, params)
+	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].AffiliateStatus,
+		w.affiliateStatusData(params))
+}
+
+// resetAffiliate drops a chat's custom affiliate link.
+func (w *worker) resetAffiliate(m receivedMessage) {
+	if len(w.mustUserByID(m.userID).AffiliateParams) == 0 {
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].AffiliateNothingToReset, nil)
+		return
+	}
+	w.db.SetAffiliateParams(m.userID, nil)
+	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].OK, nil)
+}
+
+// affiliateStatusData builds the affiliate status template data.
+func (w *worker) affiliateStatusData(params map[string]string) tplData {
+	return tplData{
+		"affiliate_id":    w.checker.AffiliateID(params),
+		"affiliate_base":  w.affiliateBase(),
+		"affiliate_query": affiliateQuery(params),
+	}
 }
 
 // chatMemberTimeout caps the admin lookup, which blocks the update loop.
@@ -1351,12 +1485,13 @@ func (w *worker) listStreamers(m receivedMessage) {
 	sort.SliceStable(statuses, func(i, j int) bool {
 		return listStreamersSortWeight(statuses[i].UnconfirmedStatus) < listStreamersSortWeight(statuses[j].UnconfirmedStatus)
 	})
+	link := w.streamerLinker(w.gatedAffiliateForUser(m))
 	chunks := chunkStreamers(statuses, 50)
 	for _, chunk := range chunks {
 		var online, offline []streamerListEntry
 		for _, s := range chunk {
 			entry := streamerListEntry{
-				Streamer: s.Nickname,
+				Link:     link(s.Nickname),
 				TimeDiff: w.streamerTimeDiff(s, m.timestamp),
 			}
 			switch s.UnconfirmedStatus {
@@ -1663,12 +1798,14 @@ func (w *worker) sendPolledList(endpoint string, now int, seq int) {
 		w.replyToOwnerNth(endpoint, seq, cmdlib.ParseRaw, "no polled streamers")
 		return
 	}
+	// An owner listing goes to a private chat, which cannot set affiliate params.
+	link := w.streamerLinker(nil)
 	chunks := chunkStreamers(polled, 50)
 	for i, chunk := range chunks {
 		var online, offline []streamerListEntry
 		for _, s := range chunk {
 			entry := streamerListEntry{
-				Streamer: s.Nickname,
+				Link:     link(s.Nickname),
 				TimeDiff: w.streamerTimeDiff(s, now),
 			}
 			switch s.UnconfirmedStatus {
@@ -2149,7 +2286,7 @@ func (w *worker) start(m receivedMessage, referrer string, created bool) {
 		}
 	}
 	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Start, tplData{
-		"website_link": w.cfg.WebsiteLink,
+		"website_link": w.siteHomeLink(),
 	})
 	m = m.next()
 	if referrer != "" && !isGroupOrChannel(m.chatID) {
@@ -2172,7 +2309,7 @@ func (w *worker) start(m receivedMessage, referrer string, created bool) {
 
 func (w *worker) help(m receivedMessage) {
 	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Help, tplData{
-		"website_link": w.cfg.WebsiteLink,
+		"website_link": w.siteHomeLink(),
 	})
 }
 
@@ -2187,6 +2324,7 @@ type commandSpec struct {
 var knownCommands = map[string]commandSpec{
 	"ad":                            {},
 	"add":                           {groupAdminOnly: true},
+	"affiliate":                     {}, // admin-gated in groupAdminOnly while enabled
 	"buy_subs":                      {},
 	"disable_images":                {groupAdminOnly: true},
 	"disable_offline_notifications": {groupAdminOnly: true},
@@ -2205,6 +2343,7 @@ var knownCommands = map[string]commandSpec{
 	"referral":                      {},
 	"remove":                        {groupAdminOnly: true},
 	"remove_all":                    {groupAdminOnly: true},
+	"reset_affiliate":               {}, // admin-gated in groupAdminOnly while enabled
 	"settings":                      {groupAdminOnly: true},
 	"social":                        {},
 	"start":                         {}, // the m- deep-link form is gated in groupAdminOnly
@@ -2213,6 +2352,34 @@ var knownCommands = map[string]commandSpec{
 	"version":                       {},
 	"want_more":                     {},
 	"week":                          {},
+}
+
+// affiliateCommandAllowed answers the caller when the command does not apply,
+// and reports whether to go on.
+// A disabled feature stays hidden; a private chat gets told where it works.
+func (w *worker) affiliateCommandAllowed(m receivedMessage) bool {
+	switch {
+	case !w.customAffiliateLinkEnabled():
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].UnknownCommand, nil)
+	case !isGroupOrChannel(m.chatID):
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].AffiliateGroupsOnly, nil)
+	default:
+		return true
+	}
+	return false
+}
+
+// groupAdminOnly reports whether a command needs group-admin rights.
+// A model deep-link start adds a subscription, so it is gated like /add.
+// A command the switch refuses is left ungated, so it answers the same to everyone.
+func (w *worker) groupAdminOnly(command, arguments string) bool {
+	switch command {
+	case "start":
+		return strings.HasPrefix(arguments, modelPayloadPrefix)
+	case "affiliate", "reset_affiliate":
+		return w.customAffiliateLinkEnabled()
+	}
+	return knownCommands[command].groupAdminOnly
 }
 
 // processIncomingCommand dispatches on command, which the caller lowercases.
@@ -2317,6 +2484,16 @@ func (w *worker) processIncomingCommand(
 			return
 		}
 		w.showWeek(m, arguments)
+	case "affiliate":
+		if !w.affiliateCommandAllowed(m) {
+			return
+		}
+		w.setAffiliate(m, arguments)
+	case "reset_affiliate":
+		if !w.affiliateCommandAllowed(m) {
+			return
+		}
+		w.resetAffiliate(m)
 	default:
 		// Unreachable while every knownCommands key has a case; table-switch drift lands here.
 		lerr("known command missing a handler: command = %s", command)

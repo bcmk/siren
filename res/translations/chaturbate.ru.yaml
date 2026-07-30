@@ -20,9 +20,37 @@ sites:
     Twitch: <a href="https://t.me/TwitchSirenBot">TwitchSirenBot</a>
     Kick: <a href="https://t.me/KickSirenBot">KickSirenBot</a>
     MyFreeCams: <a href="https://t.me/MyFreeCamsSirenBot">MyFreeCamsSirenBot</a>
+sample_streamer:
+  parse: raw
+  str: your_cam_name
 add_example:
   parse: html
   str: '{{ command "add" }} alica_webcam'
+affiliate_instructions:
+  parse: html
+  disable_preview: true
+  str: |-
+    Используйте свою партнёрскую ссылку Chaturbate, чтобы выплаты шли вам.
+    Сначала выберите, как вы хотите получать оплату.
+
+    <b>1. Токены за регистрацию</b>
+    Откройте <a href="https://chaturbate.com/b">chaturbate.com/b</a>,
+    прокрутите в самый низ и скопируйте <b>первую</b> ссылку оттуда.
+    Вы получаете 10 токенов за каждого зарегистрировавшегося пользователя
+    и 500 токенов за того, кто начнёт вещать
+    (он должен сначала заработать $20.00).
+
+    <b>2. 20% от расходов</b>
+    Откройте <a href="https://chaturbate.com/affiliates">chaturbate.com/affiliates</a>,
+    прокрутите в самый низ и скопируйте ссылку оттуда.
+    Вы получаете 20% от всего, что потратят ваши пользователи.
+
+    Затем отправьте скопированную ссылку сюда, вот так:
+    <code>{{ command "affiliate" }} https://chaturbate.com/in/?tour=LQps&amp;campaign=WIl8t&amp;track=default&amp;room={{ template "sample_streamer" }}</code>
+
+    <i>Страницы и выплаты выше — то, что Chaturbate публиковал
+    на момент написания, и с тех пор могло измениться.
+    Актуальные условия смотрите на их сайте.</i>
 faq_no_notifications:
   parse: html
   str: >

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"text/template"
 
@@ -44,9 +45,9 @@ func TestTranslationsNoUnknownFields(t *testing.T) {
 	}
 }
 
-// adsFile reports a file of ads: only ad entries, not a full translation set.
-func adsFile(base string) bool {
-	return len(base) >= 4 && base[:4] == "ads."
+// adsFile reports a file of ads by its endpoint name: only ad entries, not a full translation set.
+func adsFile(name string) bool {
+	return name == "ads" || strings.HasSuffix(name, "-ads")
 }
 
 // TestAdTemplatesExecute parses and renders every ads file, which the endpoint combinations
@@ -55,7 +56,8 @@ func TestAdTemplatesExecute(t *testing.T) {
 	covered := 0
 	for _, path := range translationFiles(t) {
 		base := filepath.Base(path)
-		if !adsFile(base) {
+		parts := splitLastDot(base[:len(base)-len(filepath.Ext(base))])
+		if len(parts) != 2 || !adsFile(parts[0]) {
 			continue
 		}
 		covered++
@@ -92,9 +94,6 @@ func translationCombinations(t *testing.T) map[string][]string {
 
 	for _, path := range files {
 		base := filepath.Base(path)
-		if adsFile(base) {
-			continue
-		}
 		// Parse filename: endpoint.lang.yaml or common.lang.yaml
 		ext := filepath.Ext(base)
 		nameWithoutExt := base[:len(base)-len(ext)]
@@ -103,6 +102,10 @@ func translationCombinations(t *testing.T) map[string][]string {
 			continue
 		}
 		name, lang := parts[0], parts[1]
+
+		if adsFile(name) {
+			continue
+		}
 
 		if name == "common" {
 			commonFiles[lang] = path
@@ -184,8 +187,6 @@ func TestTranslationTemplatesExecute(t *testing.T) {
 			tpl.Funcs(TemplateFuncs())
 			// The send path binds a chat before executing, and so must this.
 			tpl.Funcs(CommandFuncs("@bot"))
-			// affiliate_link is a dynamic template from config
-			template.Must(tpl.New("affiliate_link").Parse("{{ . }}"))
 			for k, v := range allTr {
 				_, err := tpl.New(k).Parse(v.Str)
 				if err != nil {

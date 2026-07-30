@@ -75,6 +75,7 @@ type Capabilities struct {
 	SupportsQueryStatus                   bool
 	SupportsCLI                           bool // true when the checker fits standalone CLI tools.
 	SupportsSubject                       bool // true when room subjects are surfaced.
+	SupportsCustomAffiliateLink           bool // true when a chat can set its own affiliate link.
 }
 
 // UsesFixedListOnline picks the online-poll request type, preferring
@@ -105,6 +106,9 @@ type Checker interface {
 	StatusRequestsQueue() <-chan cmdlib.StatusRequest
 	NicknamePreprocessing(name string) string
 	NicknameRegexp() *regexp.Regexp
+	ParseAffiliateParams(input string) (map[string]string, bool)
+	// AffiliateID returns the affiliate ID from parsed params, or "".
+	AffiliateID(params map[string]string) string
 }
 
 // BaseChecker holds the runtime state shared by every site checker.
@@ -149,6 +153,12 @@ func (c *BaseChecker[T]) QueryFixedListStatuses(_ []string, _ cmdlib.CheckMode) 
 // Config returns the per-site checker config. Concrete underlying
 // type is the site's XCheckerConfig — json.Marshal sees it fully.
 func (c *BaseChecker[T]) Config() CheckerConfig { return c.Cfg }
+
+// ParseAffiliateParams accepts nothing; sites with a promo panel override it.
+func (c *BaseChecker[T]) ParseAffiliateParams(string) (map[string]string, bool) { return nil, false }
+
+// AffiliateID returns "": a site without custom affiliate has no ID.
+func (c *BaseChecker[T]) AffiliateID(map[string]string) string { return "" }
 
 // NewBaseChecker builds a BaseChecker for a per-site checker.
 func NewBaseChecker[T CheckerConfig](cfg T) BaseChecker[T] {

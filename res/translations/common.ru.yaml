@@ -107,7 +107,7 @@ online:
   str: |-
     🟢
     {{- print " " -}}
-    {{- template "affiliate_link" .streamer -}}
+    {{- .streamer_link -}}
     {{- print " " -}}
     <i>в сети
     {{- if .time_diff }} {{ template "duration" .time_diff }}{{ end -}}
@@ -130,7 +130,7 @@ offline:
   str: |-
     🔴
     {{- print " " -}}
-    {{ template "affiliate_link" .streamer }}
+    {{ .streamer_link }}
     {{- print " " -}}
     <i>не в сети {{- if .time_diff -}}, была {{ template "duration" .time_diff }} назад {{- end -}}</i>
 zero_subscriptions:
@@ -152,7 +152,7 @@ list:
       <code>В СЕТИ</code>
       {{- print "\n" -}}
       {{- range .online -}}
-        {{- template "affiliate_link" .Streamer -}}
+        {{- .Link -}}
         {{- if .TimeDiff }}  <i>{{ template "duration" .TimeDiff }}</i> {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
@@ -168,7 +168,7 @@ list:
       <code>НЕ В СЕТИ</code>
       {{- print "\n" -}}
       {{- range .offline -}}
-        {{- template "affiliate_link" .Streamer -}}
+        {{- .Link -}}
         {{- if .TimeDiff }}  <i>была {{ template "duration" .TimeDiff }} назад</i> {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
@@ -278,12 +278,57 @@ settings:
     {{- else -}}
       Включить: {{ command "enable_silent_messages" }}
     {{- end -}}
+
+    {{- if .can_manage_affiliate -}}
+      {{- print "\n" -}}
+      {{- print "\n" -}}
+      Партнёрская ссылка: <b>{{ if .affiliate_params }}задана{{ else }}не задана{{ end }}</b>
+      {{- print "\n" -}}
+      Управление: {{ command "affiliate" }}{{ if .affiliate_params }}, сброс: {{ command "reset_affiliate" }}{{ end }}
+    {{- end -}}
 yes_no:
   parse: raw
   str: "{{- if . -}} да {{- else -}} нет {{- end -}}"
+sample_streamer:
+  parse: raw
+  str: your_channel
+affiliate_status:
+  parse: html
+  disable_preview: true
+  str: |-
+    Ваша партнёрская ссылка активна.
+    Партнёрский ID: <b>{{ .affiliate_id }}</b>
+
+    Ссылки на моделей теперь выглядят так:
+    <code>{{ .affiliate_base }}/{{ template "sample_streamer" }}{{ with .affiliate_query }}?{{ . }}{{ end }}</code>
+    Каждая перенаправляет через вашу партнёрскую ссылку {{ template "site" }}, поэтому выплаты идут вам.
+
+    Чтобы изменить, отправьте <code>{{ command "affiliate" }} ССЫЛКУ</code>
+    Сброс: {{ command "reset_affiliate" }}
+affiliate_invalid:
+  parse: html
+  disable_preview: true
+  str: |-
+    Не удалось разобрать. Убедитесь, что вставили партнёрскую ссылку {{ template "site" }} целиком.
+
+    {{ template "affiliate_instructions" . }}
 admins_only:
   parse: raw
   str: Это могут делать только администраторы группы.
+affiliate_groups_only:
+  parse: raw
+  str: Своя партнёрская ссылка задаётся для группы или канала. Добавьте туда бота и выполните эту команду там.
+affiliate_nothing_to_reset:
+  parse: raw
+  str: Нечего сбрасывать — для этого чата не задана партнёрская ссылка.
+affiliate_command:
+  parse: raw
+  str: Задать партнёрскую ссылку, чтобы выплаты шли вам
+affiliate_instructions:
+  parse: html
+  str: |-
+    Чтобы использовать свою партнёрскую ссылку, откройте аккаунт на сайте, сгенерируйте ссылку на главную страницу, скопируйте её и отправьте сюда:
+    <code>{{ command "affiliate" }} ВСТАВЬТЕ_ССЫЛКУ</code>
 syntax_feedback:
   parse: html
   str: |-
@@ -348,7 +393,7 @@ week:
   parse: html
   disable_preview: true
   str: |-
-    Неделя {{ template "affiliate_link" .streamer }} (UTC):
+    Неделя {{ .streamer_link }} (UTC):
     {{- print "\n\n" -}}
     <code>
     {{- printf "    00     06     12     18\n" -}}
@@ -384,7 +429,7 @@ week_never_online:
     <code>НЕ БЫЛИ В СЕТИ НА ЭТОЙ НЕДЕЛЕ</code>
     {{- print "\n" -}}
     {{- range .streamers -}}
-      {{- template "affiliate_link" .Streamer -}}
+      {{- .Link -}}
       {{- if .TimeDiff }}  <i>была {{ template "duration" .TimeDiff }} назад</i> {{- end -}}
       {{- print "\n" -}}
     {{- end -}}

@@ -41,7 +41,7 @@ type Config struct {
 	CheckGID                        bool                      `mapstructure:"check_gid"`                          // check goroutines ids
 	ListenAddress                   string                    `mapstructure:"listen_address"`                     // the address to listen to
 	Website                         string                    `mapstructure:"website"`                            // one of the following strings: "bongacams", "stripchat", "chaturbate", "livejasmin", "flirt4free", "streamate", "cam4", "twitch", "kick", "myfreecams"
-	WebsiteLink                     string                    `mapstructure:"website_link"`                       // affiliate link to website
+	WebsiteLink                     string                    `mapstructure:"website_link"`                       // legacy affiliate link to website, superseded by affiliate_base
 	PeriodSeconds                   int                       `mapstructure:"period_seconds"`                     // the period of querying streamer statuses
 	MaintainDBPeriodSeconds         int                       `mapstructure:"maintain_db_period_seconds"`         // the maintain DB period
 	MaxSubs                         int                       `mapstructure:"max_subs"`                           // maximum subscriptions per user
@@ -56,7 +56,9 @@ type Config struct {
 	OfflineNotifications            bool                      `mapstructure:"offline_notifications"`              // enable offline notifications
 	SQLPrelude                      []string                  `mapstructure:"sql_prelude"`                        // run these SQL commands before any other
 	EnableWeek                      bool                      `mapstructure:"enable_week"`                        // enable week command
-	AffiliateLink                   string                    `mapstructure:"affiliate_link"`                     // affiliate link template
+	AffiliateLink                   string                    `mapstructure:"affiliate_link"`                     // legacy affiliate link template, superseded by affiliate_base
+	AffiliateBase                   string                    `mapstructure:"affiliate_base"`                     // affiliate redirect base, e.g. https://siren.chat/out/cb
+	EnableCustomAffiliateLink       bool                      `mapstructure:"enable_custom_affiliate_link"`       // let chats set their own affiliate link, defaults to true
 	TelegramTimeoutSeconds          int                       `mapstructure:"telegram_timeout_seconds"`           // the timeout for Telegram queries
 	ImageDownloadTimeoutSeconds     int                       `mapstructure:"image_download_timeout_seconds"`     // the timeout for image downloads, defaults to 5
 	MaxSubscriptionsForPics         int                       `mapstructure:"max_subscriptions_for_pics"`         // the maximum amount of subscriptions for pics in a group chat
@@ -81,7 +83,7 @@ func ReadConfig(cfgPath string) *Config {
 	v.SetEnvPrefix("XRN")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
-	cfg := &Config{ShowImages: true, AdChancePercent: 20}
+	cfg := &Config{ShowImages: true, AdChancePercent: 20, EnableCustomAffiliateLink: true}
 	cmdlib.BindEnvForConfig(v, cfg)
 	checkErr(v.Unmarshal(&cfg, cmdlib.StrictConfigDecoder))
 	checkErr(checkConfig(cfg))
@@ -128,8 +130,8 @@ func checkConfig(cfg *Config) error {
 	if cfg.Website == "" {
 		return errors.New("configure website")
 	}
-	if cfg.WebsiteLink == "" {
-		return errors.New("configure website_link")
+	if cfg.WebsiteLink == "" && cfg.AffiliateBase == "" {
+		return errors.New("configure affiliate_base or website_link")
 	}
 	if cfg.HeavyUserRemainder == 0 {
 		return errors.New("configure heavy_user_remainder")
@@ -139,9 +141,6 @@ func checkConfig(cfg *Config) error {
 	}
 	if cfg.FollowerBonus == 0 {
 		return errors.New("configure follower_bonus")
-	}
-	if cfg.AffiliateLink == "" {
-		cfg.AffiliateLink = "{{ . }}"
 	}
 	if cfg.TelegramTimeoutSeconds == 0 {
 		return errors.New("configure telegram_timeout_seconds")
