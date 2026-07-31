@@ -179,6 +179,11 @@
   Dropping one leaves a gap; a new one takes the next unused number.
 - Re-render the whole findings list on every change:
   number, `file:line`, category, summary, failure scenario.
+- During a code review, never touch the working tree.
+  Run mutation tests and other experiments in a temporary worktree or copy —
+  there they need no permission.
+- Write each finding to stand alone,
+  so one can be handed to another agent without the rest of the list or the conversation.
 
 ## Platform Notes
 
