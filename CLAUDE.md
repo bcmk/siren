@@ -177,6 +177,8 @@
   its reasoning or its numbers are wrong, and say so explicitly.
 - Enumerate code review findings and never renumber them.
   Dropping one leaves a gap; a new one takes the next unused number.
+- Every defect belongs in the enumerated list.
+  Never state one in prose, in another finding's body, or in a fix suggestion.
 - Re-render the whole findings list on every change:
   number, `file:line`, category, summary, failure scenario.
 - During a code review, never touch the working tree.
