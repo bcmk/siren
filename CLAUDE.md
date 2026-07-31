@@ -237,6 +237,9 @@
   so its usage gets logged.
 - To log a command-like event (invoice, payment, pre-checkout, callback),
   call `LogReceivedMessage` directly with a name for it (as `search` does).
+- Two of our bots can share a group or channel, one per site.
+  A bare command reaches both, and a channel drops it,
+  so a command the bot prints must name the bot.
 
 ## Documentation
 
