@@ -1,30 +1,66 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+keep=20
+
+dry_run=false
+if [ "${1-}" = "--dry-run" ]; then
+    dry_run=true
+    shift
+fi
+
 if [ $# -ne 1 ]; then
-    echo "usage: $0 <repo>" >&2
+    echo "usage: $0 [--dry-run] <repo>" >&2
     exit 2
 fi
 repo="$1"
 
 manifest_list=$(doctl registry repository list-manifests "$repo" --output json)
 
-get_old_digests() {
-    jq -r "sort_by(.updated_at) | reverse | .[20:] | .[].digest" <<< "$manifest_list"
+# A build pushes an index naming its children,
+# and each child is listed here as a manifest of its own.
+# Rank the indexes: a child goes with its parent,
+# and deleting one a surviving index still names is refused with 412.
+# Parents come first, so no child outlives its last namer.
+get_doomed_digests() {
+    jq -r --argjson keep "$keep" '
+        [.[] | .digest] as $all
+        | [.[] | .digest as $self | (.blobs // [])[] | select(.digest != $self) | .digest] as $children
+        | (map(select(.digest as $d | $children | index($d) | not))
+            | sort_by(.updated_at) | reverse) as $ranked
+        | ([$ranked[:$keep][] | .digest, ((.blobs // [])[] | .digest)] | unique) as $protected
+        | [$ranked[$keep:][] | [.digest] + [(.blobs // [])[].digest]]
+        | flatten
+        | map(select(. as $d | $protected | index($d) | not))
+        | map(select(. as $d | $all | index($d)))
+        | reduce .[] as $d ([]; if index($d) then . else . + [$d] end)
+        | .[]' <<< "$manifest_list"
 }
 
 get_tags_from_digest() {
     jq -c --arg digest "$1" '.[] | select(.digest == $digest) | .tags // []' <<< "$manifest_list"
 }
 
-delete_manifest() {
-    local digest="$1"
-    local tags=""
-    tags=$(get_tags_from_digest "$digest")
-    echo "deleting digest: $digest, tags: $tags..."
-    doctl registry repository delete-manifest "$repo" "$digest" --force
-}
+doomed=$(get_doomed_digests)
+if [ -z "$doomed" ]; then
+    echo "$repo: nothing to delete"
+    exit 0
+fi
 
-get_old_digests | while read -r digest; do
-    delete_manifest "$digest"
-done
+# A refusal on one manifest must not strand the rest, so record it and carry on.
+failed=()
+while read -r digest; do
+    echo "deleting digest: $digest, tags: $(get_tags_from_digest "$digest")..."
+    if [ "$dry_run" = true ]; then
+        continue
+    fi
+    if ! doctl registry repository delete-manifest "$repo" "$digest" --force; then
+        failed+=("$digest")
+    fi
+done <<< "$doomed"
+
+if [ "${#failed[@]}" -gt 0 ]; then
+    echo "failed to delete ${#failed[@]} manifest(s):" >&2
+    printf '  %s\n' "${failed[@]}" >&2
+    exit 1
+fi
