@@ -91,7 +91,7 @@ type worker struct {
 	sendSeq                    uint64
 	sendResults                chan msgSendResult
 	cooledUsers                chan db.UserID
-	adminUserID                db.UserID
+	ownerUserID                db.UserID
 	deliverWG                  sync.WaitGroup
 	existenceListResults       chan *cmdlib.ExistenceListResults
 	checkerResults             chan cmdlib.CheckerResults
@@ -1528,10 +1528,10 @@ func (w *worker) feedback(m receivedMessage, text string) {
 	user := w.mustUserByID(m.userID)
 	if !user.Blacklist {
 		finalText := fmt.Sprintf("Feedback from %d: %s", user.ChatID, text)
-		// The admin issued no command, so this copy answers none,
+		// The owner issued no command, so this copy answers none,
 		// the same shape direct and broadcast use for a third party.
 		w.sendText(
-			db.PriorityHigh, m.endpoint, w.adminUserID, true, true, cmdlib.ParseRaw, finalText,
+			db.PriorityHigh, m.endpoint, w.ownerUserID, true, true, cmdlib.ParseRaw, finalText,
 			unprompted(db.MessagePacket))
 	}
 }
@@ -1539,7 +1539,7 @@ func (w *worker) feedback(m receivedMessage, text string) {
 func (w *worker) performanceStat(endpoint string, arguments string) {
 	parts := strings.Split(arguments, " ")
 	if len(parts) > 2 {
-		w.replyToAdmin(endpoint, "wrong number of arguments")
+		w.replyToOwner(endpoint, "wrong number of arguments")
 		return
 	}
 	n := int64(10)
@@ -1547,7 +1547,7 @@ func (w *worker) performanceStat(endpoint string, arguments string) {
 		var err error
 		n, err = strconv.ParseInt(parts[1], 10, 32)
 		if err != nil {
-			w.replyToAdmin(endpoint, "cannot parse arguments")
+			w.replyToOwner(endpoint, "cannot parse arguments")
 			return
 		}
 	}
@@ -1576,7 +1576,7 @@ func (w *worker) performanceStat(endpoint string, arguments string) {
 			fmt.Sprintf("<b>Count</b>: %d", durations[x].Count),
 		}
 		entry := strings.Join(lines, "\n")
-		w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseHTML, entry, replyNth("", i))
+		w.sendText(db.PriorityHigh, endpoint, w.ownerUserID, false, true, cmdlib.ParseHTML, entry, replyNth("", i))
 		n--
 	}
 }
@@ -1597,49 +1597,51 @@ func (w *worker) broadcast(endpoint string, text string) {
 		w.sendText(db.PriorityLow, endpoint, userID, true, false, cmdlib.ParseRaw, text, unprompted(db.MessagePacket))
 	}
 	// The ack queues at the broadcast's own priority, behind its last message.
-	// Same-priority dispatch is FIFO, so this "OK" means sent, not queued;
-	// replyToAdmin would jump the queue and change what it claims.
-	w.sendText(db.PriorityLow, endpoint, w.adminUserID, false, true, cmdlib.ParseRaw, "OK", reply(""))
+	// Same-priority dispatch is FIFO only while every recipient stays healthy;
+	// a stalled or cooling chat sinks behind the ack and is still pending when it sends.
+	// So "OK" means the queue ran past the broadcast, not that every copy landed.
+	// replyToOwner would jump the queue and say even less.
+	w.sendText(db.PriorityLow, endpoint, w.ownerUserID, false, true, cmdlib.ParseRaw, "OK", reply(""))
 }
 
 func (w *worker) direct(endpoint string, arguments string) {
 	parts := strings.SplitN(arguments, " ", 2)
 	if len(parts) < 2 {
-		w.replyToAdmin(endpoint, "usage: /direct chatID text")
+		w.replyToOwner(endpoint, "usage: /direct chatID text")
 		return
 	}
 	whom, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
-		w.replyToAdmin(endpoint, "first argument is invalid")
+		w.replyToOwner(endpoint, "first argument is invalid")
 		return
 	}
 	text := parts[1]
 	if text == "" {
 		return
 	}
-	// User, not EnsureUser: a bad admin arg must not materialize a stray row.
+	// User, not EnsureUser: a bad owner arg must not materialize a stray row.
 	// A private chat that can be messaged has a row anyway (it started the bot);
 	// the only gap is a group the bot is in that has never sent a command.
 	user, found := w.db.User(whom)
 	if !found {
-		w.replyToAdmin(endpoint, "no such user")
+		w.replyToOwner(endpoint, "no such user")
 		return
 	}
 	w.sendText(db.PriorityHigh, endpoint, user.UserID, true, false, cmdlib.ParseRaw, text, unprompted(db.MessagePacket))
-	w.replyToAdmin(endpoint, "OK")
+	w.replyToOwner(endpoint, "OK")
 }
 
 func (w *worker) blacklist(endpoint string, arguments string) {
 	whom, err := strconv.ParseInt(arguments, 10, 64)
 	if err != nil {
-		w.replyToAdmin(endpoint, "first argument is invalid")
+		w.replyToOwner(endpoint, "first argument is invalid")
 		return
 	}
 	// EnsureUser creates the row when the chat is unknown,
 	// so blacklisting an unseen chat materializes a (blacklisted) row.
 	// Deliberate: pre-blacklisting before the chat ever starts the bot works.
 	w.db.BlacklistUser(w.db.EnsureUser(whom))
-	w.replyToAdmin(endpoint, "OK")
+	w.replyToOwner(endpoint, "OK")
 }
 
 // seq numbers the first chunk, so a listing that follows another reply
@@ -1647,7 +1649,7 @@ func (w *worker) blacklist(endpoint string, arguments string) {
 func (w *worker) sendPolledList(endpoint string, now int, seq int) {
 	polled := w.db.PolledStreamersWithStatus()
 	if len(polled) == 0 {
-		w.replyToAdminNth(endpoint, seq, "no polled streamers")
+		w.replyToOwnerNth(endpoint, seq, "no polled streamers")
 		return
 	}
 	chunks := chunkStreamers(polled, 50)
@@ -1666,7 +1668,7 @@ func (w *worker) sendPolledList(endpoint string, now int, seq int) {
 			}
 		}
 		w.sendTr(
-			db.PriorityHigh, endpoint, w.adminUserID, false, w.tr[endpoint].List,
+			db.PriorityHigh, endpoint, w.ownerUserID, false, w.tr[endpoint].List,
 			tplData{"online": online, "offline": offline}, replyNth("", seq+i))
 	}
 }
@@ -1674,12 +1676,12 @@ func (w *worker) sendPolledList(endpoint string, now int, seq int) {
 func (w *worker) poll(endpoint string, arguments string) {
 	caps := w.checker.Capabilities()
 	if caps.UsesFixedListOnline() || !caps.SupportsQueryStatus {
-		w.replyToAdmin(endpoint, "checker does not support per-streamer polling")
+		w.replyToOwner(endpoint, "checker does not support per-streamer polling")
 		return
 	}
 	parts := strings.Fields(arguments)
 	if len(parts) != 2 {
-		w.replyToAdmin(endpoint, "expecting <streamer> <on|off>")
+		w.replyToOwner(endpoint, "expecting <streamer> <on|off>")
 		if len(parts) == 0 {
 			w.sendPolledList(endpoint, int(time.Now().Unix()), 1)
 		}
@@ -1687,7 +1689,7 @@ func (w *worker) poll(endpoint string, arguments string) {
 	}
 	nickname := w.checker.NicknamePreprocessing(parts[0])
 	if !w.checker.NicknameRegexp().MatchString(nickname) {
-		w.replyToAdmin(endpoint, "invalid nickname")
+		w.replyToOwner(endpoint, "invalid nickname")
 		return
 	}
 	var on bool
@@ -1697,14 +1699,14 @@ func (w *worker) poll(endpoint string, arguments string) {
 	case "off":
 		on = false
 	default:
-		w.replyToAdmin(endpoint, "second argument must be on or off")
+		w.replyToOwner(endpoint, "second argument must be on or off")
 		return
 	}
 	if !w.db.SetPoll(nickname, on) {
-		w.replyToAdmin(endpoint, "no such streamer")
+		w.replyToOwner(endpoint, "no such streamer")
 		return
 	}
-	w.replyToAdmin(endpoint, "OK")
+	w.replyToOwner(endpoint, "OK")
 }
 
 func (w *worker) webAppURL(endpoint string) string {
@@ -1989,10 +1991,10 @@ func (w *worker) logConfig() {
 	}
 }
 
-// Its replies go through replyToAdmin, which names no command:
-// an admin command is absent from knownCommands,
+// Its replies carry the empty command, through replyToOwner or a direct sendText:
+// an owner command is absent from knownCommands,
 // so the received log never names one either.
-func (w *worker) processAdminMessage(endpoint string, command, arguments string) bool {
+func (w *worker) processOwnerMessage(endpoint string, command, arguments string) bool {
 	switch command {
 	case "performance":
 		w.performanceStat(endpoint, arguments)
@@ -2012,21 +2014,21 @@ func (w *worker) processAdminMessage(endpoint string, command, arguments string)
 	case "set_max_subs":
 		parts := strings.Fields(arguments)
 		if len(parts) != 2 {
-			w.replyToAdmin(endpoint, "expecting two arguments")
+			w.replyToOwner(endpoint, "expecting two arguments")
 			return true
 		}
 		who, err := strconv.ParseInt(parts[0], 10, 64)
 		if err != nil {
-			w.replyToAdmin(endpoint, "first argument is invalid")
+			w.replyToOwner(endpoint, "first argument is invalid")
 			return true
 		}
 		maxSubs, err := strconv.Atoi(parts[1])
 		if err != nil {
-			w.replyToAdmin(endpoint, "second argument is invalid")
+			w.replyToOwner(endpoint, "second argument is invalid")
 			return true
 		}
 		w.db.SetLimit(w.db.EnsureUser(who), maxSubs)
-		w.replyToAdmin(endpoint, "OK")
+		w.replyToOwner(endpoint, "OK")
 		return true
 	}
 	return false
@@ -2211,8 +2213,8 @@ func (w *worker) processIncomingCommand(
 	linf("command received: chat = %d, command = %s, arguments = %s", m.chatID, command, arguments)
 	w.db.ResetBlock(m.endpoint, m.userID)
 
-	if m.chatID == w.cfg.AdminID {
-		if w.processAdminMessage(m.endpoint, command, arguments) {
+	if m.chatID == w.cfg.OwnerID {
+		if w.processOwnerMessage(m.endpoint, command, arguments) {
 			return
 		}
 	}
@@ -3282,8 +3284,8 @@ func (w *worker) finishStartup(
 	}
 	w.sendText(
 		db.PriorityHigh,
-		w.cfg.AdminEndpoint,
-		w.adminUserID,
+		w.cfg.OwnerEndpoint,
+		w.ownerUserID,
 		true,
 		true,
 		cmdlib.ParseRaw,
@@ -3339,7 +3341,7 @@ func main() {
 	go w.fuzzySearchDaemon()
 	// MaintenancePacket: the loop consumes its send result
 	// without touching the database, which is not created yet.
-	w.sendMaintenance(w.cfg.AdminEndpoint, w.cfg.AdminID, true, "bot started")
+	w.sendMaintenance(w.cfg.OwnerEndpoint, w.cfg.OwnerID, true, "bot started")
 	// The main loop below owns the scheduler from the start;
 	// the database work and the init that needs it run off the loop
 	// and report back on databaseDone, which publishes their writes.
@@ -3348,7 +3350,7 @@ func main() {
 	databaseDone := make(chan bool)
 	go func() {
 		w.createDatabase()
-		w.adminUserID = w.db.EnsureUser(w.cfg.AdminID)
+		w.ownerUserID = w.db.EnsureUser(w.cfg.OwnerID)
 		w.initCache()
 		w.db.ResetNotificationSending()
 		w.db.ResetCheckingToUnconfirmed()

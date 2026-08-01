@@ -28,7 +28,7 @@ func (w *testWorker) nextOutgoing() *queuedMessage {
 var testConfig = botconfig.Config{
 	CheckGID:             true,
 	MaxSubs:              3,
-	AdminID:              1,
+	OwnerID:              1,
 	HeavyUserRemainder:   1,
 	ReferralBonus:        1,
 	FollowerBonus:        1,

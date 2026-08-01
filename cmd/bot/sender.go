@@ -52,7 +52,7 @@ type sendTag struct {
 
 // reply tags the first message answering an inbound event.
 // The command names that event when the received log names it,
-// and is empty when neither log does, as for an admin command.
+// and is empty when neither log does, as for an owner command.
 func reply(command string) sendTag {
 	return replyNth(command, 0)
 }
@@ -137,16 +137,16 @@ func (w *worker) replyTr(
 	w.enqueueTr(priority, m.endpoint, m.userID, notify, translation, data, nil, m.tag(), 0)
 }
 
-// replyToAdmin answers an admin command with raw text.
-// Admin commands are absent from knownCommands,
+// replyToOwner answers an owner command with raw text.
+// Owner commands are absent from knownCommands,
 // so the received log names none and neither can this.
-func (w *worker) replyToAdmin(endpoint, text string) {
-	w.replyToAdminNth(endpoint, 0, text)
+func (w *worker) replyToOwner(endpoint, text string) {
+	w.replyToOwnerNth(endpoint, 0, text)
 }
 
-// replyToAdminNth answers as the seq-th message of an admin answer.
-func (w *worker) replyToAdminNth(endpoint string, seq int, text string) {
-	w.sendText(db.PriorityHigh, endpoint, w.adminUserID, false, true, cmdlib.ParseRaw, text, replyNth("", seq))
+// replyToOwnerNth answers as the seq-th message of an owner answer.
+func (w *worker) replyToOwnerNth(endpoint string, seq int, text string) {
+	w.sendText(db.PriorityHigh, endpoint, w.ownerUserID, false, true, cmdlib.ParseRaw, text, replyNth("", seq))
 }
 
 // replyMessage answers with a prebuilt message, always to the sender.

@@ -45,7 +45,7 @@ type UserID int64
 type Priority int
 
 const (
-	// PriorityHigh is for user-initiated replies and admin commands
+	// PriorityHigh is for user-initiated replies and owner commands
 	PriorityHigh Priority = 0
 
 	// PriorityLow is for bulk notifications and background messages

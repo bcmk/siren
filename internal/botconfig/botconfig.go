@@ -45,8 +45,8 @@ type Config struct {
 	PeriodSeconds                   int                       `mapstructure:"period_seconds"`                     // the period of querying streamer statuses
 	MaintainDBPeriodSeconds         int                       `mapstructure:"maintain_db_period_seconds"`         // the maintain DB period
 	MaxSubs                         int                       `mapstructure:"max_subs"`                           // maximum subscriptions per user
-	AdminID                         int64                     `mapstructure:"admin_id"`                           // admin Telegram ID
-	AdminEndpoint                   string                    `mapstructure:"admin_endpoint"`                     // admin endpoint
+	OwnerID                         int64                     `mapstructure:"admin_id"`                           // the owner's Telegram ID (wire name kept for compatibility)
+	OwnerEndpoint                   string                    `mapstructure:"admin_endpoint"`                     // the endpoint serving the owner; wire name as above
 	DBConnectionString              cmdlib.Secret             `mapstructure:"db_connection_string"`               // database connection string
 	Endpoints                       map[string]endpoint       `mapstructure:"endpoints"`                          // the endpoints by simple name, used for the support of the bots in different languages accessing the same database
 	HeavyUserRemainder              int                       `mapstructure:"heavy_user_remainder"`               // the maximum remainder of subscriptions to treat a user as heavy
@@ -110,7 +110,7 @@ func checkConfig(cfg *Config) error {
 	if cfg.ListenAddress == "" {
 		return errors.New("configure listen_address")
 	}
-	if _, found := cfg.Endpoints[cfg.AdminEndpoint]; !found {
+	if _, found := cfg.Endpoints[cfg.OwnerEndpoint]; !found {
 		return errors.New("configure admin_endpoint")
 	}
 	if cfg.PeriodSeconds == 0 {
@@ -119,7 +119,7 @@ func checkConfig(cfg *Config) error {
 	if cfg.MaxSubs == 0 {
 		return errors.New("configure max_subs")
 	}
-	if cfg.AdminID == 0 {
+	if cfg.OwnerID == 0 {
 		return errors.New("configure admin_id")
 	}
 	if cfg.DBConnectionString == "" {

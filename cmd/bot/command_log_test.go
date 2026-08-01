@@ -298,35 +298,35 @@ func TestCapitalizedCommandIsTracked(t *testing.T) {
 	}
 }
 
-// The copy of a user's feedback goes to the admin, who issued no command,
+// The copy of a user's feedback goes to the owner, who issued no command,
 // so it must not be logged as a reply to one.
-func TestFeedbackCopyToAdminLogsNoCommand(t *testing.T) {
+func TestFeedbackCopyToOwnerLogsNoCommand(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()
 	w.initCache()
 
-	w.adminUserID = w.db.EnsureUser(99)
+	w.ownerUserID = w.db.EnsureUser(99)
 	userID := w.db.EnsureUser(1)
 	w.feedback(testMessage(w, 1, "feedback", 100), "something is broken")
 
 	completeQueuedSends(t, w)
 	forUser := "select command from sent_message_log where user_id = $1"
-	adminCommands := commandsInLog(w, forUser, db.QueryParams{int64(w.adminUserID)})
+	ownerRows := commandsInLog(w, forUser, db.QueryParams{int64(w.ownerUserID)})
 	userCommands := commandsInLog(w, forUser, db.QueryParams{int64(userID)})
-	t.Logf("admin %q, user %q", adminCommands, userCommands)
-	if !slices.Equal(adminCommands, []string{nullCommand}) {
-		t.Errorf("the admin copy was logged as a reply, got %q", adminCommands)
+	t.Logf("owner %q, user %q", ownerRows, userCommands)
+	if !slices.Equal(ownerRows, []string{nullCommand}) {
+		t.Errorf("the owner copy was logged as a reply, got %q", ownerRows)
 	}
 	if !slices.Equal(userCommands, []string{"feedback"}) {
 		t.Errorf("the user's reply lost its command, got %q", userCommands)
 	}
 }
 
-// An admin command is absent from knownCommands, so the received log never names it;
+// An owner command is absent from knownCommands, so the received log never names it;
 // its replies must not name it either, or the logs cannot be joined.
-func TestAdminReplyLogsNoCommand(t *testing.T) {
+func TestOwnerReplyLogsNoCommand(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
@@ -334,13 +334,13 @@ func TestAdminReplyLogsNoCommand(t *testing.T) {
 	w.initCache()
 
 	w.botNames = map[string]string{"test": "bot"}
-	w.adminUserID = w.db.EnsureUser(w.cfg.AdminID)
+	w.ownerUserID = w.db.EnsureUser(w.cfg.OwnerID)
 	// Through processTGUpdate, so the received log is written for real.
 	w.processTGUpdate(incomingPacket{
 		endpoint: "test",
 		message: &models.Update{Message: &models.Message{
 			Text: "/blacklist 5",
-			Chat: models.Chat{ID: w.cfg.AdminID, Type: "private"},
+			Chat: models.Chat{ID: w.cfg.OwnerID, Type: "private"},
 		}},
 	})
 
@@ -348,10 +348,15 @@ func TestAdminReplyLogsNoCommand(t *testing.T) {
 	sent := drainSendQueueToLog(t, w)
 	t.Logf("received %q, sent %q", received, sent)
 	if !slices.Equal(received, []string{nullCommand}) {
-		t.Errorf("the received log named an admin command, got %q", received)
+		t.Errorf("the received log named an owner command, got %q", received)
 	}
 	if !slices.Equal(sent, []string{nullCommand}) {
-		t.Errorf("an admin reply named a command the received log lacks, got %q", sent)
+		t.Errorf("an owner reply named a command the received log lacks, got %q", sent)
+	}
+	// The unknown-command fallback writes these same rows,
+	// so only the blacklisted chat proves the owner dispatch ran.
+	if !w.db.MustBool("select coalesce(bool_or(blacklist), false) from users where chat_id = 5") {
+		t.Error("the owner command did not run: chat 5 is not blacklisted")
 	}
 }
 
@@ -579,8 +584,8 @@ func TestAddResultForUnknownEndpointIsDropped(t *testing.T) {
 	}
 }
 
-// The broadcast ack queues behind the broadcast itself,
-// so "OK" tells the admin it was sent rather than merely accepted.
+// The broadcast ack queues behind the broadcast itself:
+// "OK" means the queue ran past the broadcast, not that every copy landed.
 func TestBroadcastAckQueuesBehindTheBroadcast(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
@@ -588,7 +593,7 @@ func TestBroadcastAckQueuesBehindTheBroadcast(t *testing.T) {
 	w.createDatabase()
 	w.initCache()
 
-	w.adminUserID = w.db.EnsureUser(99)
+	w.ownerUserID = w.db.EnsureUser(99)
 	insertTestStreamer(&w.db, db.Streamer{Nickname: "some_model"})
 	for _, chatID := range []int64{1, 2, 3} {
 		insertSubscription(&w.db, "test", chatID, "some_model")
@@ -612,7 +617,7 @@ func TestBroadcastAckQueuesBehindTheBroadcast(t *testing.T) {
 		t.Fatalf("expected 3 broadcast messages and an ack, got %d queued", count)
 	}
 	t.Logf("queued %d, last to user %d at priority %d", count, last.userID, last.priority)
-	if last.userID != w.adminUserID {
+	if last.userID != w.ownerUserID {
 		t.Errorf("the ack did not land last, it went to user %d", last.userID)
 	}
 	if last.priority != db.PriorityLow {
@@ -995,7 +1000,7 @@ func TestPendingAddNumbersItsWholeAnswer(t *testing.T) {
 	}
 }
 
-// The admin listing chunks like the user-facing one,
+// The owner listing chunks like the user-facing one,
 // so its messages are numbered too, from wherever the caller left off.
 func TestPolledListNumbersItsChunks(t *testing.T) {
 	t.Parallel()
@@ -1003,7 +1008,7 @@ func TestPolledListNumbersItsChunks(t *testing.T) {
 	defer w.terminate()
 	w.createDatabase()
 	w.initCache()
-	w.adminUserID = w.db.EnsureUser(99)
+	w.ownerUserID = w.db.EnsureUser(99)
 
 	// Chunks are 50 streamers, so 60 fills two of them.
 	for i := range 60 {
@@ -1071,7 +1076,7 @@ func TestEmptyPolledListKeepsItsNumber(t *testing.T) {
 	defer w.terminate()
 	w.createDatabase()
 	w.initCache()
-	w.adminUserID = w.db.EnsureUser(99)
+	w.ownerUserID = w.db.EnsureUser(99)
 
 	w.sendPolledList("test", 100, 1)
 	if got := drainSeqsToLog(t, w); !slices.Equal(got, []int{1}) {
