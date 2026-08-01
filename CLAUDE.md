@@ -171,6 +171,10 @@
   unless specifically asked for memory files
 - When doing a code review, only report findings;
   never fix anything automatically. Fix only when explicitly asked.
+- When a comment at or near the code documents a choice as deliberate,
+  that is the answer, not context.
+  Do not report a finding against it unless you can show
+  its reasoning or its numbers are wrong, and say so explicitly.
 - Enumerate code review findings and never renumber them.
   Dropping one leaves a gap; a new one takes the next unused number.
 - Re-render the whole findings list on every change:
