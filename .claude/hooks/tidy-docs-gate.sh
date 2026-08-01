@@ -20,14 +20,16 @@ fi
 staged=$(git diff --cached)
 [ -n "$staged" ] || exit 0
 
-# Added markdown prose, or added Go comment lines.
+# Added markdown prose, added Go comment lines, or added shell comment lines.
 # Every added markdown line counts: over-detecting only costs a tidy-docs run.
 # Go matches leading and trailing comments, and `/* */` continuation lines.
 # A `//` right after a colon is a URL in a string, not a comment.
+# Shell covers the extensionless scripts/* files and every *.sh; a `#!` shebang is not a comment.
 docs=$(git diff --cached -U0 -- '*.md' | grep -E '^\+[^+]' || true)
 comment_re='^\+[[:space:]]*(//|/\*|\*)|^\+.*[^:]//|^\+.*/\*'
 comments=$(git diff --cached -U0 -- '*.go' | grep -E "$comment_re" || true)
-[ -n "$docs$comments" ] || exit 0
+shell=$(git diff --cached -U0 -- 'scripts/*' '*.sh' | grep -E '^\+[[:space:]]*#([^!]|$)' || true)
+[ -n "$docs$comments$shell" ] || exit 0
 
 hash=$(printf '%s' "$staged" | shasum -a 256 | cut -d' ' -f1)
 recorded="$(git rev-parse --git-dir)/tidy-docs-hash"
