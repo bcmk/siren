@@ -100,6 +100,8 @@
   delegating costs a hop and a fresh read of the skill for every run.
   Only the wrap is gated: a commit hook blocks the commit
   until `.claude/hooks/tidy-docs-approve.sh` approves the staged content.
+- `tidy-docs-approve.sh` attests that the tidy-docs skill ran on the staged lines.
+  Never run it after merely eyeballing them: no skill run, no approval.
 - Run `go fmt ./...` after changes and before committing
 - Run `golangci-lint run ./...` before committing
 - Run `go test ./...` to ensure changes work
