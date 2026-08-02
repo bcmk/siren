@@ -1894,15 +1894,7 @@ const webAppAddCommand = "web_app_add"
 // The event is logged here, not in handleWebAppAdd,
 // which runs on an HTTP goroutine where w.db is off limits.
 func (w *worker) performWebAppAdd(req webAppAddRequest) {
-	// handleWebAppAdd rejects a missing user id, so zero here is a bug,
-	// not a caller the whitelist would ever have admitted.
-	if req.chatID == 0 {
-		lerr("web app add without a chat, rejected before EnsureUser")
-		req.admittedCh <- false
-		return
-	}
-	if !w.cfg.ChatWhitelisted(req.chatID) {
-		linf("web app add not whitelisted: chat = %d", req.chatID)
+	if !w.admitChat("web app add", req.chatID) {
 		req.admittedCh <- false
 		return
 	}
@@ -2573,6 +2565,20 @@ func (w *worker) buildNotifications(
 	return notifications
 }
 
+// admitChat is the whitelist gate for every inbound path that can answer with a bool.
+// Four sites gate on ChatWhitelisted directly: the pre-checkout answer folds it into
+// its allowed conjunction, searchCaller speaks HTTP statuses,
+// a chat migration admits either end of its pair,
+// and sendMessageInternal gates outbound, skipping a send to a de-whitelisted chat.
+// path names the rejecting caller, since several share this log line.
+func (w *worker) admitChat(path string, chatID int64) bool {
+	if !w.cfg.ChatWhitelisted(chatID) {
+		linf("chat not in whitelist: path = %s, chat = %d", path, chatID)
+		return false
+	}
+	return true
+}
+
 func getCommandAndArgs(update *models.Update, mention string, ourIDs []int64) (int64, string, string) {
 	var text string
 	var chatID int64
@@ -2650,7 +2656,7 @@ func (w *worker) handleChatMigration(endpoint string, now int, m *models.Message
 		fromID, toID = m.MigrateFromChatID, m.Chat.ID
 	}
 	if !w.cfg.ChatWhitelisted(fromID) && !w.cfg.ChatWhitelisted(toID) {
-		linf("chat migration %d -> %d ignored, not in whitelist", fromID, toID)
+		linf("chat migration not in whitelist: from = %d, to = %d", fromID, toID)
 		return
 	}
 	w.migrateChatAndLog(now, endpoint, fromID, toID)
@@ -2695,8 +2701,7 @@ func (w *worker) processTGUpdate(p incomingPacket) {
 		default:
 			return
 		}
-		if !w.cfg.ChatWhitelisted(chatID) {
-			linf("callback_query from chat %d ignored, not in whitelist", chatID)
+		if !w.admitChat("callback_query", chatID) {
 			return
 		}
 		// Always answer to clear the client's loading spinner,
@@ -2712,8 +2717,7 @@ func (w *worker) processTGUpdate(p incomingPacket) {
 	}
 	if u.Message != nil && u.Message.SuccessfulPayment != nil {
 		chatID := u.Message.Chat.ID
-		if !w.cfg.ChatWhitelisted(chatID) {
-			linf("successful_payment from chat %d ignored, not in whitelist", chatID)
+		if !w.admitChat("successful_payment", chatID) {
 			return
 		}
 		w.handleSuccessfulPayment(p.endpoint, chatID, u.Message.SuccessfulPayment, now)
@@ -2728,8 +2732,7 @@ func (w *worker) processTGUpdate(p incomingPacket) {
 	if command == "" {
 		return
 	}
-	if !w.cfg.ChatWhitelisted(chatID) {
-		linf("message from chat %d ignored, not in whitelist", chatID)
+	if !w.admitChat("message", chatID) {
 		return
 	}
 	// Lowercase before the gate: knownCommands holds lowercase names,
@@ -2871,11 +2874,9 @@ func (w *worker) maintenanceReply(u incomingPacket, waitingUsers map[waitingUser
 	mention := w.botMention(u.endpoint)
 	chatID, command, args := getCommandAndArgs(u.message, mention, w.ourIDs)
 	if command != "" {
-		// Gate on the whitelist like processTGUpdate:
-		// otherwise finishStartup's EnsureUser materializes a row
-		// for a non-whitelisted chat.
-		if !w.cfg.ChatWhitelisted(chatID) {
-			linf("message from chat %d ignored, not in whitelist", chatID)
+		// Gate like processTGUpdate: otherwise finishStartup's EnsureUser
+		// materializes a row for a non-whitelisted chat.
+		if !w.admitChat("maintenance message", chatID) {
 			return
 		}
 		waitingUsers[waitingUser{chatID: chatID, endpoint: u.endpoint}] = true
@@ -3168,7 +3169,8 @@ const searchCommand = "search"
 // the guard repeats here because EnsureUser is the write it protects,
 // and addUser has no zero check, so chat 0 would materialize a row.
 func (w *worker) handleSearchRequest(req searchRequest) {
-	if req.chatID == 0 || !w.cfg.ChatWhitelisted(req.chatID) {
+	if !w.admitChat("search", req.chatID) {
+		// searchCaller vets before queueing, so a rejection here is a broken invariant.
 		lerr("search request not vetted: chat = %d", req.chatID)
 		req.resultCh <- searchResult{}
 		return

@@ -540,11 +540,11 @@ func TestWebAppAddIsWhitelistGated(t *testing.T) {
 		name      string
 		whitelist []int64
 		chatID    int64
+		admitted  bool
 	}{
-		{"outsider", []int64{1}, 999},
-		// The production default admits every chat, so nothing but the zero
-		// guard stands between chat 0 and EnsureUser.
-		{"no chat, no whitelist", nil, 0},
+		{"outsider is refused", []int64{1}, 999, false},
+		// The production default: no whitelist serves every chat.
+		{"empty whitelist admits", nil, 5, true},
 	} {
 		// A worker apiece: t.Run runs on its own goroutine,
 		// and the database refuses calls from a second one.
@@ -566,14 +566,21 @@ func TestWebAppAddIsWhitelistGated(t *testing.T) {
 				nickname:   "some_model",
 				admittedCh: admitted,
 			})
-			if <-admitted {
-				t.Error("an unvetted web app add reported success")
+			if got := <-admitted; got != c.admitted {
+				t.Errorf("admitted = %v, want %v", got, c.admitted)
 			}
 
 			received := commandsInLog(w, "select command from received_message_log", nil)
 			users := w.db.MustInt("select count(*) from users")
+			t.Logf("received %q, users %d", received, users)
+			if c.admitted {
+				if !slices.Equal(received, []string{webAppAddCommand}) || users != 1 {
+					t.Errorf("an admitted web app add left no trace: received %q, users %d",
+						received, users)
+				}
+				return
+			}
 			sent := drainSendQueueToLog(t, w)
-			t.Logf("received %q, sent %q, users %d", received, sent, users)
 			if len(received) != 0 || len(sent) != 0 || users != 0 {
 				t.Errorf("an unvetted web app add reached the database: "+
 					"received %q, sent %q, users %d", received, sent, users)
@@ -823,8 +830,7 @@ func TestWebAppSearchVetsItsCaller(t *testing.T) {
 }
 
 // A vetted search is recorded, so web app usage can be counted;
-// an unvetted one must reach neither the users table nor the log,
-// EnsureUser having no zero check of its own.
+// an unvetted one must reach neither the users table nor the log.
 func TestWebAppSearchWritesOnlyForAVettedChat(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
