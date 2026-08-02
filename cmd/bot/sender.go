@@ -5,7 +5,6 @@ package main
 
 import (
 	"container/heap"
-	"fmt"
 	"time"
 
 	"github.com/bcmk/siren/v3/internal/db"
@@ -95,17 +94,6 @@ func (w *worker) newReceivedMessage(
 		chatID:    chatID,
 		command:   command,
 	}, created
-}
-
-// inGroupOrChannel reports the chat a message came from.
-// A zero chat id means a message built without one, which would read as a private chat
-// and wave it past every guard that asks.
-func (m receivedMessage) inGroupOrChannel() bool {
-	if m.chatID == 0 {
-		panic(fmt.Sprintf("receivedMessage has no chat id: @uid = %d, endpoint = %s, command = %s",
-			m.userID, m.endpoint, m.command))
-	}
-	return isGroupOrChannel(m.chatID)
 }
 
 // next returns the message tagged as the reply after this one.
@@ -513,7 +501,7 @@ func (w *worker) deliver(q *queuedMessage) {
 	// A migrate to the same chat id is degenerate (Telegram breaking its
 	// one-way migration contract): re-queuing it would loop forever
 	// on the same address, so require a genuinely new target.
-	migrated := result == messageMigrate && migrateTo != 0 && migrateTo != q.message.chatID()
+	migrated := result == messageMigrate && migrateTo != q.message.chatID()
 	var resend *queuedMessage
 	if tag.kind != db.MaintenancePacket {
 		if transient || migrated {

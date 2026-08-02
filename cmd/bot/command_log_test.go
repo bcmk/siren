@@ -55,7 +55,7 @@ func completeQueuedSends(t *testing.T, w *testWorker) {
 		}
 		// completeSendResult refreshes the member count of a group or channel,
 		// which calls the endpoint's bot, nil in the test worker.
-		if chatID <= 0 && w.bots[q.endpoint] == nil {
+		if isGroupOrChannel(chatID) && w.bots[q.endpoint] == nil {
 			t.Fatalf("completing a send to chat %d needs a bot for endpoint %s",
 				chatID, q.endpoint)
 		}
@@ -477,6 +477,47 @@ func TestProcessTGUpdateWhitelistGate(t *testing.T) {
 	w.processTGUpdate(incomingPacket{endpoint: "test", message: message(5)})
 	if users := w.db.MustInt("select count(*) from users"); users != 1 {
 		t.Errorf("the whitelisted chat did not reach the database: %d users", users)
+	}
+}
+
+// A migration update must move the chat's rows whichever wire shape carries it,
+// and with both fields set the chat id, which can name at most one end, is ignored.
+func TestProcessTGUpdateAppliesMigrations(t *testing.T) {
+	t.Parallel()
+	const fromID, toID = int64(-123), int64(-1999)
+	tests := []struct {
+		name string
+		chat int64
+		from int64
+		to   int64
+	}{
+		{"migrate_to only", fromID, 0, toID},
+		{"migrate_from only", toID, fromID, 0},
+		{"both fields, chat untrusted", -999, fromID, toID},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := newTestWorker()
+			defer w.terminate()
+			w.createDatabase()
+			w.initCache()
+			w.db.AddUser(fromID, 3, 0, "group")
+			w.processTGUpdate(incomingPacket{
+				endpoint: "test",
+				message: &models.Update{Message: &models.Message{
+					Chat:              models.Chat{ID: tc.chat, Type: "supergroup"},
+					MigrateToChatID:   tc.to,
+					MigrateFromChatID: tc.from,
+				}},
+			})
+			if _, found := w.db.User(toID); !found {
+				t.Errorf("the chat's rows did not move to %d", toID)
+			}
+			if _, found := w.db.User(-999); found && tc.chat == -999 {
+				t.Error("the untrusted chat id gained a row")
+			}
+		})
 	}
 }
 

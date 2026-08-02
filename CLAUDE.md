@@ -257,6 +257,14 @@
   A bare command reaches both, and a channel drops it,
   so a command the bot prints must name the bot.
 
+## Chat IDs
+
+Where the Telegram library uses chat ID 0 as a sentinel,
+we convert the 0 into a real form of absence, e.g.:
+an `ok` bool, a nil pointer, a branch not taken.
+Past that, a chat ID is just a number:
+never compare one to 0 to mean absent, invalid, or "nothing to handle".
+
 ## Documentation
 
 - Don't mention other projects in CLAUDE.md or docs; keep them about this repo.

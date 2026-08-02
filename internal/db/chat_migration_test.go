@@ -423,7 +423,7 @@ func TestMigrateChat(t *testing.T) {
 		}
 	})
 
-	t.Run("zero id is ignored", func(t *testing.T) {
+	t.Run("zero is an ordinary id", func(t *testing.T) {
 		t.Parallel()
 		tdb := newTestDB(t)
 		defer tdb.terminate()
@@ -433,18 +433,15 @@ func TestMigrateChat(t *testing.T) {
 		d.AddUser(realID, 5, 1000, "group")
 		d.addSub(realID, "alice", ep)
 
-		// A malformed migration message can yield a zero id; it must be ignored,
-		// never parking the chat's rows at chat_id = 0.
-		d.MigrateChat(realID, 0)
-		d.MigrateChat(0, realID)
-
-		if _, found := d.User(0); found {
-			t.Error("rows parked at chat_id = 0")
+		// Telegram's zero-means-omitted is the edge's wire format, decoded there;
+		// storage moves whatever pair it is handed.
+		if d.MigrateChat(realID, 0) == nil {
+			t.Fatal("a migration to chat 0 did not apply")
 		}
-		if user, found := d.User(realID); !found || user.MaxSubs != 5 {
-			t.Errorf("real chat altered: found=%v max_subs=%d", found, user.MaxSubs)
+		if _, found := d.User(0); !found {
+			t.Error("rows did not move to chat_id = 0")
 		}
-		if got, want := d.subNicknames(realID, ep), []string{"alice"}; !equalStrings(got, want) {
+		if got, want := d.subNicknames(0, ep), []string{"alice"}; !equalStrings(got, want) {
 			t.Errorf("subscriptions = %v, want %v", got, want)
 		}
 	})

@@ -262,7 +262,7 @@ func TestNotificationsStorage(t *testing.T) {
 	}
 }
 
-// A targetless migrate result re-arms the notification
+// A same-id migrate result re-arms the notification
 // instead of finalizing it as delivered: nothing was actually sent.
 func TestCompleteSendResultMigrateReArms(t *testing.T) {
 	t.Parallel()
@@ -386,7 +386,7 @@ func TestCommandParser(t *testing.T) {
 		t.Error("unexpected result")
 	}
 	chatID, command, args = getCommandAndArgs(&models.Update{Message: &models.Message{Text: "   ", Chat: models.Chat{ID: 1}}}, "", nil)
-	if chatID != 0 || command != "" || args != "" {
+	if chatID != 1 || command != "" || args != "" {
 		t.Error("unexpected result")
 	}
 	chatID, command, args = getCommandAndArgs(&models.Update{Message: &models.Message{Text: "/command", Chat: models.Chat{ID: 1}}}, "", nil)
@@ -418,11 +418,11 @@ func TestCommandParser(t *testing.T) {
 		t.Error("unexpected result")
 	}
 	chatID, command, args = getCommandAndArgs(&models.Update{Message: &models.Message{NewChatMembers: []models.User{}, Chat: models.Chat{ID: 1}}}, "", nil)
-	if chatID != 0 || command != "" || args != "" {
+	if chatID != 1 || command != "" || args != "" {
 		t.Error("unexpected result")
 	}
 	chatID, command, args = getCommandAndArgs(&models.Update{Message: &models.Message{NewChatMembers: []models.User{{ID: 2}}, Chat: models.Chat{ID: 1}}}, "", nil)
-	if chatID != 0 || command != "" || args != "" {
+	if chatID != 1 || command != "" || args != "" {
 		t.Error("unexpected result")
 	}
 	chatID, command, args = getCommandAndArgs(&models.Update{Message: &models.Message{NewChatMembers: []models.User{{ID: 2}}, Chat: models.Chat{ID: 1}}}, "", []int64{2})
@@ -430,7 +430,7 @@ func TestCommandParser(t *testing.T) {
 		t.Error("unexpected result")
 	}
 	chatID, command, args = getCommandAndArgs(&models.Update{ChannelPost: &models.Message{Text: "command", Chat: models.Chat{ID: 1}}}, "@bot", nil)
-	if chatID != 0 || command != "" || args != "" {
+	if chatID != 1 || command != "" || args != "" {
 		t.Error("unexpected result")
 	}
 	chatID, command, args = getCommandAndArgs(&models.Update{ChannelPost: &models.Message{Text: "command@bot", Chat: models.Chat{ID: 1}}}, "@bot", nil)
@@ -438,7 +438,7 @@ func TestCommandParser(t *testing.T) {
 		t.Error("unexpected result")
 	}
 	chatID, command, args = getCommandAndArgs(&models.Update{ChannelPost: &models.Message{Text: "command @bot", Chat: models.Chat{ID: 1}}}, "@bot", nil)
-	if chatID != 0 || command != "" || args != "" {
+	if chatID != 1 || command != "" || args != "" {
 		t.Error("unexpected result")
 	}
 	chatID, command, args = getCommandAndArgs(&models.Update{ChannelPost: &models.Message{Text: " /command@bot", Chat: models.Chat{ID: 1}}}, "@bot", nil)
@@ -454,12 +454,12 @@ func TestCommandParser(t *testing.T) {
 		command string
 		args    string
 	}{
-		{"a command for another bot", "/command@otherbot", 0, "", ""},
-		{"our name trailing another", "/command@otherbot@bot", 0, "", ""},
+		{"a command for another bot", "/command@otherbot", -1, "", ""},
+		{"our name trailing another", "/command@otherbot@bot", -1, "", ""},
 		{"our name, with arguments", "/command@bot args", -1, "command", "args"},
 		{"a bare command", "/command", -1, "command", ""},
-		{"chatter carrying an at", "see you@work", 0, "", ""},
-		{"chatter", "hello", 0, "", ""},
+		{"chatter carrying an at", "see you@work", -1, "", ""},
+		{"chatter", "hello", -1, "", ""},
 	}
 	for _, tc := range addressed {
 		t.Run(tc.name, func(t *testing.T) {

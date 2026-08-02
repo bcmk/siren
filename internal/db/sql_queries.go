@@ -466,12 +466,13 @@ type ChatMigration struct {
 // and the source is kept as a tombstone for its BRIN message logs,
 // linked via migrated_to.
 //
-// It returns the outcome, or nil when there was nothing to do: invalid ids,
-// or the migration was already applied (a redelivery).
+// It returns the outcome, or nil when there was nothing to do: a degenerate migration,
+// or one already applied (a redelivery).
 // A non-nil result lets the caller log it
 // and write one received_message_log event per migration.
 func (d *Database) MigrateChat(fromID, toID int64) *ChatMigration {
-	if fromID == toID || fromID == 0 || toID == 0 {
+	if fromID == toID {
+		// A degenerate migration; there is nothing to move.
 		return nil
 	}
 	defer d.Measure("db: migrate chat")()

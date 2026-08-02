@@ -167,12 +167,13 @@ const (
 )
 
 type msgSendResult struct {
-	priority        db.Priority
-	timestamp       int
-	result          int
-	endpoint        string
-	chatID          int64
-	userID          db.UserID
+	priority  db.Priority
+	timestamp int
+	result    int
+	endpoint  string
+	chatID    int64
+	userID    db.UserID
+	// migrateToChatID is meaningful only for messageMigrate, which always names a target.
 	migrateToChatID int64
 	latency         int
 	tag             sendTag
@@ -188,8 +189,8 @@ type sendDisposition int
 const (
 	dispFinalize sendDisposition = iota // truly done: delete the row
 	dispResend                          // fallback, postponed, or migrated message: re-queue
-	dispRearm                           // targetless migrate: re-arm the row
-	dispLeave                           // targetless reply migrate or any maintenance migrate: skip
+	dispRearm                           // same-id migrate: re-arm the row
+	dispLeave                           // same-id reply migrate or any maintenance migrate: skip
 )
 
 // disposition classifies a delivery's result.
@@ -449,6 +450,7 @@ func (w *worker) sendMessageInternal(
 		var migrateErr *bot.MigrateError
 		if errors.As(err, &migrateErr) {
 			ldbg("cannot send a message, group migration")
+			// The library builds a MigrateError only around a set target, never a zero.
 			return messageMigrate, int64(migrateErr.MigrateToChatID), 0
 		}
 		var tooManyErr *bot.TooManyRequestsError
@@ -826,7 +828,7 @@ func (w *worker) addStreamer(m receivedMessage, nickname string, referral bool) 
 		params := &renderParams{templates: w.tpl[m.endpoint], key: tr.Key}
 		msg := params.asDeferredText(true, tr.DisablePreview, tr.Parse)
 		// A private chat, the only place a web app button works.
-		if !w.checker.Capabilities().UsesFixedListOnline() && !m.inGroupOrChannel() {
+		if !w.checker.Capabilities().UsesFixedListOnline() && !isGroupOrChannel(m.chatID) {
 			msg.ReplyMarkup = &models.InlineKeyboardMarkup{
 				InlineKeyboard: [][]models.InlineKeyboardButton{{
 					{
@@ -1438,7 +1440,7 @@ func (w *worker) listOnlineStreamers(m receivedMessage) {
 		return
 	}
 	// A group or channel, where a pile of pictures is worth capping.
-	if len(online) > w.cfg.MaxSubscriptionsForPics && m.inGroupOrChannel() {
+	if len(online) > w.cfg.MaxSubscriptionsForPics && isGroupOrChannel(m.chatID) {
 		data := tplData{"max_subs": w.cfg.MaxSubscriptionsForPics}
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].TooManySubscriptionsForPics, data)
 		return
@@ -1886,9 +1888,8 @@ const webAppAddCommand = "web_app_add"
 
 // performWebAppAdd carries out an add submitted from the search web app.
 // Main goroutine only.
-// It vets the chat before EnsureUser can materialize a row for it,
-// on the whitelist as every inbound path does, and against zero:
-// an empty whitelist admits every chat, and EnsureUser has no zero check.
+// It vets the chat on the whitelist, as every inbound path does,
+// before EnsureUser can materialize a row for it.
 // It has no maintenance divert, unlike a Telegram update:
 // registerWebApp runs only once the database and caches are ready.
 // The event is logged here, not in handleWebAppAdd,
@@ -2151,7 +2152,7 @@ func (w *worker) start(m receivedMessage, referrer string, created bool) {
 		"website_link": w.cfg.WebsiteLink,
 	})
 	m = m.next()
-	if referrer != "" && !m.inGroupOrChannel() {
+	if referrer != "" && !isGroupOrChannel(m.chatID) {
 		applied := w.refer(m.userID, referrer, m.timestamp, created)
 		switch applied {
 		case referralApplied:
@@ -2243,7 +2244,8 @@ func (w *worker) processIncomingCommand(
 		return
 	}
 
-	if w.groupAdminOnly(command, arguments) && m.inGroupOrChannel() && !w.senderIsGroupAdmin(m.endpoint, m.chatID, snd) {
+	if w.groupAdminOnly(command, arguments) && isGroupOrChannel(m.chatID) &&
+		!w.senderIsGroupAdmin(m.endpoint, m.chatID, snd) {
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].AdminsOnly, nil)
 		return
 	}
@@ -2608,7 +2610,7 @@ func getCommandAndArgs(update *models.Update, mention string, ourIDs []int64) (i
 		}
 		// Chatter is not for the bot; in a group it answers commands only.
 		if isGroupOrChannel(chatID) && !strings.HasPrefix(text, "/") {
-			return 0, "", ""
+			return chatID, "", ""
 		}
 	} else if update.ChannelPost != nil {
 		text = update.ChannelPost.Text
@@ -2617,7 +2619,7 @@ func getCommandAndArgs(update *models.Update, mention string, ourIDs []int64) (i
 	}
 	text = strings.TrimLeft(text, " /")
 	if text == "" {
-		return 0, "", ""
+		return chatID, "", ""
 	}
 	parts := strings.SplitN(text, " ", 2)
 	// Telegram matches a username case-insensitively but relays the text as typed,
@@ -2628,7 +2630,7 @@ func getCommandAndArgs(update *models.Update, mention string, ourIDs []int64) (i
 		parts[0] = name
 	case forceMention || (addressed && isGroupOrChannel(chatID)):
 		// A command naming another bot is that bot's, and a group delivers it to every bot.
-		return 0, "", ""
+		return chatID, "", ""
 	}
 	if len(parts) < 2 {
 		return chatID, parts[0], ""
@@ -2648,13 +2650,29 @@ func (w *worker) migrateChatAndLog(timestamp int, endpoint string, fromID, toID 
 	}
 }
 
+// migrationPair decodes a migration message's wire format, the one place that does:
+// MigrateToChatID and MigrateFromChatID are 0 where Telegram omitted the field.
+// ok reports a migration; both directions carry the same pair.
+// The API reference promises no exclusivity between the two fields;
+// its maintainer states a message cannot belong to both chats
+// (tdlib/telegram-bot-api#170), and the first case trusts the fields alone regardless.
+func migrationPair(m *models.Message) (fromID, toID int64, ok bool) {
+	switch {
+	// Both fields name their ends absolutely, so together they need no help from the chat,
+	// which names an end only where one field arrives alone.
+	case m.MigrateFromChatID != 0 && m.MigrateToChatID != 0:
+		return m.MigrateFromChatID, m.MigrateToChatID, true
+	case m.MigrateToChatID != 0:
+		return m.Chat.ID, m.MigrateToChatID, true
+	case m.MigrateFromChatID != 0:
+		return m.MigrateFromChatID, m.Chat.ID, true
+	}
+	return 0, 0, false
+}
+
 // handleChatMigration migrates a chat after a group-to-supergroup upgrade.
 // Both the migrate_to and migrate_from messages carry the same ID pair.
-func (w *worker) handleChatMigration(endpoint string, now int, m *models.Message) {
-	fromID, toID := m.Chat.ID, m.MigrateToChatID
-	if m.MigrateFromChatID != 0 {
-		fromID, toID = m.MigrateFromChatID, m.Chat.ID
-	}
+func (w *worker) handleChatMigration(endpoint string, now int, fromID, toID int64) {
 	if !w.cfg.ChatWhitelisted(fromID) && !w.cfg.ChatWhitelisted(toID) {
 		linf("chat migration not in whitelist: from = %d, to = %d", fromID, toID)
 		return
@@ -2723,9 +2741,11 @@ func (w *worker) processTGUpdate(p incomingPacket) {
 		w.handleSuccessfulPayment(p.endpoint, chatID, u.Message.SuccessfulPayment, now)
 		return
 	}
-	if m := u.Message; m != nil && (m.MigrateToChatID != 0 || m.MigrateFromChatID != 0) {
-		w.handleChatMigration(p.endpoint, now, m)
-		return
+	if m := u.Message; m != nil {
+		if fromID, toID, ok := migrationPair(m); ok {
+			w.handleChatMigration(p.endpoint, now, fromID, toID)
+			return
+		}
 	}
 	mention := w.botMention(p.endpoint)
 	chatID, command, args := getCommandAndArgs(u, mention, w.ourIDs)
@@ -2807,7 +2827,7 @@ func (w *worker) rejectForRedeliveryWhileMigrating(inner http.Handler) http.Hand
 					http.Error(rw, "migrating", http.StatusServiceUnavailable)
 					return
 				}
-				if m.MigrateToChatID != 0 || m.MigrateFromChatID != 0 {
+				if _, _, ok := migrationPair(m); ok {
 					linf("rejecting chat migration during startup for redelivery: chat = %d", m.Chat.ID)
 					http.Error(rw, "migrating", http.StatusServiceUnavailable)
 					return
@@ -2964,9 +2984,8 @@ func (w *worker) handleSendResult(r msgSendResult) {
 		w.db.ResetBlock(r.endpoint, r.userID)
 	case messageMigrate:
 		// Move the chat's data so later sends go to the new id, not the old.
-		if r.migrateToChatID != 0 {
-			w.migrateChatAndLog(r.timestamp, r.endpoint, r.chatID, r.migrateToChatID)
-		}
+		// A same-id migrate degenerates inside MigrateChat; nothing to guard here.
+		w.migrateChatAndLog(r.timestamp, r.endpoint, r.chatID, r.migrateToChatID)
 	}
 	w.db.LogSentMessage(
 		r.timestamp, r.userID, r.result, r.endpoint, r.priority, r.latency, r.tag.kind, r.tag.command,
@@ -3012,12 +3031,12 @@ func (w *worker) completeSendResult(r msgSendResult) {
 		// (dispatch resolves the chat id through the tombstone chain).
 		w.enqueue(r.resend)
 	case dispRearm:
-		// A migrate without a target delivered nothing.
+		// A same-id migrate delivered nothing.
 		// Re-arm the notification rather than finalizing it as sent;
 		// the next fetch retries it fresh.
 		w.db.RequeueNotification(r.notificationID)
 	case dispLeave:
-		// A targetless reply migrate or any maintenance migrate (notificationID 0):
+		// A same-id reply migrate or any maintenance migrate (notificationID 0):
 		// no row to re-arm.
 	}
 	w.onSendDone()
@@ -3166,8 +3185,7 @@ const searchCommand = "search"
 // handleSearchRequest serves one search from the web app.
 // It runs on the search daemon's goroutine, which owns fuzzySearchDB.
 // searchCaller vets the chat before the request is queued;
-// the guard repeats here because EnsureUser is the write it protects,
-// and addUser has no zero check, so chat 0 would materialize a row.
+// the guard repeats here because EnsureUser is the write it protects.
 func (w *worker) handleSearchRequest(req searchRequest) {
 	if !w.admitChat("search", req.chatID) {
 		// searchCaller vets before queueing, so a rejection here is a broken invariant.
