@@ -36,6 +36,9 @@ recorded="$(git rev-parse --git-dir)/tidy-docs-hash"
 [ -f "$recorded" ] && [ "$(cat "$recorded")" = "$hash" ] && exit 0
 
 echo "Blocked: the staged diff adds comments or docs and tidy-docs has not run" \
-	"on this exact staged content. Run the tidy-docs skill, stage the reflow," \
-	"then approve it with .claude/hooks/tidy-docs-approve.sh and commit again." >&2
+	"on this exact staged content. You MUST check every changed comment and doc line" \
+	"against the tidy-docs skill, not just run the approval script:" \
+	"an approval without the check is a lie the gate cannot detect." \
+	"Run the skill, stage the reflow, then approve it with" \
+	".claude/hooks/tidy-docs-approve.sh and commit again." >&2
 exit 2
