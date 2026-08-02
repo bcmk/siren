@@ -168,6 +168,8 @@
 
 - Always suggest English grammar/style fixes
   in the user's messages
+- Answer as briefly as the question allows.
+  Give the short answer first, and only then the reasoning if needed.
 - When asked to "remember" or "write somewhere",
   save to CLAUDE.md or docs/\* files, not memory files,
   unless specifically asked for memory files
