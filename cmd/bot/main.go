@@ -1537,17 +1537,26 @@ func (w *worker) feedback(m receivedMessage, text string) {
 }
 
 func (w *worker) performanceStat(endpoint string, arguments string) {
-	parts := strings.Split(arguments, " ")
-	if len(parts) > 2 {
-		w.replyToOwner(endpoint, "wrong number of arguments")
-		return
+	parts := strings.Fields(arguments)
+	sortBy := "total"
+	if len(parts) > 0 && (parts[0] == "avg" || parts[0] == "total") {
+		sortBy = parts[0]
+		parts = parts[1:]
 	}
 	n := int64(10)
-	if len(parts) == 2 {
+	if len(parts) > 1 {
+		w.replyToOwner(endpoint, "usage: /performance [avg|total] [count]")
+		return
+	}
+	if len(parts) == 1 {
 		var err error
-		n, err = strconv.ParseInt(parts[1], 10, 32)
+		n, err = strconv.ParseInt(parts[0], 10, 32)
 		if err != nil {
-			w.replyToOwner(endpoint, "cannot parse arguments")
+			w.replyToOwner(endpoint, "cannot parse the count")
+			return
+		}
+		if n <= 0 {
+			w.replyToOwner(endpoint, "the count must be positive")
 			return
 		}
 	}
@@ -1556,7 +1565,7 @@ func (w *worker) performanceStat(endpoint string, arguments string) {
 	for x := range durations {
 		queries = append(queries, x)
 	}
-	if len(parts) >= 1 && parts[0] == "avg" {
+	if sortBy == "avg" {
 		sort.SliceStable(queries, func(i, j int) bool {
 			return durations[queries[i]].Avg > durations[queries[j]].Avg
 		})
@@ -1576,7 +1585,7 @@ func (w *worker) performanceStat(endpoint string, arguments string) {
 			fmt.Sprintf("<b>Count</b>: %d", durations[x].Count),
 		}
 		entry := strings.Join(lines, "\n")
-		w.sendText(db.PriorityHigh, endpoint, w.ownerUserID, false, true, cmdlib.ParseHTML, entry, replyNth("", i))
+		w.replyToOwnerNth(endpoint, i, cmdlib.ParseHTML, entry)
 		n--
 	}
 }
@@ -1649,7 +1658,7 @@ func (w *worker) blacklist(endpoint string, arguments string) {
 func (w *worker) sendPolledList(endpoint string, now int, seq int) {
 	polled := w.db.PolledStreamersWithStatus()
 	if len(polled) == 0 {
-		w.replyToOwnerNth(endpoint, seq, "no polled streamers")
+		w.replyToOwnerNth(endpoint, seq, cmdlib.ParseRaw, "no polled streamers")
 		return
 	}
 	chunks := chunkStreamers(polled, 50)
@@ -1991,47 +2000,59 @@ func (w *worker) logConfig() {
 	}
 }
 
-// Its replies carry the empty command, through replyToOwner or a direct sendText:
-// an owner command is absent from knownCommands,
-// so the received log never names one either.
+// ownerCommands maps each owner command to its handler,
+// so a handler cannot exist without its dispatch key.
+// The names stay off knownCommands, held so by TestOwnerCommandsStayOffKnownCommands.
+var ownerCommands = map[string]func(w *worker, endpoint, arguments string){
+	"performance":  (*worker).performanceStat,
+	"broadcast":    (*worker).broadcast,
+	"direct":       (*worker).direct,
+	"blacklist":    (*worker).blacklist,
+	"poll":         (*worker).poll,
+	"set_max_subs": (*worker).setMaxSubs,
+}
+
+// processOwnerMessage handles the owner's own commands.
+// Its replies carry the empty command,
+// as does the received log for any name off knownCommands.
 func (w *worker) processOwnerMessage(endpoint string, command, arguments string) bool {
-	switch command {
-	case "performance":
-		w.performanceStat(endpoint, arguments)
-		return true
-	case "broadcast":
-		w.broadcast(endpoint, arguments)
-		return true
-	case "direct":
-		w.direct(endpoint, arguments)
-		return true
-	case "blacklist":
-		w.blacklist(endpoint, arguments)
-		return true
-	case "poll":
-		w.poll(endpoint, arguments)
-		return true
-	case "set_max_subs":
-		parts := strings.Fields(arguments)
-		if len(parts) != 2 {
-			w.replyToOwner(endpoint, "expecting two arguments")
-			return true
-		}
-		who, err := strconv.ParseInt(parts[0], 10, 64)
-		if err != nil {
-			w.replyToOwner(endpoint, "first argument is invalid")
-			return true
-		}
-		maxSubs, err := strconv.Atoi(parts[1])
-		if err != nil {
-			w.replyToOwner(endpoint, "second argument is invalid")
-			return true
-		}
-		w.db.SetLimit(w.db.EnsureUser(who), maxSubs)
-		w.replyToOwner(endpoint, "OK")
-		return true
+	handler, ok := ownerCommands[command]
+	if !ok {
+		return false
 	}
-	return false
+	handler(w, endpoint, arguments)
+	return true
+}
+
+// setMaxSubs raises or lowers a chat's subscription limit.
+func (w *worker) setMaxSubs(endpoint string, arguments string) {
+	parts := strings.Fields(arguments)
+	if len(parts) != 2 {
+		w.replyToOwner(endpoint, "expecting two arguments")
+		return
+	}
+	who, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		w.replyToOwner(endpoint, "first argument is invalid")
+		return
+	}
+	maxSubs, err := strconv.Atoi(parts[1])
+	if err != nil {
+		w.replyToOwner(endpoint, "second argument is invalid")
+		return
+	}
+	if maxSubs < 0 {
+		w.replyToOwner(endpoint, "the limit must be non-negative")
+		return
+	}
+	// User, not EnsureUser: a bad owner arg must not materialize a stray row (see direct).
+	user, found := w.db.User(who)
+	if !found {
+		w.replyToOwner(endpoint, "no such user")
+		return
+	}
+	w.db.SetLimit(user.UserID, maxSubs)
+	w.replyToOwner(endpoint, "OK")
 }
 
 // noinspection SpellCheckingInspection

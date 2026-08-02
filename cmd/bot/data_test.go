@@ -26,9 +26,10 @@ func (w *testWorker) nextOutgoing() *queuedMessage {
 }
 
 var testConfig = botconfig.Config{
-	CheckGID:             true,
-	MaxSubs:              3,
-	OwnerID:              1,
+	CheckGID: true,
+	MaxSubs:  3,
+	// Off the small ids ordinary-user fixtures use, so no test passes the owner gate by accident.
+	OwnerID:              424242,
 	HeavyUserRemainder:   1,
 	ReferralBonus:        1,
 	FollowerBonus:        1,

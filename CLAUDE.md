@@ -248,6 +248,8 @@
   so the switch dispatches it and its usage gets logged,
   and decide there whether only group admins may run it —
   the zero value lets any group member.
+  An owner-only command goes to `ownerCommands` instead;
+  `TestOwnerCommandsStayOffKnownCommands` holds the two sets disjoint.
   An exception gated out of band gets a note on its row, as `start` has.
 - To log a command-like event (invoice, payment, pre-checkout, callback),
   call `LogReceivedMessage` directly with a name for it (as `search` does).

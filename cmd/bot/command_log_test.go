@@ -360,6 +360,60 @@ func TestOwnerReplyLogsNoCommand(t *testing.T) {
 	}
 }
 
+// The owner gate is the only thing between a stranger and the owner commands:
+// a non-owner's /blacklist must answer as unknown and blacklist nobody.
+func TestOwnerGateRefusesStrangers(t *testing.T) {
+	t.Parallel()
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase()
+	w.initCache()
+	w.botNames = map[string]string{"test": "bot"}
+	w.ownerUserID = w.db.EnsureUser(w.cfg.OwnerID)
+	w.processTGUpdate(incomingPacket{
+		endpoint: "test",
+		message: &models.Update{Message: &models.Message{
+			Text: "/blacklist 5",
+			Chat: models.Chat{ID: 77, Type: "private"},
+		}},
+	})
+	if w.db.MustBool("select coalesce(bool_or(blacklist), false) from users where chat_id = 5") {
+		t.Error("a stranger's /blacklist ran")
+	}
+	q := w.sendQueue.pop()
+	q.message.render("")
+	if got := q.message.(*messageParams).Text; got != "UnknownCommand" {
+		t.Errorf("reply = %q, want %q", got, "UnknownCommand")
+	}
+}
+
+// Every ownerCommands key must dispatch:
+// a gate re-added before the map lookup would swallow a registered command.
+func TestOwnerCommandsDispatch(t *testing.T) {
+	t.Parallel()
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase()
+	w.initCache()
+	w.ownerUserID = w.db.EnsureUser(99)
+	for name := range ownerCommands {
+		if !w.processOwnerMessage("test", name, "") {
+			t.Errorf("owner command %q did not dispatch", name)
+		}
+	}
+}
+
+// An owner command in knownCommands would be logged by name while its replies carry
+// the empty command, splitting the log join; hold the two sets disjoint.
+func TestOwnerCommandsStayOffKnownCommands(t *testing.T) {
+	t.Parallel()
+	for name := range ownerCommands {
+		if _, known := knownCommands[name]; known {
+			t.Errorf("owner command %q is in knownCommands", name)
+		}
+	}
+}
+
 // The processTGUpdate whitelist gate keeps a non-whitelisted chat out of the database
 // and out of both logs, whichever update kind carries it;
 // the web app, maintenance and search gates are pinned by their own tests.

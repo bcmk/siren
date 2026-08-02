@@ -141,12 +141,12 @@ func (w *worker) replyTr(
 // Owner commands are absent from knownCommands,
 // so the received log names none and neither can this.
 func (w *worker) replyToOwner(endpoint, text string) {
-	w.replyToOwnerNth(endpoint, 0, text)
+	w.replyToOwnerNth(endpoint, 0, cmdlib.ParseRaw, text)
 }
 
 // replyToOwnerNth answers as the seq-th message of an owner answer.
-func (w *worker) replyToOwnerNth(endpoint string, seq int, text string) {
-	w.sendText(db.PriorityHigh, endpoint, w.ownerUserID, false, true, cmdlib.ParseRaw, text, replyNth("", seq))
+func (w *worker) replyToOwnerNth(endpoint string, seq int, parse cmdlib.ParseKind, text string) {
+	w.sendText(db.PriorityHigh, endpoint, w.ownerUserID, false, true, parse, text, replyNth("", seq))
 }
 
 // replyMessage answers with a prebuilt message, always to the sender.
