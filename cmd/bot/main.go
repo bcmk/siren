@@ -33,6 +33,9 @@ import (
 	texttemplate "text/template"
 	"time"
 
+	// The alpine image ships no zone database, so the binary carries one.
+	_ "time/tzdata"
+
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
@@ -100,11 +103,15 @@ type worker struct {
 	imagedNotifications        chan notificationBatch
 	ourIDs                     []int64
 	searchHTML                 *htmltemplate.Template
-	searchRequests             chan searchRequest
-	webAppAddRequests          chan webAppAddRequest
-	incomingPackets            chan incomingPacket
-	maintenance                atomic.Bool
-	shuttingDown               atomic.Bool
+	// zoneNames maps a lowercased IANA name to the zone the binary loaded for it,
+	// whose own name is the spelling to store.
+	// Written once at startup and only read after, so a concurrent reader needs no lock.
+	zoneNames         map[string]*time.Location
+	searchRequests    chan searchRequest
+	webAppAddRequests chan webAppAddRequest
+	incomingPackets   chan incomingPacket
+	maintenance       atomic.Bool
+	shuttingDown      atomic.Bool
 	// chatMember is the admin gate's lookup, a field so tests can fake the answer.
 	chatMember func(endpoint string, chatID, userID int64) (*models.ChatMember, error)
 	shutdownCh chan struct{}
@@ -605,6 +612,42 @@ func (w *worker) createDatabase() {
 	w.db.ResetQueryStats()
 }
 
+// minZoneNames is the floor a working zone table clears with room to spare,
+// the smallest packaging shipping some four hundred names.
+// A server whose zone directory is missing returns none, refusing every zone a chat names.
+const minZoneNames = 100
+
+// initTimezones loads the zone spellings the server holds, which parseTimezone resolves against.
+// It runs before the web app is served, whose goroutines read the map without a lock.
+func (w *worker) initTimezones() {
+	w.setZoneNames(w.db.TimezoneNames())
+}
+
+// setZoneNames is the one way the map is filled, so no path stores a table without the floor.
+// It stops a bot whose server has no working zone table,
+// which would otherwise run on and refuse every zone a chat names.
+//
+// The server's names are loaded here, once, and only those that load are kept:
+// the two carry their own copies of the zone database and drift as either is upgraded,
+// and a name the page offered but the save refused would be the drift landing on a chat.
+func (w *worker) setZoneNames(names map[string]string) {
+	zones := make(map[string]*time.Location, len(names))
+	for lower, canonical := range names {
+		loc, err := time.LoadLocation(canonical)
+		if err != nil {
+			lerr("the server holds a zone this binary cannot load: timezone = %s, %v", canonical, err)
+			continue
+		}
+		zones[lower] = loc
+	}
+	if len(zones) < minZoneNames {
+		checkErr(fmt.Errorf("the server offers %d loadable timezone names, fewer than %d: "+
+			"its zone table is broken", len(zones), minZoneNames))
+	}
+	w.zoneNames = zones
+	linf("timezone names loaded: %d of the %d offered", len(zones), len(names))
+}
+
 func (w *worker) initCache() {
 	start := time.Now()
 	w.unconfirmedOnlineStreamers = map[string]cmdlib.StreamerInfo{}
@@ -852,6 +895,14 @@ func (w *worker) gatedAffiliateForUser(m receivedMessage) map[string]string {
 	return w.mustUserByID(m.userID).AffiliateParams
 }
 
+// gatedAffiliateForChat is gatedAffiliateForUser for a caller that already holds the user.
+func (w *worker) gatedAffiliateForChat(chatID int64, user db.User) map[string]string {
+	if !isGroupOrChannel(chatID) || !w.customAffiliateLinkEnabled() {
+		return nil
+	}
+	return user.AffiliateParams
+}
+
 func (w *worker) showWeek(m receivedMessage, nickname string) {
 	if nickname != "" {
 		nickname = w.checker.NicknamePreprocessing(nickname)
@@ -859,11 +910,14 @@ func (w *worker) showWeek(m receivedMessage, nickname string) {
 			w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].InvalidSymbols, tplData{"streamer": nickname})
 			return
 		}
-		affiliate := w.gatedAffiliateForUser(m)
-		hours, start := w.week(nickname)
+		user := w.mustUserByID(m.userID)
+		affiliate := w.gatedAffiliateForChat(m.chatID, user)
+		loc, zone := w.chatLocation(user)
+		hours, weekday := w.week(nickname, loc)
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Week, tplData{
 			"hours":         hours,
-			"weekday":       int(start.UTC().Weekday()),
+			"weekday":       int(weekday),
+			"timezone":      zone,
 			"streamer_link": w.streamerLink(nickname, affiliate),
 		})
 		return
@@ -873,7 +927,8 @@ func (w *worker) showWeek(m receivedMessage, nickname string) {
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].ZeroSubscriptions, nil)
 		return
 	}
-	link := w.streamerLinker(w.gatedAffiliateForUser(m))
+	user := w.mustUserByID(m.userID)
+	link := w.streamerLinker(w.gatedAffiliateForChat(m.chatID, user))
 	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].WeekRetrieving, nil)
 	m = m.next()
 	ids := make([]int, len(streamers))
@@ -881,7 +936,8 @@ func (w *worker) showWeek(m receivedMessage, nickname string) {
 		ids[i] = s.ID
 	}
 	now := time.Now()
-	hoursMap, start := w.weekForStreamers(ids, now)
+	loc, zone := w.chatLocation(user)
+	hoursMap, weekday := w.weekForStreamers(ids, now, loc)
 	statuses := w.db.UnconfirmedStatusesForUser(m.endpoint, m.userID)
 	statusMap := make(map[string]db.Streamer, len(statuses))
 	for _, s := range statuses {
@@ -905,7 +961,8 @@ func (w *worker) showWeek(m receivedMessage, nickname string) {
 		}
 		weeks = append(weeks, tplData{
 			"hours":         hours,
-			"weekday":       int(start.UTC().Weekday()),
+			"weekday":       int(weekday),
+			"timezone":      zone,
 			"streamer_link": link(s.Nickname),
 		})
 	}
@@ -1239,6 +1296,7 @@ func (w *worker) handleSuccessfulPayment(endpoint string, chatID int64, p *model
 func (w *worker) settings(m receivedMessage) {
 	subscriptionsNumber := w.db.SubscribedOrPendingCount(m.endpoint, m.userID)
 	user := w.mustUserByID(m.userID)
+	_, zone := w.chatLocation(user)
 	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Settings, tplData{
 		"subscriptions_used":              subscriptionsNumber,
 		"total_subscriptions":             user.MaxSubs,
@@ -1250,6 +1308,8 @@ func (w *worker) settings(m receivedMessage) {
 		"silent_messages":                 user.SilentMessages,
 		"in_group":                        isGroup(user),
 		"member_subscriptions":            user.MemberSubscriptions,
+		"timezone":                        zone,
+		"timezone_set":                    user.Timezone != nil,
 		"can_manage_affiliate":            w.customAffiliateLinkEnabled() && isGroupOrChannel(user.ChatID),
 		"affiliate_params":                w.gatedAffiliate(user.AffiliateParams),
 	})
@@ -1284,6 +1344,83 @@ func (w *worker) enableMemberSubscriptions(m receivedMessage, memberSubscription
 	}
 	w.db.SetMemberSubscriptions(m.userID, memberSubscriptions)
 	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].OK, nil)
+}
+
+// utcZone is what a chat that set no timezone reads and prints as.
+const utcZone = "UTC"
+
+// parseTimezone resolves a typed IANA zone name and returns the spelling to store.
+// Only the map decides, setZoneNames having loaded every zone in it once at startup,
+// so what the page is offered and what a save accepts cannot come apart.
+func (w *worker) parseTimezone(name string) (*time.Location, string, bool) {
+	loc, known := w.zoneNames[strings.ToLower(strings.TrimSpace(name))]
+	if !known {
+		return nil, "", false
+	}
+	return loc, loc.String(), true
+}
+
+// zoneOrDefault resolves a name the way a chat's own zone is resolved:
+// the offered list first, then the database this binary carries,
+// which may still hold a name the server has stopped offering.
+// known is false when neither holds it and the default answers.
+func (w *worker) zoneOrDefault(name string) (*time.Location, string, bool) {
+	if loc, zone, ok := w.parseTimezone(name); ok {
+		return loc, zone, true
+	}
+	// LoadLocation answers an empty name with UTC and Local with the host's own,
+	// neither of which is a chat's zone.
+	if name != "" && !strings.EqualFold(name, "local") {
+		if loc, err := time.LoadLocation(name); err == nil {
+			return loc, name, true
+		}
+	}
+	return time.UTC, utcZone, false
+}
+
+// chatLocation resolves a chat's timezone, UTC when it set none.
+// A name it cannot resolve is reported and fallen back from, and left in the column.
+// Main goroutine only, as every caller is a command handler.
+func (w *worker) chatLocation(user db.User) (*time.Location, string) {
+	if user.Timezone == nil {
+		return time.UTC, utcZone
+	}
+	loc, zone, known := w.zoneOrDefault(*user.Timezone)
+	if !known {
+		// Reported, never repaired: which names resolve turns on the tzdata this binary carries,
+		// so a rollback to one that predates a zone would have a listing destroy a chat's own choice.
+		lerr("stored timezone will not load, falling back: @uid = %d, timezone = %s",
+			user.UserID, *user.Timezone)
+	}
+	return loc, zone
+}
+
+// setTimezone shows the chat's zone or sets it from a typed IANA name.
+func (w *worker) setTimezone(m receivedMessage, arg string) {
+	arg = strings.TrimSpace(arg)
+	if arg == "" {
+		_, zone := w.chatLocation(w.mustUserByID(m.userID))
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Timezone,
+			tplData{"timezone": zone, "help": true})
+		return
+	}
+	_, zone, ok := w.parseTimezone(arg)
+	if !ok {
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].TimezoneInvalid, nil)
+		return
+	}
+	w.db.SetTimezone(m.userID, zone)
+	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Timezone,
+		tplData{"timezone": zone, "help": false})
+}
+
+// resetTimezone clears the chat's zone, leaving the grid on the default.
+// Typing the default's name does the same, but nothing in the chat says so,
+// where a command sits in the settings listing beside the one that set it.
+func (w *worker) resetTimezone(m receivedMessage) {
+	w.db.SetTimezone(m.userID, "")
+	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Timezone,
+		tplData{"timezone": utcZone, "help": false})
 }
 
 // modelPayloadPrefix prefixes a deep-link payload naming a model to subscribe to.
@@ -1631,13 +1768,13 @@ func (w *worker) listOnlineStreamers(m receivedMessage) {
 	w.db.StoreNotifications(nots)
 }
 
-func (w *worker) week(nickname string) ([]bool, time.Time) {
+func (w *worker) week(nickname string, loc *time.Location) ([]bool, time.Weekday) {
 	streamer := w.db.MaybeStreamer(nickname)
 	if streamer == nil {
-		return nil, time.Time{}
+		return nil, 0
 	}
-	result, start := w.weekForStreamers([]int{streamer.ID}, time.Now())
-	return result[streamer.ID], start
+	result, weekday := w.weekForStreamers([]int{streamer.ID}, time.Now(), loc)
+	return result[streamer.ID], weekday
 }
 
 func onlineCells(
@@ -1666,13 +1803,51 @@ func onlineCells(
 	return result
 }
 
-func (w *worker) weekForStreamers(streamerIDs []int, now time.Time) (map[int][]bool, time.Time) {
-	today := now.Truncate(24 * time.Hour)
-	start := today.Add(-6 * 24 * time.Hour)
-	from := int(start.Unix())
-	to := int(now.Unix())
+// weekHours is what the grid holds: the seven rows of 24 cells the week template prints.
+const weekHours = 7 * 24
+
+/*
+weekWindow is the span the grid covers, from the start of the day six days back through now,
+and the weekday its first row carries.
+
+Every step keeps a zone's shifts out of the arithmetic they would corrupt:
+
+	the date is walked in UTC, where no shift can move it;
+	the clock is placed in loc after, and a day whose midnight a shift skips starts at the shift;
+	the weekday is read off the date rather than off an instant a shift may have normalized;
+	a fall-back stretching the week past weekHours drops its oldest hour, never opening an eighth row.
+
+A row is 24 cells whatever the day held, so a shift inside the window moves the later rows
+off their labels by however much it moved the clock.
+Where that is not a whole hour, as in Australia/Lord_Howe, Pacific/Chatham and Iran,
+the cells stop lining up with the clock at all and each straddles two labelled hours.
+Snapping the start would not mend it, the shift falling in the middle of the window.
+*/
+func weekWindow(now time.Time, loc *time.Location) (from, to int, weekday time.Weekday) {
+	year, month, day := now.In(loc).Date()
+	first := time.Date(year, month, day, 0, 0, 0, 0, time.UTC).AddDate(0, 0, -6)
+	year, month, day = first.Date()
+	start := time.Date(year, month, day, 0, 0, 0, 0, loc)
+	for hour := 1; hour <= 3 && start.Day() != day; hour++ {
+		start = time.Date(year, month, day, hour, 0, 0, 0, loc)
+	}
+	from, to = int(start.Unix()), int(now.Unix())
+	// Whole hours, so the cells the grid prints stay aligned to the clock they are labelled with.
+	if cells := (to - from + 3599) / 3600; cells > weekHours {
+		from += (cells - weekHours) * 3600
+	}
+	return from, to, first.Weekday()
+}
+
+// weekForStreamers builds the hourly grid of the last seven days in loc.
+func (w *worker) weekForStreamers(
+	streamerIDs []int,
+	now time.Time,
+	loc *time.Location,
+) (map[int][]bool, time.Weekday) {
+	from, to, weekday := weekWindow(now, loc)
 	changesMap := w.db.ChangesFromToForStreamers(streamerIDs, from, to)
-	return onlineCells(changesMap, from, to, 3600), start
+	return onlineCells(changesMap, from, to, 3600), weekday
 }
 
 func (w *worker) feedback(m receivedMessage, text string) {
@@ -2375,11 +2550,13 @@ var knownCommands = map[string]commandSpec{
 	"remove":                        {groupAdminOnly: true, memberSubscriptions: true},
 	"remove_all":                    {groupAdminOnly: true},
 	"reset_affiliate":               {}, // admin-gated in commandGate while enabled
+	"reset_timezone":                {groupAdminOnly: true},
 	"settings":                      {groupAdminOnly: true},
 	"social":                        {},
 	"start":                         {}, // the m- deep-link form is gated in commandGate
 	"stop":                          {groupAdminOnly: true},
 	"sure_remove_all":               {groupAdminOnly: true},
+	"timezone":                      {groupAdminOnly: true},
 	"version":                       {},
 	"want_more":                     {},
 	"week":                          {},
@@ -2539,6 +2716,10 @@ func (w *worker) processIncomingCommand(
 			return
 		}
 		w.showWeek(m, arguments)
+	case "timezone":
+		w.setTimezone(m, arguments)
+	case "reset_timezone":
+		w.resetTimezone(m)
 	case "affiliate":
 		if !w.affiliateCommandAllowed(m) {
 			return
@@ -3604,6 +3785,10 @@ func main() {
 
 	w := newWorker(cfg, checker)
 	w.logConfig()
+	// Before Telegram is pointed at this process: a zone table it cannot work from
+	// stops a start rather than a bot that has already announced itself.
+	// newWorker has connected to the server, so this waits on nothing further.
+	w.initTimezones()
 	w.setWebhook()
 	w.setCommands()
 	w.setDefaultAdminRights()

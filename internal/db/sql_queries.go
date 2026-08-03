@@ -249,7 +249,8 @@ func (d *Database) User(chatID int64) (user User, found bool) {
 			chat_type,
 			member_count,
 			affiliate_params,
-			member_subscriptions
+			member_subscriptions,
+			timezone
 		from users
 		where id = (select id from chain where migrated_to is null)
 	`,
@@ -269,6 +270,7 @@ func (d *Database) User(chatID int64) (user User, found bool) {
 			&user.MemberCount,
 			&user.AffiliateParams,
 			&user.MemberSubscriptions,
+			&user.Timezone,
 		})
 	return
 }
@@ -290,7 +292,8 @@ func (d *Database) UserByID(userID UserID) (user User, found bool) {
 			chat_type,
 			member_count,
 			affiliate_params,
-			member_subscriptions
+			member_subscriptions,
+			timezone
 		from users
 		where id = $1
 	`,
@@ -310,6 +313,7 @@ func (d *Database) UserByID(userID UserID) (user User, found bool) {
 			&user.MemberCount,
 			&user.AffiliateParams,
 			&user.MemberSubscriptions,
+			&user.Timezone,
 		})
 	return
 }
@@ -528,7 +532,8 @@ func (d *Database) MigrateChat(fromID, toID int64) *ChatMigration {
 		update users d set
 		max_subs = greatest(d.max_subs, s.max_subs),
 		affiliate_params = coalesce(d.affiliate_params, s.affiliate_params),
-		member_subscriptions = d.member_subscriptions or s.member_subscriptions
+		member_subscriptions = d.member_subscriptions or s.member_subscriptions,
+		timezone = coalesce(d.timezone, s.timezone)
 		from users s
 		where d.id = $1 and s.id = $2`,
 		dstID, srcID)
@@ -1302,6 +1307,45 @@ func (d *Database) SetSilentMessages(userID UserID, silentMessages bool) {
 // SetMemberSubscriptions updates the member_subscriptions setting for a user
 func (d *Database) SetMemberSubscriptions(userID UserID, memberSubscriptions bool) {
 	d.MustExec("update users set member_subscriptions = $1 where id = $2", memberSubscriptions, int64(userID))
+}
+
+/*
+TimezoneNames returns the zone names the server holds, keyed by their lowercase form,
+so a chat may type one in any case and still store the spelling the database keeps.
+
+Four groups are left out:
+
+	posix/ and right/ repeat the plain names under a different leap-second rule;
+	posixrules is not a zone but the default DST rules a bare POSIX offset takes;
+	Factory is the placeholder shipped for hosts that never set one;
+	localtime is the server's own zone, which says nothing about a chat's.
+
+What remains is the server's packaging, not a fixed list:
+a build carrying the backward-compatibility links offers US/Eastern and GB-Eire,
+one without them offers neither, and the resolver refuses what it is not offered.
+*/
+func (d *Database) TimezoneNames() map[string]string {
+	names := map[string]string{}
+	var name string
+	d.MustQuery(`
+		select name
+		from pg_timezone_names
+		where name not like 'posix/%'
+		and name not like 'right/%'
+		and name not in ('posixrules', 'Factory', 'localtime')`,
+		nil,
+		ScanTo{&name},
+		func() { names[strings.ToLower(name)] = name })
+	return names
+}
+
+// SetTimezone updates a user's IANA zone name, empty to clear it back to unset.
+func (d *Database) SetTimezone(userID UserID, timezone string) {
+	if timezone == "" {
+		d.MustExec("update users set timezone = null where id = $1", int64(userID))
+		return
+	}
+	d.MustExec("update users set timezone = $1 where id = $2", timezone, int64(userID))
 }
 
 // SetAffiliateParams updates a user's custom affiliate params, empty to clear.

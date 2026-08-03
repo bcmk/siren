@@ -40,18 +40,19 @@ var testConfig = botconfig.Config{
 }
 
 var testTranslations = cmdlib.Translations{
-	Start:                  &cmdlib.Translation{Key: "start", Str: "Start", Parse: cmdlib.ParseRaw},
-	Help:                   &cmdlib.Translation{Key: "help", Str: "Help", Parse: cmdlib.ParseRaw},
-	Online:                 &cmdlib.Translation{Key: "online", Str: "Online %s", Parse: cmdlib.ParseRaw},
-	Offline:                &cmdlib.Translation{Key: "offline", Str: "Offline %s", Parse: cmdlib.ParseRaw},
-	SyntaxAdd:              &cmdlib.Translation{Key: "syntax_add", Str: "SyntaxAdd", Parse: cmdlib.ParseRaw},
-	SyntaxRemove:           &cmdlib.Translation{Key: "syntax_remove", Str: "SyntaxRemove", Parse: cmdlib.ParseRaw},
-	SyntaxFeedback:         &cmdlib.Translation{Key: "syntax_feedback", Str: "SyntaxFeedback", Parse: cmdlib.ParseRaw},
-	InvalidSymbols:         &cmdlib.Translation{Key: "invalid_symbols", Str: "InvalidSymbols", Parse: cmdlib.ParseRaw},
-	AlreadyAdded:           &cmdlib.Translation{Key: "already_added", Str: "AlreadyAdded %s", Parse: cmdlib.ParseRaw},
-	AddError:               &cmdlib.Translation{Key: "add_error", Str: "AddError %s", Parse: cmdlib.ParseRaw},
-	StreamerAdded:          &cmdlib.Translation{Key: "streamer_added", Str: "StreamerAdded %s", Parse: cmdlib.ParseRaw},
-	StreamerNotInList:      &cmdlib.Translation{Key: "streamer_not_in_list", Str: "StreamerNotInList %s", Parse: cmdlib.ParseRaw},
+	Start:          &cmdlib.Translation{Key: "start", Str: "Start", Parse: cmdlib.ParseRaw},
+	Help:           &cmdlib.Translation{Key: "help", Str: "Help", Parse: cmdlib.ParseRaw},
+	Online:         &cmdlib.Translation{Key: "online", Str: "Online %s", Parse: cmdlib.ParseRaw},
+	Offline:        &cmdlib.Translation{Key: "offline", Str: "Offline %s", Parse: cmdlib.ParseRaw},
+	SyntaxAdd:      &cmdlib.Translation{Key: "syntax_add", Str: "SyntaxAdd", Parse: cmdlib.ParseRaw},
+	SyntaxRemove:   &cmdlib.Translation{Key: "syntax_remove", Str: "SyntaxRemove", Parse: cmdlib.ParseRaw},
+	SyntaxFeedback: &cmdlib.Translation{Key: "syntax_feedback", Str: "SyntaxFeedback", Parse: cmdlib.ParseRaw},
+	InvalidSymbols: &cmdlib.Translation{Key: "invalid_symbols", Str: "InvalidSymbols", Parse: cmdlib.ParseRaw},
+	AlreadyAdded:   &cmdlib.Translation{Key: "already_added", Str: "AlreadyAdded %s", Parse: cmdlib.ParseRaw},
+	AddError:       &cmdlib.Translation{Key: "add_error", Str: "AddError %s", Parse: cmdlib.ParseRaw},
+	StreamerAdded:  &cmdlib.Translation{Key: "streamer_added", Str: "StreamerAdded %s", Parse: cmdlib.ParseRaw},
+	StreamerNotInList: &cmdlib.Translation{
+		Key: "streamer_not_in_list", Str: "StreamerNotInList %s", Parse: cmdlib.ParseRaw},
 	StreamerRemoved:        &cmdlib.Translation{Key: "streamer_removed", Str: "StreamerRemoved %s", Parse: cmdlib.ParseRaw},
 	Feedback:               &cmdlib.Translation{Key: "feedback", Str: "Feedback", Parse: cmdlib.ParseRaw},
 	Social:                 &cmdlib.Translation{Key: "social", Str: "Social", Parse: cmdlib.ParseRaw},
@@ -63,6 +64,8 @@ var testTranslations = cmdlib.Translations{
 	OK:                     &cmdlib.Translation{Key: "ok", Str: "OK", Parse: cmdlib.ParseRaw},
 	AdminsOnly:             &cmdlib.Translation{Key: "admins_only", Str: "AdminsOnly", Parse: cmdlib.ParseRaw},
 	GroupsOnly:             &cmdlib.Translation{Key: "groups_only", Str: "GroupsOnly", Parse: cmdlib.ParseRaw},
+	Timezone:               &cmdlib.Translation{Key: "timezone", Str: "Timezone", Parse: cmdlib.ParseRaw},
+	TimezoneInvalid:        &cmdlib.Translation{Key: "timezone_invalid", Str: "TimezoneInvalid", Parse: cmdlib.ParseRaw},
 	Week:                   &cmdlib.Translation{Key: "week", Str: "Week", Parse: cmdlib.ParseRaw},
 	WeekChunk:              &cmdlib.Translation{Key: "week_chunk", Str: "WeekChunk", Parse: cmdlib.ParseRaw},
 	WeekNeverOnline:        &cmdlib.Translation{Key: "week_never_online", Str: "WeekNeverOnline", Parse: cmdlib.ParseRaw},
@@ -231,6 +234,8 @@ func newTestWorker() *testWorker {
 	template.Must(tpl.New("ok").Parse("OK"))
 	template.Must(tpl.New("admins_only").Parse("AdminsOnly"))
 	template.Must(tpl.New("groups_only").Parse("GroupsOnly"))
+	template.Must(tpl.New("timezone").Parse("Timezone {{ .timezone }}"))
+	template.Must(tpl.New("timezone_invalid").Parse("TimezoneInvalid"))
 	template.Must(tpl.New("week_chunk").Parse("WeekChunk"))
 	template.Must(tpl.New("week_never_online").Parse("WeekNeverOnline"))
 	template.Must(tpl.New("week_retrieving").Parse("WeekRetrieving"))

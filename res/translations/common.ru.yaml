@@ -291,6 +291,12 @@ settings:
       {{- end -}}
     {{- end -}}
 
+    {{- print "\n" -}}
+    {{- print "\n" -}}
+    Часовой пояс: <b>{{ .timezone }}</b>
+    {{- print "\n" -}}
+    Изменить: {{ command "timezone" }}{{ if .timezone_set }}, сброс: {{ command "reset_timezone" }}{{ end }}
+
     {{- if .can_manage_affiliate -}}
       {{- print "\n" -}}
       {{- print "\n" -}}
@@ -343,6 +349,27 @@ affiliate_groups_only:
 groups_only:
   parse: raw
   str: Эта настройка предназначена для группы. Добавьте туда бота и выполните эту команду там.
+timezone_help:
+  str: >-
+    Укажите часовой пояс из
+    <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones">списка IANA</a>,
+    например, <code>{{ command "timezone" }} Europe/Berlin</code>
+timezone:
+  parse: html
+  disable_preview: true
+  str: |-
+    Часовой пояс: <b>{{ .timezone }}</b>
+    {{- if .help -}}
+      {{- print "\n\n" -}}
+      {{- template "timezone_help" -}}
+    {{- end -}}
+timezone_invalid:
+  parse: html
+  disable_preview: true
+  str: |-
+    Неизвестный часовой пояс.
+
+    {{ template "timezone_help" }}
 affiliate_nothing_to_reset:
   parse: raw
   str: Нечего сбрасывать — для этого чата не задана партнёрская ссылка.
@@ -418,7 +445,7 @@ week:
   parse: html
   disable_preview: true
   str: |-
-    Неделя {{ .streamer_link }} (UTC):
+    Неделя {{ .streamer_link }} ({{ .timezone }}):
     {{- print "\n\n" -}}
     <code>
     {{- printf "    00     06     12     18\n" -}}

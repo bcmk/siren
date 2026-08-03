@@ -114,6 +114,9 @@ type User struct {
 
 	// MemberSubscriptions lets any group member add and remove streamers.
 	MemberSubscriptions bool
+
+	// Timezone is the chat's IANA zone name, nil for UTC.
+	Timezone *string
 }
 
 // Streamer represents a streamer

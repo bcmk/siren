@@ -291,6 +291,12 @@ settings:
       {{- end -}}
     {{- end -}}
 
+    {{- print "\n" -}}
+    {{- print "\n" -}}
+    Timezone: <b>{{ .timezone }}</b>
+    {{- print "\n" -}}
+    Change: {{ command "timezone" }}{{ if .timezone_set }}, reset: {{ command "reset_timezone" }}{{ end }}
+
     {{- if .can_manage_affiliate -}}
       {{- print "\n" -}}
       {{- print "\n" -}}
@@ -343,6 +349,27 @@ affiliate_groups_only:
 groups_only:
   parse: raw
   str: This setting is for a group. Add the bot to yours and run this command there.
+timezone_help:
+  str: >-
+    Specify a timezone from the
+    <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones">IANA list</a>,
+    e.g., <code>{{ command "timezone" }} Europe/Berlin</code>
+timezone:
+  parse: html
+  disable_preview: true
+  str: |-
+    Timezone: <b>{{ .timezone }}</b>
+    {{- if .help -}}
+      {{- print "\n\n" -}}
+      {{- template "timezone_help" -}}
+    {{- end -}}
+timezone_invalid:
+  parse: html
+  disable_preview: true
+  str: |-
+    Unknown timezone.
+
+    {{ template "timezone_help" }}
 affiliate_nothing_to_reset:
   parse: raw
   str: Nothing to reset — this chat has no custom affiliate link.
@@ -418,7 +445,7 @@ week:
   parse: html
   disable_preview: true
   str: |-
-    {{- .streamer_link }}'s week (UTC):
+    {{- .streamer_link }}'s week ({{ .timezone }}):
     {{- print "\n\n" -}}
     <code>
     {{- printf "    00     06     12     18\n" -}}

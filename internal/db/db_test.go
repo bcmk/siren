@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -113,5 +114,30 @@ func newTestDB(t *testing.T) *testDB {
 	return &testDB{
 		Database:  &d,
 		terminate: func() { _ = d.Close() },
+	}
+}
+
+// TestTimezoneNamesFiltering pins the shape of the offered list, not its size,
+// which is the server's packaging rather than ours to assert.
+// The posix and right trees cannot be exercised where the container ships neither.
+func TestTimezoneNamesFiltering(t *testing.T) {
+	t.Parallel()
+	tdb := newTestDB(t)
+	defer tdb.terminate()
+
+	names := tdb.TimezoneNames()
+	if len(names) == 0 {
+		t.Fatal("the server offered no zone names at all")
+	}
+	for lower, canonical := range names {
+		if lower != strings.ToLower(canonical) {
+			t.Errorf("key %q does not lowercase %q", lower, canonical)
+		}
+		switch {
+		case strings.HasPrefix(canonical, "posix/"), strings.HasPrefix(canonical, "right/"):
+			t.Errorf("a duplicate tree got through: %q", canonical)
+		case canonical == "posixrules", canonical == "Factory", canonical == "localtime":
+			t.Errorf("%q is not a chat's zone", canonical)
+		}
 	}
 }

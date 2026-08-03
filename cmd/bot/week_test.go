@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	texttemplate "text/template"
@@ -37,8 +39,18 @@ func TestWeekChunkSeparatesRows(t *testing.T) {
 				params := &renderParams{templates: tpl, key: "week_chunk", data: tplData{"rows": rows}}
 				return params.render("")
 			}
-			first := tplData{"hours": make([]bool, 24), "weekday": 0, "streamer_link": "alica_webcam"}
-			second := tplData{"hours": make([]bool, 24), "weekday": 3, "streamer_link": "bob_cam"}
+			first := tplData{
+				"hours":         make([]bool, 24),
+				"weekday":       0,
+				"timezone":      "UTC",
+				"streamer_link": "alica_webcam",
+			}
+			second := tplData{
+				"hours":         make([]bool, 24),
+				"weekday":       3,
+				"timezone":      "UTC",
+				"streamer_link": "bob_cam",
+			}
 
 			one := chunk(first)
 			if !strings.Contains(one, "alica_webcam") {
@@ -49,6 +61,39 @@ func TestWeekChunkSeparatesRows(t *testing.T) {
 			}
 			if got := chunk(); got != "" {
 				t.Errorf("no rows = %q, want empty", got)
+			}
+		})
+	}
+}
+
+// TestWeekTemplateRowCount ties the template's chunking to the window weekWindow hands it:
+// a row is broken every 24 cells, so a window past weekHours prints a day the week does not hold.
+// English alone, since the row labels are what the count reads and every language spells them anew.
+func TestWeekTemplateRowCount(t *testing.T) {
+	t.Parallel()
+	row := regexp.MustCompile(`(?m)^[A-Z][a-z]: `)
+	tpl := realTemplates(t, "en")
+	for _, tc := range []struct {
+		cells int
+		rows  int
+	}{
+		{1, 1},
+		{24, 1},
+		{144, 6},
+		{weekHours, 7},
+		// One cell past the window weekWindow can return, and the eighth row it would open.
+		{weekHours + 1, 8},
+	} {
+		t.Run(fmt.Sprintf("%d cells", tc.cells), func(t *testing.T) {
+			t.Parallel()
+			params := &renderParams{templates: tpl, key: "week", data: tplData{
+				"hours":         make([]bool, tc.cells),
+				"weekday":       0,
+				"timezone":      "UTC",
+				"streamer_link": "alica_webcam",
+			}}
+			if got := len(row.FindAllString(params.render(""), -1)); got != tc.rows {
+				t.Errorf("%d cells rendered %d rows, want %d", tc.cells, got, tc.rows)
 			}
 		})
 	}

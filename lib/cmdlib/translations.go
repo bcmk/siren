@@ -124,6 +124,8 @@ type Translations struct {
 	AffiliateCommand            *Translation `yaml:"affiliate_command"`
 	AffiliateGroupsOnly         *Translation `yaml:"affiliate_groups_only"`
 	GroupsOnly                  *Translation `yaml:"groups_only"`
+	Timezone                    *Translation `yaml:"timezone"`
+	TimezoneInvalid             *Translation `yaml:"timezone_invalid"`
 }
 
 // LoadEndpointTranslations loads translations for a specific endpoint

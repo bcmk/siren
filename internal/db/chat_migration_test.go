@@ -347,6 +347,7 @@ func TestMigrateChat(t *testing.T) {
 		d.AddUser(oldID, 5, 1000, "group")
 		d.SetMemberSubscriptions(d.userID(oldID), true)
 		d.SetAffiliateParams(d.userID(oldID), map[string]string{"campaign": "old"})
+		d.SetTimezone(d.userID(oldID), "Europe/Berlin")
 		d.AddUser(newID, 20, 2000, "supergroup")
 
 		d.MigrateChat(oldID, newID)
@@ -360,6 +361,9 @@ func TestMigrateChat(t *testing.T) {
 		}
 		if got := user.AffiliateParams["campaign"]; got != "old" {
 			t.Errorf("affiliate campaign = %q, want old (the source's)", got)
+		}
+		if user.Timezone == nil || *user.Timezone != "Europe/Berlin" {
+			t.Errorf("timezone = %v, want Europe/Berlin (the source's)", user.Timezone)
 		}
 	})
 
