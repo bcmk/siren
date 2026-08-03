@@ -1,6 +1,9 @@
 site:
   parse: html
   str: LiveJasmin
+streamers_accusative:
+  parse: raw
+  str: models
 languages:
   parse: html
   str: |-

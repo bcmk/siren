@@ -4,6 +4,9 @@ hello:
 site:
   parse: html
   str: Twitch
+streamers_accusative:
+  parse: raw
+  str: channels
 add_error:
   parse: html
   str: |-

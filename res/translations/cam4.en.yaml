@@ -1,6 +1,9 @@
 site:
   parse: html
   str: CAM4
+streamers_accusative:
+  parse: raw
+  str: models
 start:
   parse: html
   disable_preview: true

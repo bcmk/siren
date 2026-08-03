@@ -111,6 +111,9 @@ type User struct {
 	ChatType             *string
 	MemberCount          *int
 	AffiliateParams      map[string]string
+
+	// MemberSubscriptions lets any group member add and remove streamers.
+	MemberSubscriptions bool
 }
 
 // Streamer represents a streamer

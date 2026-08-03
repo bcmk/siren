@@ -1,6 +1,9 @@
 site:
   parse: html
   str: Streamate
+streamers_accusative:
+  parse: raw
+  str: models
 add_error:
   parse: html
   str: |-

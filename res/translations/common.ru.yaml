@@ -279,6 +279,18 @@ settings:
       Включить: {{ command "enable_silent_messages" }}
     {{- end -}}
 
+    {{- if .in_group -}}
+      {{- print "\n" -}}
+      {{- print "\n" -}}
+      Участники могут добавлять и удалять {{ template "streamers_accusative" }}: <b>{{ template "yes_no" .member_subscriptions }}</b>
+      {{- print "\n" -}}
+      {{- if .member_subscriptions -}}
+        Отключить: {{ command "disable_member_subscriptions" }}
+      {{- else -}}
+        Включить: {{ command "enable_member_subscriptions" }}
+      {{- end -}}
+    {{- end -}}
+
     {{- if .can_manage_affiliate -}}
       {{- print "\n" -}}
       {{- print "\n" -}}
@@ -289,6 +301,11 @@ settings:
 yes_no:
   parse: raw
   str: "{{- if . -}} да {{- else -}} нет {{- end -}}"
+# What a site calls the people it broadcasts. Every site file overrides it.
+# The key names the case, so another case is another key.
+streamers_accusative:
+  parse: raw
+  str: стримеров
 sample_streamer:
   parse: raw
   str: your_channel
@@ -314,10 +331,18 @@ affiliate_invalid:
     {{ template "affiliate_instructions" . }}
 admins_only:
   parse: raw
-  str: Это могут делать только администраторы группы.
+  str: |-
+    Это могут делать только администраторы группы.
+    {{- if .member_subscriptions -}}
+      {{- print "\n" -}}
+      Администратор может разрешить это участникам в {{ command "settings" }}
+    {{- end -}}
 affiliate_groups_only:
   parse: raw
   str: Своя партнёрская ссылка задаётся для группы или канала. Добавьте туда бота и выполните эту команду там.
+groups_only:
+  parse: raw
+  str: Эта настройка предназначена для группы. Добавьте туда бота и выполните эту команду там.
 affiliate_nothing_to_reset:
   parse: raw
   str: Нечего сбрасывать — для этого чата не задана партнёрская ссылка.

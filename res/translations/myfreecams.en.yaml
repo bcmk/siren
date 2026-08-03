@@ -1,6 +1,9 @@
 site:
   parse: html
   str: MyFreeCams
+streamers_accusative:
+  parse: raw
+  str: models
 sites:
   parse: html
   str: |-

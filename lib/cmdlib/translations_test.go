@@ -202,3 +202,21 @@ func TestTranslationTemplatesExecute(t *testing.T) {
 		})
 	}
 }
+
+// TestEveryEndpointNamesItsStreamers guards the one noun that differs by site.
+// A file that leaves it to common calls its people streamers, which no site does.
+// The key names the case its use sites take, so another case is another key to guard.
+func TestEveryEndpointNamesItsStreamers(t *testing.T) {
+	for _, path := range translationFiles(t) {
+		base := filepath.Base(path)
+		parts := splitLastDot(base[:len(base)-len(filepath.Ext(base))])
+		if len(parts) != 2 || parts[0] == "common" || adsFile(parts[0]) {
+			continue
+		}
+		t.Run(base, func(t *testing.T) {
+			if _, ok := loadTranslations(path)["streamers_accusative"]; !ok {
+				t.Error(`does not define "streamers_accusative"`)
+			}
+		})
+	}
+}

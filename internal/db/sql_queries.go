@@ -248,7 +248,8 @@ func (d *Database) User(chatID int64) (user User, found bool) {
 			created_at,
 			chat_type,
 			member_count,
-			affiliate_params
+			affiliate_params,
+			member_subscriptions
 		from users
 		where id = (select id from chain where migrated_to is null)
 	`,
@@ -267,6 +268,7 @@ func (d *Database) User(chatID int64) (user User, found bool) {
 			&user.ChatType,
 			&user.MemberCount,
 			&user.AffiliateParams,
+			&user.MemberSubscriptions,
 		})
 	return
 }
@@ -287,7 +289,8 @@ func (d *Database) UserByID(userID UserID) (user User, found bool) {
 			created_at,
 			chat_type,
 			member_count,
-			affiliate_params
+			affiliate_params,
+			member_subscriptions
 		from users
 		where id = $1
 	`,
@@ -306,6 +309,7 @@ func (d *Database) UserByID(userID UserID) (user User, found bool) {
 			&user.ChatType,
 			&user.MemberCount,
 			&user.AffiliateParams,
+			&user.MemberSubscriptions,
 		})
 	return
 }
@@ -516,14 +520,15 @@ func (d *Database) MigrateChat(fromID, toID int64) *ChatMigration {
 	checkErr(err)
 
 	// The destination is an active chat (the same chat recorded twice).
-	// Raise its limit and drop the source's operational rows.
+	// Keep the more permissive setup of the two and drop the source's operational rows.
 	// Move its small history (feedback, payments, referrals) to the destination,
 	// then keep the source as a tombstone for its BRIN message logs,
 	// linked via migrated_to.
 	_, err = tx.Exec(ctx, `
 		update users d set
 		max_subs = greatest(d.max_subs, s.max_subs),
-		affiliate_params = coalesce(d.affiliate_params, s.affiliate_params)
+		affiliate_params = coalesce(d.affiliate_params, s.affiliate_params),
+		member_subscriptions = d.member_subscriptions or s.member_subscriptions
 		from users s
 		where d.id = $1 and s.id = $2`,
 		dstID, srcID)
@@ -1292,6 +1297,11 @@ func (d *Database) SetShowSubject(userID UserID, showSubject bool) {
 // SetSilentMessages updates the silent_messages setting for a user
 func (d *Database) SetSilentMessages(userID UserID, silentMessages bool) {
 	d.MustExec("update users set silent_messages = $1 where id = $2", silentMessages, int64(userID))
+}
+
+// SetMemberSubscriptions updates the member_subscriptions setting for a user
+func (d *Database) SetMemberSubscriptions(userID UserID, memberSubscriptions bool) {
+	d.MustExec("update users set member_subscriptions = $1 where id = $2", memberSubscriptions, int64(userID))
 }
 
 // SetAffiliateParams updates a user's custom affiliate params, empty to clear.

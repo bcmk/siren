@@ -336,6 +336,33 @@ func TestMigrateChat(t *testing.T) {
 		}
 	})
 
+	t.Run("destination present keeps the more permissive setup", func(t *testing.T) {
+		t.Parallel()
+		tdb := newTestDB(t)
+		defer tdb.terminate()
+		d := tdb.Database
+
+		const oldID, newID = int64(-220), int64(-220500)
+		// The setup an admin left on the source, which the upgrade must not silently undo.
+		d.AddUser(oldID, 5, 1000, "group")
+		d.SetMemberSubscriptions(d.userID(oldID), true)
+		d.SetAffiliateParams(d.userID(oldID), map[string]string{"campaign": "old"})
+		d.AddUser(newID, 20, 2000, "supergroup")
+
+		d.MigrateChat(oldID, newID)
+
+		user, found := d.User(newID)
+		if !found {
+			t.Fatal("destination user missing")
+		}
+		if !user.MemberSubscriptions {
+			t.Error("member_subscriptions = false, want true (the source's)")
+		}
+		if got := user.AffiliateParams["campaign"]; got != "old" {
+			t.Errorf("affiliate campaign = %q, want old (the source's)", got)
+		}
+	})
+
 	t.Run("destination present keeps an in-flight notification", func(t *testing.T) {
 		t.Parallel()
 		tdb := newTestDB(t)

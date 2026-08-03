@@ -123,6 +123,7 @@ type Translations struct {
 	AffiliateInstructions       *Translation `yaml:"affiliate_instructions"`
 	AffiliateCommand            *Translation `yaml:"affiliate_command"`
 	AffiliateGroupsOnly         *Translation `yaml:"affiliate_groups_only"`
+	GroupsOnly                  *Translation `yaml:"groups_only"`
 }
 
 // LoadEndpointTranslations loads translations for a specific endpoint

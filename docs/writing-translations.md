@@ -13,6 +13,16 @@ then `noNils` asserts that every field of the `Translations` struct resolves.
 A missing key crashes the bot at startup.
 Always add a key to **both** `en` and `ru`.
 
+## Naming the people a site broadcasts
+
+`common` calls them streamers, and every site file overrides the sub-template with its own word:
+models on the adult sites, channels on Twitch and Kick.
+The key names the grammatical case, since Russian inflects the noun and English does not:
+`streamers_accusative` is `моделей`, not the nominative `модели`.
+Write `{{ template "streamers_accusative" }}` wherever a shared message needs that case,
+and add a key of its own for any other case a message needs.
+`TestEveryEndpointNamesItsStreamers` fails on a site file that leaves the word to `common`.
+
 ## Parse modes
 
 An entry sets `parse:` where it needs markup; omitting it parses as `raw`.

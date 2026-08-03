@@ -62,6 +62,7 @@ var testTranslations = cmdlib.Translations{
 	WeekRetrieving:         &cmdlib.Translation{Key: "week_retrieving", Str: "WeekRetrieving", Parse: cmdlib.ParseRaw},
 	OK:                     &cmdlib.Translation{Key: "ok", Str: "OK", Parse: cmdlib.ParseRaw},
 	AdminsOnly:             &cmdlib.Translation{Key: "admins_only", Str: "AdminsOnly", Parse: cmdlib.ParseRaw},
+	GroupsOnly:             &cmdlib.Translation{Key: "groups_only", Str: "GroupsOnly", Parse: cmdlib.ParseRaw},
 	Week:                   &cmdlib.Translation{Key: "week", Str: "Week", Parse: cmdlib.ParseRaw},
 	WeekChunk:              &cmdlib.Translation{Key: "week_chunk", Str: "WeekChunk", Parse: cmdlib.ParseRaw},
 	WeekNeverOnline:        &cmdlib.Translation{Key: "week_never_online", Str: "WeekNeverOnline", Parse: cmdlib.ParseRaw},
@@ -229,6 +230,7 @@ func newTestWorker() *testWorker {
 	template.Must(tpl.New("week").Parse("Week"))
 	template.Must(tpl.New("ok").Parse("OK"))
 	template.Must(tpl.New("admins_only").Parse("AdminsOnly"))
+	template.Must(tpl.New("groups_only").Parse("GroupsOnly"))
 	template.Must(tpl.New("week_chunk").Parse("WeekChunk"))
 	template.Must(tpl.New("week_never_online").Parse("WeekNeverOnline"))
 	template.Must(tpl.New("week_retrieving").Parse("WeekRetrieving"))

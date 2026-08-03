@@ -1251,6 +1251,8 @@ func (w *worker) settings(m receivedMessage) {
 		"subject_supported":               w.checker.Capabilities().SupportsSubject,
 		"show_subject":                    user.ShowSubject,
 		"silent_messages":                 user.SilentMessages,
+		"in_group":                        isGroup(user),
+		"member_subscriptions":            user.MemberSubscriptions,
 		"can_manage_affiliate":            w.customAffiliateLinkEnabled() && isGroupOrChannel(user.ChatID),
 		"affiliate_params":                w.gatedAffiliate(user.AffiliateParams),
 	})
@@ -1273,6 +1275,17 @@ func (w *worker) enableSubject(m receivedMessage, showSubject bool) {
 
 func (w *worker) enableSilentMessages(m receivedMessage, silentMessages bool) {
 	w.db.SetSilentMessages(m.userID, silentMessages)
+	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].OK, nil)
+}
+
+// enableMemberSubscriptions opens the chat's streamer list to its members, or closes it again.
+// A private chat and a channel have no posting members, so they are told where the setting works.
+func (w *worker) enableMemberSubscriptions(m receivedMessage, memberSubscriptions bool) {
+	if !isGroup(w.mustUserByID(m.userID)) {
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].GroupsOnly, nil)
+		return
+	}
+	w.db.SetMemberSubscriptions(m.userID, memberSubscriptions)
 	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].OK, nil)
 }
 
@@ -1393,6 +1406,16 @@ func (w *worker) senderIsGroupAdmin(endpoint string, chatID int64, snd sender) b
 // Telegram gives those negative ids and private chats positive ones.
 func isGroupOrChannel(chatID int64) bool {
 	return chatID < 0
+}
+
+// isGroup reports whether a chat has members who can post.
+// A channel takes posts from its admins alone, and an id cannot tell one from the other,
+// so the chat type decides, and a missing one reads as a group.
+func isGroup(user db.User) bool {
+	if !isGroupOrChannel(user.ChatID) {
+		return false
+	}
+	return user.ChatType == nil || *user.ChatType != string(models.ChatTypeChannel)
 }
 
 // botMentionIfNeeded is the bot's @name in a group or channel, nothing in a private chat.
@@ -2319,18 +2342,23 @@ func (w *worker) help(m receivedMessage) {
 type commandSpec struct {
 	// groupAdminOnly commands read or change the chat's own setup, which in a group is everyone's.
 	groupAdminOnly bool
+
+	// memberSubscriptions commands lose the admin gate where the chat has turned the setting on.
+	memberSubscriptions bool
 }
 
 var knownCommands = map[string]commandSpec{
 	"ad":                            {},
-	"add":                           {groupAdminOnly: true},
-	"affiliate":                     {}, // admin-gated in groupAdminOnly while enabled
+	"add":                           {groupAdminOnly: true, memberSubscriptions: true},
+	"affiliate":                     {}, // admin-gated in commandGate while enabled
 	"buy_subs":                      {},
 	"disable_images":                {groupAdminOnly: true},
+	"disable_member_subscriptions":  {groupAdminOnly: true},
 	"disable_offline_notifications": {groupAdminOnly: true},
 	"disable_silent_messages":       {groupAdminOnly: true},
 	"disable_subject":               {groupAdminOnly: true},
 	"enable_images":                 {groupAdminOnly: true},
+	"enable_member_subscriptions":   {groupAdminOnly: true},
 	"enable_offline_notifications":  {groupAdminOnly: true},
 	"enable_silent_messages":        {groupAdminOnly: true},
 	"enable_subject":                {groupAdminOnly: true},
@@ -2341,12 +2369,12 @@ var knownCommands = map[string]commandSpec{
 	"online":                        {},
 	"pics":                          {},
 	"referral":                      {},
-	"remove":                        {groupAdminOnly: true},
+	"remove":                        {groupAdminOnly: true, memberSubscriptions: true},
 	"remove_all":                    {groupAdminOnly: true},
-	"reset_affiliate":               {}, // admin-gated in groupAdminOnly while enabled
+	"reset_affiliate":               {}, // admin-gated in commandGate while enabled
 	"settings":                      {groupAdminOnly: true},
 	"social":                        {},
-	"start":                         {}, // the m- deep-link form is gated in groupAdminOnly
+	"start":                         {}, // the m- deep-link form is gated in commandGate
 	"stop":                          {groupAdminOnly: true},
 	"sure_remove_all":               {groupAdminOnly: true},
 	"version":                       {},
@@ -2369,17 +2397,34 @@ func (w *worker) affiliateCommandAllowed(m receivedMessage) bool {
 	return false
 }
 
-// groupAdminOnly reports whether a command needs group-admin rights.
-// A model deep-link start adds a subscription, so it is gated like /add.
+// commandGate resolves what a command asks of the chat it came from.
 // A command the switch refuses is left ungated, so it answers the same to everyone.
-func (w *worker) groupAdminOnly(command, arguments string) bool {
+func (w *worker) commandGate(command, arguments string) commandSpec {
+	spec := knownCommands[command]
 	switch command {
 	case "start":
-		return strings.HasPrefix(arguments, modelPayloadPrefix)
+		// The deep link adds a subscription, so it is gated as /add is,
+		// and a payload naming no model is left ungated, since start answers it with nothing.
+		name, ok := strings.CutPrefix(arguments, modelPayloadPrefix)
+		if !ok || w.checker.NicknamePreprocessing(name) == "" {
+			return commandSpec{}
+		}
+		return knownCommands["add"]
 	case "affiliate", "reset_affiliate":
-		return w.customAffiliateLinkEnabled()
+		spec.groupAdminOnly = w.customAffiliateLinkEnabled()
 	}
-	return knownCommands[command].groupAdminOnly
+	return spec
+}
+
+// groupAdminOnly reports whether a command needs group-admin rights in the chat it came from.
+// The chat's setup is read, so the caller establishes the chat is a group or a channel first.
+func (w *worker) groupAdminOnly(m receivedMessage, command, arguments string) bool {
+	spec := w.commandGate(command, arguments)
+	if !spec.groupAdminOnly {
+		return false
+	}
+	// Only an admin can turn the setting on, so opening a command to members is an admin's choice.
+	return !spec.memberSubscriptions || !w.mustUserByID(m.userID).MemberSubscriptions
 }
 
 // processIncomingCommand dispatches on command, which the caller lowercases.
@@ -2411,9 +2456,12 @@ func (w *worker) processIncomingCommand(
 		return
 	}
 
-	if w.groupAdminOnly(command, arguments) && isGroupOrChannel(m.chatID) &&
+	if isGroupOrChannel(m.chatID) && w.groupAdminOnly(m, command, arguments) &&
 		!w.senderIsGroupAdmin(m.endpoint, m.chatID, snd) {
-		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].AdminsOnly, nil)
+		// A refusal the setting could have prevented names it, the refusal itself proving it off.
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].AdminsOnly, tplData{
+			"member_subscriptions": w.commandGate(command, arguments).memberSubscriptions,
+		})
 		return
 	}
 
@@ -2476,6 +2524,10 @@ func (w *worker) processIncomingCommand(
 		w.enableSilentMessages(m, true)
 	case "disable_silent_messages":
 		w.enableSilentMessages(m, false)
+	case "enable_member_subscriptions":
+		w.enableMemberSubscriptions(m, true)
+	case "disable_member_subscriptions":
+		w.enableMemberSubscriptions(m, false)
 	case "referral":
 		w.showReferral(m)
 	case "week":
