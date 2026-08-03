@@ -4,6 +4,7 @@ package botconfig
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -95,6 +96,18 @@ func checkConfig(cfg *Config) error {
 	for _, x := range cfg.Endpoints {
 		if x.ListenPath == "" {
 			return errors.New("configure listen_path")
+		}
+		if x.WebhookDomain == "" {
+			return errors.New("configure webhook_domain")
+		}
+		// A bare host, which is the one shape both readers take:
+		// the bot prefixes it with https:// for the web app pages,
+		// and hands it to path.Join for the webhook, which would clean a scheme's // to /.
+		// Parsing it back is what proves it is only a host:
+		// a rule written over slashes lets https:cb.example.com and cb.example.com?x through.
+		parsed, err := url.Parse("https://" + x.WebhookDomain)
+		if err != nil || parsed.Host != x.WebhookDomain {
+			return errors.New("configure webhook_domain as a bare host, with no scheme, path or query")
 		}
 		if x.BotToken == "" {
 			return errors.New("configure bot_token")

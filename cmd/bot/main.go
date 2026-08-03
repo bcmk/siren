@@ -324,9 +324,6 @@ func (w *worker) setWebhook() {
 	ctx := context.Background()
 	for n, p := range w.cfg.Endpoints {
 		linf("setting webhook for endpoint %s...", n)
-		if p.WebhookDomain == "" {
-			continue
-		}
 		params := &bot.SetWebhookParams{URL: path.Join(p.WebhookDomain, string(p.ListenPath))}
 		_, err := w.bots[n].SetWebhook(ctx, params)
 		checkErr(err)
@@ -1880,9 +1877,15 @@ func (w *worker) poll(endpoint string, arguments string) {
 	w.replyToOwner(endpoint, "OK")
 }
 
+// webAppBase is where an endpoint's pages are served from.
+// checkConfig holds webhook_domain to a bare host, which is what makes this a plain join:
+// a scheme written into the config would land a second one here.
+func (w *worker) webAppBase(endpoint string) string {
+	return "https://" + w.cfg.Endpoints[endpoint].WebhookDomain
+}
+
 func (w *worker) webAppURL(endpoint string) string {
-	return "https://" + w.cfg.Endpoints[endpoint].WebhookDomain +
-		"/apps/add?endpoint=" + endpoint
+	return w.webAppBase(endpoint) + "/apps/add?endpoint=" + endpoint
 }
 
 func (w *worker) parseInitData(initData string, botToken string) (url.Values, bool) {

@@ -1252,6 +1252,7 @@ func searchConfig(t *testing.T, botToken string, whitelist []int64) *botconfig.C
 		"whitelist_chats":                    whitelist,
 		"endpoints": map[string]any{"test": map[string]any{
 			"listen_path":          "/x",
+			"webhook_domain":       "bot.example.invalid",
 			"bot_token":            botToken,
 			"translation":          []string{"t.yaml"},
 			"images":               "img",
