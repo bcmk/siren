@@ -64,6 +64,13 @@ var unaddressedKeys = map[string]bool{
 	"search_no_results":            true,
 	"search_failed":                true,
 	"search_failed_to_add":         true,
+	"timezone_button":              true,
+	"timezone_app_header":          true,
+	"timezone_app_current":         true,
+	"timezone_app_detected":        true,
+	"timezone_app_placeholder":     true,
+	"timezone_app_no_results":      true,
+	"timezone_app_failed":          true,
 }
 
 // TestTranslationsMarkEveryCommand guards the one gap of the explicit form:

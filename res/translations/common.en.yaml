@@ -354,6 +354,27 @@ timezone_help:
     Specify a timezone from the
     <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones">IANA list</a>,
     e.g., <code>{{ command "timezone" }} Europe/Berlin</code>
+timezone_button:
+  parse: raw
+  str: Or Choose Timezone
+timezone_app_header:
+  parse: raw
+  str: Choose your timezone
+timezone_app_current:
+  parse: raw
+  str: Current
+timezone_app_detected:
+  parse: raw
+  str: your device
+timezone_app_placeholder:
+  parse: raw
+  str: Search timezones
+timezone_app_no_results:
+  parse: raw
+  str: No such timezone
+timezone_app_failed:
+  parse: raw
+  str: Could not save the timezone
 timezone:
   parse: html
   disable_preview: true

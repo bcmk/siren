@@ -126,6 +126,13 @@ type Translations struct {
 	GroupsOnly                  *Translation `yaml:"groups_only"`
 	Timezone                    *Translation `yaml:"timezone"`
 	TimezoneInvalid             *Translation `yaml:"timezone_invalid"`
+	TimezoneButton              *Translation `yaml:"timezone_button"`
+	TimezoneAppHeader           *Translation `yaml:"timezone_app_header"`
+	TimezoneAppCurrent          *Translation `yaml:"timezone_app_current"`
+	TimezoneAppDetected         *Translation `yaml:"timezone_app_detected"`
+	TimezoneAppPlaceholder      *Translation `yaml:"timezone_app_placeholder"`
+	TimezoneAppNoResults        *Translation `yaml:"timezone_app_no_results"`
+	TimezoneAppFailed           *Translation `yaml:"timezone_app_failed"`
 }
 
 // LoadEndpointTranslations loads translations for a specific endpoint

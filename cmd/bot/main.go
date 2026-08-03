@@ -103,15 +103,17 @@ type worker struct {
 	imagedNotifications        chan notificationBatch
 	ourIDs                     []int64
 	searchHTML                 *htmltemplate.Template
+	timezoneHTML               *htmltemplate.Template
 	// zoneNames maps a lowercased IANA name to the zone the binary loaded for it,
 	// whose own name is the spelling to store.
 	// Written once at startup and only read after, so a concurrent reader needs no lock.
-	zoneNames         map[string]*time.Location
-	searchRequests    chan searchRequest
-	webAppAddRequests chan webAppAddRequest
-	incomingPackets   chan incomingPacket
-	maintenance       atomic.Bool
-	shuttingDown      atomic.Bool
+	zoneNames              map[string]*time.Location
+	searchRequests         chan searchRequest
+	webAppAddRequests      chan webAppAddRequest
+	webAppTimezoneRequests chan webAppTimezoneRequest
+	incomingPackets        chan incomingPacket
+	maintenance            atomic.Bool
+	shuttingDown           atomic.Bool
 	// chatMember is the admin gate's lookup, a field so tests can fake the answer.
 	chatMember func(endpoint string, chatID, userID int64) (*models.ChatMember, error)
 	shutdownCh chan struct{}
@@ -142,6 +144,18 @@ type webAppAddRequest struct {
 	// having subscribed, parked a pending subscription, or explained a refusal.
 	// Only a chat outside the whitelist is dropped in silence,
 	// and that alone must not read as success.
+	admittedCh chan bool
+}
+
+// webAppTimezoneRequest carries a zone picked in the timezone web app.
+// The zone is canonical: the HTTP handler resolves what the page submits,
+// so the main loop stores a name it can load back.
+type webAppTimezoneRequest struct {
+	endpoint string
+	chatID   int64
+	zone     string
+	// admittedCh reports whether the chat passed the whitelist,
+	// the one refusal the page cannot be told apart from a save.
 	admittedCh chan bool
 }
 
@@ -276,6 +290,7 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 		ourIDs:                     getOurIDs(cfg),
 		searchRequests:             make(chan searchRequest),
 		webAppAddRequests:          make(chan webAppAddRequest),
+		webAppTimezoneRequests:     make(chan webAppTimezoneRequest),
 		incomingPackets:            incomingPackets,
 	}
 	w.chatMember = w.getChatMember
@@ -297,6 +312,11 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 	searchHTMLBytes, err := os.ReadFile("res/webapp/search.html")
 	checkErr(err)
 	w.searchHTML, err = htmltemplate.New("search").Parse(string(searchHTMLBytes))
+	checkErr(err)
+
+	timezoneHTMLBytes, err := os.ReadFile("res/webapp/timezone.html")
+	checkErr(err)
+	w.timezoneHTML, err = htmltemplate.New("timezone").Parse(string(timezoneHTMLBytes))
 	checkErr(err)
 
 	return w
@@ -1395,13 +1415,40 @@ func (w *worker) chatLocation(user db.User) (*time.Location, string) {
 	return loc, zone
 }
 
+// replyTimezone answers with the chat's zone.
+// help carries the ways to change it, the instructions and the picker alike,
+// and belongs to the bare command, which asks what the zone is:
+// one that has just set or cleared it is answered with the zone alone.
+func (w *worker) replyTimezone(m receivedMessage, zone string, help bool) {
+	tr := w.tr[m.endpoint].Timezone
+	params := &renderParams{
+		templates: w.tpl[m.endpoint],
+		key:       tr.Key,
+		data:      tplData{"timezone": zone, "help": help},
+	}
+	// Silent, as a replyTr answer is. The bare /add reply, which carries a picker button too,
+	// notifies instead: whichever is right, the two should move together.
+	msg := params.asDeferredText(false, tr.DisablePreview, tr.Parse)
+	// A private chat, the only place a web app button works.
+	if help && !isGroupOrChannel(m.chatID) {
+		msg.ReplyMarkup = &models.InlineKeyboardMarkup{
+			InlineKeyboard: [][]models.InlineKeyboardButton{{
+				{
+					Text:   w.tr[m.endpoint].TimezoneButton.Str,
+					WebApp: &models.WebAppInfo{URL: w.timezoneAppURL(m.endpoint, zone)},
+				},
+			}},
+		}
+	}
+	w.replyMessage(m, db.PriorityHigh, msg)
+}
+
 // setTimezone shows the chat's zone or sets it from a typed IANA name.
 func (w *worker) setTimezone(m receivedMessage, arg string) {
 	arg = strings.TrimSpace(arg)
 	if arg == "" {
 		_, zone := w.chatLocation(w.mustUserByID(m.userID))
-		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Timezone,
-			tplData{"timezone": zone, "help": true})
+		w.replyTimezone(m, zone, true)
 		return
 	}
 	_, zone, ok := w.parseTimezone(arg)
@@ -1410,8 +1457,7 @@ func (w *worker) setTimezone(m receivedMessage, arg string) {
 		return
 	}
 	w.db.SetTimezone(m.userID, zone)
-	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Timezone,
-		tplData{"timezone": zone, "help": false})
+	w.replyTimezone(m, zone, false)
 }
 
 // resetTimezone clears the chat's zone, leaving the grid on the default.
@@ -1419,8 +1465,7 @@ func (w *worker) setTimezone(m receivedMessage, arg string) {
 // where a command sits in the settings listing beside the one that set it.
 func (w *worker) resetTimezone(m receivedMessage) {
 	w.db.SetTimezone(m.userID, "")
-	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Timezone,
-		tplData{"timezone": utcZone, "help": false})
+	w.replyTimezone(m, utcZone, false)
 }
 
 // modelPayloadPrefix prefixes a deep-link payload naming a model to subscribe to.
@@ -2063,6 +2108,13 @@ func (w *worker) webAppURL(endpoint string) string {
 	return w.webAppBase(endpoint) + "/apps/add?endpoint=" + endpoint
 }
 
+// timezoneAppURL carries the chat's zone to the page, which has no way to ask for it.
+// It is a display hint: the submit decides what the chat stores.
+func (w *worker) timezoneAppURL(endpoint, current string) string {
+	return w.webAppBase(endpoint) +
+		"/apps/timezone?endpoint=" + endpoint + "&current=" + url.QueryEscape(current)
+}
+
 func (w *worker) parseInitData(initData string, botToken string) (url.Values, bool) {
 	values, err := url.ParseQuery(initData)
 	if err != nil {
@@ -2131,6 +2183,49 @@ func (w *worker) handleWebApp(rw http.ResponseWriter, r *http.Request) {
 	err := w.searchHTML.Execute(rw, data)
 	if err != nil {
 		lerr("cannot write web app response, %v", err)
+	}
+}
+
+func (w *worker) handleTimezoneApp(rw http.ResponseWriter, r *http.Request) {
+	endpoint := r.URL.Query().Get("endpoint")
+	if _, ok := w.cfg.Endpoints[endpoint]; !ok {
+		http.Error(rw, "bad endpoint", http.StatusBadRequest)
+		return
+	}
+	// The page is served before any init data is read, so the query names the zone, not the chat.
+	// A zone this binary cannot load reads as the default.
+	_, current, _ := w.zoneOrDefault(r.URL.Query().Get("current"))
+	// The page offers what the bot accepts, rather than what the browser happens to know:
+	// two lists would let a row be tapped and then refused by the save it was offered for.
+	zones := make([]string, 0, len(w.zoneNames))
+	for _, loc := range w.zoneNames {
+		zones = append(zones, loc.String())
+	}
+	sort.Strings(zones)
+	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
+	tr := w.tr[endpoint]
+	data := struct {
+		Header      string
+		Current     string
+		CurrentZone string
+		Detected    string
+		Placeholder string
+		NoResults   string
+		Failed      string
+		Zones       []string
+	}{
+		Header:      tr.TimezoneAppHeader.Str,
+		Current:     tr.TimezoneAppCurrent.Str,
+		CurrentZone: current,
+		Detected:    tr.TimezoneAppDetected.Str,
+		Placeholder: tr.TimezoneAppPlaceholder.Str,
+		NoResults:   tr.TimezoneAppNoResults.Str,
+		Failed:      tr.TimezoneAppFailed.Str,
+		Zones:       zones,
+	}
+	err := w.timezoneHTML.Execute(rw, data)
+	if err != nil {
+		lerr("cannot write timezone app response, %v", err)
 	}
 }
 
@@ -2305,6 +2400,91 @@ func (w *worker) handleWebAppAdd(rw http.ResponseWriter, r *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 }
 
+// webAppTimezoneCommand names a timezone set from the web app.
+// It is distinct from /timezone so the picker and the typed form are not conflated in the log.
+const webAppTimezoneCommand = "web_app_timezone"
+
+// performWebAppTimezone stores a zone picked in the web app.
+// Main goroutine only, as performWebAppAdd is, and it answers in the chat,
+// so the app can close on the save and leave the confirmation behind it.
+func (w *worker) performWebAppTimezone(req webAppTimezoneRequest) {
+	if !w.admitChat("web app timezone", req.chatID) {
+		req.admittedCh <- false
+		return
+	}
+	m, _ := w.newReceivedMessage(int(time.Now().Unix()), req.endpoint, req.chatID, "", webAppTimezoneCommand)
+	w.logReceived(m)
+	w.db.SetTimezone(m.userID, req.zone)
+	w.replyTimezone(m, req.zone, false)
+	req.admittedCh <- true
+}
+
+// submitWebAppTimezone hands a request to the main loop and waits for its verdict,
+// as submitWebAppAdd does, and for the same reasons.
+func (w *worker) submitWebAppTimezone(req webAppTimezoneRequest) (admitted, alive bool) {
+	select {
+	case w.webAppTimezoneRequests <- req:
+	case <-w.shutdownCh:
+		return false, false
+	}
+	return <-req.admittedCh, true
+}
+
+func (w *worker) handleWebAppTimezone(rw http.ResponseWriter, r *http.Request) {
+	endpoint := r.URL.Query().Get("endpoint")
+	if _, ok := w.cfg.Endpoints[endpoint]; !ok {
+		lerr("web app timezone: bad endpoint %q", endpoint)
+		http.Error(rw, "bad endpoint", http.StatusBadRequest)
+		return
+	}
+	// The save is not a read: a shared cache must not answer one chat's with another's.
+	if r.Method != http.MethodPost {
+		rw.Header().Set("Allow", http.MethodPost)
+		http.Error(rw, "use POST", http.StatusMethodNotAllowed)
+		return
+	}
+	rw.Header().Set("Cache-Control", "no-store")
+	initData := r.Header.Get("X-Init-Data")
+	values, ok := w.parseInitData(initData, string(w.cfg.Endpoints[endpoint].BotToken))
+	if !ok {
+		lerr("web app timezone: invalid init data for endpoint %s", endpoint)
+		http.Error(rw, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	// The page proposes, the bot decides: whatever the browser holds,
+	// only a zone this binary can load back may be stored.
+	proposed := r.URL.Query().Get("timezone")
+	_, zone, ok := w.parseTimezone(proposed)
+	if !ok {
+		// The page offers what this refuses, so a refusal here is the two sets having parted.
+		lerr("web app timezone: refused zone %q for endpoint %s", proposed, endpoint)
+		http.Error(rw, "bad timezone", http.StatusBadRequest)
+		return
+	}
+	userID, ok := webAppUserID(values)
+	if !ok {
+		lerr("web app timezone: missing user id")
+		http.Error(rw, "missing user id", http.StatusBadRequest)
+		return
+	}
+	req := webAppTimezoneRequest{
+		endpoint:   endpoint,
+		chatID:     userID,
+		zone:       zone,
+		admittedCh: make(chan bool, 1),
+	}
+	admitted, alive := w.submitWebAppTimezone(req)
+	if !alive {
+		http.Error(rw, "shutting down", http.StatusServiceUnavailable)
+		return
+	}
+	if !admitted {
+		http.Error(rw, "forbidden", http.StatusForbidden)
+		return
+	}
+	rw.WriteHeader(http.StatusOK)
+}
+
 func (w *worker) handleUnmatched(rw http.ResponseWriter, r *http.Request) {
 	linf("unhandled request: %s %s", r.Method, r.URL)
 	http.NotFound(rw, r)
@@ -2315,6 +2495,8 @@ func (w *worker) registerWebApp() {
 	http.HandleFunc("/apps/add", w.handleWebApp)
 	http.HandleFunc("/apps/add/api/search", w.handleSearch)
 	http.HandleFunc("/apps/add/api/submit", w.handleWebAppAdd)
+	http.HandleFunc("/apps/timezone", w.handleTimezoneApp)
+	http.HandleFunc("/apps/timezone/api/submit", w.handleWebAppTimezone)
 }
 
 func (w *worker) logConfig() {
@@ -3866,6 +4048,8 @@ func main() {
 			ldbg("status updates processed in %v", processed.elapsed)
 		case req := <-w.webAppAddRequests:
 			w.performWebAppAdd(req)
+		case req := <-w.webAppTimezoneRequests:
+			w.performWebAppTimezone(req)
 		case u := <-incoming:
 			if w.maintenance.Load() {
 				w.maintenanceReply(u, waitingUsers)

@@ -354,6 +354,27 @@ timezone_help:
     Укажите часовой пояс из
     <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones">списка IANA</a>,
     например, <code>{{ command "timezone" }} Europe/Berlin</code>
+timezone_button:
+  parse: raw
+  str: Или выбрать часовой пояс
+timezone_app_header:
+  parse: raw
+  str: Выберите часовой пояс
+timezone_app_current:
+  parse: raw
+  str: Сейчас
+timezone_app_detected:
+  parse: raw
+  str: ваше устройство
+timezone_app_placeholder:
+  parse: raw
+  str: Поиск часовых поясов
+timezone_app_no_results:
+  parse: raw
+  str: Такого часового пояса нет
+timezone_app_failed:
+  parse: raw
+  str: Не удалось сохранить часовой пояс
 timezone:
   parse: html
   disable_preview: true
