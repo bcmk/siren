@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v3.14.0 — 2026-08-03
+
+### Added
+
+- `/enable_member_subscriptions`: let any group member add and remove streamers, off by default.
+
+### Changed
+
+- The admins-only refusal names the setting that would allow the command.
+
 ## v3.13.2 — 2026-07-29
 
 ### Added
