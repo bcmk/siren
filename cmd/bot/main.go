@@ -2364,6 +2364,14 @@ func (w *worker) handleWebAppAdd(rw http.ResponseWriter, r *http.Request) {
 		http.Error(rw, "bad endpoint", http.StatusBadRequest)
 		return
 	}
+	// The add is not a read, as the timezone save is not:
+	// a shared cache keyed on the URL alone must not answer one chat's with another's.
+	if r.Method != http.MethodPost {
+		rw.Header().Set("Allow", http.MethodPost)
+		http.Error(rw, "use POST", http.StatusMethodNotAllowed)
+		return
+	}
+	rw.Header().Set("Cache-Control", "no-store")
 	initData := r.Header.Get("X-Init-Data")
 	values, ok := w.parseInitData(initData, string(w.cfg.Endpoints[endpoint].BotToken))
 	if !ok {

@@ -199,6 +199,7 @@ function addStreamer(id) {
     var url = "/apps/add/api/submit?endpoint=" + encodeURIComponent(endpoint) +
         "&streamer=" + encodeURIComponent(id);
     fetch(url, {
+        method: "POST",
         headers: {"X-Init-Data": tg.initData}
     })
     .then(function(r) {

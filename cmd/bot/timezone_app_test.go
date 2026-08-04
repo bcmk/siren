@@ -330,3 +330,27 @@ func TestReplyTimezoneOffersThePicker(t *testing.T) {
 		})
 	}
 }
+
+// TestHandleWebAppAddRefusesAGet: the add is a write, so it answers a POST alone.
+// Its twin was hardened first; this holds the pair together,
+// a GET being what a shared cache may answer from another chat's copy.
+func TestHandleWebAppAddRefusesAGet(t *testing.T) {
+	t.Parallel()
+	const botToken = "123:test-token"
+	w := &worker{
+		cfg:               searchConfig(t, botToken, nil),
+		webAppAddRequests: make(chan webAppAddRequest, 1),
+		shutdownCh:        make(chan struct{}),
+	}
+	r := httptest.NewRequest(http.MethodGet, "/apps/add/api/submit?endpoint=test&streamer=alica", nil)
+	r.Header.Set("X-Init-Data", initDataFor(botToken, 1))
+	rw := httptest.NewRecorder()
+	w.handleWebAppAdd(rw, r)
+
+	if rw.Code != http.StatusMethodNotAllowed {
+		t.Errorf("a GET got %d, want %d", rw.Code, http.StatusMethodNotAllowed)
+	}
+	if queued := len(w.webAppAddRequests); queued != 0 {
+		t.Errorf("a GET still queued %d adds", queued)
+	}
+}
