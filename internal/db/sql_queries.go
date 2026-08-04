@@ -29,7 +29,7 @@ func (d *Database) NewNotifications() []Notification {
 			n.id, n.endpoint, u.id, n.streamer_id, s.nickname, n.status,
 			n.time_diff, n.image_url, n.viewers, n.show_kind, n.social, n.priority,
 			n.sound, n.kind, coalesce(n.command, ''), n.reply_seq, n.fields_hint,
-			n.subject, u.silent_messages, u.affiliate_params
+			n.subject, u.silent_messages, u.chat_id, u.affiliate_params
 		from notification_queue n
 		join users u on u.id = n.user_id
 		join streamers s on s.id = n.streamer_id
@@ -56,6 +56,7 @@ func (d *Database) NewNotifications() []Notification {
 			&iter.FieldsHint,
 			&iter.Subject,
 			&iter.SilentMessages,
+			&iter.ChatID,
 			&iter.AffiliateParams,
 		},
 		func() { nots = append(nots, iter) },

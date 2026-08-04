@@ -113,8 +113,9 @@ online:
     {{- if .time_diff }} {{ template "duration" .time_diff }}{{ end -}}
     {{- with .show_kind }}{{ print "\n" }}{{ template "show_kind" . }}{{ end -}}
     {{- if .viewers }}{{ print "\n" }}зрителей: {{ .viewers }}{{ end -}}
-    {{- if .subject }}{{ print "\n" }}<blockquote>{{ .subject }}</blockquote>{{ end -}}
+    {{- if .subject }}{{ print "\n" }}<blockquote>{{ .subject }}{{ if .subject_clipped }}…{{ end }}</blockquote>{{ end -}}
     </i>
+    {{- if .fields_hint }}{{ print "\n\n" }}{{ template "fields_customization_hint" }}{{ end -}}
 show_kind:
   str: |-
     {{- if eq . 1 -}}в публичном шоу
@@ -568,5 +569,4 @@ too_many_subscriptions_for_pics:
 we_are_up:
   str: Мы снова работаем
 fields_customization_hint:
-  parse: html
   str: '<i>Совет: Вы можете настроить, что отображать, в {{ command "settings" }}</i>'

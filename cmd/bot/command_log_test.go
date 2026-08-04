@@ -233,10 +233,10 @@ func TestDeferredOnlinePicsLogItsCommand(t *testing.T) {
 	}
 	w.enqueueNotifications(notificationBatch{notifications: nots, images: map[string][]byte{}})
 
-	// The picture and the hint that trails it, both named by the command.
+	// The picture, hint included, named by the command.
 	commands := drainSendQueueToLog(t, w)
 	t.Logf("deferred picture logged: %q", commands)
-	if !slices.Equal(commands, []string{"pics", "pics"}) {
+	if !slices.Equal(commands, []string{"pics"}) {
 		t.Errorf("the deferred picture lost its command, got %q", commands)
 	}
 }
@@ -1020,48 +1020,99 @@ func TestChunkedListNumbersItsReplies(t *testing.T) {
 	}
 }
 
-// The hint explains the pictures, so it is delivered after them,
-// and the whole answer is numbered in that order.
-func TestOnlinePicsSendTheHintLast(t *testing.T) {
+// queuedText renders a queued message and returns its text,
+// the caption where it carries a picture, and which of the two it was.
+func queuedText(t *testing.T, msg sendable) (string, bool) {
+	t.Helper()
+	msg.render("")
+	switch m := msg.(type) {
+	case *photoParams:
+		return m.Caption, true
+	case *messageParams:
+		return m.Text, false
+	}
+	t.Fatalf("unexpected sendable %T", msg)
+	return "", false
+}
+
+// The hint explains the pictures, so it composes into the last message of the answer,
+// its caption where that message carries a picture, rather than trailing as a message of its own.
+// A group or channel, where settings are admin-only, gets none at all.
+func TestOnlinePicsCarryTheHintInTheLastMessage(t *testing.T) {
 	t.Parallel()
-	w := newTestWorker()
-	defer w.terminate()
-	w.createDatabase()
-	w.initCache()
+	const hinted = "Online\n\nFieldsCustomizationHint"
+	tests := []struct {
+		name    string
+		chatID  int64
+		withPic bool
+		want    []string
+	}{
+		{"a private chat is hinted once, at the end", 1, false, []string{"Online", "Online", hinted}},
+		{"a picture carries the hint in its caption", 2, true, []string{"Online", "Online", hinted}},
+		{"a group is not hinted", -1, false, []string{"Online", "Online", "Online"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := newTestWorker()
+			defer w.terminate()
+			w.createDatabase()
+			w.initCache()
+			// Above the three pictures, so the group cap is not what suppresses the hint.
+			cfg := testConfig
+			cfg.MaxSubscriptionsForPics = 10
+			w.cfg = &cfg
 
-	for i := range 3 {
-		nickname := fmt.Sprintf("online_%d", i)
-		insertTestStreamer(&w.db, db.Streamer{
-			Nickname:          nickname,
-			UnconfirmedStatus: cmdlib.StatusOnline,
+			images := map[string][]byte{}
+			for i := range 3 {
+				nickname := fmt.Sprintf("online_%d", i)
+				insertTestStreamer(&w.db, db.Streamer{
+					Nickname:          nickname,
+					UnconfirmedStatus: cmdlib.StatusOnline,
+				})
+				insertSubscription(&w.db, "test", tc.chatID, nickname)
+				if tc.withPic {
+					url := "http://" + nickname + ".jpg"
+					w.unconfirmedOnlineStreamers[nickname] = cmdlib.StreamerInfo{ImageURL: url}
+					images[url] = []byte("image")
+				}
+			}
+			w.listOnlineStreamers(testMessage(w, tc.chatID, "pics", 100))
+
+			// Nothing goes out now: the answer waits for the pictures.
+			if got := drainSeqsToLog(t, w); len(got) != 0 {
+				t.Errorf("the answer did not wait for the pictures, got %v", got)
+			}
+
+			nots := w.db.NewNotifications()
+			if len(nots) != 3 {
+				t.Fatalf("expected 3 notifications, got %d", len(nots))
+			}
+			w.enqueueNotifications(notificationBatch{notifications: nots, images: images})
+
+			// Three messages and no fourth, numbered in order, the last carrying the hint.
+			var texts []string
+			var seqs []int
+			for {
+				q := w.sendQueue.pop()
+				if q == nil {
+					break
+				}
+				text, isPhoto := queuedText(t, q.message)
+				if isPhoto != tc.withPic {
+					t.Errorf("reply %d is a photo = %v, want %v", q.tag.replySeq, isPhoto, tc.withPic)
+				}
+				texts = append(texts, text)
+				seqs = append(seqs, q.tag.replySeq)
+			}
+			t.Logf("queued texts: %q", texts)
+			if !slices.Equal(texts, tc.want) {
+				t.Errorf("queued texts = %q, want %q", texts, tc.want)
+			}
+			if !slices.Equal(seqs, []int{0, 1, 2}) {
+				t.Errorf("reply numbering = %v, want [0 1 2]", seqs)
+			}
 		})
-		insertSubscription(&w.db, "test", 1, nickname)
-	}
-	w.listOnlineStreamers(testMessage(w, 1, "pics", 100))
-
-	// Nothing goes out now: the hint waits with the pictures.
-	if got := drainSeqsToLog(t, w); len(got) != 0 {
-		t.Errorf("the answer did not wait for the pictures, got %v", got)
-	}
-
-	nots := w.db.NewNotifications()
-	if len(nots) != 3 {
-		t.Fatalf("expected 3 notifications, got %d", len(nots))
-	}
-	w.enqueueNotifications(notificationBatch{notifications: nots, images: map[string][]byte{}})
-
-	// Queued pictures first, then the hint, in that order.
-	var queued []int
-	for {
-		q := w.sendQueue.pop()
-		if q == nil {
-			break
-		}
-		queued = append(queued, q.tag.replySeq)
-	}
-	t.Logf("delivery order: %v", queued)
-	if !slices.Equal(queued, []int{0, 1, 2, 3}) {
-		t.Errorf("the hint did not come last, got %v", queued)
 	}
 }
 

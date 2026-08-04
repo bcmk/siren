@@ -30,15 +30,16 @@ type Notification struct {
 	Command string
 	// ReplySeq is the message's place in one answer, zero for the first.
 	ReplySeq int
-	// FieldsHint asks for the customization hint after this message,
-	// so it lands behind the pictures it explains rather than ahead of them.
+	// FieldsHint marks the last message of an answer,
+	// which carries the customization hint where the chat is one that can act on it.
 	FieldsHint     bool
 	Subject        string
 	SilentMessages bool
 
-	// AffiliateParams comes from the recipient's users row, which NewNotifications joins.
-	// A literal built for StoreNotifications may leave it nil,
-	// since the read path fills it before the send.
+	// ChatID and AffiliateParams come from the recipient's users row, which NewNotifications joins.
+	// A literal built for StoreNotifications may leave them zero,
+	// since the read path fills them before the send.
+	ChatID          int64
 	AffiliateParams map[string]string
 }
 

@@ -234,6 +234,9 @@ func TestNotificationsStorage(t *testing.T) {
 	newNots := w.db.NewNotifications()
 	nots[0].ID = 1
 	nots[1].ID = 2
+	// The read joins the recipient's chat, which the stored literal does not carry.
+	nots[0].ChatID = 1
+	nots[1].ChatID = 2
 	if !reflect.DeepEqual(nots, newNots) {
 		t.Errorf("unexpected notifications, expocted: %v, got: %v", nots, newNots)
 	}
@@ -253,6 +256,7 @@ func TestNotificationsStorage(t *testing.T) {
 	w.db.StoreNotifications(nots)
 	newNots = w.db.NewNotifications()
 	nots[0].ID = 3
+	nots[0].ChatID = 3
 	if !reflect.DeepEqual(nots, newNots) {
 		t.Errorf("unexpected notifications, expocted: %v, got: %v", nots, newNots)
 	}

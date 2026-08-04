@@ -227,7 +227,9 @@ func newTestWorker() *testWorker {
 	template.Must(tpl.New("start").Parse("Start"))
 	template.Must(tpl.New("checking_streamer").Parse("CheckingStreamer"))
 	template.Must(tpl.New("streamer_added").Parse("StreamerAdded"))
-	template.Must(tpl.New("online").Parse("Online"))
+	// Mirrors the real online template, which composes the hint behind the same key.
+	template.Must(tpl.New("online").Parse(
+		`Online{{ if .fields_hint }}{{ print "\n\n" }}{{ template "fields_customization_hint" }}{{ end }}`))
 	template.Must(tpl.New("offline").Parse("Offline"))
 	template.Must(tpl.New("subscription_usage").Parse("SubscriptionUsage"))
 	template.Must(tpl.New("subscription_usage_ad").Parse("SubscriptionUsageAd"))

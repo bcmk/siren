@@ -32,6 +32,7 @@ import (
 	"syscall"
 	texttemplate "text/template"
 	"time"
+	"unicode/utf16"
 
 	// The alpine image ships no zone database, so the binary carries one.
 	_ "time/tzdata"
@@ -785,6 +786,27 @@ func (w *worker) finalizeNotification(notificationID int, userID db.UserID, hasF
 	}
 }
 
+// subjectLimit is the room subject's share of a photo caption,
+// which Telegram caps at 1024 UTF-16 units after entity parsing.
+// A caption over that cap is a 400 that loses the picture and every field on it.
+// The subject is the one unbounded field, and the rest runs to some 200 units at its longest.
+// A message with no picture caps at 4096 and clips the same, so one subject reads alike.
+const subjectLimit = 600
+
+// clipSubject cuts a subject to subjectLimit, counting UTF-16 units as Telegram counts a caption,
+// and reports whether it cut, which the message marks.
+func clipSubject(subject string) (string, bool) {
+	units := 0
+	for i, r := range subject {
+		size := utf16.RuneLen(r)
+		if units+size > subjectLimit {
+			return subject[:i], true
+		}
+		units += size
+	}
+	return subject, false
+}
+
 func (w *worker) notifyOfStatus(priority db.Priority, n db.Notification, image []byte, social bool) {
 	if w.tr[n.Endpoint] == nil {
 		// Orphaned endpoint (removed from config); drop the stranded row.
@@ -797,13 +819,18 @@ func (w *worker) notifyOfStatus(priority db.Priority, n db.Notification, image [
 		temp := calcTimeDiff(*n.TimeDiff)
 		timeDiff = &temp
 	}
+	subject, subjectClipped := clipSubject(n.Subject)
 	data := tplData{
-		"streamer":      n.Nickname,
-		"streamer_link": w.streamerLink(n.Nickname, w.gatedAffiliate(n.AffiliateParams)),
-		"time_diff":     timeDiff,
-		"viewers":       n.Viewers,
-		"show_kind":     n.ShowKind,
-		"subject":       html.EscapeString(n.Subject),
+		"streamer":        n.Nickname,
+		"streamer_link":   w.streamerLink(n.Nickname, w.gatedAffiliate(n.AffiliateParams)),
+		"time_diff":       timeDiff,
+		"viewers":         n.Viewers,
+		"show_kind":       n.ShowKind,
+		"subject":         html.EscapeString(subject),
+		"subject_clipped": subjectClipped,
+		// A group or channel gets no hint: settings are admin-only there, so it is noise.
+		// The chat is read here rather than stored, so a queued row holds no chat identity.
+		"fields_hint": n.FieldsHint && !isGroupOrChannel(n.ChatID),
 	}
 	notify := !n.SilentMessages
 	switch n.Status {
@@ -816,13 +843,6 @@ func (w *worker) notifyOfStatus(priority db.Priority, n db.Notification, image [
 	default:
 		// No message for this status; clear the queue row so it doesn't strand.
 		w.finalizeNotification(n.ID, 0, false)
-	}
-	if n.FieldsHint {
-		// A requeued picture repeats its hint, as it repeats itself.
-		w.enqueueTr(
-			db.PriorityLow, n.Endpoint, n.UserID, false,
-			w.tr[n.Endpoint].FieldsCustomizationHint, nil, nil,
-			replyNth(n.Command, n.ReplySeq+1), 0)
 	}
 	if social && w.cfg.AdChancePercent > 0 && rand.Intn(100) < w.cfg.AdChancePercent {
 		// Empty today: only a status notification is ever social,
@@ -1807,8 +1827,9 @@ func (w *worker) listOnlineStreamers(m receivedMessage) {
 		nots = append(nots, not)
 		m = m.next()
 	}
-	// Carried by the last picture, so the hint is queued behind them all
-	// rather than sent now and delivered a tick ahead of them.
+	// Carried by the last message of the answer, in its caption where that message has a picture,
+	// so the hint arrives with the pictures it explains rather than a tick ahead of them.
+	// It shares that message's fate: a hint with no picture left to explain is not worth a retry.
 	nots[len(nots)-1].FieldsHint = true
 	w.db.StoreNotifications(nots)
 }
