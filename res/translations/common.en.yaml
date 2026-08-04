@@ -326,7 +326,7 @@ affiliate_status:
     <code>{{ .affiliate_base }}/{{ template "sample_streamer" }}{{ with .affiliate_query }}?{{ . }}{{ end }}</code>
     Each one redirects through your {{ template "site" }} affiliate link, so the payouts are yours.
 
-    To change it, send <code>{{ command "affiliate" }} LINK</code>
+    To change it, send {{ command "affiliate" }} <code>LINK</code>
     To reset, {{ command "reset_affiliate" }}
 affiliate_invalid:
   parse: html

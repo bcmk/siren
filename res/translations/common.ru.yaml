@@ -326,7 +326,7 @@ affiliate_status:
     <code>{{ .affiliate_base }}/{{ template "sample_streamer" }}{{ with .affiliate_query }}?{{ . }}{{ end }}</code>
     Каждая перенаправляет через вашу партнёрскую ссылку {{ template "site" }}, поэтому выплаты идут вам.
 
-    Чтобы изменить, отправьте <code>{{ command "affiliate" }} ССЫЛКУ</code>
+    Чтобы изменить, отправьте {{ command "affiliate" }} <code>ССЫЛКУ</code>
     Сброс: {{ command "reset_affiliate" }}
 affiliate_invalid:
   parse: html
