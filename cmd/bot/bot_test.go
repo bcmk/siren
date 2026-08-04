@@ -290,6 +290,7 @@ func TestCompleteSendResultMigrateReArms(t *testing.T) {
 	// Old code deleted the row and incremented reports for this final migrate.
 	w.completeSendResult(msgSendResult{
 		result:         messageMigrate,
+		endpoint:       "test",
 		userID:         not.UserID,
 		notificationID: not.ID,
 		tag:            unprompted(db.NotificationPacket),

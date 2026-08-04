@@ -19,7 +19,7 @@ import (
 )
 
 // nextOutgoing pops the message the sender would send next.
-// The test worker sets commonCooling, so enqueue parks messages in the queue;
+// The test worker holds the test endpoint's slot, so enqueue parks messages in the queue;
 // tests read them there rather than from a channel.
 func (w *testWorker) nextOutgoing() *queuedMessage {
 	return w.sendQueue.pop()
@@ -124,6 +124,8 @@ var testTranslations = cmdlib.Translations{
 
 type testWorker struct {
 	worker
+	// sendQueue aliases the test endpoint's queue, where every test send parks.
+	sendQueue *sendQueue
 	terminate func()
 }
 
@@ -259,21 +261,24 @@ func newTestWorker() *testWorker {
 
 	w := &testWorker{
 		worker: worker{
-			bots:          nil,
-			db:            db.NewDatabase(connStr, true, testConfig.MaxSubs),
-			cfg:           &testConfig,
-			client:        nil,
-			tr:            map[string]*cmdlib.Translations{"test": &testTranslations},
-			botNames:      map[string]string{"test": "bot"},
-			tpl:           map[string]*template.Template{"test": tpl},
-			sendQueue:     newSendQueue(),
-			sendResults:   make(chan msgSendResult, sendChanCap),
-			cooledUsers:   make(chan db.UserID, sendChanCap),
-			shutdownCh:    make(chan struct{}),
-			commonCooling: true,
-			checker:       &checkers.RandomChecker{BaseChecker: checkers.NewBaseChecker(&checkers.TestCheckerConfig{})},
+			bots:        nil,
+			db:          db.NewDatabase(connStr, true, testConfig.MaxSubs),
+			cfg:         &testConfig,
+			client:      nil,
+			tr:          map[string]*cmdlib.Translations{"test": &testTranslations},
+			botNames:    map[string]string{"test": "bot"},
+			tpl:         map[string]*template.Template{"test": tpl},
+			senders:     map[string]*endpointSender{},
+			sendResults: make(chan msgSendResult, sendChanCap),
+			cooledUsers: make(chan cooledUser, sendChanCap),
+			shutdownCh:  make(chan struct{}),
+			checker:     &checkers.RandomChecker{BaseChecker: checkers.NewBaseChecker(&checkers.TestCheckerConfig{})},
 		},
 	}
+	// Hold the test endpoint's slot so enqueues park for inspection.
+	s := w.sender("test")
+	s.cooling = true
+	w.sendQueue = &s.queue
 	// No drop database: the container's teardown takes every clone with it.
 	w.terminate = func() { checkErr(w.db.Close()) }
 	return w

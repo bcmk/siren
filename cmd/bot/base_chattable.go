@@ -23,7 +23,7 @@ type renderParams struct {
 // render produces the text, with {{ command }} writing the mention for this chat.
 // The clone keeps that binding local,
 // sharing the parse trees and allocating one small struct per associated template plus two maps.
-// That costs microseconds, and commonCooldown paces sends at 60ms however deep the queue.
+// That costs microseconds, and endpointCooldown paces sends at 60ms however deep the queue.
 func (d *renderParams) render(mention string) string {
 	tpl := texttemplate.Must(d.templates.Clone()).Funcs(cmdlib.CommandFuncs(mention))
 	return templateToString(tpl, d.key, d.data)

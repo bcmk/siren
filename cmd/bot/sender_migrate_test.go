@@ -52,7 +52,7 @@ func TestDeliverDropsMigrateToSelf(t *testing.T) {
 			cfg:         &botconfig.Config{},
 			bots:        map[string]*bot.Bot{"ep": nil},
 			sendResults: make(chan msgSendResult, 16),
-			cooledUsers: make(chan db.UserID, 16),
+			cooledUsers: make(chan cooledUser, 16),
 		}
 		go w.deliver(&queuedMessage{
 			userID:   1,
@@ -84,7 +84,7 @@ func TestDeliverReportsMigrateForRequeue(t *testing.T) {
 			cfg:         &botconfig.Config{},
 			bots:        map[string]*bot.Bot{"ep": nil},
 			sendResults: make(chan msgSendResult, 16),
-			cooledUsers: make(chan db.UserID, 16),
+			cooledUsers: make(chan cooledUser, 16),
 		}
 		q := &queuedMessage{
 			userID:   userID,
@@ -101,15 +101,15 @@ func TestDeliverReportsMigrateForRequeue(t *testing.T) {
 				r.result, r.migrateToChatID, r.resend != nil, newID)
 		}
 		// The chat is a group, released after groupCooldown — exactly once.
-		if id := <-w.cooledUsers; id != userID {
-			t.Errorf("released id = %d, want %d", id, userID)
+		if c := <-w.cooledUsers; c.userID != userID || c.endpoint != "ep" {
+			t.Errorf("released (endpoint, id) = (%s, %d), want (ep, %d)", c.endpoint, c.userID, userID)
 		}
 		synctest.Wait()
 		select {
 		case r := <-w.sendResults:
 			t.Errorf("unexpected extra result %d", r.result)
-		case id := <-w.cooledUsers:
-			t.Errorf("unexpected extra release of %d", id)
+		case c := <-w.cooledUsers:
+			t.Errorf("unexpected extra release of %d", c.userID)
 		default:
 		}
 	})
@@ -128,7 +128,7 @@ func TestMigrateAppliesBeforeResendDispatch(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()
-	w.commonCooling = false
+	w.sender("test").cooling = false
 
 	userID, _ := w.db.AddUser(oldID, 3, 0, "group")
 	msg := &okMessage{}
@@ -164,7 +164,7 @@ func TestSenderRedeliversAcrossMigrate(t *testing.T) {
 	w := newTestWorker()
 	defer w.terminate()
 	w.createDatabase()
-	w.commonCooling = false
+	w.sender("test").cooling = false
 	// Skip the member-count network lookup in the sent bookkeeping.
 	w.shuttingDown.Store(true)
 

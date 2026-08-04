@@ -289,7 +289,7 @@ func TestDispatchRendersForTheDestinationChat(t *testing.T) {
 			w := newTestWorker()
 			defer w.terminate()
 			w.createDatabase()
-			w.commonCooling = false
+			w.sender("test").cooling = false
 			userID, _ := w.db.AddUser(tc.chatID, 3, 0, "")
 
 			tpl := texttemplate.New("t").Funcs(cmdlib.TemplateFuncs())
@@ -307,8 +307,8 @@ func TestDispatchRendersForTheDestinationChat(t *testing.T) {
 				select {
 				case got = <-msg.sent:
 					done = true
-				case <-w.sendResults:
-					w.onSendDone()
+				case r := <-w.sendResults:
+					w.onSendDone(r.endpoint)
 				case u := <-w.cooledUsers:
 					w.onUserCooled(u)
 				case <-timeout:

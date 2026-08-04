@@ -72,7 +72,7 @@ func completeQueuedSends(t *testing.T, w *testWorker) {
 	}
 	// completeSendResult freed the slot;
 	// hold it again so the next phase's messages stay queued for inspection.
-	w.commonCooling = true
+	w.sender("test").cooling = true
 }
 
 // commandsInLog runs a query selecting one command column,

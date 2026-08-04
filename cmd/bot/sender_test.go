@@ -43,7 +43,7 @@ func (m *countingMessage) send(context.Context, *bot.Bot) (*models.Message, erro
 }
 
 // TestSenderScheduling drives the real worker and checks priority order,
-// per-user cooldown and the single-flight slot.
+// per-user cooldown and the endpoint's single-flight slot.
 func TestSenderScheduling(t *testing.T) {
 	t.Parallel()
 	type enq struct {
@@ -79,7 +79,7 @@ func TestSenderScheduling(t *testing.T) {
 			w := newTestWorker()
 			defer w.terminate()
 			w.createDatabase()
-			w.commonCooling = false
+			w.sender("test").cooling = false
 
 			userIDs := make([]db.UserID, tt.users)
 			idxOf := map[db.UserID]int{}
@@ -100,7 +100,7 @@ func TestSenderScheduling(t *testing.T) {
 				select {
 				case r := <-w.sendResults:
 					order = append(order, idxOf[r.userID])
-					w.onSendDone()
+					w.onSendDone(r.endpoint)
 				case u := <-w.cooledUsers:
 					w.onUserCooled(u)
 				}
@@ -114,6 +114,90 @@ func TestSenderScheduling(t *testing.T) {
 			}
 		})
 	}
+}
+
+// barrierMessage blocks its send until need sends are in flight at once,
+// then succeeds; it errors on timeout rather than hanging when they serialize.
+type barrierMessage struct {
+	id      int64
+	arrived *atomic.Int32
+	gate    chan struct{}
+	need    int32
+}
+
+func (m *barrierMessage) chatID() int64      { return m.id }
+func (m *barrierMessage) setChatID(id int64) { m.id = id }
+func (m *barrierMessage) render(string)      {}
+
+func (m *barrierMessage) send(context.Context, *bot.Bot) (*models.Message, error) {
+	if m.arrived.Add(1) == m.need {
+		close(m.gate)
+	}
+	select {
+	case <-m.gate:
+		return nil, nil
+	case <-time.After(5 * time.Second):
+		return nil, errors.New("the sends never overlapped")
+	}
+}
+
+// TestEndpointsDeliverConcurrently checks endpoints pace independently:
+// two sends to the same user on different endpoints are in flight at once,
+// so neither the send slot nor the per-user cooldown spans endpoints.
+func TestEndpointsDeliverConcurrently(t *testing.T) {
+	t.Parallel()
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase()
+
+	userID, _ := w.db.AddUser(100, 3, 0, "private")
+	var arrived atomic.Int32
+	gate := make(chan struct{})
+	for _, endpoint := range []string{"e1", "e2"} {
+		w.enqueueMessage(db.PriorityHigh, endpoint,
+			&barrierMessage{arrived: &arrived, gate: gate, need: 2},
+			unprompted(db.MessagePacket), userID, 0)
+	}
+	for range 2 {
+		if r := <-w.sendResults; r.result != messageSent {
+			t.Fatalf("result = %d, want messageSent from two overlapping sends", r.result)
+		}
+	}
+}
+
+// TestTooManyRequestsPausesOnlyItsEndpoint checks 429 isolation:
+// one endpoint's 429 holds its own slot for the full pause
+// while another endpoint's send proceeds on the common gap.
+func TestTooManyRequestsPausesOnlyItsEndpoint(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		w := &worker{
+			cfg:         &botconfig.Config{},
+			bots:        map[string]*bot.Bot{"throttled": nil, "healthy": nil},
+			senders:     map[string]*endpointSender{},
+			sendResults: make(chan msgSendResult, 16),
+			cooledUsers: make(chan cooledUser, 16),
+		}
+		start := time.Now()
+		// Maintenance sends skip the database, which this bare worker lacks.
+		w.enqueueMessage(db.PriorityHigh, "throttled",
+			&tooManyRequests{id: 1, retryAfter: 30},
+			unprompted(db.MaintenancePacket), 0, 0)
+		w.enqueueMessage(db.PriorityHigh, "healthy",
+			&okMessage{id: 2},
+			unprompted(db.MaintenancePacket), 0, 0)
+
+		r := <-w.sendResults
+		if r.endpoint != "healthy" || time.Since(start) != endpointCooldown {
+			t.Fatalf("first result = {endpoint %s, after %v}, want the healthy endpoint after %v",
+				r.endpoint, time.Since(start), endpointCooldown)
+		}
+		r = <-w.sendResults
+		if r.endpoint != "throttled" || time.Since(start) != tooManyRequestsEndpointPause {
+			t.Errorf("second result = {endpoint %s, after %v}, want the throttled endpoint after %v",
+				r.endpoint, time.Since(start), tooManyRequestsEndpointPause)
+		}
+	})
 }
 
 // okMessage delivers successfully and instantly, for timing assertions.
@@ -386,7 +470,7 @@ func TestDeliverTiming(t *testing.T) {
 			cfg:         &botconfig.Config{},
 			bots:        map[string]*bot.Bot{"ep": nil},
 			sendResults: make(chan msgSendResult, 16),
-			cooledUsers: make(chan db.UserID, 16),
+			cooledUsers: make(chan cooledUser, 16),
 		}
 		start := time.Now()
 		go w.deliver(&queuedMessage{
@@ -400,8 +484,8 @@ func TestDeliverTiming(t *testing.T) {
 		if r := <-w.sendResults; r.result != messageSent {
 			t.Fatalf("result = %d, want messageSent", r.result)
 		}
-		if d := time.Since(start); d != commonCooldown {
-			t.Errorf("result reported after %v, want the %v pacing gap", d, commonCooldown)
+		if d := time.Since(start); d != endpointCooldown {
+			t.Errorf("result reported after %v, want the %v pacing gap", d, endpointCooldown)
 		}
 
 		<-w.cooledUsers
@@ -434,7 +518,7 @@ func TestDeliverDropsMaintenanceOnTransientFailure(t *testing.T) {
 			cfg:         &botconfig.Config{},
 			bots:        map[string]*bot.Bot{"ep": nil},
 			sendResults: make(chan msgSendResult, 16),
-			cooledUsers: make(chan db.UserID, 16),
+			cooledUsers: make(chan cooledUser, 16),
 		}
 		done := make(chan struct{})
 		go func() {
@@ -458,8 +542,8 @@ func TestDeliverDropsMaintenanceOnTransientFailure(t *testing.T) {
 		select {
 		case r := <-w.sendResults:
 			t.Errorf("unexpected extra result %d", r.result)
-		case id := <-w.cooledUsers:
-			t.Errorf("unexpected user release of %d", id)
+		case c := <-w.cooledUsers:
+			t.Errorf("unexpected user release of %d", c.userID)
 		default:
 		}
 	})
@@ -476,7 +560,7 @@ func TestDeliverPostponesTooManyRequests(t *testing.T) {
 			cfg:         &botconfig.Config{},
 			bots:        map[string]*bot.Bot{"ep": nil},
 			sendResults: make(chan msgSendResult, 16),
-			cooledUsers: make(chan db.UserID, 16),
+			cooledUsers: make(chan cooledUser, 16),
 		}
 		q := &queuedMessage{
 			userID:   1,
@@ -497,12 +581,12 @@ func TestDeliverPostponesTooManyRequests(t *testing.T) {
 			t.Fatalf("result = {result %d, resend set %t}, want a postponing 429 carrying the message",
 				r.result, r.resend != nil)
 		}
-		// deliver returns after the global pace (1s here, the bot-wide throttle),
-		// not the 30s retry_after: that long park lives only in the detached
-		// release timer, outside deliverWG, so a shutdown never waits it out.
+		// deliver returns after the endpoint pace (1s here, the endpoint-wide throttle),
+		// not the 30s retry_after: that long park lives only in the detached release timer,
+		// outside deliverWG, so a shutdown never waits it out.
 		<-done
-		if d := time.Since(start); d != tooManyRequestsGlobalPause {
-			t.Errorf("deliver returned after %v, want the %v global pace", d, tooManyRequestsGlobalPause)
+		if d := time.Since(start); d != tooManyRequestsEndpointPause {
+			t.Errorf("deliver returned after %v, want the %v endpoint pace", d, tooManyRequestsEndpointPause)
 		}
 		<-w.cooledUsers
 		if d := time.Since(start); d != 30*time.Second {
@@ -511,19 +595,19 @@ func TestDeliverPostponesTooManyRequests(t *testing.T) {
 	})
 }
 
-// TestDeliverGlobalPaceOn429 pins the pace held before the slot frees:
-// any 429 widens it to throttle a bot-wide limit, regardless of chat type,
+// TestDeliverEndpointPaceOn429 pins the pace held before the slot frees:
+// any 429 widens it to throttle an endpoint-wide limit, regardless of chat type,
 // while a success keeps the common gap.
-func TestDeliverGlobalPaceOn429(t *testing.T) {
+func TestDeliverEndpointPaceOn429(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name     string
 		message  sendable
 		wantPace time.Duration
 	}{
-		{"private 429 widens the global pace", &tooManyRequests{id: 1, retryAfter: 30}, tooManyRequestsGlobalPause},
-		{"group 429 widens it too", &tooManyRequests{id: -100, retryAfter: 30}, tooManyRequestsGlobalPause},
-		{"success keeps the common pace", &okMessage{id: 1}, commonCooldown},
+		{"private 429 widens the endpoint pace", &tooManyRequests{id: 1, retryAfter: 30}, tooManyRequestsEndpointPause},
+		{"group 429 widens it too", &tooManyRequests{id: -100, retryAfter: 30}, tooManyRequestsEndpointPause},
+		{"success keeps the common pace", &okMessage{id: 1}, endpointCooldown},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -532,7 +616,7 @@ func TestDeliverGlobalPaceOn429(t *testing.T) {
 					cfg:         &botconfig.Config{},
 					bots:        map[string]*bot.Bot{"ep": nil},
 					sendResults: make(chan msgSendResult, 16),
-					cooledUsers: make(chan db.UserID, 16),
+					cooledUsers: make(chan cooledUser, 16),
 				}
 				start := time.Now()
 				done := make(chan struct{})
@@ -600,7 +684,7 @@ func TestDeliverCountsStalls(t *testing.T) {
 					cfg:         &botconfig.Config{},
 					bots:        map[string]*bot.Bot{"ep": nil},
 					sendResults: make(chan msgSendResult, 16),
-					cooledUsers: make(chan db.UserID, 16),
+					cooledUsers: make(chan cooledUser, 16),
 				}
 				q := &queuedMessage{
 					userID:   1,
@@ -627,8 +711,8 @@ func TestDeliverCountsStalls(t *testing.T) {
 	}
 }
 
-// TestDeliverPaceEndsOnShutdown checks the 429 global pace is abandoned
-// at once on shutdown, so the drain never sleeps out the full second.
+// TestDeliverPaceEndsOnShutdown checks the 429 endpoint pace is abandoned at once on shutdown,
+// so the drain never sleeps out the full second.
 func TestDeliverPaceEndsOnShutdown(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -636,7 +720,7 @@ func TestDeliverPaceEndsOnShutdown(t *testing.T) {
 			cfg:         &botconfig.Config{},
 			bots:        map[string]*bot.Bot{"ep": nil},
 			sendResults: make(chan msgSendResult, 16),
-			cooledUsers: make(chan db.UserID, 16),
+			cooledUsers: make(chan cooledUser, 16),
 			shutdownCh:  make(chan struct{}),
 		}
 		close(w.shutdownCh)

@@ -1,5 +1,7 @@
 // Outgoing message scheduling. The main goroutine owns all scheduling state;
 // each send runs on a deliver goroutine that does I/O only.
+// Each endpoint is its own bot token, rated separately by Telegram,
+// so every limit here paces one endpoint: one send in flight per endpoint.
 
 package main
 
@@ -12,9 +14,9 @@ import (
 )
 
 const (
-	commonCooldown = 60 * time.Millisecond // minimum gap between any two sends
-	userCooldown   = time.Second           // minimum gap between sends to one user
-	groupCooldown  = 3 * time.Second       // minimum gap to one group (Telegram's 20 msg/min cap)
+	endpointCooldown = 60 * time.Millisecond // minimum gap between an endpoint's sends
+	userCooldown     = time.Second           // minimum gap between an endpoint's sends to one user
+	groupCooldown    = 3 * time.Second       // minimum gap to one group (Telegram's 20 msg/min cap)
 	// tooManyRequestsBackoff paces a 429 redelivery
 	// when Telegram sends no retry_after;
 	// otherwise retry_after wins, capped at tooManyRequestsMaxBackoff.
@@ -23,20 +25,21 @@ const (
 	// transientErrorPostpone delays a timed-out or network-failed message
 	// before its redelivery.
 	transientErrorPostpone = 10 * time.Second
-	// tooManyRequestsGlobalPause is the global gap held after any 429,
-	// so a rate limit backs off the whole bot, not just the failing user.
-	tooManyRequestsGlobalPause = time.Second
-	// maxQueueLen caps the outgoing queue; a broadcast past it drops its tail.
+	// tooManyRequestsEndpointPause is the gap an endpoint holds after any 429,
+	// so a rate limit backs off that whole endpoint, not just the failing user.
+	tooManyRequestsEndpointPause = time.Second
+	// maxQueueLen caps an endpoint's outgoing queue; a broadcast past it drops its tail.
 	// A streamer's image is shared across subscribers, but a message parks its render data,
 	// so a full queue costs tens of megabytes.
 	maxQueueLen = 100000
 	// sendChanCap sizes sendResults and cooledUsers.
-	// sendResults stays near-empty under single-flight delivery.
-	// cooledUsers can briefly exceed 64: per-user postpones leave many
-	// release timers pending, and a bot-wide 429 anchored to one deadline
-	// fires a batch together. The overflow only parks a few blocked timer
-	// goroutines on the send until trySend drains cooledUsers — no deadlock,
-	// self-healing — so 64 sizes the common near-empty case, not the burst.
+	// sendResults stays near-empty under single-flight-per-endpoint delivery.
+	// cooledUsers can briefly exceed 64:
+	// per-user postpones leave many release timers pending,
+	// and an endpoint-wide 429 anchored to one deadline fires a batch together.
+	// The overflow only parks a few blocked timer goroutines on the send
+	// until trySend drains cooledUsers — no deadlock, self-healing —
+	// so 64 sizes the common near-empty case, not the burst.
 	sendChanCap = 64
 )
 
@@ -221,7 +224,7 @@ func userLess(a, b *userQueue) bool {
 }
 
 // readyHeap ranks dispatchable users by userLess,
-// so the top user holds the globally best sendable message.
+// so the top user holds the endpoint's best sendable message.
 type readyHeap []*userQueue
 
 func (h readyHeap) Len() int           { return len(h) }
@@ -246,6 +249,33 @@ func (h *readyHeap) Pop() any {
 	*h = (*h)[:n-1]
 	u.heapIndex = -1
 	return u
+}
+
+// endpointSender is one endpoint's scheduling state:
+// the queue of its pending messages and the single-flight slot pacing that bot's sends.
+// Main goroutine only, like the queue it holds.
+type endpointSender struct {
+	queue sendQueue
+	// cooling claims the endpoint's send slot
+	// from dispatch until endpointCooldown after the delivery.
+	cooling bool
+}
+
+// cooledUser names the (endpoint, user) pair a cooldown release frees.
+type cooledUser struct {
+	endpoint string
+	userID   db.UserID
+}
+
+// sender returns the endpoint's scheduling state, creating it on first use.
+// Main goroutine only.
+func (w *worker) sender(endpoint string) *endpointSender {
+	s := w.senders[endpoint]
+	if s == nil {
+		s = &endpointSender{queue: newSendQueue()}
+		w.senders[endpoint] = s
+	}
+	return s
 }
 
 // sendQueue is a heap of per-user heaps.
@@ -372,8 +402,9 @@ func (w *worker) enqueueMessage(
 // and deliver a stale status last
 // (all status notifications share PriorityLow).
 func (w *worker) enqueue(q *queuedMessage) {
-	if w.sendQueue.Len() >= maxQueueLen {
-		lerr("the outgoing message queue is full")
+	s := w.sender(q.endpoint)
+	if s.queue.Len() >= maxQueueLen {
+		lerr("the outgoing message queue is full: endpoint = %s", q.endpoint)
 		// A notification (notificationID != 0) is put back for a later fetch.
 		// A reply or broadcast (notificationID 0) is dropped here, logged above:
 		// an accepted, bounded loss when the queue overflows.
@@ -382,28 +413,29 @@ func (w *worker) enqueue(q *queuedMessage) {
 		}
 		return
 	}
-	w.sendQueue.push(q)
-	w.trySend()
+	s.queue.push(q)
+	w.trySend(q.endpoint)
 }
 
-// onUserCooled frees a user after the per-user cooldown. Main goroutine only.
-func (w *worker) onUserCooled(userID db.UserID) {
-	w.sendQueue.stopCooling(userID)
-	w.trySend()
+// onUserCooled frees an endpoint's user after the per-user cooldown. Main goroutine only.
+func (w *worker) onUserCooled(c cooledUser) {
+	w.sender(c.endpoint).queue.stopCooling(c.userID)
+	w.trySend(c.endpoint)
 }
 
-// onSendDone frees the global slot after a delivery's final attempt.
+// onSendDone frees the endpoint's slot after a delivery's final attempt.
 // Main goroutine only; the caller has already logged and acted on the result.
-func (w *worker) onSendDone() {
-	w.commonCooling = false
-	w.trySend()
+func (w *worker) onSendDone(endpoint string) {
+	w.sender(endpoint).cooling = false
+	w.trySend(endpoint)
 }
 
-func (w *worker) trySend() {
-	if w.commonCooling || !w.sendQueue.hasReady() {
+func (w *worker) trySend(endpoint string) {
+	s := w.sender(endpoint)
+	if s.cooling || !s.queue.hasReady() {
 		return
 	}
-	q := w.sendQueue.pop()
+	q := s.queue.pop()
 	if q.tag.kind != db.MaintenancePacket {
 		chatID, ok := w.db.ChatIDForUser(q.userID)
 		if !ok {
@@ -412,10 +444,10 @@ func (w *worker) trySend() {
 			// and it lands before the slot is claimed, so drop this send and carry on.
 			lerr("dropping send: no chat for user %d", q.userID)
 			w.finalizeNotification(q.notificationID, q.userID, false)
-			w.trySend()
+			w.trySend(endpoint)
 			return
 		}
-		w.sendQueue.startCooling(q.userID)
+		s.queue.startCooling(q.userID)
 		// Resolve the chat id from the user at dispatch, on every send.
 		// Deliberate, not a missed optimization:
 		// userID is the single source of truth,
@@ -426,9 +458,9 @@ func (w *worker) trySend() {
 	}
 	// Outside the branch above: a message tagged maintenance renders here too.
 	q.message.render(w.botMentionIfNeeded(q.endpoint, q.message.chatID()))
-	// Claim the global slot only now the send is committed to dispatch,
+	// Claim the endpoint's slot only now the send is committed to dispatch,
 	// so the no-chat drop above just returns, no set-then-reset.
-	w.commonCooling = true
+	s.cooling = true
 	// Track the in-flight send so shutdown can wait for it.
 	w.deliverWG.Go(func() {
 		w.deliver(q)
@@ -472,12 +504,13 @@ func (w *worker) deliver(q *queuedMessage) {
 	// Not a live race today — the resend cannot dispatch
 	// until the tail itself releases the cooling user —
 	// but ownership by capture keeps the property structural.
-	// Capturing just the id also keeps the release closure
+	// Capturing just the endpoint and the id also keeps the release closure
 	// from pinning the whole message, image payload included, for the whole pause.
 	// isGroup survives the fallback's payload swap: toText copies the chat id.
 	isGroup := isGroupOrChannel(q.message.chatID())
 	tag := q.tag
 	userID := q.userID
+	endpoint := q.endpoint
 	now := time.Now()
 	result, migrateTo, retryAfter := w.sendMessageInternal(q.endpoint, q.message)
 	latency := int(time.Since(q.requestedAt).Milliseconds())
@@ -485,7 +518,7 @@ func (w *worker) deliver(q *queuedMessage) {
 	// the main loop re-queues it,
 	// and the cooldown tail below keeps its user cooling for the whole postpone,
 	// so other sends keep flowing meanwhile.
-	// The failing user parks; a 429 also holds the global slot 1s below.
+	// The failing user parks; a 429 also holds the endpoint's slot 1s below.
 	// A migrate re-queues the same way: dispatch re-resolves the chat id
 	// from the user, which by then points at the migrated chat
 	// (ChatIDForUser follows migrated_to);
@@ -519,16 +552,16 @@ func (w *worker) deliver(q *queuedMessage) {
 			resend = q
 		}
 	}
-	// Pace the global rate before releasing the slot.
-	// A 429 holds it a full second, so a rate limit backs off the whole bot,
-	// not just the failing user.
+	// Pace the endpoint's rate before releasing its slot.
+	// A 429 holds it a full second, so a rate limit backs off the whole endpoint,
+	// not just the failing user, while other endpoints keep sending.
 	// The wait ends at once on shutdown, so the drain never sleeps out the 1s.
-	globalPace := commonCooldown
+	endpointPace := endpointCooldown
 	if result == messageTooManyRequests {
-		globalPace = tooManyRequestsGlobalPause
+		endpointPace = tooManyRequestsEndpointPause
 	}
 	select {
-	case <-time.After(globalPace):
+	case <-time.After(endpointPace):
 	case <-w.shutdownCh:
 	}
 	w.sendResults <- msgSendResult{
@@ -566,9 +599,9 @@ func (w *worker) deliver(q *queuedMessage) {
 	if transient {
 		cooldown = max(cooldown, pause)
 	}
-	// globalPace was already slept before the result, so charge it against
-	// the user's total cooldown, not commonCooldown.
-	time.AfterFunc(cooldown-globalPace, func() {
+	// endpointPace was already slept before the result,
+	// so charge it against the user's total cooldown, not endpointCooldown.
+	time.AfterFunc(cooldown-endpointPace, func() {
 		// Release the user trySend cooled; the id is stable across
 		// a chat migration, so there is nothing else to release.
 		// The select may pick shutdownCh even while the drain still reads
@@ -577,7 +610,7 @@ func (w *worker) deliver(q *queuedMessage) {
 		// Accepted: those sends stay queued and re-arm (notifications)
 		// or are dropped (replies) at shutdown anyway.
 		select {
-		case w.cooledUsers <- userID:
+		case w.cooledUsers <- cooledUser{endpoint: endpoint, userID: userID}:
 		case <-w.shutdownCh:
 		}
 	})

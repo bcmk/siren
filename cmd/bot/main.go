@@ -91,11 +91,10 @@ type worker struct {
 	imageDownloadLogs          chan imageDownloadLog
 	unconfirmedOnlineStreamers map[string]cmdlib.StreamerInfo
 	botNames                   map[string]string
-	sendQueue                  sendQueue
-	commonCooling              bool
+	senders                    map[string]*endpointSender
 	sendSeq                    uint64
 	sendResults                chan msgSendResult
-	cooledUsers                chan db.UserID
+	cooledUsers                chan cooledUser
 	ownerUserID                db.UserID
 	deliverWG                  sync.WaitGroup
 	existenceListResults       chan *cmdlib.ExistenceListResults
@@ -280,9 +279,9 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 		imageDownloadLogs:          make(chan imageDownloadLog),
 		unconfirmedOnlineStreamers: map[string]cmdlib.StreamerInfo{},
 		botNames:                   map[string]string{},
-		sendQueue:                  newSendQueue(),
+		senders:                    map[string]*endpointSender{},
 		sendResults:                make(chan msgSendResult, sendChanCap),
-		cooledUsers:                make(chan db.UserID, sendChanCap),
+		cooledUsers:                make(chan cooledUser, sendChanCap),
 		shutdownCh:                 make(chan struct{}),
 		existenceListResults:       make(chan *cmdlib.ExistenceListResults),
 		checkerResults:             make(chan cmdlib.CheckerResults),
@@ -3542,10 +3541,10 @@ const webhookRemovalTimeout = 2 * time.Second
 // shared by every phase, so it fits the orchestrator's grace
 // rather than each phase getting a fresh timeout.
 // It rejects new work, flushes and drains the library buffers,
-// and waits for the in-flight send.
+// and waits for the in-flight sends.
 func (w *worker) shutdown(incoming chan incomingPacket) {
 	w.shuttingDown.Store(true)
-	// Wake both watchers of shutdownCh: the in-flight global pace inside deliver,
+	// Wake both watchers of shutdownCh: any in-flight endpoint pace inside deliver,
 	// so the drain never sleeps out its 1s,
 	// and any cooldown-release callback parked on the cooledUsers send
 	// once the drain stops reading it.
@@ -3570,8 +3569,8 @@ func (w *worker) shutdown(incoming chan incomingPacket) {
 	w.logShutdownLoss(len(incoming))
 }
 
-// waitForInflightSends lets the single in-flight delivery finish its POST
-// before exit, bounded by ctx (the shared shutdown deadline).
+// waitForInflightSends lets the in-flight deliveries, one per endpoint,
+// finish their POSTs before exit, bounded by ctx (the shared shutdown deadline).
 // Anything still queued is dropped;
 // notifications re-send next start, command replies are lost.
 func (w *worker) waitForInflightSends(ctx context.Context) {
@@ -3583,12 +3582,13 @@ func (w *worker) waitForInflightSends(ctx context.Context) {
 	select {
 	case <-done:
 	case <-ctx.Done():
-		linf("shutdown: in-flight send did not finish before the deadline")
-		// A POST succeeding right at the deadline
-		// still sleeps commonCooldown before its result lands; grant it that,
-		// so drainSendResults finalizes a delivered notification
+		linf("shutdown: an in-flight send did not finish before the deadline")
+		// A POST succeeding right at the deadline sends its result at once
+		// (the pace select sees the closed shutdownCh),
+		// but its goroutine still needs scheduling time to land it in the buffered channel;
+		// grant it that, so drainSendResults finalizes a delivered notification
 		// instead of re-arming it into a duplicate.
-		time.Sleep(2 * commonCooldown)
+		time.Sleep(2 * endpointCooldown)
 	}
 }
 
@@ -3626,7 +3626,7 @@ func (w *worker) resolveResultUser(r *msgSendResult) {
 }
 
 // completeSendResult applies the result's database bookkeeping,
-// finalizes the notification, frees the send slot,
+// finalizes the notification, frees the endpoint's send slot,
 // and only then refreshes the member count — in that order.
 // The whole bookkeeping (handleSendResult) runs before the slot frees.
 // Migrate requires it: a stalled main loop can let the user's cooling release
@@ -3634,9 +3634,9 @@ func (w *worker) resolveResultUser(r *msgSendResult) {
 // the slot, so the chat row must already point at the migrated chat's new id.
 // The log and block-counter writes do not need that ordering,
 // but stay here deliberately rather than split off to overlap the next POST:
-// they are fast local writes that single-flight pacing (commonCooldown)
-// already dwarfs, so recording the whole result before the next send
-// beats a sub-millisecond overlap and keeps the ordering trivial.
+// they are fast local writes that single-flight pacing (endpointCooldown) already dwarfs,
+// so recording the whole result before the next send beats a sub-millisecond overlap
+// and keeps the ordering trivial.
 // Only the member-count lookup, a network round-trip, is deferred past
 // onSendDone so the next POST overlaps and hides it.
 // Main goroutine only.
@@ -3663,7 +3663,7 @@ func (w *worker) completeSendResult(r msgSendResult) {
 		// A same-id reply migrate or any maintenance migrate (notificationID 0):
 		// no row to re-arm.
 	}
-	w.onSendDone()
+	w.onSendDone(r.endpoint)
 	if r.result == messageSent && r.tag.kind != db.MaintenancePacket {
 		w.refreshMemberCount(r.endpoint, r.chatID, r.userID)
 	}
@@ -3676,7 +3676,7 @@ func (w *worker) completeSendResult(r msgSendResult) {
 // and re-arm into duplicates on restart.
 // Re-queued sends (fallback, postpone, migrate) are left to re-arm,
 // their normal path.
-// Unlike completeSendResult, it never frees the slot:
+// Unlike completeSendResult, it never frees an endpoint's slot:
 // no new send may start while exiting.
 func (w *worker) drainSendResults() {
 	for {
@@ -3709,12 +3709,14 @@ func (w *worker) drainSendResults() {
 // an accepted undercount in a log line.
 func (w *worker) logShutdownLoss(bufferedUpdates int) {
 	var messages, notifications int
-	for _, u := range w.sendQueue.byUser {
-		for _, q := range u.items {
-			if q.notificationID == 0 {
-				messages++
-			} else {
-				notifications++
+	for _, s := range w.senders {
+		for _, u := range s.queue.byUser {
+			for _, q := range u.items {
+				if q.notificationID == 0 {
+					messages++
+				} else {
+					notifications++
+				}
 			}
 		}
 	}
@@ -3755,8 +3757,8 @@ func (w *worker) drainIncoming(ctx context.Context, incoming chan incomingPacket
 			}
 		case r := <-w.sendResults:
 			w.completeSendResult(r)
-		case userID := <-w.cooledUsers:
-			w.onUserCooled(userID)
+		case c := <-w.cooledUsers:
+			w.onUserCooled(c)
 		case <-botsDone:
 			botsDone = nil
 		case <-ctx.Done():
@@ -4090,8 +4092,8 @@ func main() {
 			return
 		case r := <-w.sendResults:
 			w.completeSendResult(r)
-		case userID := <-w.cooledUsers:
-			w.onUserCooled(userID)
+		case c := <-w.cooledUsers:
+			w.onUserCooled(c)
 		case r := <-w.existenceListResults:
 			now := int(time.Now().Unix())
 			w.db.LogPerformance(now, db.PerformanceLogExistenceQuery, int(r.Duration().Milliseconds()), map[string]any{
