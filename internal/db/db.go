@@ -186,6 +186,9 @@ func (d *Database) MustQuery(queryString string, args QueryParams, record ScanTo
 		checkErr(query.Scan(record...))
 		store()
 	}
+	// Next reports a mid-stream failure by stopping, not by erroring,
+	// so without this a broken read is a short result set the caller cannot tell from a real one.
+	checkErr(query.Err())
 	query.Close()
 }
 
