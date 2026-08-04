@@ -3,6 +3,28 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v4.0.0 — 2026-08-04
+
+### Upgrading
+
+- `webhook_domain` is now required on every endpoint,
+  and must be a bare host such as `cb.xiren.space`: a missing one, or a scheme, refuses the start.
+
+### Added
+
+- `/timezone` sets the chat's IANA zone, `/reset_timezone` clears it.
+- A picker mini app offers the zones the bot accepts, the device's own first.
+- `/week` reads the grid in the chat's zone rather than UTC, and names it in the header.
+
+### Changed
+
+- The Go module path is `github.com/bcmk/siren/v4`.
+- The web app add and timezone saves are POSTs, so no shared cache can answer one for another chat.
+
+### Fixed
+
+- A query whose read fails mid-stream fails instead of returning a short result.
+
 ## v3.14.0 — 2026-08-03
 
 ### Added
