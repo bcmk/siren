@@ -12,8 +12,8 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/bcmk/siren/v3/internal/botconfig"
-	"github.com/bcmk/siren/v3/internal/db"
+	"github.com/bcmk/siren/v4/internal/botconfig"
+	"github.com/bcmk/siren/v4/internal/db"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )

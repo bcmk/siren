@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bcmk/siren/v3/lib/cmdlib"
+	"github.com/bcmk/siren/v4/lib/cmdlib"
 )
 
 // StripchatCheckerConfig holds the user_id and online URL.

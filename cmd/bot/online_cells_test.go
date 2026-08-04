@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/bcmk/siren/v3/internal/db"
-	"github.com/bcmk/siren/v3/lib/cmdlib"
+	"github.com/bcmk/siren/v4/internal/db"
+	"github.com/bcmk/siren/v4/lib/cmdlib"
 )
 
 type cellsInsert struct {

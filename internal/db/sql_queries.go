@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bcmk/siren/v3/lib/cmdlib"
+	"github.com/bcmk/siren/v4/lib/cmdlib"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )

@@ -18,8 +18,8 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 
-	"github.com/bcmk/siren/v3/internal/db"
-	"github.com/bcmk/siren/v3/lib/cmdlib"
+	"github.com/bcmk/siren/v4/internal/db"
+	"github.com/bcmk/siren/v4/lib/cmdlib"
 )
 
 // TestCommandRendersPerMention pins the mechanism: one parse, and command rebound per render,

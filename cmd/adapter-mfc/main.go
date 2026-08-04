@@ -44,7 +44,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bcmk/siren/v3/lib/cmdlib"
+	"github.com/bcmk/siren/v4/lib/cmdlib"
 	"github.com/coder/websocket"
 )
 

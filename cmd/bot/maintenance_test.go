@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/bcmk/siren/v3/internal/botconfig"
+	"github.com/bcmk/siren/v4/internal/botconfig"
 	"github.com/go-telegram/bot/models"
 )
 

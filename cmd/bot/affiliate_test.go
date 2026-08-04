@@ -5,8 +5,8 @@ import (
 	"testing"
 	texttemplate "text/template"
 
-	"github.com/bcmk/siren/v3/internal/botconfig"
-	"github.com/bcmk/siren/v3/internal/checkers"
+	"github.com/bcmk/siren/v4/internal/botconfig"
+	"github.com/bcmk/siren/v4/internal/checkers"
 )
 
 func TestStreamerLink(t *testing.T) {

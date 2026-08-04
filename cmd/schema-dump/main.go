@@ -6,8 +6,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bcmk/siren/v3/internal/db"
-	"github.com/bcmk/siren/v3/lib/cmdlib"
+	"github.com/bcmk/siren/v4/internal/db"
+	"github.com/bcmk/siren/v4/lib/cmdlib"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 

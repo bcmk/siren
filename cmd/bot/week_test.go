@@ -8,8 +8,8 @@ import (
 	"testing"
 	texttemplate "text/template"
 
-	"github.com/bcmk/siren/v3/internal/db"
-	"github.com/bcmk/siren/v3/lib/cmdlib"
+	"github.com/bcmk/siren/v4/internal/db"
+	"github.com/bcmk/siren/v4/lib/cmdlib"
 )
 
 // realLangs are the languages a chaturbate endpoint ships,

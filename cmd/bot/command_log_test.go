@@ -22,9 +22,9 @@ import (
 	texttemplate "text/template"
 	"time"
 
-	"github.com/bcmk/siren/v3/internal/botconfig"
-	"github.com/bcmk/siren/v3/internal/db"
-	"github.com/bcmk/siren/v3/lib/cmdlib"
+	"github.com/bcmk/siren/v4/internal/botconfig"
+	"github.com/bcmk/siren/v4/internal/db"
+	"github.com/bcmk/siren/v4/lib/cmdlib"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
