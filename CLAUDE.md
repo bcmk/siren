@@ -81,7 +81,9 @@
   prefer breaking at full stops over semicolons over em-dashes
   over commas over natural pauses over spaces.
   Never break a line mid-phrase; break only at the boundaries above.
+  Take the highest-ranked boundary that fits, not the last one before the margin.
   The `tidy-docs` skill applies this rule — see Skills.
+- End a bullet with a full stop only when it holds more than one sentence
 - Prefer short comments: one line is the default.
   Add more lines only when required to understand the code.
   The `tidy-docs` skill applies this rule too — see Skills.
@@ -205,6 +207,7 @@
 - Never chain shell commands with `&&` —
   chained commands trigger extra permission prompts.
   Run commands one after another instead.
+- Put loops, variables and conditionals in `python3 - <<'PY'`, not in the shell
 
 ## Database
 
