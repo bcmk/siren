@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v4.1.0 — 2026-08-04
+
+### Changed
+
+- The customization tip rides the last `/pics` message instead of trailing it,
+  and a group or channel gets none
+- A room subject over 600 characters is cut, so a long topic cannot cost the picture carrying it
+
+### Fixed
+
+- The affiliate command stays clickable in the affiliate status message
+
 ## v4.0.0 — 2026-08-04
 
 ### Upgrading
