@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v4.2.0 — 2026-08-05
+
+### Changed
+
+- Sending limits pace each endpoint separately: its own send slot, 429 backoff,
+  and per-chat cooldowns, so one bot's traffic no longer throttles another's
+
 ## v4.1.0 — 2026-08-04
 
 ### Changed
