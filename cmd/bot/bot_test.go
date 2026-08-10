@@ -237,6 +237,8 @@ func TestNotificationsStorage(t *testing.T) {
 	// The read joins the recipient's chat, which the stored literal does not carry.
 	nots[0].ChatID = 1
 	nots[1].ChatID = 2
+	nots[0].ChatType = ptr("private")
+	nots[1].ChatType = ptr("private")
 	if !reflect.DeepEqual(nots, newNots) {
 		t.Errorf("unexpected notifications, expocted: %v, got: %v", nots, newNots)
 	}
@@ -257,6 +259,7 @@ func TestNotificationsStorage(t *testing.T) {
 	newNots = w.db.NewNotifications()
 	nots[0].ID = 3
 	nots[0].ChatID = 3
+	nots[0].ChatType = ptr("private")
 	if !reflect.DeepEqual(nots, newNots) {
 		t.Errorf("unexpected notifications, expocted: %v, got: %v", nots, newNots)
 	}
@@ -287,7 +290,6 @@ func TestCompleteSendResultMigrateReArms(t *testing.T) {
 	}})
 	not := w.db.NewNotifications()[0]
 
-	// Old code deleted the row and incremented reports for this final migrate.
 	w.completeSendResult(msgSendResult{
 		result:         messageMigrate,
 		endpoint:       "test",

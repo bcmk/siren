@@ -443,7 +443,7 @@ func (w *worker) trySend(endpoint string) {
 			// A missing row is recoverable state, not a broken invariant,
 			// and it lands before the slot is claimed, so drop this send and carry on.
 			lerr("dropping send: no chat for user %d", q.userID)
-			w.finalizeNotification(q.notificationID, q.userID, false)
+			w.finalizeNotification(q.notificationID)
 			w.trySend(endpoint)
 			return
 		}

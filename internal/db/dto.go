@@ -32,15 +32,17 @@ type Notification struct {
 	ReplySeq int
 	// FieldsHint marks the last message of an answer,
 	// which carries the customization hint where the chat is one that can act on it.
-	FieldsHint     bool
-	Subject        string
-	SilentMessages bool
+	FieldsHint bool
+	Subject    string
 
-	// ChatID and AffiliateParams come from the recipient's users row, which NewNotifications joins.
-	// A literal built for StoreNotifications may leave them zero,
-	// since the read path fills them before the send.
+	// These travel one way: out of the database, never into it.
+	// notification_queue has no such columns, so the fetch joins users to fill them.
+	SilentMessages  bool
 	ChatID          int64
+	ChatType        *string
 	AffiliateParams map[string]string
+	// Reports is the chat's count of queued alerts, this notification's own included.
+	Reports int
 }
 
 // UserID is a user's stable surrogate id (users.id), distinct from the mutable

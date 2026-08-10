@@ -116,6 +116,7 @@ online:
     {{- if .subject }}{{ print "\n" }}<blockquote>{{ .subject }}{{ if .subject_clipped }}…{{ end }}</blockquote>{{ end -}}
     </i>
     {{- if .fields_hint }}{{ print "\n\n" }}{{ template "fields_customization_hint" }}{{ end -}}
+    {{- if .bot_link }}{{ print "\n\n" }}{{ template "bot_link_hint" . }}{{ end -}}
 show_kind:
   str: |-
     {{- if eq . 1 -}}в публичном шоу
@@ -134,6 +135,7 @@ offline:
     {{ .streamer_link }}
     {{- print " " -}}
     <i>не в сети {{- if .time_diff -}}, была {{ template "duration" .time_diff }} назад {{- end -}}</i>
+    {{- if .bot_link }}{{ print "\n\n" }}{{ template "bot_link_hint" . }}{{ end -}}
 zero_subscriptions:
   parse: html
   str: |-
@@ -570,3 +572,5 @@ we_are_up:
   str: Мы снова работаем
 fields_customization_hint:
   str: '<i>Совет: Вы можете настроить, что отображать, в {{ command "settings" }}</i>'
+bot_link_hint:
+  str: '<i>Оповещения от {{ .bot_link }}</i>'

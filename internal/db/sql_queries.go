@@ -29,7 +29,7 @@ func (d *Database) NewNotifications() []Notification {
 			n.id, n.endpoint, u.id, n.streamer_id, s.nickname, n.status,
 			n.time_diff, n.image_url, n.viewers, n.show_kind, n.social, n.priority,
 			n.sound, n.kind, coalesce(n.command, ''), n.reply_seq, n.fields_hint,
-			n.subject, u.silent_messages, u.chat_id, u.affiliate_params
+			n.subject, u.silent_messages, u.chat_id, u.chat_type, u.affiliate_params, u.reports
 		from notification_queue n
 		join users u on u.id = n.user_id
 		join streamers s on s.id = n.streamer_id
@@ -57,7 +57,9 @@ func (d *Database) NewNotifications() []Notification {
 			&iter.Subject,
 			&iter.SilentMessages,
 			&iter.ChatID,
+			&iter.ChatType,
 			&iter.AffiliateParams,
+			&iter.Reports,
 		},
 		func() { nots = append(nots, iter) },
 	)
@@ -1544,9 +1546,24 @@ func (d *Database) RequeueNotification(id int) {
 	d.MustExec("update notification_queue set sending = 0 where id = $1", id)
 }
 
-// IncrementReports increments the reports count for a user
-func (d *Database) IncrementReports(userID UserID) {
-	d.MustExec("update users set reports=reports+1 where id = $1", int64(userID))
+// IncrementReports counts one notification per id passed in, duplicates included.
+// A tombstoned id counts on its own row rather than the live one it merged into:
+// this feeds a cadence, which is not worth a second statement.
+func (d *Database) IncrementReports(userIDs []UserID) {
+	ids := make([]int64, len(userIDs))
+	for i, userID := range userIDs {
+		ids[i] = int64(userID)
+	}
+	d.MustExec(`
+		update users u
+		set reports = u.reports + c.n::int
+		from (
+			select user_id, count(*) as n
+			from unnest($1::bigint[]) as t(user_id)
+			group by user_id
+		) c
+		where u.id = c.user_id`,
+		ids)
 }
 
 // ConfirmStatusChanges finds streamers needing confirmation and updates them.

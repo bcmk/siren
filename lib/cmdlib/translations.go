@@ -101,6 +101,7 @@ type Translations struct {
 	TooManySubscriptionsForPics *Translation `yaml:"too_many_subscriptions_for_pics"`
 	WeAreUp                     *Translation `yaml:"we_are_up"`
 	FieldsCustomizationHint     *Translation `yaml:"fields_customization_hint"`
+	BotLinkHint                 *Translation `yaml:"bot_link_hint"`
 	SearchButton                *Translation `yaml:"search_button"`
 	SearchHeader                *Translation `yaml:"search_header"`
 	SearchPlaceholder           *Translation `yaml:"search_placeholder"`

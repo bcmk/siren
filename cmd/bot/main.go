@@ -727,9 +727,101 @@ func (w *worker) enqueueNotifications(batch notificationBatch) {
 	sort.SliceStable(batch.notifications, func(i, j int) bool {
 		return batch.notifications[i].Priority < batch.notifications[j].Priority
 	})
-	for _, n := range batch.notifications {
-		w.notifyOfStatus(n.Priority, n, batch.images[n.ImageURL], n.Social)
+	plans := w.planNotifications(batch.notifications)
+	w.numberNotifications(plans)
+	for _, p := range plans {
+		w.notifyOfStatus(p, batch.images[p.ImageURL])
 	}
+}
+
+// plannedNotification is a fetched notification with the message its status calls for,
+// nil where it calls for none, and its chat's number once the batch is counted.
+// The message is resolved once, so what a chat is counted for is what it is sent.
+type plannedNotification struct {
+	db.Notification
+	translation *cmdlib.Translation
+	reports     int
+}
+
+// planNotifications resolves what each notification of a batch sends.
+func (w *worker) planNotifications(nots []db.Notification) []plannedNotification {
+	plans := make([]plannedNotification, len(nots))
+	for i, n := range nots {
+		plans[i] = plannedNotification{
+			Notification: n,
+			translation:  w.statusTranslation(n.Endpoint, n.Status),
+		}
+	}
+	return plans
+}
+
+// storeNotifications queues a batch and counts the alerts in it against their chats.
+// A row is counted where it is created, once, however many times a requeue composes it again.
+func (w *worker) storeNotifications(nots []db.Notification) {
+	w.db.StoreNotifications(nots)
+	var userIDs []db.UserID
+	for _, n := range nots {
+		if w.takesLinkTurn(n) {
+			userIDs = append(userIDs, n.UserID)
+		}
+	}
+	if len(userIDs) > 0 {
+		w.db.IncrementReports(userIDs)
+	}
+}
+
+// takesLinkTurn reports whether a notification is one the link's every-nth count runs on.
+// Only a message that can show the link may spend a turn, or the turn passes with nothing shown:
+// a command answer never carries it, and a denied status prints raw, with nowhere to put it.
+func (w *worker) takesLinkTurn(n db.Notification) bool {
+	if n.Kind != db.NotificationPacket {
+		return false
+	}
+	switch n.Status {
+	case cmdlib.StatusOnline, cmdlib.StatusOffline:
+		return w.statusTranslation(n.Endpoint, n.Status) != nil
+	}
+	return false
+}
+
+// numberNotifications gives every alert taking a turn its chat's number.
+// The chat's count came with the fetch and covers every alert queued for it,
+// so its pending run ends on that count and the run's first is that many back.
+func (w *worker) numberNotifications(plans []plannedNotification) {
+	pending := map[db.UserID]int{}
+	for _, p := range plans {
+		if w.takesLinkTurn(p.Notification) {
+			pending[p.UserID]++
+		}
+	}
+	next := map[db.UserID]int{}
+	for i, p := range plans {
+		if !w.takesLinkTurn(p.Notification) {
+			continue
+		}
+		if _, numbered := next[p.UserID]; !numbered {
+			next[p.UserID] = p.Reports - pending[p.UserID] + 1
+		}
+		plans[i].reports = next[p.UserID]
+		next[p.UserID]++
+	}
+}
+
+// statusTranslation is the message a status calls for, nil where status or endpoint has none.
+func (w *worker) statusTranslation(endpoint string, status cmdlib.StatusKind) *cmdlib.Translation {
+	tr := w.tr[endpoint]
+	if tr == nil {
+		return nil
+	}
+	switch status {
+	case cmdlib.StatusOnline:
+		return tr.Online
+	case cmdlib.StatusOffline:
+		return tr.Offline
+	case cmdlib.StatusDenied:
+		return tr.Denied
+	}
+	return nil
 }
 
 func (w *worker) trAdsSlice(endpoint string) []*cmdlib.Translation {
@@ -771,18 +863,11 @@ func adWeight(tr *cmdlib.Translation) int {
 }
 
 // finalizeNotification clears a notification's row.
-// It counts toward the user's report total
-// only if the send reached a final result,
-// not if the row was dropped before any send
-// (no endpoint, unhandled status).
-func (w *worker) finalizeNotification(notificationID int, userID db.UserID, hasFinalResult bool) {
+func (w *worker) finalizeNotification(notificationID int) {
 	if notificationID == 0 {
 		return
 	}
 	w.db.DeleteNotification(notificationID)
-	if hasFinalResult {
-		w.db.IncrementReports(userID)
-	}
 }
 
 // subjectLimit is the room subject's share of a photo caption,
@@ -806,49 +891,62 @@ func clipSubject(subject string) (string, bool) {
 	return subject, false
 }
 
-func (w *worker) notifyOfStatus(priority db.Priority, n db.Notification, image []byte, social bool) {
-	if w.tr[n.Endpoint] == nil {
-		// Orphaned endpoint (removed from config); drop the stranded row.
-		w.finalizeNotification(n.ID, 0, false)
-		return
+// channelBotLink is the bot link a notification carries, empty where it carries none.
+// Only a channel gets one: a channel post names the channel, not the bot a reader could click.
+// reports is zero for a notification that takes no turn.
+func (w *worker) channelBotLink(n db.Notification, reports int) string {
+	if !isChannel(n.ChatType) {
+		return ""
 	}
-	ldbg("notifying of status of the streamer %s", n.Nickname)
-	var timeDiff *timeDiff
-	if n.TimeDiff != nil {
-		temp := calcTimeDiff(*n.TimeDiff)
-		timeDiff = &temp
+	if w.cfg.BotLinkPeriod <= 0 || reports < 1 || reports%w.cfg.BotLinkPeriod != 0 {
+		return ""
 	}
-	subject, subjectClipped := clipSubject(n.Subject)
-	data := tplData{
-		"streamer":        n.Nickname,
-		"streamer_link":   w.streamerLink(n.Nickname, w.gatedAffiliate(n.AffiliateParams)),
-		"time_diff":       timeDiff,
-		"viewers":         n.Viewers,
-		"show_kind":       n.ShowKind,
-		"subject":         html.EscapeString(subject),
-		"subject_clipped": subjectClipped,
-		// A group or channel gets no hint: settings are admin-only there, so it is noise.
-		// The chat is read here rather than stored, so a queued row holds no chat identity.
-		"fields_hint": n.FieldsHint && !isGroupOrChannel(n.ChatID),
+	return `<a href="` + w.botLink(n.Endpoint) + `">` + w.botMention(n.Endpoint) + `</a>`
+}
+
+// notifyOfStatus composes one fetched notification.
+func (w *worker) notifyOfStatus(p plannedNotification, image []byte) {
+	if p.translation == nil {
+		// Nothing to send for this status, or an endpoint dropped from the config;
+		// clear the queue row so it doesn't strand.
+		w.finalizeNotification(p.ID)
+	} else {
+		ldbg("notifying of status of the streamer %s", p.Nickname)
+		notify := false
+		if p.Status == cmdlib.StatusOnline {
+			notify = !p.SilentMessages
+		} else {
+			// Only an online notification carries a picture.
+			image = nil
+		}
+		var timeDiff *timeDiff
+		if p.TimeDiff != nil {
+			temp := calcTimeDiff(*p.TimeDiff)
+			timeDiff = &temp
+		}
+		subject, subjectClipped := clipSubject(p.Subject)
+		data := tplData{
+			"streamer":        p.Nickname,
+			"streamer_link":   w.streamerLink(p.Nickname, w.gatedAffiliate(p.AffiliateParams)),
+			"time_diff":       timeDiff,
+			"viewers":         p.Viewers,
+			"show_kind":       p.ShowKind,
+			"subject":         html.EscapeString(subject),
+			"subject_clipped": subjectClipped,
+			// A group or channel gets no hint: settings are admin-only there, so it is noise.
+			// The chat is read here rather than stored, so a queued row holds no chat identity.
+			"fields_hint": p.FieldsHint && !isGroupOrChannel(p.ChatID),
+			"bot_link":    w.channelBotLink(p.Notification, p.reports),
+		}
+		w.enqueueTr(p.Priority, p.Endpoint, p.UserID, notify, p.translation, data, image,
+			notificationTag(p.Notification), p.ID)
 	}
-	notify := !n.SilentMessages
-	switch n.Status {
-	case cmdlib.StatusOnline:
-		w.enqueueTr(priority, n.Endpoint, n.UserID, notify, w.tr[n.Endpoint].Online, data, image, notificationTag(n), n.ID)
-	case cmdlib.StatusOffline:
-		w.enqueueTr(priority, n.Endpoint, n.UserID, false, w.tr[n.Endpoint].Offline, data, nil, notificationTag(n), n.ID)
-	case cmdlib.StatusDenied:
-		w.enqueueTr(priority, n.Endpoint, n.UserID, false, w.tr[n.Endpoint].Denied, data, nil, notificationTag(n), n.ID)
-	default:
-		// No message for this status; clear the queue row so it doesn't strand.
-		w.finalizeNotification(n.ID, 0, false)
-	}
-	if social && w.cfg.AdChancePercent > 0 && rand.Intn(100) < w.cfg.AdChancePercent {
+	if p.Social && w.cfg.AdChancePercent > 0 && rand.Intn(100) < w.cfg.AdChancePercent {
 		// Empty today: only a status notification is ever social,
 		// and no command asks for one.
 		// Carried rather than hardcoded, so an ad and the reply beside it
 		// still agree should a notification ever have both.
-		w.ad(priority, n.Endpoint, n.UserID, n.Command)
+		w.ad(p.Priority, p.Endpoint, p.UserID, p.Command)
 	}
 }
 
@@ -1086,7 +1184,7 @@ func (w *worker) addStreamer(m receivedMessage, nickname string, referral bool) 
 	if subscriptionsNumber >= user.MaxSubs-w.cfg.HeavyUserRemainder {
 		w.subscriptionUsage(m.next(), true)
 	}
-	w.db.StoreNotifications(nots)
+	w.storeNotifications(nots)
 	return &streamer.ID
 }
 
@@ -1610,10 +1708,11 @@ func isGroupOrChannel(chatID int64) bool {
 // A channel takes posts from its admins alone, and an id cannot tell one from the other,
 // so the chat type decides, and a missing one reads as a group.
 func isGroup(user db.User) bool {
-	if !isGroupOrChannel(user.ChatID) {
-		return false
-	}
-	return user.ChatType == nil || *user.ChatType != string(models.ChatTypeChannel)
+	return isGroupOrChannel(user.ChatID) && !isChannel(user.ChatType)
+}
+
+func isChannel(chatType *string) bool {
+	return chatType != nil && *chatType == string(models.ChatTypeChannel)
 }
 
 // botMentionIfNeeded is the bot's @name in a group or channel, nothing in a private chat.
@@ -1628,6 +1727,11 @@ func (w *worker) botMentionIfNeeded(endpoint string, chatID int64) string {
 // stripped from a command it receives. Both sides must spell it the same.
 func (w *worker) botMention(endpoint string) string {
 	return "@" + w.botNames[endpoint]
+}
+
+// botLink opens a chat with the bot.
+func (w *worker) botLink(endpoint string) string {
+	return "https://t.me/" + w.botNames[endpoint]
 }
 
 func (w *worker) removeStreamer(m receivedMessage, nickname string) {
@@ -1830,7 +1934,7 @@ func (w *worker) listOnlineStreamers(m receivedMessage) {
 	// so the hint arrives with the pictures it explains rather than a tick ahead of them.
 	// It shares that message's fate: a hint with no picture left to explain is not worth a retry.
 	nots[len(nots)-1].FieldsHint = true
-	w.db.StoreNotifications(nots)
+	w.storeNotifications(nots)
 }
 
 func (w *worker) week(nickname string, loc *time.Location) ([]bool, time.Weekday) {
@@ -2664,7 +2768,7 @@ func (w *worker) referralData(endpoint string, userID db.UserID) tplData {
 		referralID = &temp
 		w.db.AddReferral(userID, *referralID)
 	}
-	referralLink := fmt.Sprintf("https://t.me/%s?start=%s", w.botNames[endpoint], *referralID)
+	referralLink := w.botLink(endpoint) + "?start=" + *referralID
 	subscriptionsNumber := w.db.SubscribedOrPendingCount(endpoint, userID)
 	user := w.mustUserByID(userID)
 	return tplData{
@@ -3119,7 +3223,7 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) pro
 
 	storeNotificationsStart := time.Now()
 	notifications := w.buildNotifications(confirmedStatusChanges)
-	w.db.StoreNotifications(notifications)
+	w.storeNotifications(notifications)
 	storeNotificationsMs := int(time.Since(storeNotificationsStart).Milliseconds())
 
 	var offlineCount, onlineCount int
@@ -3645,7 +3749,7 @@ func (w *worker) completeSendResult(r msgSendResult) {
 	w.handleSendResult(r)
 	switch r.disposition() {
 	case dispFinalize:
-		w.finalizeNotification(r.notificationID, r.userID, true)
+		w.finalizeNotification(r.notificationID)
 	case dispResend:
 		// Re-queue the original queued message:
 		// its seq keeps the queue position against later same-user messages,
@@ -3688,7 +3792,7 @@ func (w *worker) drainSendResults() {
 			// finalize only a genuinely finished send.
 			switch d := r.disposition(); {
 			case d == dispFinalize:
-				w.finalizeNotification(r.notificationID, r.userID, true)
+				w.finalizeNotification(r.notificationID)
 			case d == dispResend && r.notificationID == 0:
 				// A postponed reply cannot re-arm (no row) and is not queued
 				// for logShutdownLoss to count, so note the drop here.
@@ -3906,7 +4010,7 @@ func (w *worker) processSubsConfirmations(res *cmdlib.ExistenceListResults) {
 		w.db.ResetCheckingToUnconfirmed()
 	}
 	w.notifyOfAddResults(db.PriorityHigh, nots)
-	w.db.StoreNotifications(confirmedNots)
+	w.storeNotifications(confirmedNots)
 }
 
 // startupTimers holds the main loop's periodic timer channels.
