@@ -87,6 +87,10 @@
 - Prefer short comments: one line is the default.
   Add more lines only when required to understand the code.
   The `tidy-docs` skill applies this rule too — see Skills.
+- Never write a comment that only answers a review:
+  one justifying an edit, defending a line that was deleted,
+  or restating the code beside it.
+  Write for a reader who never saw the discussion.
 - Keep lines no longer than 120 characters
 - Never hardcode user-facing strings — always use
   the translation system (`res/translations/`)
