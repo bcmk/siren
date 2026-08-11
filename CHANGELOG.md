@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v4.3.0 — 2026-08-11
+
+### Added
+
+- A channel's online and offline alerts carry a link to the bot every `bot_link_period`-th time,
+  twelve by default, zero to disable
+
 ## v4.2.0 — 2026-08-05
 
 ### Changed
