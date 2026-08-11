@@ -191,7 +191,7 @@
   Never state one in prose, in another finding's body, or in a fix suggestion.
 - Re-render the whole findings list on every change:
   number, `file:line`, category, summary, failure scenario, fix.
-- Close every finding with a one-line `Fix:` naming the change that resolves it.
+- Close every review finding with a one-line `Fix:` naming the change that resolves it.
   Where the finding is a judgment call, the fix may be to accept it and change nothing.
 - During a code review, never touch the working tree.
   Run mutation tests and other experiments in a temporary worktree or copy —
