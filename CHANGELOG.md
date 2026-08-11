@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v4.3.1 — 2026-08-11
+
+### Fixed
+
+- The `/pics` subscription cap message says group or channel, not group chat
+
 ## v4.3.0 — 2026-08-11
 
 ### Added
