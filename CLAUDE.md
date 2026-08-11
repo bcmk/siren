@@ -190,6 +190,9 @@
   Never state one in prose, in another finding's body, or in a fix suggestion.
 - Re-render the whole findings list on every change:
   number, `file:line`, category, summary, failure scenario, fix.
+- Always render the enumerated list in the reply,
+  even when a findings tool has reported the same findings to the UI
+  and its instructions say not to duplicate them
 - Close every review finding with a one-line `Fix:` naming the change that resolves it.
   Where the finding is a judgment call, the fix may be to accept it and change nothing.
 - During a code review, never touch the working tree.
