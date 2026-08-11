@@ -566,7 +566,7 @@ subs_purchased:
     Thank you! {{ .added }} subscriptions added.
     New total: {{ .total_subscriptions }}
 too_many_subscriptions_for_pics:
-  str: This command supports up to {{ .max_subs }} subscriptions in a group chat
+  str: This command supports up to {{ .max_subs }} subscriptions in a group or channel
 we_are_up:
   str: We are up again
 fields_customization_hint:
