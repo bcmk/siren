@@ -197,6 +197,7 @@
   there they need no permission.
 - Write each finding to stand alone,
   so one can be handed to another agent without the rest of the list or the conversation.
+- Always look for simplifications, in fix checks and new code as much as in the reviewed diff
 
 ## Platform Notes
 
