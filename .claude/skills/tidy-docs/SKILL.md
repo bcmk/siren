@@ -79,3 +79,5 @@ A lone token over 100 (a URL) may exceed it.
 6. Report touched files in one line.
 7. Before a commit, stage, then run `.claude/hooks/tidy-docs-approve.sh`.
    The gate blocks until that approval matches the staged content.
+   A line rewritten after step 3 goes back to step 3, however small the edit:
+   step 5 measures width, which is half the rule, and the approval speaks for every staged line.
