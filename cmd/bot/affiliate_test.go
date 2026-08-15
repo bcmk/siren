@@ -2,11 +2,14 @@ package main
 
 import (
 	"maps"
+	"path/filepath"
+	"strings"
 	"testing"
 	texttemplate "text/template"
 
 	"github.com/bcmk/siren/v4/internal/botconfig"
 	"github.com/bcmk/siren/v4/internal/checkers"
+	"github.com/bcmk/siren/v4/lib/cmdlib"
 )
 
 func TestStreamerLink(t *testing.T) {
@@ -36,6 +39,12 @@ func TestStreamerLink(t *testing.T) {
 			base,
 			map[string]string{"campaign": "modelX", "tour": "7Bge", "track": "default"},
 			"<a href='https://siren.chat/out/cb/alice?campaign=modelX&amp;tour=7Bge&amp;track=default'>alice</a>",
+		},
+		{
+			"the opt-in flag rides the query",
+			base,
+			map[string]string{"referrer": "streamer"},
+			"<a href='https://siren.chat/out/cb/alice?referrer=streamer'>alice</a>",
 		},
 		{"no affiliate config falls back to the plain name", plain, nil, "alice"},
 	}
@@ -111,6 +120,74 @@ func TestGatedAffiliate(t *testing.T) {
 			got := affiliateWorker(tc.enabled, tc.supported).gatedAffiliate(tc.custom)
 			if !maps.Equal(got, tc.want) {
 				t.Errorf("gatedAffiliate(%v) = %v, want %v", tc.custom, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestStripchatAffiliate renders the real Stripchat messages,
+// where a chat claims one of two identities: the model an alert names, or a pasted StripCash link.
+func TestStripchatAffiliate(t *testing.T) {
+	t.Parallel()
+	base := filepath.Join("..", "..", "res", "translations")
+	tests := []struct {
+		name         string
+		arg          string
+		want         map[string]string
+		wantContains string
+	}{
+		{
+			name:         "the streamer keyword credits each model",
+			arg:          "streamer",
+			want:         map[string]string{"referrer": "streamer"},
+			wantContains: "https://siren.chat/out/sc/your_model_name?referrer=streamer",
+		},
+		{
+			name:         "a pasted link shows its affiliate ID",
+			arg:          "https://go.whitetrafsa.com?campaignId=some_campaign_id&userId=abc123",
+			want:         map[string]string{"campaignId": "some_campaign_id", "userId": "abc123"},
+			wantContains: "Affiliate ID: <b>abc123</b>",
+		},
+		{
+			name:         "a bare command explains both",
+			wantContains: "StripCash links builder",
+		},
+		{
+			name:         "junk is refused, naming both ways in",
+			arg:          "Streamers",
+			// The command, not the prose around it.
+			wantContains: "<code>/affiliate streamer</code>",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := newTestWorker()
+			defer w.terminate()
+			w.createDatabase()
+			w.tr, w.tpl = cmdlib.LoadAllTranslations(map[string][]string{"test": {
+				filepath.Join(base, "common.en.yaml"),
+				filepath.Join(base, "stripchat.en.yaml"),
+			}})
+			cfg := testConfig
+			cfg.AffiliateBase = "https://siren.chat/out/sc"
+			cfg.EnableCustomAffiliateLink = true
+			w.cfg = &cfg
+			w.checker = &checkers.StripchatChecker{}
+			m := testMessage(w, -10, "affiliate", 0)
+			w.setAffiliate(m, tc.arg)
+
+			if got := w.mustUserByID(m.userID).AffiliateParams; !maps.Equal(got, tc.want) {
+				t.Errorf("affiliate params = %v, want %v", got, tc.want)
+			}
+			if n := w.sendQueue.Len(); n != 1 {
+				t.Fatalf("queued replies = %d, want 1", n)
+			}
+			q := w.sendQueue.pop()
+			q.message.render("")
+			text := q.message.(*messageParams).Text
+			if !strings.Contains(text, tc.wantContains) {
+				t.Errorf("reply does not carry %q, in:\n%s", tc.wantContains, text)
 			}
 		})
 	}

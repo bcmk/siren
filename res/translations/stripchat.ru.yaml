@@ -23,9 +23,68 @@ sites:
     Twitch: <a href="https://t.me/TwitchSirenBot">TwitchSirenBot</a>
     Kick: <a href="https://t.me/KickSirenBot">KickSirenBot</a>
     MyFreeCams: <a href="https://t.me/MyFreeCamsSirenBot">MyFreeCamsSirenBot</a>
+sample_streamer:
+  parse: raw
+  str: your_model_name
 add_example:
   parse: html
   str: '{{ command "add" }} bbweb'
+affiliate_instructions:
+  parse: html
+  disable_preview: true
+  str: |-
+    Есть два способа получать выплаты за наши ссылки.
+
+    <b>Вы модель</b>
+    Stripchat платит вам за каждого, кто зарегистрировался по вашей реферальной ссылке.
+    Отправьте <code>{{ command "affiliate" }} streamer</code> — как есть, никнейм не нужен —
+    и бот будет ставить в оповещениях реферальную ссылку самой модели,
+    так что рефералы с оповещений о вас достанутся вам.
+
+    <b>Вы партнёр</b>
+    Откройте <a href="https://stripcash.com/links-and-creatives/links-builder">конструктор ссылок StripCash</a>
+    и скопируйте Final url. При желании задайте там кампанию и источник — они сохранятся.
+    Затем отправьте скопированную ссылку сюда, вот так:
+    <code>{{ command "affiliate" }} https://go.whitetrafsa.com?userId=d100c22f4c1ce24c2706ec4ac744d0bbd9a2a46fc437add588196a2d7aa9db07</code>
+
+    <i>Страницы и выплаты выше — то, что Stripchat и StripCash публиковали
+    на момент написания, и с тех пор могло измениться.
+    Актуальные условия смотрите на их сайтах.</i>
+affiliate_status:
+  parse: html
+  disable_preview: true
+  str: |-
+    {{ if .affiliate_id -}}
+    Ваша партнёрская ссылка активна.
+    Партнёрский ID: <b>{{ .affiliate_id }}</b>
+
+    Ссылки на {{ template "streamers_accusative" }} теперь выглядят так:
+    <code>{{ .affiliate_base }}/{{ template "sample_streamer" }}{{ with .affiliate_query }}?{{ . }}{{ end }}</code>
+    Каждая перенаправляет через вашу ссылку StripCash, поэтому выплаты идут вам.
+
+    Чтобы изменить, отправьте {{ command "affiliate" }} <code>ССЫЛКУ</code>
+    Чтобы реферал вместо этого доставался модели из оповещения, отправьте
+    <code>{{ command "affiliate" }} streamer</code> — как есть, никнейм не нужен
+    {{- else -}}
+    Ваши реферальные ссылки включены.
+
+    Ссылки на {{ template "streamers_accusative" }} теперь выглядят так:
+    <code>{{ .affiliate_base }}/{{ template "sample_streamer" }}{{ with .affiliate_query }}?{{ . }}{{ end }}</code>
+    Каждая — реферальная ссылка самой модели, поэтому реферал достаётся ей.
+
+    Чтобы использовать свою ссылку StripCash, отправьте {{ command "affiliate" }} <code>ССЫЛКУ</code>
+    {{- end }}
+    Сброс: {{ command "reset_affiliate" }}
+affiliate_invalid:
+  parse: html
+  disable_preview: true
+  str: |-
+    Не удалось разобрать.
+    Чтобы реферал доставался модели из оповещения, отправьте
+    <code>{{ command "affiliate" }} streamer</code> — как есть, никнейм не нужен
+    Чтобы он доставался вашему аккаунту StripCash, отправьте {{ command "affiliate" }} <code>ССЫЛКУ</code>
+
+    {{ template "affiliate_instructions" . }}
 faq_no_notifications:
   parse: html
   str: >

@@ -323,9 +323,11 @@ affiliate_status:
   disable_preview: true
   str: |-
     Ваша партнёрская ссылка активна.
+    {{- if .affiliate_id }}
     Партнёрский ID: <b>{{ .affiliate_id }}</b>
+    {{- end }}
 
-    Ссылки на моделей теперь выглядят так:
+    Ссылки на {{ template "streamers_accusative" }} теперь выглядят так:
     <code>{{ .affiliate_base }}/{{ template "sample_streamer" }}{{ with .affiliate_query }}?{{ . }}{{ end }}</code>
     Каждая перенаправляет через вашу партнёрскую ссылку {{ template "site" }}, поэтому выплаты идут вам.
 

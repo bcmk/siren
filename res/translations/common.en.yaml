@@ -323,9 +323,11 @@ affiliate_status:
   disable_preview: true
   str: |-
     Your affiliate link is active.
+    {{- if .affiliate_id }}
     Affiliate ID: <b>{{ .affiliate_id }}</b>
+    {{- end }}
 
-    Your model links now look like this:
+    Your links to {{ template "streamers_accusative" }} now look like this:
     <code>{{ .affiliate_base }}/{{ template "sample_streamer" }}{{ with .affiliate_query }}?{{ . }}{{ end }}</code>
     Each one redirects through your {{ template "site" }} affiliate link, so the payouts are yours.
 

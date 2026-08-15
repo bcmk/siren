@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"maps"
 	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/bcmk/siren/v4/lib/cmdlib"
 )
@@ -259,5 +261,63 @@ func (*StripchatChecker) Capabilities() Capabilities {
 		SupportsQueryFixedListStatuses:        false,
 		SupportsQueryStatus:                   true,
 		SupportsCLI:                           true,
+		SupportsCustomAffiliateLink:           true,
 	}
+}
+
+// stripchatReferrerParam names who an affiliate link credits when it carries no affiliate ID.
+// stripchatStreamerReferrer is both the keyword a chat sends and the value the link carries:
+// the redirect behind the affiliate base turns it into the site's referral form.
+const (
+	stripchatReferrerParam    = "referrer"
+	stripchatStreamerReferrer = "streamer"
+)
+
+// stripchatUserIDParam is the affiliate identity a StripCash link must carry.
+const stripchatUserIDParam = "userId"
+
+// The fields kept beside the identity; anything else the pasted link carries is dropped.
+// An affiliate names these, so they hold arbitrary text and only their length is bounded:
+// the query encodes whatever they say, and the link escapes it.
+var stripchatAffiliateParams = []string{"campaignId", "creativeId", "sourceId", "memberId"}
+
+const stripchatAffiliateParamValueMaxLen = 256
+
+var stripchatUserIDRegexp = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
+
+// ParseAffiliateParams reads either identity a chat can claim: the streamer keyword,
+// which credits the model an alert names through the follow-me link Stripchat pays them for,
+// or the Final url the StripCash links builder writes.
+func (*StripchatChecker) ParseAffiliateParams(input string) (map[string]string, bool) {
+	input = strings.TrimSpace(input)
+	if strings.EqualFold(input, stripchatStreamerReferrer) {
+		return map[string]string{stripchatReferrerParam: stripchatStreamerReferrer}, true
+	}
+	u, err := url.Parse(input)
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" {
+		return nil, false
+	}
+	query := u.Query()
+	userID := query.Get(stripchatUserIDParam)
+	if !stripchatUserIDRegexp.MatchString(userID) {
+		return nil, false
+	}
+	out := map[string]string{stripchatUserIDParam: userID}
+	for _, name := range stripchatAffiliateParams {
+		value := query.Get(name)
+		if value == "" {
+			continue
+		}
+		if utf8.RuneCountInString(value) > stripchatAffiliateParamValueMaxLen {
+			return nil, false
+		}
+		out[name] = value
+	}
+	return out, true
+}
+
+// AffiliateID returns the userId, the StripCash ID to show back.
+// A chat crediting the streamer has none.
+func (*StripchatChecker) AffiliateID(params map[string]string) string {
+	return params[stripchatUserIDParam]
 }

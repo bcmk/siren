@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## Unreleased
+
+### Added
+
+- `/affiliate` on Stripchat: send `streamer` to credit the model an alert names,
+  or paste a StripCash links-builder url.
+  Reset with `/reset_affiliate`.
+- Stripchat in-bot ad promoting both
+
 ## v4.3.1 — 2026-08-11
 
 ### Fixed

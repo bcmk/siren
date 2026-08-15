@@ -77,9 +77,9 @@ func TestChaturbateSupportsCustomAffiliateLink(t *testing.T) {
 
 func TestOtherSitesRejectAffiliate(t *testing.T) {
 	// Every site inherits BaseChecker's refusal until it opts in.
-	var c StripchatChecker
+	var c BongaCamsChecker
 	if c.Capabilities().SupportsCustomAffiliateLink {
-		t.Error("stripchat should not support custom affiliate yet")
+		t.Error("bongacams should not support custom affiliate yet")
 	}
 	if _, ok := c.ParseAffiliateParams("https://chaturbate.com/in/?tour=7Bge&campaign=WIl8t&track=default"); ok {
 		t.Error("a site without custom affiliate should accept nothing")

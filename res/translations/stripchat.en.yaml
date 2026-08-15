@@ -23,9 +23,68 @@ sites:
     Twitch: <a href="https://t.me/TwitchSirenBot">TwitchSirenBot</a>
     Kick: <a href="https://t.me/KickSirenBot">KickSirenBot</a>
     MyFreeCams: <a href="https://t.me/MyFreeCamsSirenBot">MyFreeCamsSirenBot</a>
+sample_streamer:
+  parse: raw
+  str: your_model_name
 add_example:
   parse: html
   str: '{{ command "add" }} bbweb'
+affiliate_instructions:
+  parse: html
+  disable_preview: true
+  str: |-
+    There are two ways to make the payouts yours.
+
+    <b>You are a model</b>
+    Stripchat pays you for every user who registers through your own referral link.
+    Send <code>{{ command "affiliate" }} streamer</code> — as written, no nickname needed —
+    and the bot posts each model's own referral link,
+    so the alerts about you earn you the referral.
+
+    <b>You are an affiliate</b>
+    Open the <a href="https://stripcash.com/links-and-creatives/links-builder">StripCash links builder</a>
+    and copy the Final url. Set a campaign and source there if you want — they come along.
+    Then send the copied link here, like this:
+    <code>{{ command "affiliate" }} https://go.whitetrafsa.com?userId=d100c22f4c1ce24c2706ec4ac744d0bbd9a2a46fc437add588196a2d7aa9db07</code>
+
+    <i>The pages and payouts above are what Stripchat and StripCash published
+    at the time of writing and may have changed since.
+    Check their sites for the current terms.</i>
+affiliate_status:
+  parse: html
+  disable_preview: true
+  str: |-
+    {{ if .affiliate_id -}}
+    Your affiliate link is active.
+    Affiliate ID: <b>{{ .affiliate_id }}</b>
+
+    Your links to {{ template "streamers_accusative" }} now look like this:
+    <code>{{ .affiliate_base }}/{{ template "sample_streamer" }}{{ with .affiliate_query }}?{{ . }}{{ end }}</code>
+    Each one redirects through your StripCash link, so the payouts are yours.
+
+    To change it, send {{ command "affiliate" }} <code>LINK</code>
+    For the referral to go to the model in the alert instead, send
+    <code>{{ command "affiliate" }} streamer</code> — as written, no nickname needed
+    {{- else -}}
+    Your referral links are on.
+
+    Your links to {{ template "streamers_accusative" }} now look like this:
+    <code>{{ .affiliate_base }}/{{ template "sample_streamer" }}{{ with .affiliate_query }}?{{ . }}{{ end }}</code>
+    Each one is that model's own referral link, so the referral goes to them.
+
+    To use your own StripCash link instead, send {{ command "affiliate" }} <code>LINK</code>
+    {{- end }}
+    To reset, {{ command "reset_affiliate" }}
+affiliate_invalid:
+  parse: html
+  disable_preview: true
+  str: |-
+    Could not read that.
+    For the referral to go to the model in the alert, send
+    <code>{{ command "affiliate" }} streamer</code> — as written, no nickname needed
+    For it to go to your StripCash account, send {{ command "affiliate" }} <code>LINK</code>
+
+    {{ template "affiliate_instructions" . }}
 faq_no_notifications:
   parse: html
   str: >
