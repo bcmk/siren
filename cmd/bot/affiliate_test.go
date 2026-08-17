@@ -153,8 +153,8 @@ func TestStripchatAffiliate(t *testing.T) {
 			wantContains: "StripCash links builder",
 		},
 		{
-			name:         "junk is refused, naming both ways in",
-			arg:          "Streamers",
+			name: "junk is refused, naming both ways in",
+			arg:  "Streamers",
 			// The command, not the prose around it.
 			wantContains: "<code>/affiliate streamer</code>",
 		},
