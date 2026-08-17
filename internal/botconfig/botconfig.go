@@ -21,6 +21,7 @@ type endpoint struct {
 	Translation         []string      `mapstructure:"translation"`          // translation files
 	Ads                 []string      `mapstructure:"ads"`                  // ads files
 	Images              string        `mapstructure:"images"`               // images directory
+	ProfilePhoto        string        `mapstructure:"profile_photo"`        // the bot profile photo, defaults per website
 	MaintenanceResponse string        `mapstructure:"maintenance_response"` // the maintenance response
 }
 
@@ -41,7 +42,7 @@ type Config struct {
 	Debug                           bool                      `mapstructure:"debug"`                              // debug mode
 	CheckGID                        bool                      `mapstructure:"check_gid"`                          // check goroutines ids
 	ListenAddress                   string                    `mapstructure:"listen_address"`                     // the address to listen to
-	Website                         string                    `mapstructure:"website"`                            // one of the following strings: "bongacams", "stripchat", "chaturbate", "livejasmin", "flirt4free", "streamate", "cam4", "twitch", "kick", "myfreecams"
+	Website                         string                    `mapstructure:"website"`                            // a checker's Site name from the registry in internal/checkers/factory.go
 	WebsiteLink                     string                    `mapstructure:"website_link"`                       // legacy affiliate link to website, superseded by affiliate_base
 	PeriodSeconds                   int                       `mapstructure:"period_seconds"`                     // the period of querying streamer statuses
 	MaintainDBPeriodSeconds         int                       `mapstructure:"maintain_db_period_seconds"`         // the maintain DB period

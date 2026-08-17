@@ -1137,6 +1137,23 @@ func (d *Database) UserForReferralID(referralID string) *UserID {
 	return &userID
 }
 
+// ProfilePhotoUploaded reports whether this hash is the endpoint's last uploaded profile photo
+func (d *Database) ProfilePhotoUploaded(endpoint string, hash string) bool {
+	return d.MustBool(
+		"select exists(select 1 from profile_photos where endpoint = $1 and hash = $2)",
+		endpoint, hash)
+}
+
+// SetProfilePhotoHash stores the hash of the profile photo uploaded for the endpoint
+func (d *Database) SetProfilePhotoHash(endpoint string, hash string) {
+	d.MustExec(`
+		insert into profile_photos (endpoint, hash)
+		values ($1, $2)
+		on conflict (endpoint) do update set hash = excluded.hash`,
+		endpoint,
+		hash)
+}
+
 // IncrementBlock increments blocking count for particular chat ID
 func (d *Database) IncrementBlock(endpoint string, userID UserID) {
 	d.MustExec(`

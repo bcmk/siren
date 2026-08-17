@@ -104,6 +104,7 @@ type worker struct {
 	ourIDs                     []int64
 	searchHTML                 *htmltemplate.Template
 	timezoneHTML               *htmltemplate.Template
+	profilePhotos              map[string][]byte
 	// zoneNames maps a lowercased IANA name to the zone the binary loaded for it,
 	// whose own name is the spelling to store.
 	// Written once at startup and only read after, so a concurrent reader needs no lock.
@@ -319,7 +320,29 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 	w.timezoneHTML, err = htmltemplate.New("timezone").Parse(string(timezoneHTMLBytes))
 	checkErr(err)
 
+	w.loadProfilePhotos()
+
 	return w
+}
+
+// loadProfilePhotos reads each endpoint's profile photo,
+// so a bad path stops the start before the webhook is up.
+func (w *worker) loadProfilePhotos() {
+	w.profilePhotos = map[string][]byte{}
+	for n, e := range w.cfg.Endpoints {
+		photoPath := e.ProfilePhoto
+		defaulted := photoPath == ""
+		if defaulted {
+			photoPath = path.Join("res", "profile-photos", w.cfg.Website+".jpg")
+		}
+		data, err := os.ReadFile(photoPath)
+		// A missing default is fine: some websites, like test, ship no photo.
+		if defaulted && errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		checkErr(err)
+		w.profilePhotos[n] = data
+	}
 }
 
 func (w *worker) loadImageForTranslation(endpoint string, tr *cmdlib.Translation) {
@@ -438,6 +461,33 @@ func (w *worker) setCommands() {
 		}
 		linf("OK")
 	}
+}
+
+// setProfilePhotos uploads each endpoint's profile photo, skipping unchanged ones.
+// It needs the database for the hash check, so it runs later than the other setup calls.
+func (w *worker) setProfilePhotos() {
+	ctx := context.Background()
+	for n, data := range w.profilePhotos {
+		sum := sha256.Sum256(data)
+		hash := hex.EncodeToString(sum[:])
+		if w.db.ProfilePhotoUploaded(n, hash) {
+			continue
+		}
+		linf("setting profile photo for endpoint %s...", n)
+		_, err := w.bots[n].SetMyProfilePhoto(ctx, &bot.SetMyProfilePhotoParams{
+			Photo: &models.InputProfilePhotoStatic{
+				Photo:           "attach://profile_photo",
+				MediaAttachment: bytes.NewReader(data),
+			},
+		})
+		if err != nil {
+			lerr("failed to set profile photo for endpoint %s: %v", n, err)
+			continue
+		}
+		w.db.SetProfilePhotoHash(n, hash)
+		linf("OK")
+	}
+	w.profilePhotos = nil
 }
 
 func (w *worker) setDefaultAdminRights() {
@@ -4129,6 +4179,7 @@ func main() {
 		w.initCache()
 		w.db.ResetNotificationSending()
 		w.db.ResetCheckingToUnconfirmed()
+		w.setProfilePhotos()
 		// Register the web app last:
 		// once its routes exist, requests can reach the loop's channels
 		// and must find the caches ready.
