@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v4.5.0 — 2026-08-18
+
+### Added
+
+- Each bot sets its profile photo on start,
+  from a bundled per-site icon or a configured `profile_photo` file,
+  uploading only when the photo changed
+
 ## v4.4.0 — 2026-08-16
 
 ### Added
