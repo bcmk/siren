@@ -17,7 +17,9 @@ ukraine:
   image: flag-of-ukraine.png
   weight: 5
 streamer:
-  str: Are you a streamer? Automatically notify your Telegram channel when you go live! Here is how https://siren.chat/streamer
+  str: >-
+    Are you a streamer? Automatically notify your Telegram channel when you go live!
+    We don't post ads in channels and groups. How to start: https://siren.chat/streamer
   weight: 5
 github:
   str: This bot is open source! Check it out on GitHub https://github.com/bcmk/siren

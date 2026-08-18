@@ -17,7 +17,9 @@ ukraine:
   image: flag-of-ukraine.png
   weight: 5
 streamer:
-  str: Вы стример? Автоматически оповещайте свой Telegram-канал о выходе в эфир! Узнайте как https://siren.chat/streamer
+  str: >-
+    Вы стример? Автоматически оповещайте свой Telegram-канал о выходе в эфир!
+    Мы не постим рекламу в каналах и группах. Как начать: https://siren.chat/streamer
   weight: 5
 github:
   str: Этот бот — проект с открытым исходным кодом! Мы на GitHub https://github.com/bcmk/siren
