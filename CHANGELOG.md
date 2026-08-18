@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v4.6.0 — 2026-08-18
+
+### Added
+
+- Streamer ads say we don't post ads in channels and groups
+
 ## v4.5.0 — 2026-08-18
 
 ### Added
