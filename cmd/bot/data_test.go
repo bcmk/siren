@@ -79,6 +79,20 @@ var testTranslations = cmdlib.Translations{
 		Key: "timezone_app_no_results", Str: "TimezoneAppNoResults", Parse: cmdlib.ParseRaw},
 	TimezoneAppFailed: &cmdlib.Translation{
 		Key: "timezone_app_failed", Str: "TimezoneAppFailed", Parse: cmdlib.ParseRaw},
+	RemoveButton: &cmdlib.Translation{
+		Key: "remove_button", Str: "RemoveButton", Parse: cmdlib.ParseRaw},
+	RemovalAppHeader: &cmdlib.Translation{
+		Key: "removal_app_header", Str: "RemovalAppHeader", Parse: cmdlib.ParseRaw},
+	RemovalAppPlaceholder: &cmdlib.Translation{
+		Key: "removal_app_placeholder", Str: "RemovalAppPlaceholder", Parse: cmdlib.ParseRaw},
+	RemovalAppNoSubscriptions: &cmdlib.Translation{
+		Key: "removal_app_no_subscriptions", Str: "RemovalAppNoSubscriptions", Parse: cmdlib.ParseRaw},
+	RemovalAppNoResults: &cmdlib.Translation{
+		Key: "removal_app_no_results", Str: "RemovalAppNoResults", Parse: cmdlib.ParseRaw},
+	RemovalAppFailed: &cmdlib.Translation{
+		Key: "removal_app_failed", Str: "RemovalAppFailed", Parse: cmdlib.ParseRaw},
+	RemovalAppFailedToRemove: &cmdlib.Translation{
+		Key: "removal_app_failed_to_remove", Str: "RemovalAppFailedToRemove", Parse: cmdlib.ParseRaw},
 	Week:                   &cmdlib.Translation{Key: "week", Str: "Week", Parse: cmdlib.ParseRaw},
 	WeekChunk:              &cmdlib.Translation{Key: "week_chunk", Str: "WeekChunk", Parse: cmdlib.ParseRaw},
 	WeekNeverOnline:        &cmdlib.Translation{Key: "week_never_online", Str: "WeekNeverOnline", Parse: cmdlib.ParseRaw},

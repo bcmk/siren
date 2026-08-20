@@ -441,6 +441,27 @@ syntax_remove:
     Наберите
 
     {{ command "remove" }} <code>МОДЕЛЬ</code>
+remove_button:
+  parse: raw
+  str: Или выбрать и удалить
+removal_app_header:
+  parse: raw
+  str: Выберите модель для удаления
+removal_app_placeholder:
+  parse: raw
+  str: Поиск...
+removal_app_no_subscriptions:
+  parse: raw
+  str: Вы не подписаны ни на одну модель
+removal_app_no_results:
+  parse: raw
+  str: Ничего не найдено
+removal_app_failed:
+  parse: raw
+  str: Не удалось загрузить подписки
+removal_app_failed_to_remove:
+  parse: raw
+  str: Не удалось удалить
 unknown_command:
   parse: html
   str: |-

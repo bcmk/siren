@@ -214,6 +214,26 @@ func (d *Database) SubscribedOrPending(endpoint string, userID UserID, nickname 
 		int64(userID), nickname, endpoint)
 }
 
+// SubscribedOrPendingNicknames returns the nicknames a user can remove:
+// subscriptions and pending subscriptions alike, as RemoveSubscription deletes both
+func (d *Database) SubscribedOrPendingNicknames(endpoint string, userID UserID) (nicknames []string) {
+	var iter string
+	d.MustQuery(`
+		select s.nickname
+		from subscriptions sub
+		join streamers s on s.id = sub.streamer_id
+		where sub.user_id = $1 and sub.endpoint = $2
+		union
+		select ps.nickname
+		from pending_subscriptions ps
+		where ps.user_id = $1 and ps.endpoint = $2
+		order by nickname`,
+		QueryParams{int64(userID), endpoint},
+		ScanTo{&iter},
+		func() { nicknames = append(nicknames, iter) })
+	return
+}
+
 // SubscribedOrPendingCount returns the total number of subscriptions
 // and pending subscriptions of a particular user
 func (d *Database) SubscribedOrPendingCount(endpoint string, userID UserID) int {

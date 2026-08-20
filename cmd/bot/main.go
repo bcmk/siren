@@ -104,17 +104,20 @@ type worker struct {
 	ourIDs                     []int64
 	searchHTML                 *htmltemplate.Template
 	timezoneHTML               *htmltemplate.Template
+	removalHTML                *htmltemplate.Template
 	profilePhotos              map[string][]byte
 	// zoneNames maps a lowercased IANA name to the zone the binary loaded for it,
 	// whose own name is the spelling to store.
 	// Written once at startup and only read after, so a concurrent reader needs no lock.
-	zoneNames              map[string]*time.Location
-	searchRequests         chan searchRequest
-	webAppAddRequests      chan webAppAddRequest
-	webAppTimezoneRequests chan webAppTimezoneRequest
-	incomingPackets        chan incomingPacket
-	maintenance            atomic.Bool
-	shuttingDown           atomic.Bool
+	zoneNames                 map[string]*time.Location
+	searchRequests            chan searchRequest
+	webAppAddRequests         chan webAppAddRequest
+	webAppTimezoneRequests    chan webAppTimezoneRequest
+	webAppRemovalListRequests chan webAppRemovalListRequest
+	webAppRemoveRequests      chan webAppRemoveRequest
+	incomingPackets           chan incomingPacket
+	maintenance               atomic.Bool
+	shuttingDown              atomic.Bool
 	// chatMember is the admin gate's lookup, a field so tests can fake the answer.
 	chatMember func(endpoint string, chatID, userID int64) (*models.ChatMember, error)
 	shutdownCh chan struct{}
@@ -157,6 +160,33 @@ type webAppTimezoneRequest struct {
 	zone     string
 	// admittedCh reports whether the chat passed the whitelist,
 	// the one refusal the page cannot be told apart from a save.
+	admittedCh chan bool
+}
+
+// webAppRemovalListRequest asks the main loop what the removal web app's caller may remove.
+type webAppRemovalListRequest struct {
+	endpoint string
+	chatID   int64
+	resultCh chan webAppRemovalListResult
+}
+
+// webAppRemovalListResult answers a webAppRemovalListRequest.
+// allowed is false when the chat is outside the whitelist,
+// so a refusal reads apart from an empty list.
+type webAppRemovalListResult struct {
+	nicknames []string
+	allowed   bool
+}
+
+// webAppRemoveRequest carries a removal tapped in the removal web app.
+type webAppRemoveRequest struct {
+	endpoint string
+	chatID   int64
+	nickname string
+	// admittedCh reports whether the request was admitted, not whether it removed:
+	// an admitted removal answers in the chat itself, having removed or explained a refusal.
+	// Only a chat outside the whitelist is dropped in silence,
+	// and that alone must not read as success.
 	admittedCh chan bool
 }
 
@@ -292,6 +322,8 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 		searchRequests:             make(chan searchRequest),
 		webAppAddRequests:          make(chan webAppAddRequest),
 		webAppTimezoneRequests:     make(chan webAppTimezoneRequest),
+		webAppRemovalListRequests:  make(chan webAppRemovalListRequest),
+		webAppRemoveRequests:       make(chan webAppRemoveRequest),
 		incomingPackets:            incomingPackets,
 	}
 	w.chatMember = w.getChatMember
@@ -318,6 +350,11 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 	timezoneHTMLBytes, err := os.ReadFile("res/webapp/timezone.html")
 	checkErr(err)
 	w.timezoneHTML, err = htmltemplate.New("timezone").Parse(string(timezoneHTMLBytes))
+	checkErr(err)
+
+	removalHTMLBytes, err := os.ReadFile("res/webapp/removal.html")
+	checkErr(err)
+	w.removalHTML, err = htmltemplate.New("removal").Parse(string(removalHTMLBytes))
 	checkErr(err)
 
 	w.loadProfilePhotos()
@@ -1786,7 +1823,24 @@ func (w *worker) botLink(endpoint string) string {
 
 func (w *worker) removeStreamer(m receivedMessage, nickname string) {
 	if nickname == "" {
-		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].SyntaxRemove, nil)
+		tr := w.tr[m.endpoint].SyntaxRemove
+		params := &renderParams{templates: w.tpl[m.endpoint], key: tr.Key}
+		// Silent, as the replyTr answer was before the button rode along.
+		msg := params.asDeferredText(false, tr.DisablePreview, tr.Parse)
+		// A private chat, the only place a web app button works.
+		// No capability gate, unlike the search button:
+		// the list is the chat's own subscriptions, which every checker has.
+		if !isGroupOrChannel(m.chatID) {
+			msg.ReplyMarkup = &models.InlineKeyboardMarkup{
+				InlineKeyboard: [][]models.InlineKeyboardButton{{
+					{
+						Text:   w.tr[m.endpoint].RemoveButton.Str,
+						WebApp: &models.WebAppInfo{URL: w.removalAppURL(m.endpoint)},
+					},
+				}},
+			}
+		}
+		w.replyMessage(m, db.PriorityHigh, msg)
 		return
 	}
 	nickname = w.checker.NicknamePreprocessing(nickname)
@@ -2289,6 +2343,10 @@ func (w *worker) timezoneAppURL(endpoint, current string) string {
 		"/apps/timezone?endpoint=" + endpoint + "&current=" + url.QueryEscape(current)
 }
 
+func (w *worker) removalAppURL(endpoint string) string {
+	return w.webAppBase(endpoint) + "/apps/remove?endpoint=" + endpoint
+}
+
 func (w *worker) parseInitData(initData string, botToken string) (url.Values, bool) {
 	values, err := url.ParseQuery(initData)
 	if err != nil {
@@ -2400,6 +2458,38 @@ func (w *worker) handleTimezoneApp(rw http.ResponseWriter, r *http.Request) {
 	err := w.timezoneHTML.Execute(rw, data)
 	if err != nil {
 		lerr("cannot write timezone app response, %v", err)
+	}
+}
+
+// handleRemovalApp serves the removal page bare:
+// the page request carries no init data, so the list is fetched by the page itself,
+// through the API that can tell whose subscriptions to serve.
+func (w *worker) handleRemovalApp(rw http.ResponseWriter, r *http.Request) {
+	endpoint := r.URL.Query().Get("endpoint")
+	if _, ok := w.cfg.Endpoints[endpoint]; !ok {
+		http.Error(rw, "bad endpoint", http.StatusBadRequest)
+		return
+	}
+	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
+	tr := w.tr[endpoint]
+	data := struct {
+		Header          string
+		Placeholder     string
+		NoSubscriptions string
+		NoResults       string
+		Failed          string
+		FailedToRemove  string
+	}{
+		Header:          tr.RemovalAppHeader.Str,
+		Placeholder:     tr.RemovalAppPlaceholder.Str,
+		NoSubscriptions: tr.RemovalAppNoSubscriptions.Str,
+		NoResults:       tr.RemovalAppNoResults.Str,
+		Failed:          tr.RemovalAppFailed.Str,
+		FailedToRemove:  tr.RemovalAppFailedToRemove.Str,
+	}
+	err := w.removalHTML.Execute(rw, data)
+	if err != nil {
+		lerr("cannot write removal app response, %v", err)
 	}
 }
 
@@ -2667,6 +2757,166 @@ func (w *worker) handleWebAppTimezone(rw http.ResponseWriter, r *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 }
 
+// performWebAppRemovalList serves the removal page the streamers its caller may remove.
+// Main goroutine only, as performWebAppAdd is.
+// It is a read: no user row is materialized and no command is logged,
+// so a chat the bot never met gets an empty list, not a row.
+func (w *worker) performWebAppRemovalList(req webAppRemovalListRequest) {
+	if !w.admitChat("web app removal list", req.chatID) {
+		req.resultCh <- webAppRemovalListResult{}
+		return
+	}
+	res := webAppRemovalListResult{allowed: true}
+	if user, found := w.db.User(req.chatID); found {
+		res.nicknames = w.db.SubscribedOrPendingNicknames(req.endpoint, user.UserID)
+	}
+	req.resultCh <- res
+}
+
+// submitWebAppRemovalList hands a request to the main loop and waits for the list,
+// with the shutdown escape submitWebAppAdd has, and for the same reasons.
+func (w *worker) submitWebAppRemovalList(req webAppRemovalListRequest) (res webAppRemovalListResult, alive bool) {
+	select {
+	case w.webAppRemovalListRequests <- req:
+	case <-w.shutdownCh:
+		return webAppRemovalListResult{}, false
+	}
+	return <-req.resultCh, true
+}
+
+func (w *worker) handleWebAppRemovalList(rw http.ResponseWriter, r *http.Request) {
+	endpoint := r.URL.Query().Get("endpoint")
+	if _, ok := w.cfg.Endpoints[endpoint]; !ok {
+		lerr("web app removal list: bad endpoint %q", endpoint)
+		http.Error(rw, "bad endpoint", http.StatusBadRequest)
+		return
+	}
+	// A read, but of one chat's subscriptions, which the URL alone does not name:
+	// a shared cache keyed on it must not answer one chat's with another's.
+	if r.Method != http.MethodPost {
+		rw.Header().Set("Allow", http.MethodPost)
+		http.Error(rw, "use POST", http.StatusMethodNotAllowed)
+		return
+	}
+	rw.Header().Set("Cache-Control", "no-store")
+	initData := r.Header.Get("X-Init-Data")
+	values, ok := w.parseInitData(initData, string(w.cfg.Endpoints[endpoint].BotToken))
+	if !ok {
+		lerr("web app removal list: invalid init data for endpoint %s", endpoint)
+		http.Error(rw, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	userID, ok := webAppUserID(values)
+	if !ok {
+		lerr("web app removal list: missing user id")
+		http.Error(rw, "missing user id", http.StatusBadRequest)
+		return
+	}
+	req := webAppRemovalListRequest{
+		endpoint: endpoint,
+		chatID:   userID,
+		resultCh: make(chan webAppRemovalListResult, 1),
+	}
+	res, alive := w.submitWebAppRemovalList(req)
+	if !alive {
+		http.Error(rw, "shutting down", http.StatusServiceUnavailable)
+		return
+	}
+	if !res.allowed {
+		http.Error(rw, "forbidden", http.StatusForbidden)
+		return
+	}
+	nicknames := res.nicknames
+	if nicknames == nil {
+		nicknames = []string{}
+	}
+	rw.Header().Set("Content-Type", "application/json")
+	err := json.NewEncoder(rw).Encode(nicknames)
+	if err != nil {
+		lerr("cannot write removal list response, %v", err)
+	}
+}
+
+// webAppRemoveCommand names a removal made from the removal web app.
+// It is distinct from /remove so the two are not conflated in the log.
+const webAppRemoveCommand = "web_app_remove"
+
+// performWebAppRemove carries out a removal tapped in the removal web app.
+// Main goroutine only, gated and logged as performWebAppAdd is.
+func (w *worker) performWebAppRemove(req webAppRemoveRequest) {
+	if !w.admitChat("web app remove", req.chatID) {
+		req.admittedCh <- false
+		return
+	}
+	m, _ := w.newReceivedMessage(int(time.Now().Unix()), req.endpoint, req.chatID, "", webAppRemoveCommand)
+	w.logReceived(m)
+	// Either way removeStreamer has answered in the chat.
+	w.removeStreamer(m, req.nickname)
+	req.admittedCh <- true
+}
+
+// submitWebAppRemove hands a request to the main loop and waits for its verdict,
+// as submitWebAppAdd does, and for the same reasons.
+func (w *worker) submitWebAppRemove(req webAppRemoveRequest) (admitted, alive bool) {
+	select {
+	case w.webAppRemoveRequests <- req:
+	case <-w.shutdownCh:
+		return false, false
+	}
+	return <-req.admittedCh, true
+}
+
+func (w *worker) handleWebAppRemove(rw http.ResponseWriter, r *http.Request) {
+	endpoint := r.URL.Query().Get("endpoint")
+	if _, ok := w.cfg.Endpoints[endpoint]; !ok {
+		lerr("web app remove: bad endpoint %q", endpoint)
+		http.Error(rw, "bad endpoint", http.StatusBadRequest)
+		return
+	}
+	// The removal is not a read, as the add is not:
+	// a shared cache keyed on the URL alone must not answer one chat's with another's.
+	if r.Method != http.MethodPost {
+		rw.Header().Set("Allow", http.MethodPost)
+		http.Error(rw, "use POST", http.StatusMethodNotAllowed)
+		return
+	}
+	rw.Header().Set("Cache-Control", "no-store")
+	initData := r.Header.Get("X-Init-Data")
+	values, ok := w.parseInitData(initData, string(w.cfg.Endpoints[endpoint].BotToken))
+	if !ok {
+		lerr("web app remove: invalid init data for endpoint %s", endpoint)
+		http.Error(rw, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	nickname := strings.TrimSpace(strings.ToLower(r.URL.Query().Get("streamer")))
+	if nickname == "" {
+		http.Error(rw, "empty streamer", http.StatusBadRequest)
+		return
+	}
+	userID, ok := webAppUserID(values)
+	if !ok {
+		lerr("web app remove: missing user id")
+		http.Error(rw, "missing user id", http.StatusBadRequest)
+		return
+	}
+	req := webAppRemoveRequest{
+		endpoint:   endpoint,
+		chatID:     userID,
+		nickname:   nickname,
+		admittedCh: make(chan bool, 1),
+	}
+	admitted, alive := w.submitWebAppRemove(req)
+	if !alive {
+		http.Error(rw, "shutting down", http.StatusServiceUnavailable)
+		return
+	}
+	if !admitted {
+		http.Error(rw, "forbidden", http.StatusForbidden)
+		return
+	}
+	rw.WriteHeader(http.StatusOK)
+}
+
 func (w *worker) handleUnmatched(rw http.ResponseWriter, r *http.Request) {
 	linf("unhandled request: %s %s", r.Method, r.URL)
 	http.NotFound(rw, r)
@@ -2679,6 +2929,9 @@ func (w *worker) registerWebApp() {
 	http.HandleFunc("/apps/add/api/submit", w.handleWebAppAdd)
 	http.HandleFunc("/apps/timezone", w.handleTimezoneApp)
 	http.HandleFunc("/apps/timezone/api/submit", w.handleWebAppTimezone)
+	http.HandleFunc("/apps/remove", w.handleRemovalApp)
+	http.HandleFunc("/apps/remove/api/list", w.handleWebAppRemovalList)
+	http.HandleFunc("/apps/remove/api/submit", w.handleWebAppRemove)
 }
 
 func (w *worker) logConfig() {
@@ -4236,6 +4489,10 @@ func main() {
 			w.performWebAppAdd(req)
 		case req := <-w.webAppTimezoneRequests:
 			w.performWebAppTimezone(req)
+		case req := <-w.webAppRemovalListRequests:
+			w.performWebAppRemovalList(req)
+		case req := <-w.webAppRemoveRequests:
+			w.performWebAppRemove(req)
 		case u := <-incoming:
 			if w.maintenance.Load() {
 				w.maintenanceReply(u, waitingUsers)

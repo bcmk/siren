@@ -71,6 +71,13 @@ var unaddressedKeys = map[string]bool{
 	"timezone_app_placeholder":     true,
 	"timezone_app_no_results":      true,
 	"timezone_app_failed":          true,
+	"remove_button":                true,
+	"removal_app_header":           true,
+	"removal_app_placeholder":      true,
+	"removal_app_no_subscriptions": true,
+	"removal_app_no_results":       true,
+	"removal_app_failed":           true,
+	"removal_app_failed_to_remove": true,
 }
 
 // TestTranslationsMarkEveryCommand guards the one gap of the explicit form:

@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## Unreleased
+
+### Added
+
+- A removal mini app: the bare `/remove` offers the chat's subscriptions, a tap removes one
+
 ## v4.6.0 — 2026-08-18
 
 ### Added

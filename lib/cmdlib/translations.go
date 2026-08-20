@@ -134,6 +134,13 @@ type Translations struct {
 	TimezoneAppPlaceholder      *Translation `yaml:"timezone_app_placeholder"`
 	TimezoneAppNoResults        *Translation `yaml:"timezone_app_no_results"`
 	TimezoneAppFailed           *Translation `yaml:"timezone_app_failed"`
+	RemoveButton                *Translation `yaml:"remove_button"`
+	RemovalAppHeader            *Translation `yaml:"removal_app_header"`
+	RemovalAppPlaceholder       *Translation `yaml:"removal_app_placeholder"`
+	RemovalAppNoSubscriptions   *Translation `yaml:"removal_app_no_subscriptions"`
+	RemovalAppNoResults         *Translation `yaml:"removal_app_no_results"`
+	RemovalAppFailed            *Translation `yaml:"removal_app_failed"`
+	RemovalAppFailedToRemove    *Translation `yaml:"removal_app_failed_to_remove"`
 }
 
 // LoadEndpointTranslations loads translations for a specific endpoint

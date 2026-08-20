@@ -441,6 +441,27 @@ syntax_remove:
     Enter
 
     {{ command "remove" }} <code>CAMNAME</code>
+remove_button:
+  parse: raw
+  str: Or Choose and Remove
+removal_app_header:
+  parse: raw
+  str: Choose a model to remove
+removal_app_placeholder:
+  parse: raw
+  str: Search...
+removal_app_no_subscriptions:
+  parse: raw
+  str: You are not subscribed to any model
+removal_app_no_results:
+  parse: raw
+  str: No results
+removal_app_failed:
+  parse: raw
+  str: Could not load your subscriptions
+removal_app_failed_to_remove:
+  parse: raw
+  str: Failed to remove
 unknown_command:
   parse: html
   str: |-

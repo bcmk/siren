@@ -51,6 +51,12 @@ syntax_add:
 search_header:
   parse: raw
   str: Find and add a channel
+removal_app_header:
+  parse: raw
+  str: Choose a channel to remove
+removal_app_no_subscriptions:
+  parse: raw
+  str: You are not subscribed to any channel
 syntax_remove:
   parse: html
   str: |-
