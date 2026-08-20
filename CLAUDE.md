@@ -186,6 +186,9 @@
   its reasoning or its numbers are wrong, and say so explicitly.
 - Enumerate code review findings and never renumber them.
   Dropping one leaves a gap; a new one takes the next unused number.
+- Never render the findings list with markdown ordered-list syntax:
+  the renderer renumbers items sequentially and erases gaps.
+  Start each finding's paragraph with a bold literal number, e.g. `**5.**`.
 - Every defect belongs in the enumerated list.
   Never state one in prose, in another finding's body, or in a fix suggestion.
 - Re-render the whole findings list on every change:
