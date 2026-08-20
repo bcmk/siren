@@ -50,7 +50,7 @@ remove_example:
 syntax_add:
   parse: html
   str: |-
-    Specify a model, e.g., <code>{{ template "add_example" }}</code>
+    Specify a channel, e.g., <code>{{ template "add_example" }}</code>
 search_header:
   parse: raw
   str: Find and add a channel
