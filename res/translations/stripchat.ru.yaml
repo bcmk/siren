@@ -29,6 +29,9 @@ sample_streamer:
 add_example:
   parse: html
   str: '{{ command "add" }} bbweb'
+remove_example:
+  parse: html
+  str: '{{ command "remove" }} bbweb'
 affiliate_instructions:
   parse: html
   disable_preview: true

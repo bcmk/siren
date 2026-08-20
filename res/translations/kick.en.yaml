@@ -44,6 +44,9 @@ sites:
 add_example:
   parse: html
   str: '{{ command "add" }} morecrown'
+remove_example:
+  parse: html
+  str: '{{ command "remove" }} morecrown'
 syntax_add:
   parse: html
   str: |-
@@ -59,7 +62,8 @@ removal_app_no_subscriptions:
   str: You are not subscribed to any channel
 syntax_remove:
   parse: html
-  str: Enter {{ command "remove" }} <code>CHANNEL</code>
+  str: |-
+    Specify a channel, e.g., <code>{{ template "remove_example" }}</code>
 unknown_command:
   parse: html
   str: |-

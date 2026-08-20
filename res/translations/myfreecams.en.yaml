@@ -21,6 +21,9 @@ sites:
 add_example:
   parse: html
   str: '{{ command "add" }} ohbabykelly'
+remove_example:
+  parse: html
+  str: '{{ command "remove" }} ohbabykelly'
 faq_no_notifications:
   parse: html
   str: >

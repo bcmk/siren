@@ -48,6 +48,9 @@ sites:
 add_example:
   parse: html
   str: '{{ command "add" }} bbbweb'
+remove_example:
+  parse: html
+  str: '{{ command "remove" }} bbbweb'
 address_line:
   parse: html
   str: Используйте идентификатор модели из адресной строки браузера
@@ -57,7 +60,8 @@ syntax_add:
     Укажите модель, например, <code>{{ template "add_example" }}</code>
 syntax_remove:
   parse: html
-  str: Наберите {{ command "remove" }} <code>МОДЕЛЬ</code>
+  str: |-
+    Укажите модель, например, <code>{{ template "remove_example" }}</code>
 
     {{ template "address_line" }}
 unknown_command:

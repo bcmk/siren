@@ -39,6 +39,9 @@ sites:
 add_example:
   parse: html
   str: '{{ command "add" }} eva_alson'
+remove_example:
+  parse: html
+  str: '{{ command "remove" }} eva_alson'
 faq_direct_subscriptions:
   parse: html
   str: >

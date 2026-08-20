@@ -29,6 +29,9 @@ sample_streamer:
 add_example:
   parse: html
   str: '{{ command "add" }} alica_webcam'
+remove_example:
+  parse: html
+  str: '{{ command "remove" }} alica_webcam'
 affiliate_instructions:
   parse: html
   disable_preview: true

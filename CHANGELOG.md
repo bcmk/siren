@@ -11,7 +11,7 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 
-- The bare `/remove` syntax message is one line
+- The bare `/remove` syntax message matches the `/add` one, with a per-site example
 
 ## v4.6.0 — 2026-08-18
 

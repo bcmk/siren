@@ -26,6 +26,9 @@ sites:
 add_example:
   parse: html
   str: '{{ command "add" }} maiaferre'
+remove_example:
+  parse: html
+  str: '{{ command "remove" }} maiaferre'
 faq_no_notifications:
   parse: html
   str: >

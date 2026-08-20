@@ -437,7 +437,8 @@ search_failed_to_add:
   str: Не удалось добавить
 syntax_remove:
   parse: html
-  str: Наберите {{ command "remove" }} <code>МОДЕЛЬ</code>
+  str: |-
+    Укажите модель, например, <code>{{ template "remove_example" }}</code>
 remove_button:
   parse: raw
   str: Или выбрать и удалить

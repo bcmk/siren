@@ -51,13 +51,17 @@ sites:
 add_example:
   parse: html
   str: '{{ command "add" }} melinarose91'
+remove_example:
+  parse: html
+  str: '{{ command "remove" }} melinarose91'
 syntax_add:
   parse: html
   str: |-
     Specify a model, e.g., <code>{{ template "add_example" }}</code>
 syntax_remove:
   parse: html
-  str: Enter {{ command "remove" }} <code>CAMNAME</code>
+  str: |-
+    Specify a model, e.g., <code>{{ template "remove_example" }}</code>
 
     {{ template "address_line" }}
 unknown_command:

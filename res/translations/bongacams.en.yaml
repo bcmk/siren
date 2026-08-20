@@ -48,6 +48,9 @@ sites:
 add_example:
   parse: html
   str: '{{ command "add" }} bbbweb'
+remove_example:
+  parse: html
+  str: '{{ command "remove" }} bbbweb'
 address_line:
   parse: html
   str: Use the camname from an address line of your browser
@@ -57,7 +60,8 @@ syntax_add:
     Specify a model, e.g., <code>{{ template "add_example" }}</code>
 syntax_remove:
   parse: html
-  str: Enter {{ command "remove" }} <code>CAMNAME</code>
+  str: |-
+    Specify a model, e.g., <code>{{ template "remove_example" }}</code>
 
     {{ template "address_line" }}
 unknown_command:

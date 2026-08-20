@@ -51,13 +51,17 @@ sites:
 add_example:
   parse: html
   str: '{{ command "add" }} dalla-and-mirana'
+remove_example:
+  parse: html
+  str: '{{ command "remove" }} dalla-and-mirana'
 syntax_add:
   parse: html
   str: |-
     Укажите модель, например, <code>{{ template "add_example" }}</code>
 syntax_remove:
   parse: html
-  str: Наберите {{ command "remove" }} <code>МОДЕЛЬ</code>
+  str: |-
+    Укажите модель, например, <code>{{ template "remove_example" }}</code>
 
     {{ template "address_line" }}
 unknown_command:
