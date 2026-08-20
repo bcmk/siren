@@ -58,6 +58,8 @@ syntax_add:
   parse: html
   str: |-
     Укажите модель, например, <code>{{ template "add_example" }}</code>
+
+    {{ template "address_line" }}
 syntax_remove:
   parse: html
   str: |-

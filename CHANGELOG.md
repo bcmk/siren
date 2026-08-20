@@ -13,6 +13,10 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 - The bare `/remove` syntax message matches the `/add` one, with a per-site example
 
+### Fixed
+
+- The bare `/add` on BongaCams, CamSoda, Flirt4Free, and Streamate regained the address line hint
+
 ## v4.6.0 — 2026-08-18
 
 ### Added
