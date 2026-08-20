@@ -3,7 +3,7 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
-## Unreleased
+## v4.7.0 — 2026-08-20
 
 ### Added
 
@@ -16,6 +16,7 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 ### Fixed
 
 - The bare `/add` on BongaCams, CamSoda, Flirt4Free, and Streamate regained the address line hint
+- The Twitch `/add` syntax message says channel, not model
 
 ## v4.6.0 — 2026-08-18
 
