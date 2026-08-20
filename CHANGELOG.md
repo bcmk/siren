@@ -9,6 +9,10 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 - A removal mini app: the bare `/remove` offers the chat's subscriptions, a tap removes one
 
+### Changed
+
+- The bare `/remove` syntax message is one line
+
 ## v4.6.0 — 2026-08-18
 
 ### Added

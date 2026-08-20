@@ -437,10 +437,7 @@ search_failed_to_add:
   str: Failed to add
 syntax_remove:
   parse: html
-  str: |-
-    Enter
-
-    {{ command "remove" }} <code>CAMNAME</code>
+  str: Enter {{ command "remove" }} <code>CAMNAME</code>
 remove_button:
   parse: raw
   str: Or Choose and Remove

@@ -57,10 +57,7 @@ syntax_add:
     Specify a model, e.g., <code>{{ template "add_example" }}</code>
 syntax_remove:
   parse: html
-  str: |-
-    Enter
-
-    {{ command "remove" }} <code>CAMNAME</code>
+  str: Enter {{ command "remove" }} <code>CAMNAME</code>
 
     {{ template "address_line" }}
 unknown_command:

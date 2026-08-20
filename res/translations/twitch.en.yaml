@@ -59,10 +59,7 @@ removal_app_no_subscriptions:
   str: You are not subscribed to any channel
 syntax_remove:
   parse: html
-  str: |-
-    Enter
-
-    {{ command "remove" }} <code>CHANNEL</code>
+  str: Enter {{ command "remove" }} <code>CHANNEL</code>
 unknown_command:
   parse: html
   str: |-

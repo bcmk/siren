@@ -57,10 +57,7 @@ syntax_add:
     Укажите модель, например, <code>{{ template "add_example" }}</code>
 syntax_remove:
   parse: html
-  str: |-
-    Наберите
-
-    {{ command "remove" }} <code>МОДЕЛЬ</code>
+  str: Наберите {{ command "remove" }} <code>МОДЕЛЬ</code>
 
     {{ template "address_line" }}
 unknown_command:
