@@ -3,6 +3,19 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v5.0.0 — 2026-08-24
+
+### Added
+
+- A `/healthz` liveness endpoint
+- Webhook requests are authenticated by a per-startup random secret token
+
+### Changed
+
+- **Breaking**: the `listen_path` endpoint config field is removed;
+  webhooks listen on `/telegram-webhook/<endpoint>`
+- The module path moved to `github.com/bcmk/siren/v5`
+
 ## v4.7.0 — 2026-08-20
 
 ### Added
