@@ -2572,7 +2572,16 @@ func (w *worker) handleSearch(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleHealthz is a liveness probe: 200 whenever the server can answer.
+// Deliberately not gated by maintenance or shutdown,
+// so probes never kill a pod that is migrating or draining.
+func handleHealthz(rw http.ResponseWriter, _ *http.Request) {
+	rw.WriteHeader(http.StatusOK)
+	_, _ = rw.Write([]byte("ok\n"))
+}
+
 func (w *worker) serveEndpoints() {
+	http.HandleFunc("/healthz", handleHealthz)
 	go func() {
 		err := http.ListenAndServe(w.cfg.ListenAddress, nil)
 		checkErr(err)
