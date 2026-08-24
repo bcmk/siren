@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bcmk/siren/v4/lib/cmdlib"
+	"github.com/bcmk/siren/v5/lib/cmdlib"
 )
 
 // Flirt4FreeChecker implements a checker for Flirt4Free

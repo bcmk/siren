@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bcmk/siren/v4/internal/botconfig"
-	"github.com/bcmk/siren/v4/internal/db"
-	"github.com/bcmk/siren/v4/lib/cmdlib"
+	"github.com/bcmk/siren/v5/internal/botconfig"
+	"github.com/bcmk/siren/v5/internal/db"
+	"github.com/bcmk/siren/v5/lib/cmdlib"
 )
 
 // testBotLinkPeriod is bot_link_period under test, the same twelve the config defaults to.

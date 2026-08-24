@@ -4,7 +4,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/bcmk/siren/v4/lib/cmdlib"
+	"github.com/bcmk/siren/v5/lib/cmdlib"
 )
 
 // TestCheckerConfig is the config for RandomChecker. Skips

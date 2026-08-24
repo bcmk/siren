@@ -10,10 +10,10 @@ import (
 	"testing"
 	"text/template"
 
-	"github.com/bcmk/siren/v4/internal/botconfig"
-	"github.com/bcmk/siren/v4/internal/checkers"
-	"github.com/bcmk/siren/v4/internal/db"
-	"github.com/bcmk/siren/v4/lib/cmdlib"
+	"github.com/bcmk/siren/v5/internal/botconfig"
+	"github.com/bcmk/siren/v5/internal/checkers"
+	"github.com/bcmk/siren/v5/internal/db"
+	"github.com/bcmk/siren/v5/lib/cmdlib"
 	"github.com/jackc/pgx/v5"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )

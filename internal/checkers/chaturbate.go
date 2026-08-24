@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/bcmk/siren/v4/lib/cmdlib"
+	"github.com/bcmk/siren/v5/lib/cmdlib"
 )
 
 // ChaturbateCheckerConfig is the per-site config for Chaturbate.

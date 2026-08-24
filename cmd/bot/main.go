@@ -44,10 +44,10 @@ import (
 
 	_ "golang.org/x/image/webp"
 
-	"github.com/bcmk/siren/v4/internal/botconfig"
-	"github.com/bcmk/siren/v4/internal/checkers"
-	"github.com/bcmk/siren/v4/internal/db"
-	"github.com/bcmk/siren/v4/lib/cmdlib"
+	"github.com/bcmk/siren/v5/internal/botconfig"
+	"github.com/bcmk/siren/v5/internal/checkers"
+	"github.com/bcmk/siren/v5/internal/db"
+	"github.com/bcmk/siren/v5/lib/cmdlib"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"github.com/spf13/pflag"

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/bcmk/siren/v4/lib/cmdlib"
+	"github.com/bcmk/siren/v5/lib/cmdlib"
 )
 
 // TestReadCheckerConfigEnvOverride checks the XRN_-prefixed env wiring in

@@ -8,8 +8,8 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
-	"github.com/bcmk/siren/v4/internal/db"
-	"github.com/bcmk/siren/v4/lib/cmdlib"
+	"github.com/bcmk/siren/v5/internal/db"
+	"github.com/bcmk/siren/v5/lib/cmdlib"
 )
 
 var htmlTags = regexp.MustCompile(`<[^>]*>`)

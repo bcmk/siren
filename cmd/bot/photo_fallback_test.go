@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/bcmk/siren/v4/lib/cmdlib"
+	"github.com/bcmk/siren/v5/lib/cmdlib"
 )
 
 // A photo sent where the chat forbids photos falls back to its caption as text.

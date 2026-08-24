@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-telegram/bot/models"
 
-	"github.com/bcmk/siren/v4/lib/cmdlib"
+	"github.com/bcmk/siren/v5/lib/cmdlib"
 )
 
 // TestParseTimezone pins the grammar /timezone accepts.
