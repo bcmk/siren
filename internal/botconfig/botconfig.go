@@ -15,7 +15,6 @@ import (
 var checkErr = cmdlib.CheckErr
 
 type endpoint struct {
-	ListenPath          cmdlib.Secret `mapstructure:"listen_path"`          // the path excluding domain to listen to, the good choice is "/your-telegram-bot-token"
 	WebhookDomain       string        `mapstructure:"webhook_domain"`       // the domain listening to the webhook
 	BotToken            cmdlib.Secret `mapstructure:"bot_token"`            // your Telegram bot token
 	Translation         []string      `mapstructure:"translation"`          // translation files
@@ -96,9 +95,6 @@ func ReadConfig(cfgPath string) *Config {
 
 func checkConfig(cfg *Config) error {
 	for _, x := range cfg.Endpoints {
-		if x.ListenPath == "" {
-			return errors.New("configure listen_path")
-		}
 		if x.WebhookDomain == "" {
 			return errors.New("configure webhook_domain")
 		}

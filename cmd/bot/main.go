@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/hmac"
+	cryptorand "crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -81,6 +82,7 @@ type worker struct {
 	fuzzySearchDB              db.Database
 	client                     *http.Client
 	bots                       map[string]*bot.Bot
+	secretTokens               map[string]string
 	cfg                        *botconfig.Config
 	tr                         map[string]*cmdlib.Translations
 	tpl                        map[string]*texttemplate.Template
@@ -276,7 +278,10 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 	incomingPackets := make(chan incomingPacket, incomingBufferSize*len(cfg.Endpoints))
 	telegramClient := cmdlib.HTTPClientWithTimeout(cfg.TelegramTimeout())
 	bots := make(map[string]*bot.Bot)
+	// Fresh webhook secret tokens each startup; single replica only.
+	secretTokens := make(map[string]string)
 	for n, p := range cfg.Endpoints {
+		secretTokens[n] = cryptorand.Text()
 		endpointName := n
 		handler := func(_ context.Context, _ *bot.Bot, update *models.Update) {
 			incomingPackets <- incomingPacket{message: update, endpoint: endpointName}
@@ -298,6 +303,7 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 	}
 	w := &worker{
 		bots:                       bots,
+		secretTokens:               secretTokens,
 		db:                         db.NewDatabase(string(cfg.DBConnectionString), cfg.CheckGID, cfg.MaxSubs),
 		fuzzySearchDB:              db.NewDatabase(string(cfg.DBConnectionString), false, cfg.MaxSubs),
 		cfg:                        cfg,
@@ -411,7 +417,10 @@ func (w *worker) setWebhook() {
 	ctx := context.Background()
 	for n, p := range w.cfg.Endpoints {
 		linf("setting webhook for endpoint %s...", n)
-		params := &bot.SetWebhookParams{URL: path.Join(p.WebhookDomain, string(p.ListenPath))}
+		params := &bot.SetWebhookParams{
+			URL:         path.Join(p.WebhookDomain, webhookPath(n)),
+			SecretToken: w.secretTokens[n],
+		}
 		_, err := w.bots[n].SetWebhook(ctx, params)
 		checkErr(err)
 		info, err := w.bots[n].GetWebhookInfo(ctx)
@@ -3817,16 +3826,43 @@ func (w *worker) incoming() chan incomingPacket {
 	// Background, not a cancellable context. The bots stop on Shutdown
 	// (called by shutdownBots), draining buffered updates into incomingPackets.
 	ctx := context.Background()
-	for n, p := range w.cfg.Endpoints {
+	for n := range w.cfg.Endpoints {
 		linf("listening for a webhook for endpoint %s", n)
-		http.Handle(string(p.ListenPath), w.rejectForRedeliveryWhileMigrating(w.bots[n].WebhookHandler()))
+		handler := requireSecretToken(
+			n,
+			w.secretTokens[n],
+			w.rejectForRedeliveryWhileMigrating(w.bots[n].WebhookHandler()))
+		http.Handle(webhookPath(n), handler)
 		go w.bots[n].StartWebhook(ctx)
 	}
 	return w.incomingPackets
 }
 
+// webhookPath is an endpoint's webhook route;
+// requireSecretToken authenticates it, so it is not secret.
+func webhookPath(endpoint string) string {
+	return "/telegram-webhook/" + endpoint
+}
+
+// requireSecretToken 403s a request without the matching X-Telegram-Bot-Api-Secret-Token,
+// so a token mismatch surfaces in getWebhookInfo and Telegram redelivers.
+// It also keeps the redelivery gate from parsing unauthenticated bodies.
+// The library's own check answers 200, losing the update as delivered.
+func requireSecretToken(endpoint string, token string, inner http.Handler) http.Handler {
+	return http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		header := req.Header.Get("X-Telegram-Bot-Api-Secret-Token")
+		if !hmac.Equal([]byte(header), []byte(token)) {
+			// Debug, not error: the path is guessable, so scanners land here.
+			ldbg("webhook secret token mismatch: endpoint = %s", endpoint)
+			http.Error(rw, "forbidden", http.StatusForbidden)
+			return
+		}
+		inner.ServeHTTP(rw, req)
+	})
+}
+
 // maxWebhookBody caps the body buffered in the redelivery gate.
-// Updates are far smaller, so this only bounds an oversized public POST.
+// Updates are far smaller, so this only bounds an oversized authenticated POST.
 const maxWebhookBody = 1 << 20
 
 // incomingBufferSize is incomingPackets' per-bot capacity,

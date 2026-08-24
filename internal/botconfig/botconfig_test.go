@@ -68,7 +68,6 @@ func TestValidateSubsTiers(t *testing.T) {
 // validEndpoint is an endpoint with every field checkConfig demands.
 func validEndpoint() endpoint {
 	return endpoint{
-		ListenPath:          "/x",
 		WebhookDomain:       "bot.example.invalid",
 		BotToken:            "123:token",
 		Translation:         []string{"t.yaml"},
@@ -110,7 +109,6 @@ func TestCheckConfigRequiresEndpointFields(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "complete", mangle: func(*endpoint) {}},
-		{name: "no listen_path", mangle: func(e *endpoint) { e.ListenPath = "" }, wantErr: true},
 		{name: "no webhook_domain", mangle: func(e *endpoint) { e.WebhookDomain = "" }, wantErr: true},
 		{name: "no bot_token", mangle: func(e *endpoint) { e.BotToken = "" }, wantErr: true},
 		{name: "no translation", mangle: func(e *endpoint) { e.Translation = nil }, wantErr: true},
