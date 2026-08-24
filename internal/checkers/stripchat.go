@@ -80,13 +80,13 @@ type onlineResponse struct {
 	Models map[string]onlineModel `json:"models"`
 }
 
-type stripchatCamUser struct {
-	IsLive               bool   `json:"isLive"`
-	IsBlocked            bool   `json:"isBlocked"`
-	IsPermanentlyBlocked bool   `json:"isPermanentlyBlocked"`
-	IsDeleted            bool   `json:"isDeleted"`
-	Status               string `json:"status"`
-	PreviewURLThumbBig   string `json:"previewUrlThumbBig"`
+type stripchatBroadcastItem struct {
+	IsLive            bool   `json:"isLive"`
+	IsBlocked         bool   `json:"isBlocked"`
+	IsDeleted         bool   `json:"isDeleted"`
+	Status            string `json:"status"`
+	ModelID           int64  `json:"modelId"`
+	SnapshotTimestamp int64  `json:"snapshotTimestamp"`
 }
 
 func stripchatShowKind(status string) cmdlib.ShowKind {
@@ -95,21 +95,19 @@ func stripchatShowKind(status string) cmdlib.ShowKind {
 		return cmdlib.ShowPublic
 	case "groupShow":
 		return cmdlib.ShowGroup
-	case "p2p", "private", "virtualPrivate":
+	case "p2p", "p2pVoice", "private", "virtualPrivate":
 		return cmdlib.ShowPrivate
 	}
 	return cmdlib.ShowUnknown
 }
 
-type stripchatCamResponse struct {
-	User struct {
-		User stripchatCamUser `json:"user"`
-	} `json:"user"`
+type stripchatBroadcastResponse struct {
+	Item stripchatBroadcastItem `json:"item"`
 }
 
-// QueryStatus checks Stripchat model status via the per-model cam endpoint.
+// QueryStatus checks Stripchat model status via the per-model broadcasts endpoint.
 func (c *StripchatChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
-	endpoint := fmt.Sprintf("https://stripchat.com/api/front/v2/models/username/%s/cam", url.PathEscape(modelID))
+	endpoint := fmt.Sprintf("https://stripchat.com/api/front/v1/broadcasts/%s", url.PathEscape(modelID))
 	resp := c.DoGetRequest(endpoint, c.Cfg.Headers)
 	if resp == nil {
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
@@ -127,23 +125,27 @@ func (c *StripchatChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithS
 		cmdlib.Lerr("cannot read response for model %s, %v", modelID, err)
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
-	parsed := &stripchatCamResponse{}
+	parsed := &stripchatBroadcastResponse{}
 	if err := json.Unmarshal(buf.Bytes(), parsed); err != nil {
 		cmdlib.Lerr("cannot parse response for model %s, %v", modelID, err)
 		cmdlib.Ldbg("response: %s", buf.String())
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
-	u := parsed.User.User
-	if u.IsDeleted || u.IsBlocked || u.IsPermanentlyBlocked {
+	item := parsed.Item
+	if item.IsDeleted || item.IsBlocked {
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusNotFound}, nil
 	}
-	if !u.IsLive {
+	if !item.IsLive {
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOffline}, nil
+	}
+	imageURL := ""
+	if item.SnapshotTimestamp > 0 && item.ModelID > 0 {
+		imageURL = fmt.Sprintf("https://img.doppiocdn.com/thumbs/%d/%d", item.SnapshotTimestamp, item.ModelID)
 	}
 	return cmdlib.StreamerInfoWithStatus{
 		StreamerInfo: cmdlib.StreamerInfo{
-			ImageURL: u.PreviewURLThumbBig,
-			ShowKind: stripchatShowKind(u.Status),
+			ImageURL: imageURL,
+			ShowKind: stripchatShowKind(item.Status),
 		},
 		Status: cmdlib.StatusOnline,
 	}, nil
