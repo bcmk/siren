@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/bcmk/siren/v5/lib/cmdlib"
@@ -104,5 +106,52 @@ func (*BongaCamsChecker) Capabilities() Capabilities {
 		SupportsQueryStatus:                   true,
 		SupportsCLI:                           true,
 		SupportsSubject:                       true,
+		SupportsCustomAffiliateLink:           true,
 	}
+}
+
+// bongacamsAffiliateHostRegexp matches bongacams.com and its numbered mirrors, e.g. bongacams4.com.
+var bongacamsAffiliateHostRegexp = regexp.MustCompile(`^(?:[a-z0-9-]+\.)*bongacams\d*\.com$`)
+
+// The two identities a pasted link can carry:
+// fuid from a BongaModels member-referral link, c from a BongaCash direct link.
+// The direct link's other fields do nothing for us, so only c is kept.
+const (
+	bongacamsMemberReferralParam = "fuid"
+	bongacamsCampaignParam       = "c"
+)
+
+var bongacamsAffiliateParamValueRegexp = regexp.MustCompile(`^[0-9]{1,32}$`)
+
+// ParseAffiliateParams reads either link a chat can paste:
+// the "To refer members" link from the BongaModels promo tools,
+// or the direct link from the BongaCash promo panel.
+func (*BongaCamsChecker) ParseAffiliateParams(input string) (map[string]string, bool) {
+	u, err := url.Parse(strings.TrimSpace(input))
+	if err != nil || u.Scheme != "https" {
+		return nil, false
+	}
+	if !bongacamsAffiliateHostRegexp.MatchString(strings.ToLower(u.Hostname())) {
+		return nil, false
+	}
+	query := u.Query()
+	for _, name := range []string{bongacamsMemberReferralParam, bongacamsCampaignParam} {
+		value := query.Get(name)
+		if value == "" {
+			continue
+		}
+		if !bongacamsAffiliateParamValueRegexp.MatchString(value) {
+			return nil, false
+		}
+		return map[string]string{name: value}, true
+	}
+	return nil, false
+}
+
+// AffiliateID returns the fuid or the campaign, whichever identity the link carries.
+func (*BongaCamsChecker) AffiliateID(params map[string]string) string {
+	if fuid := params[bongacamsMemberReferralParam]; fuid != "" {
+		return fuid
+	}
+	return params[bongacamsCampaignParam]
 }

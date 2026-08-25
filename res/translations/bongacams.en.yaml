@@ -45,12 +45,36 @@ sites:
     Twitch: <a href="https://t.me/TwitchSirenBot">TwitchSirenBot</a>
     Kick: <a href="https://t.me/KickSirenBot">KickSirenBot</a>
     MyFreeCams: <a href="https://t.me/MyFreeCamsSirenBot">MyFreeCamsSirenBot</a>
+sample_streamer:
+  parse: raw
+  str: your_cam_name
 add_example:
   parse: html
   str: '{{ command "add" }} bbbweb'
 remove_example:
   parse: html
   str: '{{ command "remove" }} bbbweb'
+affiliate_instructions:
+  parse: html
+  disable_preview: true
+  str: |-
+    There are two ways to make the payouts yours.
+
+    <b>You are a model</b>
+    Open the <a href="https://bongamodels.com/promo-tools/members">Referral Program / Member Referral</a>
+    page on BongaModels and copy a link under <b>To refer members</b>.
+    Then send the copied link here, like this:
+    <code>{{ command "affiliate" }} https://bongacams.com?fuid=241616110</code>
+
+    <b>You are an affiliate</b>
+    Open the <a href="https://bongacash.com/promo/direct-link">Direct link</a> page on BongaCash
+    and copy the link there.
+    Then send the copied link here, like this:
+    <code>{{ command "affiliate" }} https://bongacams4.com/track?v=2&amp;c=673886</code>
+
+    <i>The pages above are what BongaModels and BongaCash published
+    at the time of writing and may have changed since.
+    Check their sites for the current terms.</i>
 address_line:
   parse: html
   str: Use the camname from an address line of your browser

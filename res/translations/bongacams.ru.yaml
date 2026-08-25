@@ -45,12 +45,36 @@ sites:
     Twitch: <a href="https://t.me/TwitchSirenBot">TwitchSirenBot</a>
     Kick: <a href="https://t.me/KickSirenBot">KickSirenBot</a>
     MyFreeCams: <a href="https://t.me/MyFreeCamsSirenBot">MyFreeCamsSirenBot</a>
+sample_streamer:
+  parse: raw
+  str: your_cam_name
 add_example:
   parse: html
   str: '{{ command "add" }} bbbweb'
 remove_example:
   parse: html
   str: '{{ command "remove" }} bbbweb'
+affiliate_instructions:
+  parse: html
+  disable_preview: true
+  str: |-
+    Есть два способа получать выплаты за наши ссылки.
+
+    <b>Вы модель</b>
+    Откройте страницу <a href="https://bongamodels.com/promo-tools/members">Referral Program / Member Referral</a>
+    на BongaModels и скопируйте ссылку из раздела <b>To refer members</b>.
+    Затем отправьте скопированную ссылку сюда, вот так:
+    <code>{{ command "affiliate" }} https://bongacams.com?fuid=241616110</code>
+
+    <b>Вы партнёр</b>
+    Откройте страницу <a href="https://bongacash.com/promo/direct-link">Direct link</a> на BongaCash
+    и скопируйте ссылку там.
+    Затем отправьте скопированную ссылку сюда, вот так:
+    <code>{{ command "affiliate" }} https://bongacams4.com/track?v=2&amp;c=673886</code>
+
+    <i>Страницы выше — то, что BongaModels и BongaCash публиковали на момент написания,
+    и с тех пор могло измениться.
+    Актуальные условия смотрите на их сайтах.</i>
 address_line:
   parse: html
   str: Используйте идентификатор модели из адресной строки браузера
