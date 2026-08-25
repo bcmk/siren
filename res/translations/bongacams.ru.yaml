@@ -57,20 +57,27 @@ remove_example:
 affiliate_instructions:
   parse: html
   disable_preview: true
-  str: |-
+  str: >-
     Есть два способа получать выплаты за наши ссылки.
 
+
     <b>Вы модель</b>
-    Откройте страницу <a href="https://bongamodels.com/promo-tools/members">Referral Program / Member Referral</a>
-    на BongaModels и скопируйте ссылку из раздела <b>To refer members</b>.
+
+    На BongaModels откройте <a href="https://bongamodels.com/promo-tools/members">Referral Program / Member Referral</a>
+    и скопируйте ссылку из раздела <b>To refer members</b>.
     Затем отправьте скопированную ссылку сюда, вот так:
+
     <code>{{ command "affiliate" }} https://bongacams.com?fuid=241616110</code>
 
+
     <b>Вы партнёр</b>
-    Откройте страницу <a href="https://bongacash.com/promo/direct-link">Direct link</a> на BongaCash
+
+    На BongaCash откройте <a href="https://bongacash.com/promo/direct-link">Direct link</a>
     и скопируйте ссылку там.
     Затем отправьте скопированную ссылку сюда, вот так:
+
     <code>{{ command "affiliate" }} https://bongacams4.com/track?v=2&amp;c=673886</code>
+
 
     <i>Страницы выше — то, что BongaModels и BongaCash публиковали на момент написания,
     и с тех пор могло измениться.
