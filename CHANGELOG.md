@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v5.1.2 — 2026-08-25
+
+### Fixed
+
+- The Stripchat instructions put the streamer command on its own line, so it cannot wrap mid-token
+
 ## v5.1.1 — 2026-08-25
 
 ### Fixed
