@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v5.1.1 — 2026-08-25
+
+### Fixed
+
+- Affiliate instructions flow as paragraphs instead of hard-broken lines
+- The Chaturbate affiliate payout headers lost their numbers
+
 ## v5.1.0 — 2026-08-25
 
 ### Added
