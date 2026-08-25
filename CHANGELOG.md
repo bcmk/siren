@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v5.1.0 — 2026-08-25
+
+### Added
+
+- `/affiliate` on BongaCams: paste a BongaModels member referral link or a BongaCash direct link
+
 ## v5.0.1 — 2026-08-25
 
 ### Fixed
