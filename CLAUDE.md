@@ -173,6 +173,9 @@
 ## Communication
 
 - Always suggest English grammar fixes in the user's messages
+- Never invent names for external pages, menus, or UI labels.
+  When a message must name one and the exact name is not in the conversation or verifiable,
+  ask for it.
 - Answer as briefly as the question allows.
   Give the short answer first, and only then the reasoning if needed.
 - When asked to "remember" or "write somewhere",
