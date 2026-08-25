@@ -42,9 +42,11 @@ affiliate_instructions:
     <b>You are a model</b>
 
     Stripchat pays you for every user who registers through your own referral link.
-    Send <code>{{ command "affiliate" }} streamer</code> — as written, no nickname needed —
+    Send this command — as written, no nickname needed —
     and the bot posts each model's own referral link,
-    so the alerts about you earn you the referral.
+    so the alerts about you earn you the referral:
+
+    <code>{{ command "affiliate" }} streamer</code>
 
 
     <b>You are an affiliate</b>
