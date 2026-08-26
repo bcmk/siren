@@ -135,7 +135,7 @@ offline:
     {{- print " " -}}
     {{ .streamer_link }}
     {{- print " " -}}
-    <i>не в сети {{- if .time_diff -}}, была {{ template "duration" .time_diff }} назад {{- end -}}</i>
+    <i>не в сети {{- if .time_diff }} уже {{ template "duration" .time_diff }}{{- end -}}</i>
     {{- if .bot_link }}{{ print "\n\n" }}{{ template "bot_link_hint" . }}{{ end -}}
 zero_subscriptions:
   parse: html
@@ -173,7 +173,7 @@ list:
       {{- print "\n" -}}
       {{- range .offline -}}
         {{- .Link -}}
-        {{- if .TimeDiff }}  <i>была {{ template "duration" .TimeDiff }} назад</i> {{- end -}}
+        {{- if .TimeDiff }}  <i>последний эфир {{ template "duration" .TimeDiff }} назад</i> {{- end -}}
         {{- print "\n" -}}
       {{- end -}}
     {{- end -}}
@@ -528,7 +528,7 @@ week_never_online:
     {{- print "\n" -}}
     {{- range .streamers -}}
       {{- .Link -}}
-      {{- if .TimeDiff }}  <i>была {{ template "duration" .TimeDiff }} назад</i> {{- end -}}
+      {{- if .TimeDiff }}  <i>последний эфир {{ template "duration" .TimeDiff }} назад</i> {{- end -}}
       {{- print "\n" -}}
     {{- end -}}
 week_retrieving:
@@ -575,7 +575,7 @@ month_never_online:
     {{- print "\n" -}}
     {{- range .streamers -}}
       {{- .Link -}}
-      {{- if .TimeDiff }}  <i>была {{ template "duration" .TimeDiff }} назад</i> {{- end -}}
+      {{- if .TimeDiff }}  <i>последний эфир {{ template "duration" .TimeDiff }} назад</i> {{- end -}}
       {{- print "\n" -}}
     {{- end -}}
 month_retrieving:
