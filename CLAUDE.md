@@ -152,6 +152,9 @@
 - Never publish different content under a version the registry already holds.
   Bump the patch version instead:
   two images sharing a tag cannot be told apart in Kubernetes.
+- Dropping a git tag never frees its version in the registry.
+  A version the registry has held is burned for good, test publish or not;
+  the reworked content takes the next patch number.
 - Keep CHANGELOG entries terse — ideally one line per change,
   no rationale paragraphs. State what changed, not why.
 - Bump major on user-visible breaking changes (config layout splits,
