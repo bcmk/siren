@@ -196,6 +196,10 @@
   Never state one in prose, in another finding's body, or in a fix suggestion.
 - Re-render the whole findings list on every change:
   number, `file:line`, category, summary, failure scenario, fix.
+  A rendered finding always carries every field; a status never replaces them.
+  The whole list keeps resolved findings and drops rejected ones,
+  until the user asks what's left or constrains the list in another way;
+  from then on render only what fits the constraint.
 - Always render the enumerated list in the reply,
   even when a findings tool has reported the same findings to the UI
   and its instructions say not to duplicate them
