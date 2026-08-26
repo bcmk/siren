@@ -99,6 +99,7 @@ raw_commands:
     list - Your subscriptions
     pics - Thumbnails of your channels online
     week - Online hours in the previous 7 days
+    month - Online days in the previous 5 weeks
     help - Help
     settings - Show settings
     feedback - Send feedback

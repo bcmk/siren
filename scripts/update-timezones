@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Refreshes cmd/bot/tzdata: IANA tzdata and CLDR's weekData.
+# To update, bump the pinned versions.
+
+tzdata_url=https://data.iana.org/time-zones/releases/tzdata2026c.tar.gz
+cldr_url=https://unicode.org/Public/cldr/48.2/cldr-common-48.2.zip
+
+cd "$(dirname "$0")/.."
+out=cmd/bot/tzdata
+
+# Staged in a temporary directory, so a failed stage cannot truncate the committed files.
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+curl -fsSL "$tzdata_url" -o "$tmp/tzdata.tar.gz"
+tar -xzf "$tmp/tzdata.tar.gz" -C "$tmp" zone1970.tab zone.tab etcetera backward
+curl -fsSL "$cldr_url" -o "$tmp/cldr.zip"
+unzip -p "$tmp/cldr.zip" common/supplemental/supplementalData.xml |
+    xmllint --xpath /supplementalData/weekData - > "$tmp/weekData.xml"
+rm "$tmp/tzdata.tar.gz" "$tmp/cldr.zip"
+
+mkdir -p "$out"
+mv "$tmp"/* "$out"/
+echo "updated $out"

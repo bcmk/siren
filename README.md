@@ -35,6 +35,7 @@ The bot queries streamer statuses every minute.
 - **buy_subs** — Buy additional subscriptions with Telegram Stars
 - **pics** — Pictures of your online subscriptions
 - **week** _NICKNAME_ — Online hours in the previous 7 days
+- **month** _NICKNAME_ — Online days in the previous 5 weeks
 - **help** — Help
 - **settings** — Show settings
 - **feedback** _YOUR_MESSAGE_ — Send feedback

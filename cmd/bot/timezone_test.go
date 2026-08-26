@@ -11,13 +11,11 @@ import (
 )
 
 // TestParseTimezone pins the grammar /timezone accepts.
-// The server settles the spelling, so a typist's casing no longer decides what is stored
+// The table settles the spelling, so a typist's casing no longer decides what is stored
 // and the answers no longer turn on the host the bot runs on.
 func TestParseTimezone(t *testing.T) {
 	t.Parallel()
-	w := newTestWorker()
-	defer w.terminate()
-	w.createDatabase()
+	var w worker
 	w.initTimezones()
 
 	tests := []struct {
@@ -31,9 +29,8 @@ func TestParseTimezone(t *testing.T) {
 		{"lowercase utc", "utc", "UTC"},
 		{"surrounding spaces", "  Europe/Berlin  ", "Europe/Berlin"},
 		// The families a recasing rule could not reach, whatever the host.
-		// A legacy alias, US/Eastern, would belong here but for the server deciding
-		// whether it ships the backward-compatibility links at all.
 		{"fixed offset zone", "etc/gmt+3", "Etc/GMT+3"},
+		{"legacy alias", "us/eastern", "US/Eastern"},
 		{"lowercase particle", "europe/isle_of_man", "Europe/Isle_of_Man"},
 		{"inner capital", "antarctica/mcmurdo", "Antarctica/McMurdo"},
 		{"hyphenated word", "america/port-au-prince", "America/Port-au-Prince"},
@@ -60,31 +57,29 @@ func TestParseTimezone(t *testing.T) {
 	}
 }
 
-// TestParseTimezoneAgreesWithTheServer walks every name the server holds through the resolver.
-// The two carry their own copies of the zone database and drift as either is upgraded,
-// so the gap is measured here rather than assumed away.
-func TestParseTimezoneAgreesWithTheServer(t *testing.T) {
+// TestParseTimezoneAgreesWithTheTable walks every name the table holds through the resolver.
+// The table and the binary carry their own copies of the zone database
+// and drift as either is updated, so the gap is measured here rather than assumed away.
+func TestParseTimezoneAgreesWithTheTable(t *testing.T) {
 	t.Parallel()
-	w := newTestWorker()
-	defer w.terminate()
-	w.createDatabase()
+	var w worker
 	w.initTimezones()
 
-	// setZoneNames drops what it cannot load, so the drift shows as a name the server
+	// setZoneNames drops what it cannot load, so the drift shows as a name the table
 	// offered and the map does not hold, rather than as a failure at resolution.
 	var unloadable []string
-	for lower, canonical := range w.db.TimezoneNames() {
-		loc, zone, ok := w.parseTimezone(lower)
+	for canonical := range weekStarts() {
+		loc, zone, ok := w.parseTimezone(strings.ToLower(canonical))
 		if !ok {
 			unloadable = append(unloadable, canonical)
 			continue
 		}
 		if zone != canonical || loc.String() != canonical {
-			t.Errorf("%q resolved to %q / %q, want %q", lower, zone, loc, canonical)
+			t.Errorf("%q resolved to %q / %q, want %q", strings.ToLower(canonical), zone, loc, canonical)
 		}
 	}
 	if len(unloadable) != 0 {
-		t.Errorf("the server holds %d zones this binary cannot load: %q", len(unloadable), unloadable)
+		t.Errorf("the table holds %d zones this binary cannot load: %q", len(unloadable), unloadable)
 	}
 }
 
@@ -130,6 +125,12 @@ func TestWeekWindow(t *testing.T) {
 			"across a fall back", "Europe/Berlin", "2026-10-31T22:30:00Z",
 			"2026-10-25T01:00:00+02:00", time.Sunday, 168,
 		},
+		// A spring-forward week runs short, so the grid opens an hour early
+		// and today's row exists from local midnight on.
+		{
+			"midnight after a spring forward", "Europe/Berlin", "2026-03-29T22:30:00Z",
+			"2026-03-23T23:00:00+01:00", time.Tuesday, 145,
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -150,7 +151,85 @@ func TestWeekWindow(t *testing.T) {
 				t.Errorf("weekday = %s, want %s", weekday, tc.weekday)
 			}
 			// The count the template chunks into rows, which must never reach an eighth.
-			if cells := (to - from + 3599) / 3600; cells != tc.cells {
+			if cells := (to - from + weekCellSeconds - 1) / weekCellSeconds; cells != tc.cells {
+				t.Errorf("cells = %d, want %d", cells, tc.cells)
+			}
+		})
+	}
+}
+
+// TestMonthWindow is TestWeekWindow for the month grid of half-day cells,
+// whose start a zone moves twice over: the shifts, and the weekday its country opens the week on.
+func TestMonthWindow(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		zone    string
+		now     string
+		start   string
+		weekday time.Weekday
+		cells   int
+	}{
+		{"utc opens on monday", "UTC", "2026-08-02T23:30:00Z", "2026-06-29T00:00:00Z", time.Monday, 70},
+		{
+			"monday country", "Europe/Berlin", "2026-08-02T23:30:00Z",
+			"2026-07-06T00:00:00+02:00", time.Monday, 57,
+		},
+		{
+			"sunday country", "America/New_York", "2026-08-02T23:30:00Z",
+			"2026-07-05T00:00:00-04:00", time.Sunday, 58,
+		},
+		{
+			"saturday country", "Africa/Cairo", "2026-08-26T12:00:00Z",
+			"2026-07-25T00:00:00+03:00", time.Saturday, 66,
+		},
+		{
+			"friday country", "Indian/Maldives", "2026-08-26T12:00:00Z",
+			"2026-07-24T00:00:00+05:00", time.Friday, 68,
+		},
+		// Paraguay sprang forward at 00:00 on Sunday 2023-10-01,
+		// so the day the grid opens on has no midnight at all.
+		{
+			"midnight the shift skips", "America/Asuncion", "2023-11-04T15:00:00Z",
+			"2023-10-01T01:00:00-03:00", time.Sunday, 69,
+		},
+		// A fall-back span past whole weeks opens an hour late, never adding a cell.
+		{
+			"across a fall back", "Europe/Berlin", "2026-11-05T22:30:00Z",
+			"2026-10-05T01:00:00+02:00", time.Monday, 64,
+		},
+		// Troll turns its clocks two whole hours, and both must go, or a sixth row opens.
+		{
+			"a two-hour fall back", "Antarctica/Troll", "2026-11-05T23:30:00Z",
+			"2026-10-05T02:00:00+02:00", time.Monday, 64,
+		},
+		// A spring-forward span runs short, so the grid opens an hour early
+		// and today's cell exists from local midnight on.
+		{
+			"midnight after a spring forward", "Europe/Berlin", "2026-04-19T22:30:00Z",
+			"2026-03-22T23:00:00+01:00", time.Monday, 57,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			loc, err := time.LoadLocation(tc.zone)
+			if err != nil {
+				t.Fatalf("cannot load %s: %v", tc.zone, err)
+			}
+			now, err := time.Parse(time.RFC3339, tc.now)
+			if err != nil {
+				t.Fatalf("cannot parse %s: %v", tc.now, err)
+			}
+			from, to, first := monthWindow(now, loc)
+			if got := time.Unix(int64(from), 0).In(loc).Format(time.RFC3339); got != tc.start {
+				t.Errorf("start = %s, want %s", got, tc.start)
+			}
+			if first.Weekday() != tc.weekday {
+				t.Errorf("weekday = %s, want %s", first.Weekday(), tc.weekday)
+			}
+			// The count monthRows chunks into rows, which must never open a sixth row.
+			if cells := (to - from + monthCellSeconds - 1) / monthCellSeconds; cells != tc.cells {
 				t.Errorf("cells = %d, want %d", cells, tc.cells)
 			}
 		})
@@ -244,10 +323,10 @@ func TestTimezoneCommandGates(t *testing.T) {
 	}
 }
 
-// TestChatLocationKeepsAZoneTheServerDropped: the server's list says what a chat may pick,
-// not what it may keep. A packaging change can withdraw a name the binary still holds,
+// TestChatLocationKeepsAZoneTheTableDropped: the table says what a chat may pick,
+// not what it may keep. A refresh can withdraw a name the binary still holds,
 // and a chat that named it meant it, so the row survives and is honoured.
-func TestChatLocationKeepsAZoneTheServerDropped(t *testing.T) {
+func TestChatLocationKeepsAZoneTheTableDropped(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
@@ -255,7 +334,7 @@ func TestChatLocationKeepsAZoneTheServerDropped(t *testing.T) {
 	w.initCache()
 	w.initTimezones()
 	m := testMessage(w, 10, "timezone", 100)
-	// Loadable here, and withdrawn from the offered list as a rebuilt server would withdraw it.
+	// Loadable here, and withdrawn from the offered list as a refreshed table would withdraw it.
 	const dropped = "Europe/Berlin"
 	w.db.SetTimezone(m.userID, dropped)
 	delete(w.zoneNames, "europe/berlin")
@@ -271,7 +350,7 @@ func TestChatLocationKeepsAZoneTheServerDropped(t *testing.T) {
 	}
 }
 
-// TestChatLocationKeepsADeadZone: a name neither the server nor this binary can resolve
+// TestChatLocationKeepsADeadZone: a name neither the table nor this binary can resolve
 // is reported and fallen back from, and left in the column.
 // What resolves turns on the tzdata the binary carries,
 // so a listing must not destroy a choice a rollback would make good again.
@@ -470,35 +549,20 @@ func TestSetTimezone(t *testing.T) {
 
 // TestSetZoneNames pins what fills the map, at the assignment rather than beside it,
 // so no path stores a table unchecked or unloadable.
-// The names come from the server, since only a real one can be loaded.
 func TestSetZoneNames(t *testing.T) {
 	t.Parallel()
-	w := newTestWorker()
-	defer w.terminate()
-	w.createDatabase()
-	full := w.db.TimezoneNames()
-	if len(full) < minZoneNames {
-		t.Fatalf("the server offered %d names, too few to test the floor with", len(full))
+	full := map[string]string{}
+	for canonical := range weekStarts() {
+		full[strings.ToLower(canonical)] = canonical
 	}
 
-	panics := func(names map[string]string) (panicked bool) {
-		defer func() { panicked = recover() != nil }()
-		(&worker{}).setZoneNames(names)
-		return
-	}
-	if !panics(map[string]string{"utc": utcZone}) {
-		t.Error("a table of one name was accepted")
-	}
-	if !panics(nil) {
-		t.Error("an empty table was accepted")
-	}
-
-	// A name the server offers and the binary cannot load is dropped rather than kept,
+	// A name the table offers and the binary cannot load is dropped rather than kept,
 	// so the page cannot offer a row the save would refuse.
 	offered := map[string]string{"europe/atlantis": "Europe/Atlantis"}
 	for lower, canonical := range full {
 		offered[lower] = canonical
 	}
+	var w worker
 	w.setZoneNames(offered)
 	if len(w.zoneNames) != len(full) {
 		t.Errorf("stored %d zones from %d offered, want %d", len(w.zoneNames), len(offered), len(full))

@@ -57,6 +57,7 @@ type Config struct {
 	OfflineNotifications            bool                      `mapstructure:"offline_notifications"`              // enable offline notifications
 	SQLPrelude                      []string                  `mapstructure:"sql_prelude"`                        // run these SQL commands before any other
 	EnableWeek                      bool                      `mapstructure:"enable_week"`                        // enable week command
+	EnableMonth                     bool                      `mapstructure:"enable_month"`                       // enable month command
 	AffiliateLink                   string                    `mapstructure:"affiliate_link"`                     // legacy affiliate link template, superseded by affiliate_base
 	AffiliateBase                   string                    `mapstructure:"affiliate_base"`                     // affiliate redirect base, e.g. https://siren.chat/out/cb
 	EnableCustomAffiliateLink       bool                      `mapstructure:"enable_custom_affiliate_link"`       // let chats set their own affiliate link, defaults to true

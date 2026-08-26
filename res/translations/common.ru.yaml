@@ -57,6 +57,7 @@ raw_commands:
     list - Ваши модели
     pics - Кадры трансляций в этот момент
     week - График модели в предыдущие 7 дней
+    month - Дни трансляций в предыдущие 5 недель
     help - Список команд
     settings - Настройки
     feedback - Обратная связь
@@ -532,6 +533,53 @@ week_never_online:
     {{- end -}}
 week_retrieving:
   str: Получаем данные, пожалуйста, подождите...
+month:
+  parse: html
+  disable_preview: true
+  str: |-
+    Месяц {{ .streamer_link }} ({{ .timezone }}):
+    {{- print "\n\n" -}}
+    <code>
+    {{- print "      " -}}
+    {{- range .header -}}
+      {{- print " " -}}
+      {{- template "weekday" . -}}
+    {{- end -}}
+    {{- range .rows -}}
+      {{- print "\n" -}}
+      {{- printf "%2d " .day -}}
+      {{- template "month_name" .month -}}
+      {{- $i := 0 -}}
+      {{- range .cells -}}
+        {{- if eq (mod $i 2) 0 -}}{{- print " " -}}{{- end -}}
+        {{- if . -}}#{{- else -}}-{{- end -}}
+        {{- $i = add $i 1 -}}
+      {{- end -}}
+    {{- end -}}
+    </code>
+month_chunk:
+  parse: html
+  disable_preview: true
+  str: |-
+    {{- range $i, $row := .rows -}}
+      {{- if $i }}{{ print "\n\n" }}{{ end -}}
+      {{- template "month" $row -}}
+    {{- end -}}
+month_never_online:
+  parse: html
+  disable_preview: true
+  str: |-
+    🔴
+    {{- print " " -}}
+    <code>НЕ БЫЛИ В СЕТИ В ЭТОМ МЕСЯЦЕ</code>
+    {{- print "\n" -}}
+    {{- range .streamers -}}
+      {{- .Link -}}
+      {{- if .TimeDiff }}  <i>была {{ template "duration" .TimeDiff }} назад</i> {{- end -}}
+      {{- print "\n" -}}
+    {{- end -}}
+month_retrieving:
+  str: Получаем данные, пожалуйста, подождите...
 weekday:
   str: |-
     {{- if eq . 0 -}}Вс{{- end -}}
@@ -541,6 +589,20 @@ weekday:
     {{- if eq . 4 -}}Чт{{- end -}}
     {{- if eq . 5 -}}Пт{{- end -}}
     {{- if eq . 6 -}}Сб{{- end -}}
+month_name:
+  str: |-
+    {{- if eq . 1 -}}янв{{- end -}}
+    {{- if eq . 2 -}}фев{{- end -}}
+    {{- if eq . 3 -}}мар{{- end -}}
+    {{- if eq . 4 -}}апр{{- end -}}
+    {{- if eq . 5 -}}май{{- end -}}
+    {{- if eq . 6 -}}июн{{- end -}}
+    {{- if eq . 7 -}}июл{{- end -}}
+    {{- if eq . 8 -}}авг{{- end -}}
+    {{- if eq . 9 -}}сен{{- end -}}
+    {{- if eq . 10 -}}окт{{- end -}}
+    {{- if eq . 11 -}}ноя{{- end -}}
+    {{- if eq . 12 -}}дек{{- end -}}
 faq_pricing:
   parse: html
   str: >

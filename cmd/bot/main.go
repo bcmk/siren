@@ -70,8 +70,9 @@ type timeDiff struct {
 	Nanoseconds int
 }
 
-// streamerListEntry is the per-row payload of the list and week_never_online templates,
-// so a field rename must reach both, or the loser fails at render.
+// streamerListEntry is the per-row payload of the list,
+// week_never_online and month_never_online templates,
+// so a field rename must reach all, or the loser fails at render.
 type streamerListEntry struct {
 	Link     string
 	TimeDiff *timeDiff
@@ -464,6 +465,8 @@ func (w *worker) menuCommandEnabled(command string) bool {
 		return w.cfg.BuySubsEnabled()
 	case "week":
 		return w.cfg.EnableWeek
+	case "month":
+		return w.cfg.EnableMonth
 	}
 	return true
 }
@@ -728,37 +731,32 @@ func (w *worker) createDatabase() {
 	w.db.ResetQueryStats()
 }
 
-// minZoneNames is the floor a working zone table clears with room to spare,
-// the smallest packaging shipping some four hundred names.
-// A server whose zone directory is missing returns none, refusing every zone a chat names.
-const minZoneNames = 100
-
-// initTimezones loads the zone spellings the server holds, which parseTimezone resolves against.
+// initTimezones loads the zone spellings the embedded tzdata holds,
+// which parseTimezone resolves against.
 // It runs before the web app is served, whose goroutines read the map without a lock.
 func (w *worker) initTimezones() {
-	w.setZoneNames(w.db.TimezoneNames())
+	table := weekStarts()
+	names := make(map[string]string, len(table))
+	for name := range table {
+		names[strings.ToLower(name)] = name
+	}
+	w.setZoneNames(names)
 }
 
-// setZoneNames is the one way the map is filled, so no path stores a table without the floor.
-// It stops a bot whose server has no working zone table,
-// which would otherwise run on and refuse every zone a chat names.
-//
-// The server's names are loaded here, once, and only those that load are kept:
-// the two carry their own copies of the zone database and drift as either is upgraded,
+// setZoneNames is the one way the map is filled, so no path stores a table unchecked.
+// The table's names are loaded here, once, and only those that load are kept:
+// the table and the binary carry their own copies of the zone database
+// and drift as either is updated,
 // and a name the page offered but the save refused would be the drift landing on a chat.
 func (w *worker) setZoneNames(names map[string]string) {
 	zones := make(map[string]*time.Location, len(names))
 	for lower, canonical := range names {
 		loc, err := time.LoadLocation(canonical)
 		if err != nil {
-			lerr("the server holds a zone this binary cannot load: timezone = %s, %v", canonical, err)
+			lerr("the table holds a zone this binary cannot load: timezone = %s, %v", canonical, err)
 			continue
 		}
 		zones[lower] = loc
-	}
-	if len(zones) < minZoneNames {
-		checkErr(fmt.Errorf("the server offers %d loadable timezone names, fewer than %d: "+
-			"its zone table is broken", len(zones), minZoneNames))
 	}
 	w.zoneNames = zones
 	linf("timezone names loaded: %d of the %d offered", len(zones), len(names))
@@ -1209,6 +1207,79 @@ func (w *worker) showWeek(m receivedMessage, nickname string) {
 	}
 }
 
+func (w *worker) showMonth(m receivedMessage, nickname string) {
+	if nickname != "" {
+		nickname = w.checker.NicknamePreprocessing(nickname)
+		if !w.checker.NicknameRegexp().MatchString(nickname) {
+			w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].InvalidSymbols, tplData{"streamer": nickname})
+			return
+		}
+		user := w.mustUserByID(m.userID)
+		affiliate := w.gatedAffiliateForChat(m.chatID, user)
+		loc, zone := w.chatLocation(user)
+		days, first := w.month(nickname, loc)
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Month, tplData{
+			"rows":          monthRows(days, first),
+			"header":        monthHeader(first.Weekday()),
+			"timezone":      zone,
+			"streamer_link": w.streamerLink(nickname, affiliate),
+		})
+		return
+	}
+	streamers := w.db.StreamersForUser(m.endpoint, m.userID)
+	if len(streamers) == 0 {
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].ZeroSubscriptions, nil)
+		return
+	}
+	user := w.mustUserByID(m.userID)
+	link := w.streamerLinker(w.gatedAffiliateForChat(m.chatID, user))
+	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].MonthRetrieving, nil)
+	m = m.next()
+	ids := make([]int, len(streamers))
+	for i, s := range streamers {
+		ids[i] = s.ID
+	}
+	now := time.Now()
+	loc, zone := w.chatLocation(user)
+	daysMap, first := w.monthForStreamers(ids, now, loc)
+	statuses := w.db.UnconfirmedStatusesForUser(m.endpoint, m.userID)
+	statusMap := make(map[string]db.Streamer, len(statuses))
+	for _, s := range statuses {
+		statusMap[s.Nickname] = s
+	}
+	var months []tplData
+	var neverOnline []streamerListEntry
+	nowUnix := int(now.Unix())
+	for _, s := range streamers {
+		days := daysMap[s.ID]
+		if !slices.Contains(days, true) {
+			var td *timeDiff
+			if st, ok := statusMap[s.Nickname]; ok {
+				td = w.streamerTimeDiff(st, nowUnix)
+			}
+			neverOnline = append(neverOnline, streamerListEntry{
+				Link:     link(s.Nickname),
+				TimeDiff: td,
+			})
+			continue
+		}
+		months = append(months, tplData{
+			"rows":          monthRows(days, first),
+			"header":        monthHeader(first.Weekday()),
+			"timezone":      zone,
+			"streamer_link": link(s.Nickname),
+		})
+	}
+	for chunk := range slices.Chunk(months, 10) {
+		w.replyTr(m, db.PriorityLow, false, w.tr[m.endpoint].MonthChunk, tplData{"rows": chunk})
+		m = m.next()
+	}
+	for chunk := range slices.Chunk(neverOnline, 50) {
+		w.replyTr(m, db.PriorityLow, false, w.tr[m.endpoint].MonthNeverOnline, tplData{"streamers": chunk})
+		m = m.next()
+	}
+}
+
 func (w *worker) addStreamer(m receivedMessage, nickname string, referral bool) *int {
 	if nickname == "" {
 		tr := w.tr[m.endpoint].SyntaxAdd
@@ -1595,7 +1666,7 @@ func (w *worker) parseTimezone(name string) (*time.Location, string, bool) {
 
 // zoneOrDefault resolves a name the way a chat's own zone is resolved:
 // the offered list first, then the database this binary carries,
-// which may still hold a name the server has stopped offering.
+// which may still hold a name the table has stopped offering.
 // known is false when neither holds it and the default answers.
 func (w *worker) zoneOrDefault(name string) (*time.Location, string, bool) {
 	if loc, zone, ok := w.parseTimezone(name); ok {
@@ -2059,6 +2130,17 @@ func (w *worker) week(nickname string, loc *time.Location) ([]bool, time.Weekday
 	return result[streamer.ID], weekday
 }
 
+func (w *worker) month(nickname string, loc *time.Location) ([]bool, time.Time) {
+	streamer := w.db.MaybeStreamer(nickname)
+	if streamer == nil {
+		// The empty grid still opens on the right weekday.
+		_, _, first := monthWindow(time.Now(), loc)
+		return nil, first
+	}
+	result, first := w.monthForStreamers([]int{streamer.ID}, time.Now(), loc)
+	return result[streamer.ID], first
+}
+
 func onlineCells(
 	changesMap map[int][]db.StatusChange,
 	from int,
@@ -2088,37 +2170,65 @@ func onlineCells(
 // weekHours is what the grid holds: the seven rows of 24 cells the week template prints.
 const weekHours = 7 * 24
 
+// monthWeeks is the count of full week rows before the current week's partial one.
+const monthWeeks = 4
+
+// monthRowCells is a month row: seven days of two half-day cells.
+const monthRowCells = 7 * 2
+
+// weekCellSeconds is the week grid's cell, an hour; monthCellSeconds the month's, a half-day.
+const (
+	weekCellSeconds  = 3600
+	monthCellSeconds = 43200
+)
+
 /*
-weekWindow is the span the grid covers, from the start of the day six days back through now,
-and the weekday its first row carries.
+gridWindow is the span a grid covers — hour cells for the week, half-day cells for the month —
+from the start of the day opening it through now, and the date of its first day.
 
 Every step keeps a zone's shifts out of the arithmetic they would corrupt:
 
 	the date is walked in UTC, where no shift can move it;
 	the clock is placed in loc after, and a day whose midnight a shift skips starts at the shift;
 	the weekday is read off the date rather than off an instant a shift may have normalized;
-	a fall-back stretching the week past weekHours drops its oldest hour, never opening an eighth row.
+	a shift's excess or shortfall is settled in whole hours at the window's start,
+	so a fall-back never adds a cell and a spring-forward never hides a started day.
 
-A row is 24 cells whatever the day held, so a shift inside the window moves the later rows
-off their labels by however much it moved the clock.
+A cell is a fixed span whatever the day held,
+so a shift inside the window moves the later cells off their labels
+by however much it moved the clock.
 Where that is not a whole hour, as in Australia/Lord_Howe, Pacific/Chatham and Iran,
-the cells stop lining up with the clock at all and each straddles two labelled hours.
+hour cells stop lining up with the clock at all and each straddles two labelled hours.
 Snapping the start would not mend it, the shift falling in the middle of the window.
 */
-func weekWindow(now time.Time, loc *time.Location) (from, to int, weekday time.Weekday) {
+func gridWindow(now time.Time, loc *time.Location, days int) (from, to int, first time.Time) {
 	year, month, day := now.In(loc).Date()
-	first := time.Date(year, month, day, 0, 0, 0, 0, time.UTC).AddDate(0, 0, -6)
+	first = time.Date(year, month, day, 0, 0, 0, 0, time.UTC).AddDate(0, 0, 1-days)
 	year, month, day = first.Date()
 	start := time.Date(year, month, day, 0, 0, 0, 0, loc)
 	for hour := 1; hour <= 3 && start.Day() != day; hour++ {
 		start = time.Date(year, month, day, hour, 0, 0, 0, loc)
 	}
 	from, to = int(start.Unix()), int(now.Unix())
-	// Whole hours, so the cells the grid prints stay aligned to the clock they are labelled with.
-	if cells := (to - from + 3599) / 3600; cells > weekHours {
-		from += (cells - weekHours) * 3600
+	if excess := to - from - days*86400; excess > 0 {
+		from += (excess + 3599) / 3600 * 3600
+	} else if shortfall := (days-1)*86400 - (to - from); shortfall > 0 {
+		from -= (shortfall + 3599) / 3600 * 3600
 	}
+	return from, to, first
+}
+
+// weekWindow is gridWindow for the week grid of hour cells.
+func weekWindow(now time.Time, loc *time.Location) (from, to int, weekday time.Weekday) {
+	from, to, first := gridWindow(now, loc, 7)
 	return from, to, first.Weekday()
+}
+
+// monthWindow is gridWindow for the month grid of half-day cells:
+// four full weeks and the current one through today, opening on the chat's first day of the week.
+func monthWindow(now time.Time, loc *time.Location) (from, to int, first time.Time) {
+	days := monthWeeks*7 + 1 + (int(now.In(loc).Weekday())-int(weekStart(loc))+7)%7
+	return gridWindow(now, loc, days)
 }
 
 // weekForStreamers builds the hourly grid of the last seven days in loc.
@@ -2129,7 +2239,44 @@ func (w *worker) weekForStreamers(
 ) (map[int][]bool, time.Weekday) {
 	from, to, weekday := weekWindow(now, loc)
 	changesMap := w.db.ChangesFromToForStreamers(streamerIDs, from, to)
-	return onlineCells(changesMap, from, to, 3600), weekday
+	return onlineCells(changesMap, from, to, weekCellSeconds), weekday
+}
+
+// monthForStreamers builds the half-day grid of the last month in loc,
+// with the date of the window's first day for the row labels.
+func (w *worker) monthForStreamers(
+	streamerIDs []int,
+	now time.Time,
+	loc *time.Location,
+) (map[int][]bool, time.Time) {
+	from, to, first := monthWindow(now, loc)
+	changesMap := w.db.ChangesFromToForStreamers(streamerIDs, from, to)
+	return onlineCells(changesMap, from, to, monthCellSeconds), first
+}
+
+// monthHeader is the week's days from the chat's first one, in the order the header prints them.
+func monthHeader(first time.Weekday) []int {
+	days := make([]int, 7)
+	for i := range days {
+		days[i] = (int(first) + i) % 7
+	}
+	return days
+}
+
+// monthRows slices the grid into week rows, each labelled with the date its first cell opens.
+// The dates are walked in UTC, where no shift can move them.
+func monthRows(cells []bool, date time.Time) []tplData {
+	var rows []tplData
+	for i := 0; i < len(cells); i += monthRowCells {
+		_, month, day := date.Date()
+		rows = append(rows, tplData{
+			"day":   day,
+			"month": int(month),
+			"cells": cells[i:min(i+monthRowCells, len(cells))],
+		})
+		date = date.AddDate(0, 0, 7)
+	}
+	return rows
 }
 
 func (w *worker) feedback(m receivedMessage, text string) {
@@ -3179,6 +3326,7 @@ var knownCommands = map[string]commandSpec{
 	"feedback":                      {},
 	"help":                          {},
 	"list":                          {},
+	"month":                         {},
 	"online":                        {},
 	"pics":                          {},
 	"referral":                      {},
@@ -3351,6 +3499,12 @@ func (w *worker) processIncomingCommand(
 			return
 		}
 		w.showWeek(m, arguments)
+	case "month":
+		if !w.cfg.EnableMonth {
+			unknown()
+			return
+		}
+		w.showMonth(m, arguments)
 	case "timezone":
 		w.setTimezone(m, arguments)
 	case "reset_timezone":
@@ -4452,7 +4606,6 @@ func main() {
 	w.logConfig()
 	// Before Telegram is pointed at this process: a zone table it cannot work from
 	// stops a start rather than a bot that has already announced itself.
-	// newWorker has connected to the server, so this waits on nothing further.
 	w.initTimezones()
 	w.setWebhook()
 	w.setCommands()

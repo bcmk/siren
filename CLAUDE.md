@@ -92,6 +92,7 @@
   or restating the code beside it.
   Write for a reader who never saw the discussion.
 - Keep lines no longer than 120 characters
+- Never split a URL to satisfy a length limit; a line carrying a URL may run over
 - Never hardcode user-facing strings — always use
   the translation system (`res/translations/`)
 

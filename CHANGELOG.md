@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## Unreleased
+
+### Added
+
+- `/month` command: a five-week calendar of streaming half-days, behind `enable_month`
+
 ## v5.1.2 — 2026-08-25
 
 ### Fixed

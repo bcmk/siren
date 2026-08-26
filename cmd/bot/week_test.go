@@ -149,6 +149,14 @@ func TestEntryTemplatesRender(t *testing.T) {
 			[]string{"alica_webcam", "bob_cam"},
 		},
 		{
+			"never online this month", "month_never_online",
+			tplData{"streamers": []streamerListEntry{
+				{Link: "alica_webcam"},
+				{Link: "bob_cam", TimeDiff: &timeDiff{Hours: 3}},
+			}},
+			[]string{"alica_webcam", "bob_cam"},
+		},
+		{
 			"list", "list",
 			tplData{
 				"online":  []streamerListEntry{{Link: "alica_webcam", TimeDiff: &timeDiff{Hours: 3}}},

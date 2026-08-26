@@ -1,0 +1,40 @@
+<weekData>
+		<minDays count="1" territories="001 GU UM US VI"/>
+        <minDays count="4" territories="    AD AN AT AX    BE BG    CH CZ    DE DK    EE ES    FI FJ FO FR    GB GF GG GI GP GR    HU    IE IM IS IT    JE    LI LT LU    MC MQ    NL NO    PL PT    RE RU    SE SJ SK SM    VA"/>
+
+		<!-- Note, this firstDay is for the first day of the week in a calendar page view. -->
+		<!-- The first workday of the week (after the weekend) is distinct, and can be determined as the day after the weekendEnd day. -->
+          <firstDay day="mon" territories="    001    AD AE AI AL AM AN AR AT AU AX AZ    BA BE BG BM BN BY    CH CL CM CN CR CY CZ    DE DK    EC EE ES    FI FJ FO FR    GB GE GF GP GR    HR HU    IE IT    KG KZ    LB LI LK LT LU LV    MC MD ME MK MN MQ MY    NL NO NZ    PL    RE RO RS RU    SE SI SK SM    TJ TM TR    UA UY UZ    VA VN    XK"/>
+		<firstDay day="fri" territories="MV"/>
+		<firstDay day="sat" territories="AF BH DJ DZ EG IQ IR JO KW LY OM QA SD SY"/>
+          <firstDay day="sun" territories="    AG AS    BD BR BS BT BW BZ    CA CO    DM DO    ET    GT GU    HK HN    ID IL IN IS    JM JP    KE KH KR    LA    MH MM MO MT MX MZ    NI NP    PA PE PH PK PR PT PY    SA SG SV    TH TT TW    UM US    VE VI    WS    YE    ZA ZW"/>
+		<firstDay day="sun" territories="GB" alt="variant" references="Shorter Oxford Dictionary (5th edition, 2002)"/>
+		<weekendStart day="thu" territories="AF"/>
+		<weekendStart day="fri" territories="BH DZ EG IL IQ IR JO KW LY OM QA SA SD SY YE"/>
+		<weekendStart day="sat" territories="001"/>
+		<weekendStart day="sun" territories="IN UG"/>
+		<weekendEnd day="fri" territories="AF IR"/>
+		<weekendEnd day="sat" territories="BH DZ EG IL IQ JO KW LY OM QA SA SD SY YE"/>
+		<weekendEnd day="sun" territories="001"/>
+
+		<weekOfPreference ordering="weekOfYear" locales="und"/>
+		<weekOfPreference ordering="weekOfYear weekOfMonth" locales="am az bs cs cy da el et hi ky lt mk sk ta th"/>
+		<weekOfPreference ordering="weekOfYear weekOfMonth weekOfInterval" locales="is mn nb no sv vi"/>
+		<weekOfPreference ordering="weekOfYear weekOfDate weekOfMonth" locales="fi zh_TW"/>
+		<weekOfPreference ordering="weekOfYear weekOfInterval" locales="zu"/>
+		<weekOfPreference ordering="weekOfDate" locales="ca es fr gl"/>
+		<weekOfPreference ordering="weekOfDate weekOfMonth" locales="en bn ja ka"/>
+		<weekOfPreference ordering="weekOfDate weekOfMonth weekOfInterval" locales="bg de he pt ur zh"/>
+		<weekOfPreference ordering="weekOfDate weekOfYear weekOfMonth" locales="nl"/>
+		<weekOfPreference ordering="weekOfDate weekOfInterval weekOfMonth" locales="af"/>
+		<weekOfPreference ordering="weekOfMonth" locales="ar fil gu hu hy id kk ko"/>
+		<weekOfPreference ordering="weekOfMonth weekOfYear" locales="km mr"/>
+		<weekOfPreference ordering="weekOfMonth weekOfYear weekOfInterval weekOfDate" locales="ms tr"/>
+		<weekOfPreference ordering="weekOfMonth weekOfDate" locales="eu"/>
+		<weekOfPreference ordering="weekOfMonth weekOfDate weekOfYear" locales="kn ml pa"/>
+		<weekOfPreference ordering="weekOfMonth weekOfInterval" locales="fa hr it lv pl si sr uk uz"/>
+		<weekOfPreference ordering="weekOfMonth weekOfInterval weekOfYear" locales="sw te"/>
+		<weekOfPreference ordering="weekOfMonth weekOfInterval weekOfDate weekOfYear" locales="lo sq"/>
+		<weekOfPreference ordering="weekOfInterval" locales="sl"/>
+		<weekOfPreference ordering="weekOfInterval weekOfMonth" locales="be ro ru"/>
+	</weekData>

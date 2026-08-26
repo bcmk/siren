@@ -1349,36 +1349,6 @@ func (d *Database) SetMemberSubscriptions(userID UserID, memberSubscriptions boo
 	d.MustExec("update users set member_subscriptions = $1 where id = $2", memberSubscriptions, int64(userID))
 }
 
-/*
-TimezoneNames returns the zone names the server holds, keyed by their lowercase form,
-so a chat may type one in any case and still store the spelling the database keeps.
-
-Four groups are left out:
-
-	posix/ and right/ repeat the plain names under a different leap-second rule;
-	posixrules is not a zone but the default DST rules a bare POSIX offset takes;
-	Factory is the placeholder shipped for hosts that never set one;
-	localtime is the server's own zone, which says nothing about a chat's.
-
-What remains is the server's packaging, not a fixed list:
-a build carrying the backward-compatibility links offers US/Eastern and GB-Eire,
-one without them offers neither, and the resolver refuses what it is not offered.
-*/
-func (d *Database) TimezoneNames() map[string]string {
-	names := map[string]string{}
-	var name string
-	d.MustQuery(`
-		select name
-		from pg_timezone_names
-		where name not like 'posix/%'
-		and name not like 'right/%'
-		and name not in ('posixrules', 'Factory', 'localtime')`,
-		nil,
-		ScanTo{&name},
-		func() { names[strings.ToLower(name)] = name })
-	return names
-}
-
 // SetTimezone updates a user's IANA zone name, empty to clear it back to unset.
 func (d *Database) SetTimezone(userID UserID, timezone string) {
 	if timezone == "" {
