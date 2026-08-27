@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v5.3.0 — 2026-08-27
+
+### Added
+
+- The month command is listed in help
+
+### Fixed
+
+- The Russian last-seen lines and the denied message no longer gender the streamer
+- The English network setting tip and the added message use singular they
+
 ## v5.2.1 — 2026-08-27
 
 ### Added
