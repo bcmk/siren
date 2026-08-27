@@ -114,6 +114,7 @@ commands:
     <b>{{ short_command "list" }}</b> — Your subscriptions
     <b>{{ short_command "pics" }}</b> — Thumbnails of your channels online
     <b>{{ short_command "week" }}</b> <code>CHANNEL</code> — Online hours in the previous 7 days
+    <b>{{ short_command "month" }}</b> <code>CHANNEL</code> — Online days in the previous 5 weeks
     <b>{{ short_command "help" }}</b> — Help
     <b>{{ short_command "settings" }}</b> — Show settings
     <b>{{ short_command "feedback" }}</b> <code>YOUR_MESSAGE</code> — Send feedback
