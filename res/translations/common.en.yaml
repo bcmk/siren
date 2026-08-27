@@ -89,7 +89,7 @@ streamer_added:
   parse: raw
   str: |-
     Model {{ .streamer }} added successfully
-    Bot will notify you whenever they enters or leaves
+    Bot will notify you whenever they enter or leave
 streamer_not_in_list:
   parse: raw
   str: "Model {{ .streamer }} is not in your list"
