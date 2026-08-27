@@ -68,6 +68,7 @@ type Config struct {
 	NotificationsReadyPeriodSeconds int                       `mapstructure:"notifications_ready_period_seconds"` // notifications ready check period
 	ShowImages                      bool                      `mapstructure:"show_images"`                        // images support
 	AdChancePercent                 int                       `mapstructure:"ad_chance_percent"`                  // probability of showing an ad (0–100)
+	BlockedSendThreshold            int                       `mapstructure:"blocked_send_threshold"`             // consecutive blocked sends before an attempt rolls the dice, defaults to 15
 	BotLinkPeriod                   int                       `mapstructure:"bot_link_period"`                    // channel bot-link cadence in alerts, 0 disables, defaults to 12
 	WhitelistChats                  []int64                   `mapstructure:"whitelist_chats"`                    // if set, only these chats are processed
 	SubsTiers                       []SubsTier                `mapstructure:"subs_tiers"`                         // fixed Stars packages, ascending Count; empty disables buying
@@ -86,7 +87,13 @@ func ReadConfig(cfgPath string) *Config {
 	v.SetEnvPrefix("XRN")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
-	cfg := &Config{ShowImages: true, AdChancePercent: 20, EnableCustomAffiliateLink: true, BotLinkPeriod: 12}
+	cfg := &Config{
+		ShowImages:                true,
+		AdChancePercent:           20,
+		EnableCustomAffiliateLink: true,
+		BotLinkPeriod:             12,
+		BlockedSendThreshold:      15,
+	}
 	cmdlib.BindEnvForConfig(v, cfg)
 	checkErr(v.Unmarshal(&cfg, cmdlib.StrictConfigDecoder))
 	checkErr(checkConfig(cfg))
@@ -162,6 +169,10 @@ func checkConfig(cfg *Config) error {
 	}
 	if cfg.MaxSubscriptionsForPics <= 0 {
 		return errors.New("configure a positive max_subscriptions_for_pics")
+	}
+	// Zero would panic the dice roll (rand.Intn(0)); only an explicit zero or negative gets here.
+	if cfg.BlockedSendThreshold <= 0 {
+		return errors.New("configure a positive blocked_send_threshold")
 	}
 	if cfg.SubsConfirmationPeriodSeconds == 0 {
 		return errors.New("configure subs_confirmation_period_seconds")

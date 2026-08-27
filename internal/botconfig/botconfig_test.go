@@ -93,6 +93,7 @@ func validConfig(e endpoint) *Config {
 		FollowerBonus:                   1,
 		TelegramTimeoutSeconds:          10,
 		MaxSubscriptionsForPics:         10,
+		BlockedSendThreshold:            15,
 		SubsConfirmationPeriodSeconds:   1,
 		NotificationsReadyPeriodSeconds: 1,
 	}

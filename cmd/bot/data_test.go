@@ -34,6 +34,7 @@ var testConfig = botconfig.Config{
 	ReferralBonus:        1,
 	FollowerBonus:        1,
 	OfflineNotifications: true,
+	BlockedSendThreshold: 15,
 	StatusConfirmationSeconds: botconfig.StatusConfirmationSeconds{
 		Offline: 5,
 	},

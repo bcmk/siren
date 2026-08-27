@@ -220,6 +220,7 @@ const (
 	messageNoPhotoRights       = -7
 	messageNoTextRights        = -8
 	messageTopicClosed         = -9
+	messageDiceSkipped         = -10
 )
 
 type msgSendResult struct {
@@ -2351,20 +2352,29 @@ func (w *worker) performanceStat(endpoint string, arguments string) {
 	}
 }
 
-// broadcast sends text to every private subscriber.
-// BroadcastUsers returns user ids directly.
-// The loop no longer resolves chat id -> user id here
-// only for trySend to resolve it back to chat id at dispatch.
-// That dispatch-time ChatIDForUser is deliberate — single source of truth,
-// migration-safe — and stays; we drop only the redundant enqueue-time lookup.
+// broadcast sends text to the endpoint's private subscribers,
+// rolling the dice against each one's blocked-send count;
+// a lost roll is logged as dice-skipped instead of sent.
+// BroadcastUsers returns users carrying their ids and blocked counts, no chat ids:
+// trySend resolves the chat id from the user at dispatch —
+// deliberate, single source of truth, migration-safe.
 func (w *worker) broadcast(endpoint string, text string) {
 	if text == "" {
 		return
 	}
 	ldbg("broadcasting")
 	users := w.db.BroadcastUsers(endpoint)
-	for _, userID := range users {
-		w.sendText(db.PriorityLow, endpoint, userID, true, false, cmdlib.ParseRaw, text, unprompted(db.MessagePacket))
+	var skips []db.SkippedSend
+	for _, user := range users {
+		if !attemptBlockedSend(user.Blocked, w.cfg.BlockedSendThreshold) {
+			skips = append(skips, db.SkippedSend{UserID: user.UserID, Endpoint: endpoint})
+			continue
+		}
+		w.sendText(db.PriorityLow, endpoint, user.UserID, true, false, cmdlib.ParseRaw, text, unprompted(db.MessagePacket))
+	}
+	if len(skips) > 0 {
+		w.db.LogDiceSkippedSends(
+			int(time.Now().Unix()), messageDiceSkipped, db.PriorityLow, db.MessagePacket, skips)
 	}
 	// The ack queues at the broadcast's own priority, behind its last message.
 	// Same-priority dispatch is FIFO only while every recipient stays healthy;
@@ -3697,7 +3707,7 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) pro
 	confirmChangesMs := int(time.Since(confirmChangesStart).Milliseconds())
 
 	storeNotificationsStart := time.Now()
-	notifications := w.buildNotifications(confirmedStatusChanges)
+	notifications := w.buildNotifications(confirmedStatusChanges, now)
 	w.storeNotifications(notifications)
 	storeNotificationsMs := int(time.Since(storeNotificationsStart).Milliseconds())
 
@@ -3724,8 +3734,17 @@ func (w *worker) handleCheckerResults(result cmdlib.CheckerResults, now int) pro
 	}
 }
 
+// attemptBlockedSend rolls the dice against a chat's consecutive blocked-send count:
+// below the threshold (blocked_send_threshold) every send is attempted,
+// past it the odds decay as threshold/blocked,
+// so a long-blocking chat still gets an occasional probe that can reset the counter.
+func attemptBlockedSend(blocked, threshold int) bool {
+	return blocked < threshold || rand.Intn(blocked) < threshold
+}
+
 func (w *worker) buildNotifications(
 	confirmedStatusChanges []db.ConfirmedStatusChange,
+	now int,
 ) []db.Notification {
 	streamerIDs := make([]int, len(confirmedStatusChanges))
 	for i, c := range confirmedStatusChanges {
@@ -3733,6 +3752,7 @@ func (w *worker) buildNotifications(
 	}
 
 	var notifications []db.Notification
+	var skips []db.SkippedSend
 	usersForStreamers, endpointsForStreamers := w.db.UsersForStreamers(streamerIDs)
 	for _, c := range confirmedStatusChanges {
 		// Skip unknown -> offline transitions
@@ -3745,6 +3765,14 @@ func (w *worker) buildNotifications(
 		info := w.unconfirmedOnlineStreamers[c.Nickname]
 		for i, user := range users {
 			if (w.cfg.OfflineNotifications && user.OfflineNotifications) || c.Status != cmdlib.StatusOffline {
+				// notifyOfStatus drops a nil-translation plan unsent
+				// (an orphaned endpoint, an untranslated status),
+				// so it must not roll or log a skip.
+				if w.statusTranslation(endpoints[i], c.Status) != nil &&
+					!attemptBlockedSend(user.Blocked, w.cfg.BlockedSendThreshold) {
+					skips = append(skips, db.SkippedSend{UserID: user.UserID, Endpoint: endpoints[i]})
+					continue
+				}
 				n := db.Notification{
 					Endpoint:   endpoints[i],
 					UserID:     user.UserID,
@@ -3764,6 +3792,9 @@ func (w *worker) buildNotifications(
 				notifications = append(notifications, n)
 			}
 		}
+	}
+	if len(skips) > 0 {
+		w.db.LogDiceSkippedSends(now, messageDiceSkipped, db.PriorityLow, db.NotificationPacket, skips)
 	}
 
 	return notifications

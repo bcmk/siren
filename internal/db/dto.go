@@ -120,6 +120,10 @@ type User struct {
 
 	// Timezone is the chat's IANA zone name, nil for UTC.
 	Timezone *string
+
+	// Blocked is the consecutive blocked-send count on the row's endpoint,
+	// populated only by the recipient-selection queries (UsersForStreamers, BroadcastUsers).
+	Blocked int
 }
 
 // Streamer represents a streamer

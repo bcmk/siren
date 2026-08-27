@@ -101,7 +101,8 @@ func (d *Database) StoreNotifications(nots []Notification) {
 	d.SendBatch(batch)
 }
 
-// UsersForStreamers returns users subscribed to particular streamers
+// UsersForStreamers returns users subscribed to particular streamers,
+// each with the blocked-send count on their subscription's endpoint.
 func (d *Database) UsersForStreamers(streamerIDs []int) (users map[int][]User, endpoints map[int][]string) {
 	users = map[int][]User{}
 	endpoints = make(map[int][]string)
@@ -112,6 +113,7 @@ func (d *Database) UsersForStreamers(streamerIDs []int) (users map[int][]User, e
 	var offlineNotifications bool
 	var showImages bool
 	var showSubject bool
+	var blocked int
 	d.MustQuery(`
 		select
 			sub.streamer_id,
@@ -120,12 +122,14 @@ func (d *Database) UsersForStreamers(streamerIDs []int) (users map[int][]User, e
 			sub.endpoint,
 			u.offline_notifications,
 			u.show_images,
-			u.show_subject
+			u.show_subject,
+			coalesce(b.block, 0)
 		from subscriptions sub
 		join users u on u.id = sub.user_id
+		left join block b on b.user_id = sub.user_id and b.endpoint = sub.endpoint
 		where sub.streamer_id = any($1)`,
 		QueryParams{streamerIDs},
-		ScanTo{&streamerID, &chatID, &userID, &endpoint, &offlineNotifications, &showImages, &showSubject},
+		ScanTo{&streamerID, &chatID, &userID, &endpoint, &offlineNotifications, &showImages, &showSubject, &blocked},
 		func() {
 			users[streamerID] = append(users[streamerID], User{
 				ChatID:               chatID,
@@ -133,26 +137,30 @@ func (d *Database) UsersForStreamers(streamerIDs []int) (users map[int][]User, e
 				OfflineNotifications: offlineNotifications,
 				ShowImages:           showImages,
 				ShowSubject:          showSubject,
+				Blocked:              blocked,
 			})
 			endpoints[streamerID] = append(endpoints[streamerID], endpoint)
 		})
 	return
 }
 
-// BroadcastUsers returns the users to broadcast to on an endpoint:
+// BroadcastUsers returns the users to broadcast to on an endpoint,
+// each with their blocked-send count:
 // its private subscribers (chat_id > 0 excludes groups and channels).
 // trySend resolves each user's current chat id at dispatch.
-func (d *Database) BroadcastUsers(endpoint string) (users []UserID) {
+func (d *Database) BroadcastUsers(endpoint string) (users []User) {
 	var id int64
+	var blocked int
 	d.MustQuery(`
-		select distinct u.id
+		select distinct u.id, coalesce(b.block, 0)
 		from subscriptions sub
 		join users u on u.id = sub.user_id
+		left join block b on b.user_id = u.id and b.endpoint = $1
 		where sub.endpoint = $1 and u.chat_id > 0
 		order by u.id`,
 		QueryParams{endpoint},
-		ScanTo{&id},
-		func() { users = append(users, UserID(id)) })
+		ScanTo{&id, &blocked},
+		func() { users = append(users, User{UserID: UserID(id), Blocked: blocked}) })
 	return
 }
 
@@ -1540,6 +1548,35 @@ func (d *Database) LogSentMessage(
 		kind,
 		nullableCommand(command),
 		replySeq)
+}
+
+// SkippedSend names one dice-skipped recipient for LogDiceSkippedSends.
+type SkippedSend struct {
+	UserID   UserID
+	Endpoint string
+}
+
+// LogDiceSkippedSends logs a batch of dice-skipped sends in one statement.
+// Rows mirror LogSentMessage, with zero latency and no command.
+func (d *Database) LogDiceSkippedSends(
+	timestamp int,
+	result int,
+	priority Priority,
+	kind PacketKind,
+	skips []SkippedSend,
+) {
+	ids := make([]int64, len(skips))
+	endpoints := make([]string, len(skips))
+	for i, s := range skips {
+		ids[i] = int64(s.UserID)
+		endpoints[i] = s.Endpoint
+	}
+	d.MustExec(`
+		insert into sent_message_log (
+			timestamp, user_id, result, endpoint, priority, latency, kind, command, reply_seq)
+		select $1, t.user_id, $2, t.endpoint, $3, 0, $4, null, 0
+		from unnest($5::bigint[], $6::text[]) as t(user_id, endpoint)`,
+		timestamp, result, priority, kind, ids, endpoints)
 }
 
 // DeleteNotification deletes a notification by ID

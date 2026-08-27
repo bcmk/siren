@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"math"
 	"reflect"
 	"testing"
 
@@ -34,6 +35,14 @@ func checkUnconfirmedOnlineStreamers(w *testWorker, t *testing.T) {
 	}
 }
 
+// broadcastUserIDs projects broadcast recipients to their ids.
+func broadcastUserIDs(users []db.User) (ids []db.UserID) {
+	for _, u := range users {
+		ids = append(ids, u.UserID)
+	}
+	return
+}
+
 func TestSql(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
@@ -56,15 +65,26 @@ func TestSql(t *testing.T) {
 	insertSubscription(&w.db, "ep2", 7, "f")
 	insertSubscription(&w.db, "ep2", 8, "g")
 	w.db.MustExec("insert into block (endpoint, user_id, block) select $1, u.id, $3 from users u where u.chat_id = $2", "ep1", 2, 0)
+	w.db.MustExec("insert into block (endpoint, user_id, block) select $1, u.id, $3 from users u where u.chat_id = $2", "ep1", 3, 5)
 	w.db.MustExec("update streamers set confirmed_status = $2 where nickname = $1", "a", cmdlib.StatusOnline)
 	w.db.MustExec("update streamers set confirmed_status = $2 where nickname = $1", "b", cmdlib.StatusOnline)
 	w.db.MustExec("update streamers set confirmed_status = $2 where nickname = $1", "c", cmdlib.StatusOnline)
 	w.db.MustExec("update streamers set confirmed_status = $2 where nickname = $1", "c2", cmdlib.StatusOnline)
-	broadcastUsers := w.db.BroadcastUsers("ep1")
-	if !reflect.DeepEqual(broadcastUsers, []db.UserID{1, 2, 3, 4, 5, 6, 7}) {
-		t.Error("unexpected broadcast users result", broadcastUsers)
+	broadcast1 := w.db.BroadcastUsers("ep1")
+	if !reflect.DeepEqual(broadcastUserIDs(broadcast1), []db.UserID{1, 2, 3, 4, 5, 6, 7}) {
+		t.Error("unexpected broadcast users result", broadcast1)
 	}
-	broadcastUsers = w.db.BroadcastUsers("ep2")
+	// Only user 3 has a nonzero block row; a broken join or coalesce would zero it.
+	for _, u := range broadcast1 {
+		want := 0
+		if u.UserID == 3 {
+			want = 5
+		}
+		if u.Blocked != want {
+			t.Errorf("broadcast user %d blocked = %d, want %d", u.UserID, u.Blocked, want)
+		}
+	}
+	broadcastUsers := broadcastUserIDs(w.db.BroadcastUsers("ep2"))
 	if !reflect.DeepEqual(broadcastUsers, []db.UserID{6, 7, 8}) {
 		t.Error("unexpected broadcast users result", broadcastUsers)
 	}
@@ -1906,5 +1926,138 @@ func TestDeliverOffMainGoroutine(t *testing.T) {
 	}()
 	if r := <-done; r != nil {
 		t.Fatalf("deliver touched the database off the main goroutine: %v", r)
+	}
+}
+
+// TestAttemptBlockedSend checks the dice gate on sends to a blocking chat:
+// certainty up to the threshold, both outcomes past it.
+func TestAttemptBlockedSend(t *testing.T) {
+	t.Parallel()
+	const threshold = 15
+	tests := []struct {
+		name    string
+		blocked int
+		// wantAlways asserts every roll attempts; otherwise both outcomes must occur.
+		wantAlways bool
+	}{
+		{name: "zero", blocked: 0, wantAlways: true},
+		{name: "below threshold", blocked: threshold - 1, wantAlways: true},
+		{name: "at threshold", blocked: threshold, wantAlways: true},
+		{name: "just past threshold", blocked: threshold + 1},
+		{name: "far past threshold", blocked: 1000},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var sent, skipped int
+			for range 5000 {
+				if attemptBlockedSend(tt.blocked, threshold) {
+					sent++
+				} else {
+					skipped++
+				}
+			}
+			if tt.wantAlways {
+				if skipped != 0 {
+					t.Errorf("blocked = %d skipped %d of 5000 sends, want none", tt.blocked, skipped)
+				}
+			} else if sent == 0 || skipped == 0 {
+				t.Errorf("blocked = %d gave sent = %d, skipped = %d, want both outcomes", tt.blocked, sent, skipped)
+			}
+		})
+	}
+}
+
+// TestBuildNotificationsDiceGate checks notification creation rolls the dice:
+// a subscriber past the threshold is dropped and logged as dice-skipped,
+// the rest get their notifications,
+// and an orphaned endpoint's subscriber neither rolls nor logs,
+// since their notification is dropped unsent later anyway.
+func TestBuildNotificationsDiceGate(t *testing.T) {
+	t.Parallel()
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase()
+
+	streamerID := insertTestStreamer(&w.db, db.Streamer{Nickname: "s1"})
+	insertSubscription(&w.db, "test", 100, "s1")
+	insertSubscription(&w.db, "test", 101, "s1")
+	// An endpoint absent from the config.
+	insertSubscription(&w.db, "ghost", 102, "s1")
+	// The count is MaxInt32, so these subscribers lose any roll:
+	// a win at p = threshold/MaxInt32 is unreachable in practice.
+	w.db.MustExec(
+		"insert into block (endpoint, user_id, block) select $1, u.id, $2 from users u where u.chat_id = $3",
+		"test", math.MaxInt32, 100)
+	w.db.MustExec(
+		"insert into block (endpoint, user_id, block) select $1, u.id, $2 from users u where u.chat_id = $3",
+		"ghost", math.MaxInt32, 102)
+
+	nots := w.buildNotifications([]db.ConfirmedStatusChange{
+		{StreamerID: streamerID, Nickname: "s1", Status: cmdlib.StatusOnline},
+	}, 1000)
+
+	got := map[db.UserID]bool{}
+	for _, n := range nots {
+		got[n.UserID] = true
+	}
+	want := map[db.UserID]bool{w.db.EnsureUser(101): true, w.db.EnsureUser(102): true}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("notified users = %v, want %v (no roll for the orphaned endpoint)", got, want)
+	}
+	skipRows := func(chatID int64) int {
+		return w.db.MustInt(`
+			select count(*) from sent_message_log l
+			join users u on u.id = l.user_id
+			where l.result = $1 and u.chat_id = $2`,
+			messageDiceSkipped, chatID)
+	}
+	if n := skipRows(100); n != 1 {
+		t.Errorf("dice-skip log rows for the blocked subscriber = %d, want 1", n)
+	}
+	if n := skipRows(102); n != 0 {
+		t.Errorf("dice-skip log rows for the orphaned endpoint = %d, want 0", n)
+	}
+	stamp := w.db.MustInt(`
+		select l.timestamp from sent_message_log l
+		join users u on u.id = l.user_id
+		where l.result = $1 and u.chat_id = $2`,
+		messageDiceSkipped, 100)
+	if stamp != 1000 {
+		t.Errorf("dice-skip log timestamp = %d, want the batch's 1000", stamp)
+	}
+}
+
+// TestBroadcastDiceGate checks broadcast rolls the dice per recipient:
+// a lost roll is logged as a dice-skipped MessagePacket and nothing is enqueued for it.
+func TestBroadcastDiceGate(t *testing.T) {
+	t.Parallel()
+	w := newTestWorker()
+	defer w.terminate()
+	w.createDatabase()
+
+	insertTestStreamer(&w.db, db.Streamer{Nickname: "s1"})
+	insertSubscription(&w.db, "test", 100, "s1")
+	insertSubscription(&w.db, "test", 101, "s1")
+	w.ownerUserID = w.db.EnsureUser(999)
+	// The count is MaxInt32, so this subscriber loses the roll.
+	w.db.MustExec(
+		"insert into block (endpoint, user_id, block) select $1, u.id, $2 from users u where u.chat_id = $3",
+		"test", math.MaxInt32, 100)
+
+	w.broadcast("test", "hi")
+
+	// The slot is held (newTestWorker), so the queue keeps what broadcast enqueued:
+	// the winner's copy and the owner's ack, never the loser's.
+	if got := w.sendQueue.Len(); got != 2 {
+		t.Errorf("queued messages = %d, want the winner's copy and the ack", got)
+	}
+	skipLogged := w.db.MustInt(`
+		select count(*) from sent_message_log l
+		join users u on u.id = l.user_id
+		where l.result = $1 and l.kind = $2 and u.chat_id = $3`,
+		messageDiceSkipped, db.MessagePacket, 100)
+	if skipLogged != 1 {
+		t.Errorf("dice-skip log rows = %d, want 1", skipLogged)
 	}
 }
