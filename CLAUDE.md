@@ -95,6 +95,11 @@
 - Never split a URL to satisfy a length limit; a line carrying a URL may run over
 - Never hardcode user-facing strings — always use
   the translation system (`res/translations/`)
+- Keep user-facing text gender-neutral in every language:
+  no words gendering the streamer or the user (была, her or his).
+  Russian: a zero copula («в сети 3 ч назад»), a noun, or an unmarked tense.
+  English: singular they, with plural verb agreement (they enter).
+  Grammatical agreement with a noun («модель… она») is fine.
 
 ## Checks and Tests
 
