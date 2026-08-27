@@ -39,7 +39,7 @@ already_added:
   str: "Модель {{ .streamer }} уже в вашем списке"
 denied:
   parse: raw
-  str: "{{ .streamer }} заблокировала доступ из региона этого бота"
+  str: "{{ .streamer }} блокирует доступ из региона этого бота"
 feedback:
   parse: raw
   str: Спасибо за отклик!
