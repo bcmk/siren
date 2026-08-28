@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v5.4.0 — 2026-08-28
+
+### Added
+
+- Notifications and broadcasts to a blocking chat roll the dice,
+  tunable with `blocked_send_threshold` (default 15)
+
 ## v5.3.0 — 2026-08-27
 
 ### Added
