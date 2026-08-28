@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v5.4.1 — 2026-08-28
+
+### Changed
+
+- `blocked_send_threshold` defaults to 100
+
 ## v5.4.0 — 2026-08-28
 
 ### Added
