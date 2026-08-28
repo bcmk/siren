@@ -68,7 +68,7 @@ type Config struct {
 	NotificationsReadyPeriodSeconds int                       `mapstructure:"notifications_ready_period_seconds"` // notifications ready check period
 	ShowImages                      bool                      `mapstructure:"show_images"`                        // images support
 	AdChancePercent                 int                       `mapstructure:"ad_chance_percent"`                  // probability of showing an ad (0–100)
-	BlockedSendThreshold            int                       `mapstructure:"blocked_send_threshold"`             // consecutive blocked sends before an attempt rolls the dice, defaults to 15
+	BlockedSendThreshold            int                       `mapstructure:"blocked_send_threshold"`             // consecutive blocked sends before an attempt rolls the dice, defaults to 100
 	BotLinkPeriod                   int                       `mapstructure:"bot_link_period"`                    // channel bot-link cadence in alerts, 0 disables, defaults to 12
 	WhitelistChats                  []int64                   `mapstructure:"whitelist_chats"`                    // if set, only these chats are processed
 	SubsTiers                       []SubsTier                `mapstructure:"subs_tiers"`                         // fixed Stars packages, ascending Count; empty disables buying
@@ -92,7 +92,7 @@ func ReadConfig(cfgPath string) *Config {
 		AdChancePercent:           20,
 		EnableCustomAffiliateLink: true,
 		BotLinkPeriod:             12,
-		BlockedSendThreshold:      15,
+		BlockedSendThreshold:      100,
 	}
 	cmdlib.BindEnvForConfig(v, cfg)
 	checkErr(v.Unmarshal(&cfg, cmdlib.StrictConfigDecoder))
