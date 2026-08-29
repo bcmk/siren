@@ -9,6 +9,7 @@
 - Commit directly on `master` unless asked to use a branch
 - Don't use slashes in branch names
 - Use one-line commit messages only
+- Never mention Claude in a commit: no attribution, no trailer, no session link
 - Don't use heredocs for commit messages, use `git commit -m "message"`
 - Use conventional commit style
 - Prefer English words to symbols in commit messages, e.g. "and" not "+"
