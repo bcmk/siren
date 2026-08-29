@@ -7,8 +7,8 @@ import (
 	"fmt"
 
 	"github.com/bcmk/siren/v5/internal/db"
+	"github.com/bcmk/siren/v5/internal/pgtest"
 	"github.com/bcmk/siren/v5/lib/cmdlib"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
 var (
@@ -20,14 +20,7 @@ func main() {
 	ctx := context.Background()
 
 	linf("starting PostgreSQL container...")
-	pgContainer, err := postgres.Run(
-		ctx,
-		"postgres:18",
-		postgres.WithDatabase("test"),
-		postgres.WithUsername("test"),
-		postgres.WithPassword("test"),
-		postgres.BasicWaitStrategies(),
-	)
+	pgContainer, err := pgtest.Run(ctx, "test")
 	checkErr(err)
 	defer func() { checkErr(pgContainer.Terminate(ctx)) }()
 

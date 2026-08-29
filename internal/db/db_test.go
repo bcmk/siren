@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/bcmk/siren/v5/internal/pgtest"
 	"github.com/bcmk/siren/v5/lib/cmdlib"
 	"github.com/jackc/pgx/v5"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -55,14 +56,7 @@ func startPostgres() {
 	ctx := context.Background()
 
 	var err error
-	pgContainer, err = postgres.Run(
-		ctx,
-		"postgres:18",
-		postgres.WithDatabase(templateDBName),
-		postgres.WithUsername("test"),
-		postgres.WithPassword("test"),
-		postgres.BasicWaitStrategies(),
-	)
+	pgContainer, err = pgtest.Run(ctx, templateDBName)
 	checkErr(err)
 
 	baseConnStr, err = pgContainer.ConnectionString(ctx, "sslmode=disable")
