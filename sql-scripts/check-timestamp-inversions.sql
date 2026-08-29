@@ -4,7 +4,7 @@ with ordered as (
         timestamp,
         lag(ctid) over (order by ctid) as prev_ctid,
         lag(timestamp) over (order by ctid) as prev_ts
-    from status_changes
+    from :table
     where timestamp > extract(epoch from now() - interval '7 days')
 )
 select

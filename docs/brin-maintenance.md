@@ -1,13 +1,15 @@
 # BRIN Index Maintenance
 
-BRIN index on `status_changes.timestamp` relies on physical row order.
-And it matches timestamp order.
-If you alter `status_changes` in any way, e.g., drop `is_latest` column,
+The BRIN indexes on the `timestamp` of `sent_message_log`, `received_message_log`,
+and `performance_log` rely on physical row order, which matches timestamp order.
+If you alter such a table in any way, e.g., drop a column,
 and run `vacuum` while the application inserts data, order breaks:
 `vacuum` for some reason frees some slots and they get filled with new rows,
 creating timestamp inversions.
 
-So don't run `vacuum` on `status_changes` while the bot is running.
+So don't run `vacuum` on them while the bot is running.
 Run `cluster` to fix inversions if they occur (O(n) regardless of existing order).
 
-Use `sql-scripts/check-timestamp-inversions.sql` to detect inversions.
+To detect inversions,
+run `sql-scripts/check-timestamp-inversions.sql` with the table as a psql variable:
+`psql -v table=sent_message_log -f <script>`.

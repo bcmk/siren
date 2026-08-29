@@ -1211,7 +1211,6 @@ type UpsertUnconfirmedTimings struct {
 	InsertNicknamesMs     int
 	InsertStatusChangesMs int
 	CommitMs              int
-	SummarizeBrinMs       int
 }
 
 // UpsertUnconfirmedStatusChanges upserts streamers to obtain integer IDs,
@@ -1310,9 +1309,6 @@ func (d *Database) UpsertUnconfirmedStatusChanges(
 	commitStart := time.Now()
 	checkErr(tx.Commit(context.Background()))
 	timings.CommitMs = int(time.Since(commitStart).Milliseconds())
-	summarizeStart := time.Now()
-	d.MustExec("select brin_summarize_new_values('ix_status_changes_timestamp')")
-	timings.SummarizeBrinMs = int(time.Since(summarizeStart).Milliseconds())
 	return timings
 }
 

@@ -1,4 +1,22 @@
-create table long_status_changes as
+-- The clone is a hypertable from the start,
+-- so the ordered fill lands each week in its chunk.
+create table long_status_changes (
+    timestamp integer not null,
+    streamer_id integer not null,
+    status smallint not null,
+    prev_status smallint not null,
+    constraint chk_status_changes_status check (status in (0, 1, 2)),
+    constraint chk_status_changes_prev_status check (prev_status in (0, 1, 2)),
+    constraint chk_status_changes_prev_status_differs check (status = 0 or status <> prev_status)
+) with (
+    tsdb.hypertable,
+    tsdb.partition_column = 'timestamp',
+    tsdb.chunk_interval = 604800, -- 7 days
+    tsdb.create_default_indexes = false,
+    tsdb.columnstore = false
+);
+
+insert into long_status_changes (timestamp, streamer_id, status, prev_status)
 with periods as (
     select
         streamer_id,
@@ -44,31 +62,34 @@ from (
 where status <> prev_status
 order by timestamp;
 
-create index long_status_changes_timestamp_btree on long_status_changes (timestamp);
-cluster long_status_changes using long_status_changes_timestamp_btree;
-drop index long_status_changes_timestamp_btree;
-
 -- Renaming a table leaves its index names behind,
 -- so the backup keeps holding the ones recreated below until they are renamed too.
 alter table status_changes rename to status_changes_backup;
+
 alter index ix_status_changes_streamer_id_timestamp
 rename to ix_status_changes_backup_streamer_id_timestamp;
+
 alter index ix_status_changes_timestamp rename to ix_status_changes_backup_timestamp;
 
 alter table long_status_changes rename to status_changes;
 
--- create table as select keeps neither, so both come back by hand.
+-- Renaming a table leaves the not-null constraint names behind too.
 alter table status_changes
-alter column timestamp set not null,
-alter column streamer_id set not null,
-alter column status set not null,
-alter column prev_status set not null;
+rename constraint long_status_changes_timestamp_not_null to status_changes_timestamp_not_null;
 
-alter table status_changes add constraint chk_status_changes_status check (status in (0, 1, 2));
-alter table status_changes add constraint chk_status_changes_prev_status check (prev_status in (0, 1, 2));
+alter table status_changes
+rename constraint long_status_changes_streamer_id_not_null to status_changes_streamer_id_not_null;
+
+alter table status_changes
+rename constraint long_status_changes_status_not_null to status_changes_status_not_null;
+
+alter table status_changes
+rename constraint long_status_changes_prev_status_not_null to status_changes_prev_status_not_null;
 
 create index ix_status_changes_streamer_id_timestamp
 on status_changes (streamer_id, timestamp)
 include (status, prev_status);
-create index ix_status_changes_timestamp on status_changes using brin (timestamp) with (pages_per_range = 8);
-analyze status_changes;
+
+create index ix_status_changes_timestamp on status_changes (timestamp);
+
+vacuum analyze status_changes;

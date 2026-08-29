@@ -256,6 +256,8 @@
 
 - Run `cmd/schema-dump/schema-dump` to get the full database schema
 - BRIN indexes require explicit `brin_summarize_new_values` calls
+- `status_changes` is a TimescaleDB hypertable on the Apache-2 edition:
+  no compression, continuous aggregates, or policies
 - Read `docs/testing-database.md` before working with the
   testing database environment
 - pgx caches prepared statements, which can cause
@@ -338,6 +340,7 @@ never compare one to 0 to mean absent, invalid, or "nothing to handle".
 - Read `docs/brin-maintenance.md` before changing any BRIN index,
   recreating one, or running operations
   that could affect physical row order on a BRIN-indexed table.
+- Read `docs/timescaledb.md` before changing a hypertable or using a TimescaleDB feature
 - Read `docs/telegram-stars.md` before changing Telegram Stars payment handling
   (buying subscriptions, invoices, pre-checkout, refunds).
 - Read `docs/writing-translations.md` every time you add or edit a message

@@ -57,6 +57,7 @@ type check struct {
 
 type table struct {
 	columns    []column
+	dimensions []string
 	indexes    []index
 	checks     []check
 	reloptions []string
@@ -97,6 +98,28 @@ func printSchema(database db.Database) {
 				isNullable:   isNullable,
 				defaultValue: columnDefault,
 			})
+		})
+
+	var dimTable, dimDef string
+	database.MustQuery(`
+		select
+			hypertable_name,
+			case dimension_type
+				when 'Time' then format(
+					'hypertable by %s, chunk interval %s',
+					column_name,
+					coalesce(integer_interval::text, time_interval::text))
+				else format('hash partitioned by %s, %s partitions', column_name, num_partitions)
+			end
+		from timescaledb_information.dimensions
+		where hypertable_schema = 'public'
+		order by hypertable_name, dimension_number`,
+		nil,
+		db.ScanTo{&dimTable, &dimDef},
+		func() {
+			if tables[dimTable] != nil {
+				tables[dimTable].dimensions = append(tables[dimTable].dimensions, dimDef)
+			}
 		})
 
 	var indexName, indexTable, indexDef string
@@ -191,6 +214,13 @@ func printSchema(database db.Database) {
 				maxType, typeStr,
 				nullable,
 				def)
+		}
+
+		if len(t.dimensions) > 0 {
+			fmt.Println()
+			for _, dim := range t.dimensions {
+				fmt.Printf("    %s\n", dim)
+			}
 		}
 
 		if len(t.indexes) > 0 {

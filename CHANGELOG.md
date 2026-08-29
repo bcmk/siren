@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## Unreleased
+
+### Changed
+
+- `status_changes` is a TimescaleDB hypertable, converted by prebuild migrations;
+  the conversion needs free disk for a second copy of the table
+- `pg_class.reltuples` of `status_changes` no longer counts its rows; `approximate_row_count` does
+
 ## v5.5.4 — 2026-09-03
 
 ### Removed
