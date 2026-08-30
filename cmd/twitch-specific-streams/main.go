@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/bcmk/siren/v5/internal/checkers"
 	"github.com/bcmk/siren/v5/lib/cmdlib"
@@ -19,10 +20,11 @@ func main() {
 			os.Stderr,
 			"usage: %s [options] <channel>...\n\n"+
 				"Per-site checker settings (HTTP timeout, secrets, endpoint URLs)\n"+
-				"are read from twitch-checker.json, searched in the current directory,\n"+
-				"$XDG_CONFIG_HOME/siren/, and ~/.config/siren/.\n"+
+				"are read from twitch-checker.json in\n"+
+				"%s.\n"+
 				"Override the path with -checker-config.\n\n",
 			os.Args[0],
+			strings.Join(cmdlib.ConfigDirs(), " or "),
 		)
 		flag.PrintDefaults()
 	}

@@ -192,6 +192,34 @@ func (d *Database) MustQuery(queryString string, args QueryParams, record ScanTo
 	query.Close()
 }
 
+// SetRole switches the role for this connection, so anything created belongs to it.
+// The bot owns its tables, and a migration run under someone else's login would not.
+func (d *Database) SetRole(role string) {
+	d.MustExec("set role " + pgx.Identifier{role}.Sanitize())
+}
+
+// Throttle keeps a prebuild from crowding out the bot it runs beside:
+// no parallel workers, dirty pages written back in small batches, and a paced vacuum.
+func (d *Database) Throttle() {
+	d.MustExec("set max_parallel_workers_per_gather = 0")
+	d.MustExec("set max_parallel_maintenance_workers = 0")
+	d.MustExec("set backend_flush_after = '2MB'")
+	d.MustExec("set vacuum_cost_delay = '20ms'")
+	// What a chunked prebuild waits between chunks. Startup leaves it unset and never waits.
+	d.MustExec("set siren.chunk_pause = '2'")
+}
+
+// SetWorkMem raises the memory this connection may use to sort and to build indexes.
+// A prebuild converts a whole table, and the defaults are sized for queries.
+// One value serves both, since the migrator runs a single statement at a time.
+func (d *Database) SetWorkMem(size string) {
+	// set takes no parameters, and MustExec without arguments speaks the simple protocol,
+	// which would run anything a stray quote in the config let through.
+	d.MustExec("select set_config('work_mem', $1, false)", size)
+	// A sort reads work_mem, create index maintenance_work_mem, and 0071 builds two.
+	d.MustExec("select set_config('maintenance_work_mem', $1, false)", size)
+}
+
 // Begin begins a transaction
 func (d *Database) Begin() (pgx.Tx, error) { return d.db.Begin(context.Background()) }
 

@@ -3,9 +3,6 @@ package checkers
 import (
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/bcmk/siren/v5/lib/cmdlib"
@@ -34,9 +31,9 @@ func (c *SimpleCheckerConfig) validate() error {
 	return nil
 }
 
-// readCheckerConfig loads <website>-checker.json. When checkerCfgPath
-// is empty, searches the CWD then ~/.config/siren/. XRN_-prefixed env
-// vars override file values (e.g. XRN_CLIENT_SECRET).
+// readCheckerConfig loads <website>-checker.json.
+// When checkerCfgPath is empty, searches the user config directories.
+// XRN_-prefixed env vars override file values (e.g. XRN_CLIENT_SECRET).
 func readCheckerConfig(
 	cfg validatedCheckerConfig,
 	website, checkerCfgPath string,
@@ -72,28 +69,5 @@ func readCheckerConfig(
 }
 
 func findCheckerConfig(website string) (string, error) {
-	name := website + "-checker.json"
-	var dirs []string
-	addDistinctDir := func(d string) {
-		if !slices.Contains(dirs, d) {
-			dirs = append(dirs, d)
-		}
-	}
-	addDistinctDir(".")
-	if cfg, err := os.UserConfigDir(); err == nil {
-		addDistinctDir(filepath.Join(cfg, "siren"))
-	}
-	// Also search ~/.config/siren on macOS, where os.UserConfigDir
-	// points at ~/Library/Application Support; on Linux it's already
-	// that path, so addDistinctDir drops the duplicate.
-	if home, err := os.UserHomeDir(); err == nil {
-		addDistinctDir(filepath.Join(home, ".config", "siren"))
-	}
-	for _, d := range dirs {
-		p := filepath.Join(d, name)
-		if _, err := os.Stat(p); err == nil {
-			return p, nil
-		}
-	}
-	return "", fmt.Errorf("checker config %q not found in %v", name, dirs)
+	return cmdlib.FindConfig(website + "-checker.json")
 }

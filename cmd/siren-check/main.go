@@ -21,11 +21,12 @@ func main() {
 			"usage: %s [options] <site> <model ID>\n\n"+
 				"sites: %s\n\n"+
 				"Per-site checker settings (HTTP timeout, secrets, endpoint URLs)\n"+
-				"are read from <site>-checker.json, searched in the current directory,\n"+
-				"$XDG_CONFIG_HOME/siren/, and ~/.config/siren/.\n"+
+				"are read from <site>-checker.json in\n"+
+				"%s.\n"+
 				"Override the path with -checker-config.\n\n",
 			os.Args[0],
 			strings.Join(checkers.CLISites(), ", "),
+			strings.Join(cmdlib.ConfigDirs(), " or "),
 		)
 		flag.PrintDefaults()
 	}

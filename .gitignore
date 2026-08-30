@@ -15,3 +15,4 @@ cmd/twitch-specific-streams/twitch-specific-streams
 respond-examples
 api-docs
 __pycache__
+*-checker.json

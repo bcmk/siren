@@ -279,7 +279,7 @@
   <https://www.postgresql.org/docs/current/storage-vm.html>.
 - When a migration needs multiple files, use `_1`, `_2` suffixes.
   They must share the same base name
-  (differing only in number prefix, suffix, and `no_transaction`).
+  (differing only in number prefix, suffix, then `prebuild` before `no_transaction`).
 - When renaming a table, also rename the constraints and indexes it carries.
   PostgreSQL names them after the table it created them on,
   the primary key `tablename_pkey` and a not-null `tablename_column_not_null`,
@@ -293,6 +293,12 @@
   like a column list or a function's arguments.
 - The bot is down while it applies migrations, and three minutes of that is already long.
   Raise it before writing a migration you suspect will take that long.
+- Work that can happen while the bot still serves belongs in a prebuild migration,
+  named `NNNN_prebuild_name.sql`, or `NNNN_prebuild_no_transaction_name.sql` when both apply,
+  and applied by `migrator --prebuild`.
+  Startup runs any that were not, so a prebuild only ever moves work out of the downtime.
+- The bot owns its tables, and the logins that run migrations do not,
+  so the migrator config gives every bot the role to create them as, and requires it
 
 ## Commands and Logging
 
