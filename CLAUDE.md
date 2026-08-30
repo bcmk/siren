@@ -173,6 +173,13 @@
 - Pushing tags to origin requires explicit permission, like any push.
 - Never push a tag that is not reachable from `master`.
 
+## Worktrees
+
+- `golangci-lint` caches across worktrees
+  and serves the main checkout's results for a file of the same name,
+  with paths outside the worktree and mismatched line numbers.
+  Run `golangci-lint cache clean` before trusting the first lint in a worktree.
+
 ## Go Module Version
 
 - The module path's major-version suffix in `go.mod`
@@ -268,13 +275,17 @@
 - When a migration needs multiple files, use `_1`, `_2` suffixes.
   They must share the same base name
   (differing only in number prefix, suffix, and `no_transaction`).
-- When renaming a table, also rename its primary key constraint.
-  PostgreSQL auto-creates it as `tablename_pkey`.
+- When renaming a table, also rename the constraints and indexes it carries.
+  PostgreSQL names them after the table it created them on,
+  the primary key `tablename_pkey` and a not-null `tablename_column_not_null`,
+  and renaming the table leaves every one of them behind.
 - Name constraints and indexes:
   foreign keys `fk_<table>_<column>`, check constraints `chk_<table>_<column>`,
   indexes `ix_<table>_<columns>`, primary keys `<table>_pkey`.
   Use a unique `ix_` index for uniqueness, not a unique constraint.
 - Don't indent continuation lines in multi-line SQL statements
+- The bot is down while it applies migrations, and three minutes of that is already long.
+  Raise it before writing a migration you suspect will take that long.
 
 ## Commands and Logging
 
