@@ -21,6 +21,24 @@ Status changes are detected by comparing the in-memory cache of online streamers
 3. Not in cache, exists in DB, not in result, not already offline → offline
 4. Not requested known streamer → unknown (unsubscribed)
 
+## Previous status
+
+Every row also stores `prev_status`, the status the change left behind.
+The upsert of `streamers` returns `prev_unconfirmed_status`,
+which the update has already moved aside, so the writer gets it for free.
+
+A row is self-describing, so a period reads without the change preceding it.
+The status a window opens in is its first change's `prev_status`,
+or the streamer's current status where the window holds no change.
+`ChangesFromToForStreamers` reads both, which is why it joins `streamers`.
+
+## Row layout
+
+Columns are ordered four-byte first, then the two-byte statuses.
+A row is 40 bytes either way, but the order leaves four bytes of slack
+that one more four-byte column can use without growing the row or the covering index.
+Putting a `smallint` before an `integer` spends that slack on padding instead.
+
 ## Denormalization
 
 The `streamers` table stores the last two statuses from `status_changes`:
@@ -41,7 +59,8 @@ updating the denormalized fields in the same transaction.
 
 ## Constraints
 
-Both `status_changes.status` and `streamers.confirmed_status` are constrained
+`status_changes.status`, `status_changes.prev_status`
+and `streamers.confirmed_status` are constrained
 to (0, 1, 2) — unknown, offline, online.
 
 We do not use foreign key constraints.
@@ -56,6 +75,11 @@ The unconfirmed statuses in `streamers`
 must always match the latest entries in `status_changes`.
 We use this invariant to ensure correctness.
 This invariant is verified by `checkInv` in tests.
+
+A second invariant holds within `status_changes` itself:
+a row's `prev_status` never equals its `status`,
+and always equals the previous row's `status` for that streamer.
+No status change is recorded unless the status actually changed.
 
 ## First offline status
 

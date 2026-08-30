@@ -358,12 +358,12 @@ func TestCopyFromAndBatchInTransaction(t *testing.T) {
 
 	// CopyFrom should succeed
 	rows := [][]interface{}{
-		{streamerIntID, cmdlib.StatusOnline, 100},
+		{streamerIntID, 100, int16(cmdlib.StatusOnline), int16(cmdlib.StatusUnknown)},
 	}
 	_, err = tx.CopyFrom(
 		context.Background(),
 		pgx.Identifier{"status_changes"},
-		[]string{"streamer_id", "status", "timestamp"},
+		[]string{"streamer_id", "timestamp", "status", "prev_status"},
 		pgx.CopyFromRows(rows),
 	)
 	if err != nil {
@@ -665,32 +665,42 @@ func checkNicknamesMatch(t *testing.T, streamers []db.Streamer, dbNicknames map[
 	}
 }
 
-func checkNoConsecutiveSameStatuses(t *testing.T, d *db.Database) {
+// checkPrevStatuses holds both invariants of prev_status:
+// it never repeats the row's own status, and always names the status before it.
+func checkPrevStatuses(t *testing.T, d *db.Database) {
 	t.Helper()
 	type entry struct {
-		nickname string
-		status   cmdlib.StatusKind
+		nickname        string
+		timestamp       int
+		status          cmdlib.StatusKind
+		prevStatus      cmdlib.StatusKind
+		precedingStatus cmdlib.StatusKind
 	}
-	var nickname string
-	var status cmdlib.StatusKind
+	var e entry
 	var results []entry
 	d.MustQuery(`
-		with periods as (
+		select nickname, timestamp, status, prev_status, preceding_status
+		from (
 			select
 				s.nickname,
+				sc.timestamp,
 				sc.status,
-				lead(sc.status) over (partition by sc.streamer_id order by sc.timestamp) as next_status
+				sc.prev_status,
+				coalesce(
+					lag(sc.status) over (partition by sc.streamer_id order by sc.timestamp, sc.ctid),
+					0::smallint) as preceding_status
 			from status_changes sc
 			join streamers s on s.id = sc.streamer_id
-		)
-		select nickname, status
-		from periods
-		where status = next_status`,
+		) sc
+		where status = prev_status
+		or prev_status != preceding_status`,
 		nil,
-		db.ScanTo{&nickname, &status},
-		func() { results = append(results, entry{nickname, status}) })
+		db.ScanTo{&e.nickname, &e.timestamp, &e.status, &e.prevStatus, &e.precedingStatus},
+		func() { results = append(results, e) })
 	for _, r := range results {
-		t.Errorf("consecutive same status found for %s: %v", r.nickname, r.status)
+		t.Errorf(
+			"bad prev_status for %s at %d: status = %v, prev_status = %v, preceding status = %v",
+			r.nickname, r.timestamp, r.status, r.prevStatus, r.precedingStatus)
 	}
 }
 
@@ -703,7 +713,7 @@ func checkInv(w *worker, t *testing.T) {
 	checkLatestStatusChanges(t, &w.db, lastTwoChanges)
 	checkUnconfirmedConsistency(t, streamers, lastTwoChanges)
 	checkNicknamesMatch(t, streamers, nicknames)
-	checkNoConsecutiveSameStatuses(t, &w.db)
+	checkPrevStatuses(t, &w.db)
 }
 
 func TestAddStreamer(t *testing.T) {
@@ -1751,28 +1761,36 @@ func TestStatusTransitions(t *testing.T) {
 				UnconfirmedStatus:    cmdlib.StatusOffline,
 				UnconfirmedTimestamp: 1,
 			})
+			// Unknown is only ever reached from another status, so this one starts offline.
 			insertTestStreamer(&w.db, db.Streamer{
-				Nickname:             "always_unknown",
-				UnconfirmedStatus:    cmdlib.StatusUnknown,
-				UnconfirmedTimestamp: 1,
+				Nickname:                 "always_unknown",
+				UnconfirmedStatus:        cmdlib.StatusUnknown,
+				UnconfirmedTimestamp:     1,
+				PrevUnconfirmedStatus:    cmdlib.StatusOffline,
+				PrevUnconfirmedTimestamp: 0,
 			})
 			insertSubscription(&w.db, "ep", 1, "always_online")
 			insertSubscription(&w.db, "ep", 1, "always_offline")
 			insertSubscription(&w.db, "ep", 1, "always_unknown")
 			w.db.MustExec(`
-				insert into status_changes (streamer_id, status, timestamp)
-				values ((select id from streamers where nickname = $1), $2, $3)`,
-				"always_online", cmdlib.StatusOnline, 1,
+				insert into status_changes (streamer_id, timestamp, status, prev_status)
+				values ((select id from streamers where nickname = $1), $2, $3, $4)`,
+				"always_online", 1, cmdlib.StatusOnline, cmdlib.StatusUnknown,
 			)
 			w.db.MustExec(`
-				insert into status_changes (streamer_id, status, timestamp)
-				values ((select id from streamers where nickname = $1), $2, $3)`,
-				"always_offline", cmdlib.StatusOffline, 1,
+				insert into status_changes (streamer_id, timestamp, status, prev_status)
+				values ((select id from streamers where nickname = $1), $2, $3, $4)`,
+				"always_offline", 1, cmdlib.StatusOffline, cmdlib.StatusUnknown,
 			)
 			w.db.MustExec(`
-				insert into status_changes (streamer_id, status, timestamp)
-				values ((select id from streamers where nickname = $1), $2, $3)`,
-				"always_unknown", cmdlib.StatusUnknown, 1,
+				insert into status_changes (streamer_id, timestamp, status, prev_status)
+				values ((select id from streamers where nickname = $1), $2, $3, $4)`,
+				"always_unknown", 0, cmdlib.StatusOffline, cmdlib.StatusUnknown,
+			)
+			w.db.MustExec(`
+				insert into status_changes (streamer_id, timestamp, status, prev_status)
+				values ((select id from streamers where nickname = $1), $2, $3, $4)`,
+				"always_unknown", 1, cmdlib.StatusUnknown, cmdlib.StatusOffline,
 			)
 
 			// Initialize cache after setting up background streamers

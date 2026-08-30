@@ -2154,9 +2154,6 @@ func onlineCells(
 		for i, c := range changes[:len(changes)-1] {
 			if c.Status == cmdlib.StatusOnline {
 				begin := (c.Timestamp - from) / cellSeconds
-				if begin < 0 {
-					begin = 0
-				}
 				end := (changes[i+1].Timestamp - from + cellSeconds - 1) / cellSeconds
 				for j := begin; j < end; j++ {
 					cells[j] = true

@@ -1,16 +1,17 @@
-with periods as (
+-- no status is ever recorded twice in a row
+select streamer_id, timestamp, status, prev_status
+from status_changes
+where status = prev_status;
+
+-- prev_status agrees with the row before it
+select streamer_id, timestamp, status, prev_status, preceding_status
+from (
     select
-        channel_id,
-        status,
+        streamer_id,
         timestamp,
-
-        lead(timestamp) over (partition by channel_id order by timestamp) as next_timestamp,
-        lead(status)    over (partition by channel_id order by timestamp) as next_status,
-
-        lag(timestamp)  over (partition by channel_id order by timestamp) as prev_timestamp,
-        lag(status)     over (partition by channel_id order by timestamp) as prev_status
+        status,
+        prev_status,
+        lag(status) over (partition by streamer_id order by timestamp, ctid) as preceding_status
     from status_changes
-)
-select *
-from periods
-where status = next_status;
+) sc
+where prev_status is distinct from coalesce(preceding_status, 0);

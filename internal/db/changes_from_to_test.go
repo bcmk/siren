@@ -43,7 +43,7 @@ var changesTests = []changesTestCase{
 		to:        300,
 		expected: map[string][]StatusChange{
 			"a": {
-				{Status: cmdlib.StatusOnline, Timestamp: 100},
+				{Status: cmdlib.StatusOnline, Timestamp: 200},
 				{Timestamp: 300},
 			},
 		},
@@ -59,6 +59,7 @@ var changesTests = []changesTestCase{
 		to:        300,
 		expected: map[string][]StatusChange{
 			"a": {
+				{Status: cmdlib.StatusUnknown, Timestamp: 50},
 				{Status: cmdlib.StatusOnline, Timestamp: 100},
 				{Status: cmdlib.StatusOffline, Timestamp: 200},
 				{Timestamp: 300},
@@ -77,7 +78,7 @@ var changesTests = []changesTestCase{
 		to:        400,
 		expected: map[string][]StatusChange{
 			"a": {
-				{Status: cmdlib.StatusOffline, Timestamp: 200},
+				{Status: cmdlib.StatusOffline, Timestamp: 250},
 				{Status: cmdlib.StatusOnline, Timestamp: 300},
 				{Timestamp: 400},
 			},
@@ -96,12 +97,12 @@ var changesTests = []changesTestCase{
 		to:        300,
 		expected: map[string][]StatusChange{
 			"a": {
-				{Status: cmdlib.StatusOnline, Timestamp: 100},
+				{Status: cmdlib.StatusOnline, Timestamp: 150},
 				{Status: cmdlib.StatusOffline, Timestamp: 200},
 				{Timestamp: 300},
 			},
 			"b": {
-				{Status: cmdlib.StatusOffline, Timestamp: 100},
+				{Status: cmdlib.StatusOffline, Timestamp: 150},
 				{Status: cmdlib.StatusOnline, Timestamp: 200},
 				{Timestamp: 300},
 			},
@@ -118,7 +119,7 @@ var changesTests = []changesTestCase{
 		to:        400,
 		expected: map[string][]StatusChange{
 			"a": {
-				{Status: cmdlib.StatusOffline, Timestamp: 200},
+				{Status: cmdlib.StatusOffline, Timestamp: 300},
 				{Timestamp: 400},
 			},
 		},
@@ -134,7 +135,7 @@ var changesTests = []changesTestCase{
 		to:        300,
 		expected: map[string][]StatusChange{
 			"a": {
-				{Status: cmdlib.StatusOnline, Timestamp: 100},
+				{Status: cmdlib.StatusOnline, Timestamp: 200},
 				{Status: cmdlib.StatusOffline, Timestamp: 200},
 				{Timestamp: 300},
 			},
@@ -244,9 +245,9 @@ func TestChangesFromToForStreamersConsistency(t *testing.T) {
 	}
 
 	first := changes[0]
-	if first.Timestamp >= 150 {
+	if first.Timestamp != 150 {
 		t.Errorf(
-			"first entry should be before-range, got timestamp %d",
+			"first entry should open the window, got timestamp %d",
 			first.Timestamp,
 		)
 	}

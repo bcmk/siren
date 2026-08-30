@@ -635,40 +635,37 @@ func (d *Database) MaybeStreamer(nickname string) *Streamer {
 	return nil
 }
 
-// ChangesFromToForStreamers returns all changes for multiple streamers in specified period
+// ChangesFromToForStreamers returns each streamer's status changes in [from, to],
+// opening with the status the window starts in and closing with a sentinel at its end.
+// A window holding no change opens on the streamer's current status,
+// which assumes to is the present:
+// a window closing in the past would open on a status later changes have overtaken.
 func (d *Database) ChangesFromToForStreamers(streamerIDs []int, from int, to int) map[int][]StatusChange {
 	result := make(map[int][]StatusChange)
 	var streamerID int
-	var change StatusChange
+	var opening cmdlib.StatusKind
+	var status *cmdlib.StatusKind
+	var timestamp *int
 	d.MustQuery(`
-		with last_before as (
-			select lb.streamer_id, lb.status, lb.timestamp
-			from unnest($1::integer[]) as s(id)
-			cross join lateral (
-				select streamer_id, status, timestamp
-				from status_changes
-				where streamer_id = s.id
-				and timestamp < $2
-				order by timestamp desc
-				limit 1
-			) lb
-		)
-		select streamer_id, status, timestamp
-		from (
-			select streamer_id, status, timestamp
-			from status_changes
-			where streamer_id = any($1)
-			and timestamp >= $2
-			and timestamp <= $3
-			union all
-			select streamer_id, status, timestamp
-			from last_before
-		) combined
-		order by streamer_id, timestamp`,
+		select s.id, coalesce(sc.prev_status, s.unconfirmed_status), sc.status, sc.timestamp
+		from unnest($1::integer[]) as ids(id)
+		join streamers s on s.id = ids.id
+		left join status_changes sc
+		on sc.streamer_id = s.id
+		and sc.timestamp >= $2
+		and sc.timestamp <= $3
+		order by s.id, sc.timestamp`,
 		QueryParams{streamerIDs, from, to},
-		ScanTo{&streamerID, &change.Status, &change.Timestamp},
+		ScanTo{&streamerID, &opening, &status, &timestamp},
 		func() {
-			result[streamerID] = append(result[streamerID], change)
+			if result[streamerID] == nil {
+				result[streamerID] = []StatusChange{{Status: opening, Timestamp: from}}
+			}
+			if timestamp != nil {
+				result[streamerID] = append(
+					result[streamerID],
+					StatusChange{Status: *status, Timestamp: *timestamp})
+			}
 		})
 	for _, id := range streamerIDs {
 		result[id] = append(result[id], StatusChange{Timestamp: to})
@@ -1243,19 +1240,26 @@ func (d *Database) UpsertUnconfirmedStatusChanges(
 				prev_unconfirmed_timestamp = streamers.unconfirmed_timestamp,
 				unconfirmed_status = excluded.unconfirmed_status,
 				unconfirmed_timestamp = excluded.unconfirmed_timestamp
-			returning id, nickname, (xmax = 0) as is_new
+			returning id, nickname, prev_unconfirmed_status, (xmax = 0) as is_new
 		`,
 		nicknames, statuses, timestamp,
 	)
 	checkErr(err)
-	idMap := make(map[string]int, len(changedStatuses))
+	// prev_unconfirmed_status is the status this change leaves behind:
+	// the update has already moved it aside.
+	type upsertedStreamer struct {
+		id         int
+		prevStatus cmdlib.StatusKind
+	}
+	upserted := make(map[string]upsertedStreamer, len(changedStatuses))
 	var newNicknames []string
 	for rows.Next() {
 		var id int
 		var nickname string
+		var prevStatus cmdlib.StatusKind
 		var isNew bool
-		checkErr(rows.Scan(&id, &nickname, &isNew))
-		idMap[nickname] = id
+		checkErr(rows.Scan(&id, &nickname, &prevStatus, &isNew))
+		upserted[nickname] = upsertedStreamer{id: id, prevStatus: prevStatus}
 		if isNew {
 			newNicknames = append(newNicknames, nickname)
 		}
@@ -1282,12 +1286,13 @@ func (d *Database) UpsertUnconfirmedStatusChanges(
 	insertStart := time.Now()
 	copyRows := make([][]interface{}, len(changedStatuses))
 	for i, sc := range changedStatuses {
-		copyRows[i] = []interface{}{idMap[sc.Nickname], sc.Status, timestamp}
+		u := upserted[sc.Nickname]
+		copyRows[i] = []interface{}{timestamp, u.id, int16(sc.Status), int16(u.prevStatus)}
 	}
 	_, err = tx.CopyFrom(
 		context.Background(),
 		pgx.Identifier{"status_changes"},
-		[]string{"streamer_id", "status", "timestamp"},
+		[]string{"timestamp", "streamer_id", "status", "prev_status"},
 		pgx.CopyFromRows(copyRows),
 	)
 	checkErr(err)
