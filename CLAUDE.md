@@ -29,6 +29,8 @@
 - Deleting or moving a tag is fine while its version is unreleased,
   even when the registry already holds an image for it — those publishes are tests.
   A released tag is permanent
+- A doc change that is not part of the feature belongs at the base of the branch,
+  right after origin, so it can go to origin without waiting on a review
 - A request to commit stands until it is withdrawn.
   Commit each round of work as it finishes,
   rather than carrying it uncommitted and reporting that it is.
