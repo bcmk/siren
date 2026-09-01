@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v5.5.1 — 2026-09-02
+
+### Added
+
+- `migrator --prebuild <bot>` applies prebuild migrations while the bot still serves
+- `status_changes` carries `prev_status`, converted by the prebuild migrations
+
+### Changed
+
+- `migrator` takes a bot name and reads `migrator.json`, replacing the DSN argument
+
 ## v5.4.1 — 2026-08-28
 
 ### Changed
