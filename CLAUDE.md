@@ -215,11 +215,13 @@
   and its instructions say not to duplicate them
 - Close every review finding with a one-line `Fix:` naming the change that resolves it.
   Where the finding is a judgment call, the fix may be to accept it and change nothing.
+  Start `Fix:` on its own line.
 - During a code review, never touch the working tree.
   Run mutation tests and other experiments in a temporary worktree or copy —
   there they need no permission.
 - Write each finding to stand alone,
   so one can be handed to another agent without the rest of the list or the conversation.
+  Avoid pointing to other findings by number; restate what the reader needs.
 - Always look for simplifications, in fix checks and new code as much as in the reviewed diff
 
 ## Platform Notes
