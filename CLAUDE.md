@@ -29,6 +29,9 @@
 - Deleting or moving a tag is fine while its version is unreleased,
   even when the registry already holds an image for it — those publishes are tests.
   A released tag is permanent
+- A request to commit stands until it is withdrawn.
+  Commit each round of work as it finishes,
+  rather than carrying it uncommitted and reporting that it is.
 - After a mistake is corrected, ask if a new guideline
   should be added to CLAUDE.md to prevent it in the future
 - Before modifying a file using an ad-hoc script (e.g. `sed`),
