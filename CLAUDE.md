@@ -288,7 +288,9 @@
   foreign keys `fk_<table>_<column>`, check constraints `chk_<table>_<column>`,
   indexes `ix_<table>_<columns>`, primary keys `<table>_pkey`.
   Use a unique `ix_` index for uniqueness, not a unique constraint.
-- Don't indent continuation lines in multi-line SQL statements
+- Don't indent continuation lines in multi-line SQL statements.
+  What a bracket or a block opens indents one level,
+  like a column list or a function's arguments.
 - The bot is down while it applies migrations, and three minutes of that is already long.
   Raise it before writing a migration you suspect will take that long.
 
