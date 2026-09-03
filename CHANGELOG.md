@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v5.5.2 — 2026-09-03
+
+### Changed
+
+- Week and month grids skip the status lookup for streamers unchanged since the window
+
 ## v5.5.1 — 2026-09-02
 
 ### Added
