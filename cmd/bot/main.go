@@ -1161,8 +1161,6 @@ func (w *worker) showWeek(m receivedMessage, nickname string) {
 	}
 	user := w.mustUserByID(m.userID)
 	link := w.streamerLinker(w.gatedAffiliateForChat(m.chatID, user))
-	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].WeekRetrieving, nil)
-	m = m.next()
 	ids := make([]int, len(streamers))
 	for i, s := range streamers {
 		ids[i] = s.ID
@@ -1234,8 +1232,6 @@ func (w *worker) showMonth(m receivedMessage, nickname string) {
 	}
 	user := w.mustUserByID(m.userID)
 	link := w.streamerLinker(w.gatedAffiliateForChat(m.chatID, user))
-	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].MonthRetrieving, nil)
-	m = m.next()
 	ids := make([]int, len(streamers))
 	for i, s := range streamers {
 		ids[i] = s.ID

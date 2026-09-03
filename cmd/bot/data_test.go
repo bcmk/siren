@@ -61,7 +61,6 @@ var testTranslations = cmdlib.Translations{
 	Languages:       &cmdlib.Translation{Key: "languages", Str: "Languages", Parse: cmdlib.ParseRaw},
 	Version:         &cmdlib.Translation{Key: "version", Str: "Version %s", Parse: cmdlib.ParseRaw},
 	ProfileRemoved:  &cmdlib.Translation{Key: "profile_removed", Str: "ProfileRemoved %s", Parse: cmdlib.ParseRaw},
-	WeekRetrieving:  &cmdlib.Translation{Key: "week_retrieving", Str: "WeekRetrieving", Parse: cmdlib.ParseRaw},
 	OK:              &cmdlib.Translation{Key: "ok", Str: "OK", Parse: cmdlib.ParseRaw},
 	AdminsOnly:      &cmdlib.Translation{Key: "admins_only", Str: "AdminsOnly", Parse: cmdlib.ParseRaw},
 	GroupsOnly:      &cmdlib.Translation{Key: "groups_only", Str: "GroupsOnly", Parse: cmdlib.ParseRaw},
@@ -101,7 +100,6 @@ var testTranslations = cmdlib.Translations{
 	MonthChunk:      &cmdlib.Translation{Key: "month_chunk", Str: "MonthChunk", Parse: cmdlib.ParseRaw},
 	MonthNeverOnline: &cmdlib.Translation{
 		Key: "month_never_online", Str: "MonthNeverOnline", Parse: cmdlib.ParseRaw},
-	MonthRetrieving:        &cmdlib.Translation{Key: "month_retrieving", Str: "MonthRetrieving", Parse: cmdlib.ParseRaw},
 	CheckingStreamer:       &cmdlib.Translation{Key: "checking_streamer", Str: "CheckingStreamer", Parse: cmdlib.ParseRaw},
 	NotEnoughSubscriptions: &cmdlib.Translation{Key: "not_enough_subscriptions", Str: "NotEnoughSubscriptions", Parse: cmdlib.ParseRaw},
 	SubscriptionUsage:      &cmdlib.Translation{Key: "subscription_usage", Str: "SubscriptionUsage", Parse: cmdlib.ParseRaw},
@@ -275,11 +273,9 @@ func newTestWorker() *testWorker {
 	template.Must(tpl.New("timezone_invalid").Parse("TimezoneInvalid"))
 	template.Must(tpl.New("week_chunk").Parse("WeekChunk"))
 	template.Must(tpl.New("week_never_online").Parse("WeekNeverOnline"))
-	template.Must(tpl.New("week_retrieving").Parse("WeekRetrieving"))
 	template.Must(tpl.New("month").Parse("Month"))
 	template.Must(tpl.New("month_chunk").Parse("MonthChunk"))
 	template.Must(tpl.New("month_never_online").Parse("MonthNeverOnline"))
-	template.Must(tpl.New("month_retrieving").Parse("MonthRetrieving"))
 	template.Must(tpl.New("buy_subs").Parse("BuySubs"))
 	template.Must(tpl.New("buy_subs_package_button").Parse("BuySubsPackageButton"))
 

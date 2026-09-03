@@ -114,13 +114,8 @@ func TestShowWeekNeverOnline(t *testing.T) {
 	id := insertTestStreamer(&w.db, db.Streamer{Nickname: "ghost_model"})
 	w.db.AddSubscription(m.userID, id, "test")
 	w.showWeek(m, "")
-	if n := w.sendQueue.Len(); n != 2 {
-		t.Fatalf("queued replies = %d, want 2", n)
-	}
-	retrieving := w.sendQueue.pop()
-	retrieving.message.render("")
-	if got := retrieving.message.(*messageParams).Text; got == "" {
-		t.Error("the retrieving notice rendered empty")
+	if n := w.sendQueue.Len(); n != 1 {
+		t.Fatalf("queued replies = %d, want 1", n)
 	}
 	never := w.sendQueue.pop()
 	never.message.render("")

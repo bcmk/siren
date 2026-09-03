@@ -532,8 +532,6 @@ week_never_online:
       {{- if .TimeDiff }}  <i>last seen {{ template "duration" .TimeDiff }}</i> ago {{- end -}}
       {{- print "\n" -}}
     {{- end -}}
-week_retrieving:
-  str: Retrieving data, please wait...
 month:
   parse: html
   disable_preview: true
@@ -579,8 +577,6 @@ month_never_online:
       {{- if .TimeDiff }}  <i>last seen {{ template "duration" .TimeDiff }}</i> ago {{- end -}}
       {{- print "\n" -}}
     {{- end -}}
-month_retrieving:
-  str: Retrieving data, please wait...
 weekday:
   str: |-
     {{- if eq . 0 -}}Su{{- end -}}

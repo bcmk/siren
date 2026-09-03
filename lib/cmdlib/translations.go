@@ -92,11 +92,9 @@ type Translations struct {
 	Week                        *Translation `yaml:"week"`
 	WeekChunk                   *Translation `yaml:"week_chunk"`
 	WeekNeverOnline             *Translation `yaml:"week_never_online"`
-	WeekRetrieving              *Translation `yaml:"week_retrieving"`
 	Month                       *Translation `yaml:"month"`
 	MonthChunk                  *Translation `yaml:"month_chunk"`
 	MonthNeverOnline            *Translation `yaml:"month_never_online"`
-	MonthRetrieving             *Translation `yaml:"month_retrieving"`
 	ZeroSubscriptions           *Translation `yaml:"zero_subscriptions"`
 	FAQ                         *Translation `yaml:"faq"`
 	RawCommands                 *Translation `yaml:"raw_commands"`
