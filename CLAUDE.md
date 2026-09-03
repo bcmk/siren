@@ -295,6 +295,7 @@
 - Don't indent continuation lines in multi-line SQL statements.
   What a bracket or a block opens indents one level,
   like a column list or a function's arguments.
+- Separate SQL statements with a blank line when any of them spans multiple lines
 - The bot is down while it applies migrations, and three minutes of that is already long.
   Raise it before writing a migration you suspect will take that long.
 - Work that can happen while the bot still serves belongs in a prebuild migration,
