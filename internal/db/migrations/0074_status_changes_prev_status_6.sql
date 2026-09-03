@@ -1,3 +1,5 @@
+-- Cutover step 6, during downtime: check the two halves, append the tail, swap the table in.
+
 -- The prebuild migrations converted everything at or below the boundary.
 
 -- Everything below reads status_changes and then drops it,
@@ -8,7 +10,7 @@ lock table status_changes in access exclusive mode;
 
 -- The boundary splits by ctid while prev_status is defined by timestamp,
 -- so a row written after the prebuild
--- but timestamped before its tail would chain off the wrong predecessor.
+-- but timestamped before the newest converted row would chain off the wrong predecessor.
 -- Nothing can check this earlier: the tail does not exist yet.
 do $$
 declare
@@ -19,7 +21,7 @@ begin
     from status_changes
     where ctid > (select boundary from status_changes_conversion);
 
-    select max(timestamp) into prebuilt_end from status_changes_boundary;
+    select max_timestamp into prebuilt_end from status_changes_conversion;
 
     -- A check round shares one timestamp and is never split, so equal is normal.
     if tail_start < prebuilt_end then
@@ -49,19 +51,25 @@ begin
     end if;
 end $$;
 
--- A streamer's first row here takes its previous status from where the prebuild left off.
+-- A streamer's first tail row takes its previous status from its last converted row,
+-- looked up through the covering index; later tail rows chain off each other.
 insert into status_changes_new (timestamp, streamer_id, status, prev_status)
 select c.timestamp, c.streamer_id, c.status,
 coalesce(
     lag(c.status) over (partition by c.streamer_id order by c.timestamp, c.ctid),
-    b.status,
+    last.status,
     0)
 from status_changes c
-left join status_changes_boundary b on b.streamer_id = c.streamer_id
+left join lateral (
+    select n.status
+    from status_changes_new n
+    where n.streamer_id = c.streamer_id
+    order by n.timestamp desc
+    limit 1
+) last on true
 where c.ctid > (select boundary from status_changes_conversion)
-order by c.timestamp;
+order by c.timestamp, c.ctid;
 
-drop table status_changes_boundary;
 drop table status_changes_conversion;
 drop table status_changes;
 

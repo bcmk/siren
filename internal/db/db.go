@@ -216,7 +216,8 @@ func (d *Database) SetWorkMem(size string) {
 	// set takes no parameters, and MustExec without arguments speaks the simple protocol,
 	// which would run anything a stray quote in the config let through.
 	d.MustExec("select set_config('work_mem', $1, false)", size)
-	// A sort reads work_mem, create index maintenance_work_mem, and 0071 builds two.
+	// A sort reads work_mem;
+	// cluster and create index read maintenance_work_mem, which 0071 and 0072 lean on.
 	d.MustExec("select set_config('maintenance_work_mem', $1, false)", size)
 }
 

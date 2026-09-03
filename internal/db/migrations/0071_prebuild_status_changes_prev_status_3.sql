@@ -1,13 +1,8 @@
--- Kept out of the conversion's transactions: these run once, after the chunks.
+-- Prebuild step 3: cluster the converted rows by timestamp.
 
-alter table status_changes_new add constraint chk_status_changes_status check (status in (0, 1, 2));
-alter table status_changes_new add constraint chk_status_changes_prev_status check (prev_status in (0, 1, 2));
-
-create index ix_status_changes_new_streamer_id_timestamp
-on status_changes_new (streamer_id, timestamp)
-include (status, prev_status);
-
-create index ix_status_changes_new_timestamp
-on status_changes_new using brin (timestamp) with (pages_per_range = 8);
-
-drop procedure convert_status_changes();
+-- Chunking by streamer wrote the heap in streamer order,
+-- so cluster it by timestamp to give the BRIN a column its ranges can prune on.
+-- The new table is not in use yet, so the rewrite never waits on the bot.
+create index ix_status_changes_new_timestamp_btree on status_changes_new (timestamp);
+cluster status_changes_new using ix_status_changes_new_timestamp_btree;
+drop index ix_status_changes_new_timestamp_btree;

@@ -28,6 +28,9 @@ func TestPrebuiltStatusChanges(t *testing.T) {
 		(1, 200, 1), (2, 200, 2),
 		(2, 300, 1), (1, 300, 2)`)
 
+	// One streamer per chunk, so the two convert in separate chunks.
+	db.MustExec(`set siren.chunk_streamers = '1'`)
+
 	// One call takes the whole prebuild group, both the conversion and its vacuum.
 	if !db.ApplyNextPrebuildMigrations() {
 		t.Fatal("expected pending prebuild migrations")
@@ -206,9 +209,10 @@ func TestMigrationRunsAreSerialized(t *testing.T) {
 	}
 }
 
-// Freed space below the boundary would take a later row into neither half,
-// so the migration counts both halves against the source rather than trusting the split.
-func TestPrebuildRefusesRowsBelowTheBoundary(t *testing.T) {
+// The prebuild counts its own inserts,
+// so the cutover checks that count plus the tail accounts for every source row
+// and refuses when a row has gone missing under it.
+func TestConversionRefusesWhenCountsDisagree(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
 	defer db.terminate()
@@ -222,28 +226,19 @@ func TestPrebuildRefusesRowsBelowTheBoundary(t *testing.T) {
 	db.MustExec(`delete from schema_migrations where name like '%status_changes_prev_status%'`)
 	db.MustExec(`
 		insert into status_changes (status, timestamp, streamer_id) values
-		(2, 100, 1), (1, 200, 1), (2, 300, 1), (1, 400, 1)`)
-	// Deleted before the prebuild, so neither the boundary nor the count ever saw it.
-	db.MustExec(`delete from status_changes where timestamp = 200`)
+		(2, 100, 1), (1, 200, 1), (2, 300, 1)`)
 
 	if !db.ApplyNextPrebuildMigrations() {
 		t.Fatal("expected pending prebuild migrations")
 	}
 
-	// vacuum frees the dead row's space, and the next insert takes it, below the boundary.
-	db.MustExec(`vacuum status_changes`)
-	db.MustExec(`insert into status_changes (status, timestamp, streamer_id) values (2, 500, 1)`)
-
-	below := db.MustInt(`
-		select count(*) from status_changes
-		where ctid <= (select boundary from status_changes_conversion)`)
-	if below != 4 {
-		t.Fatalf("the new row should have landed below the boundary, %d rows are there", below)
-	}
+	// A converted row leaves the source after the prebuild counted it,
+	// so the count and the table no longer agree.
+	db.MustExec(`delete from status_changes where timestamp = 200`)
 
 	defer func() {
 		if recover() == nil {
-			t.Error("the migration should have refused the unaccounted row")
+			t.Error("the migration should have refused the unaccounted count")
 		}
 	}()
 	db.ApplyMigrations()
@@ -340,4 +335,112 @@ func TestMigrationWaitsForWritersToFinish(t *testing.T) {
 	case <-time.After(30 * time.Second):
 		t.Fatal("the migration should have proceeded once the round ended")
 	}
+}
+
+// Space freed by old updates lets a newer row sit in an older block,
+// so a heap in block order hands a streamer its rows out of sequence.
+// The conversion reads through the (streamer_id, timestamp) index,
+// so a shuffled heap converts the same,
+// and chunking by streamer covers every one across the gaps between their ids.
+func TestConversionIgnoresHeapOrder(t *testing.T) {
+	t.Parallel()
+	db := newTestDB(t)
+	defer db.terminate()
+
+	db.MustExec(`drop table status_changes`)
+	db.MustExec(`
+		create table status_changes (
+			status integer not null,
+			timestamp integer not null,
+			streamer_id integer not null)`)
+	db.MustExec(`delete from schema_migrations where name like '%status_changes_prev_status%'`)
+
+	// Streamer ids 1 and 3, rows shuffled so neither time nor streamer follows the heap.
+	db.MustExec(`
+		insert into status_changes (status, timestamp, streamer_id) values
+		(2, 300, 1), (1, 100, 3),
+		(1, 200, 1), (1, 300, 3),
+		(2, 100, 1), (2, 200, 3)`)
+
+	// One streamer per chunk, so the loop spans [0,1) empty, [1,2), [2,3) empty, and [3,4).
+	db.MustExec(`set siren.chunk_streamers = '1'`)
+	if !db.ApplyNextPrebuildMigrations() {
+		t.Fatal("expected pending prebuild migrations")
+	}
+
+	// With chunk size 1 and max id 3 the loop ends at 4;
+	// the 50000 default would end at 50000,
+	// so this fails if the setting were ignored and everything converted in one chunk.
+	if n := db.MustInt(`select next_streamer_id from status_changes_conversion`); n != 4 {
+		t.Fatalf("expected the streamer loop to stop at 4, got %d", n)
+	}
+
+	db.MustExec(`insert into status_changes (status, timestamp, streamer_id) values (1, 400, 1), (2, 400, 3)`)
+	db.ApplyMigrations()
+
+	got := db.MustStrings(`
+		select timestamp || ' ' || streamer_id || ' ' || status || ' ' || prev_status
+		from status_changes
+		order by streamer_id, timestamp`)
+	want := []string{
+		"100 1 2 0", "200 1 1 2", "300 1 2 1", "400 1 1 2",
+		"100 3 1 0", "200 3 2 1", "300 3 1 2", "400 3 2 1",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("expected %d rows, got %d: %v", len(want), len(got), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("row %d: expected %q, got %q", i, want[i], got[i])
+		}
+	}
+}
+
+// A streamer's first row defaults prev_status to 0, and its status may also be 0 (unknown),
+// so the invariant check exempts status 0 and the conversion must accept such a row.
+func TestConversionAllowsUnknownFirstStatus(t *testing.T) {
+	t.Parallel()
+	db := newTestDB(t)
+	defer db.terminate()
+
+	db.MustExec(`drop table status_changes`)
+	db.MustExec(`
+		create table status_changes (
+			status integer not null,
+			timestamp integer not null,
+			streamer_id integer not null)`)
+	db.MustExec(`delete from schema_migrations where name like '%status_changes_prev_status%'`)
+	db.MustExec(`
+		insert into status_changes (status, timestamp, streamer_id) values
+		(0, 100, 1), (1, 200, 1)`)
+
+	if !db.ApplyNextPrebuildMigrations() {
+		t.Fatal("expected pending prebuild migrations")
+	}
+	db.ApplyMigrations()
+
+	if got := db.MustStrings(`
+		select status || ' ' || prev_status from status_changes
+		order by timestamp`); got[0] != "0 0" {
+		t.Errorf("an unknown first row should convert to 0 0, got %q", got[0])
+	}
+}
+
+// The invariant check rejects a change that lands on the status it came from,
+// which is how a mis-ordered same-second flap would surface.
+func TestNewTableRejectsSelfPrevStatus(t *testing.T) {
+	t.Parallel()
+	db := newTestDB(t)
+	defer db.terminate()
+
+	db.ApplyMigrations()
+
+	defer func() {
+		if recover() == nil {
+			t.Error("a row with status equal to prev_status should be rejected")
+		}
+	}()
+	db.MustExec(`
+		insert into status_changes (timestamp, streamer_id, status, prev_status)
+		values (100, 1, 1, 1)`)
 }
