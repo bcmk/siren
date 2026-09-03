@@ -282,6 +282,8 @@
 - When a migration needs multiple files, use `_1`, `_2` suffixes.
   They must share the same base name
   (differing only in number prefix, suffix, then `prebuild` before `no_transaction`).
+  All of one feature's migrations share the base name,
+  even a step that could stand alone, like creating an extension.
 - When renaming a table, also rename the constraints and indexes it carries.
   PostgreSQL names them after the table it created them on,
   the primary key `tablename_pkey` and a not-null `tablename_column_not_null`,
