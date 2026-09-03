@@ -3,6 +3,7 @@ package db
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/bcmk/siren/v5/lib/cmdlib"
@@ -266,4 +267,36 @@ func TestChangesFromToForStreamersConsistency(t *testing.T) {
 		"consistency check: %d changes returned for range [150, 350]\n",
 		len(changes),
 	)
+}
+
+// The lookup is gated by a one-time filter,
+// so a streamer whose newest change predates the window never reaches the index.
+// Losing the query's offset 0 lets the planner flatten the lateral,
+// which demotes the gate to a join filter checked after the lookup it should skip.
+func TestChangesFromToForStreamersSkipsStaleStreamers(t *testing.T) {
+	t.Parallel()
+	db := newTestDB(t)
+	defer db.terminate()
+
+	lines := db.MustStrings(`
+		explain (costs off)
+		select s.id, coalesce(sc.prev_status, s.unconfirmed_status), sc.status, sc.timestamp
+		from unnest($1::integer[]) as ids(id)
+		join streamers s on s.id = ids.id
+		left join lateral (
+			select sc.prev_status, sc.status, sc.timestamp
+			from status_changes sc
+			where s.unconfirmed_timestamp >= $2
+			and sc.streamer_id = s.id
+			and sc.timestamp >= $2
+			and sc.timestamp <= $3
+			offset 0
+		) sc on true
+		order by s.id, sc.timestamp`,
+		[]int{1}, 1000, 2000)
+
+	plan := strings.Join(lines, "\n")
+	if !strings.Contains(plan, "One-Time Filter") {
+		t.Errorf("the stale-streamer gate is not a one-time filter:\n%s", plan)
+	}
 }

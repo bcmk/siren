@@ -650,10 +650,19 @@ func (d *Database) ChangesFromToForStreamers(streamerIDs []int, from int, to int
 		select s.id, coalesce(sc.prev_status, s.unconfirmed_status), sc.status, sc.timestamp
 		from unnest($1::integer[]) as ids(id)
 		join streamers s on s.id = ids.id
-		left join status_changes sc
-		on sc.streamer_id = s.id
-		and sc.timestamp >= $2
-		and sc.timestamp <= $3
+		-- unconfirmed_timestamp is the newest change, so a streamer older than the window has none.
+		-- offset 0 keeps the subquery from being flattened,
+		-- which makes that a one-time filter and skips the index scan.
+		-- Flattened, it would be a join filter checked after the lookup.
+		left join lateral (
+			select sc.prev_status, sc.status, sc.timestamp
+			from status_changes sc
+			where s.unconfirmed_timestamp >= $2
+			and sc.streamer_id = s.id
+			and sc.timestamp >= $2
+			and sc.timestamp <= $3
+			offset 0
+		) sc on true
 		order by s.id, sc.timestamp`,
 		QueryParams{streamerIDs, from, to},
 		ScanTo{&streamerID, &opening, &status, &timestamp},
