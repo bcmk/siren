@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v5.5.4 — 2026-09-03
+
+### Removed
+
+- The "retrieving data" notice before the week and month grids
+
 ## v5.5.3 — 2026-09-03
 
 ### Fixed
