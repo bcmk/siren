@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v5.5.3 — 2026-09-03
+
+### Fixed
+
+- Convert status_changes by streamer over the existing index, so a fragmented heap converts correctly
+
 ## v5.5.2 — 2026-09-03
 
 ### Changed
