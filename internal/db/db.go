@@ -134,7 +134,8 @@ func (d *Database) ResetQueryStats() {
 		select pg_stat_statements_reset(
 			0,
 			(select oid from pg_database where datname = current_database()),
-			0)`
+			0)
+		/*name='reset_query_stats'*/`
 	if _, err := d.db.Exec(context.Background(), query); err != nil {
 		lerr("cannot reset pg_stat_statements: %v", err)
 		return

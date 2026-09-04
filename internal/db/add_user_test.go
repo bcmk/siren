@@ -42,7 +42,7 @@ func TestAddUserEmptyChatTypeIsNull(t *testing.T) {
 	d := tdb.Database
 
 	d.AddUser(901, 5, 1000, "")
-	user, found := d.User(901)
+	user, found := d.UserByChatID(901)
 	if !found {
 		t.Fatal("user with chat_id 901 not found")
 	}

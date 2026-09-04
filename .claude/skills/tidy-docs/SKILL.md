@@ -20,6 +20,7 @@ This file follows its own rules — read it as a worked example.
 
 Only the working change set: changed markdown, and comments in changed source files.
 Never sweep unrelated comments.
+A SQL name tag, `/*name='set_limit'*/`, is not a comment.
 
 ## Trim
 

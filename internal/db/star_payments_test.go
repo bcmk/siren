@@ -65,7 +65,7 @@ func TestGrantStarPaymentSubsNoUserOnDuplicate(t *testing.T) {
 	if added, _, _ := d.GrantStarPaymentSubs(newChatID, "ep", "dup_charge", 500, "subs", 10, "stars:subs:456:10", 2000); added {
 		t.Fatal("duplicate charge for a new chat reported added=true")
 	}
-	if _, found := d.User(newChatID); found {
+	if _, found := d.UserByChatID(newChatID); found {
 		t.Error("duplicate charge left a stray user row")
 	}
 }

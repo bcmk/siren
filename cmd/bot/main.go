@@ -766,7 +766,7 @@ func (w *worker) setZoneNames(names map[string]string) {
 func (w *worker) initCache() {
 	start := time.Now()
 	w.unconfirmedOnlineStreamers = map[string]cmdlib.StreamerInfo{}
-	for nickname := range w.db.QueryLastOnlineStreamers() {
+	for nickname := range w.db.OnlineStreamers() {
 		w.unconfirmedOnlineStreamers[nickname] = cmdlib.StreamerInfo{}
 	}
 	elapsed := time.Since(start)
@@ -2392,10 +2392,10 @@ func (w *worker) direct(endpoint string, arguments string) {
 	if text == "" {
 		return
 	}
-	// User, not EnsureUser: a bad owner arg must not materialize a stray row.
+	// UserByChatID, not EnsureUser: a bad owner arg must not materialize a stray row.
 	// A private chat that can be messaged has a row anyway (it started the bot);
 	// the only gap is a group the bot is in that has never sent a command.
-	user, found := w.db.User(whom)
+	user, found := w.db.UserByChatID(whom)
 	if !found {
 		w.replyToOwner(endpoint, "no such user")
 		return
@@ -2935,7 +2935,7 @@ func (w *worker) performWebAppRemovalList(req webAppRemovalListRequest) {
 		return
 	}
 	res := webAppRemovalListResult{allowed: true}
-	if user, found := w.db.User(req.chatID); found {
+	if user, found := w.db.UserByChatID(req.chatID); found {
 		res.nicknames = w.db.SubscribedOrPendingNicknames(req.endpoint, user.UserID)
 	}
 	req.resultCh <- res
@@ -3161,8 +3161,8 @@ func (w *worker) setMaxSubs(endpoint string, arguments string) {
 		w.replyToOwner(endpoint, "the limit must be non-negative")
 		return
 	}
-	// User, not EnsureUser: a bad owner arg must not materialize a stray row (see direct).
-	user, found := w.db.User(who)
+	// UserByChatID, not EnsureUser: a bad owner arg must not materialize a stray row (see direct).
+	user, found := w.db.UserByChatID(who)
 	if !found {
 		w.replyToOwner(endpoint, "no such user")
 		return
@@ -3185,7 +3185,7 @@ func randString(n int) string {
 func (w *worker) newRandReferralID() (id string) {
 	for {
 		id = randString(5)
-		if w.db.MustInt("select count(*) from referrals where referral_id = $1", id) == 0 {
+		if !w.db.ReferralIDExists(id) {
 			break
 		}
 	}
@@ -3218,7 +3218,7 @@ func (w *worker) refreshMemberCount(endpoint string, chatID int64, userID db.Use
 }
 
 func (w *worker) refer(followerUserID db.UserID, referrer string, now int, followerCreated bool) (applied appliedKind) {
-	referrerUserID := w.db.UserForReferralID(referrer)
+	referrerUserID := w.db.UserByReferralID(referrer)
 	if referrerUserID == nil {
 		return invalidReferral
 	}
@@ -4464,9 +4464,7 @@ func (w *worker) queryUnconfirmedSubs() {
 	if !caps.SupportsQueryStatus && !caps.SupportsQueryFixedListStatuses {
 		return
 	}
-	unconfirmed := map[string]bool{}
-	var nickname string
-	w.db.MustQuery("select nickname from pending_subscriptions where not checking", nil, db.ScanTo{&nickname}, func() { unconfirmed[nickname] = true })
+	unconfirmed := w.db.UnconfirmedSubs()
 	if len(unconfirmed) > 0 {
 		w.db.MarkUnconfirmedAsChecking()
 		ldbg("queueing unconfirmed subscriptions check for %d streamers", len(unconfirmed))
@@ -4483,17 +4481,7 @@ func (w *worker) processSubsConfirmations(res *cmdlib.ExistenceListResults) {
 	for n := range res.Streamers {
 		nicknames = append(nicknames, n)
 	}
-	confirmationsInWork := map[string][]db.PendingSubscription{}
-	var iter db.PendingSubscription
-	w.db.MustQuery(
-		`
-			select ps.endpoint, ps.nickname, ps.user_id, ps.referral, coalesce(ps.command, ''), ps.reply_seq
-			from pending_subscriptions ps
-			where ps.checking and ps.nickname = any($1)
-		`,
-		db.QueryParams{nicknames},
-		db.ScanTo{&iter.Endpoint, &iter.Nickname, &iter.UserID, &iter.Referral, &iter.Command, &iter.ReplySeq},
-		func() { confirmationsInWork[iter.Nickname] = append(confirmationsInWork[iter.Nickname], iter) })
+	confirmationsInWork := w.db.CheckingSubs(nicknames)
 	var nots []db.Notification
 	var confirmedNots []db.Notification
 	if !res.Failed() {

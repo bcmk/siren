@@ -83,7 +83,7 @@ func TestHandleSuccessfulPaymentMalformedCreatesNoUser(t *testing.T) {
 		TotalAmount:             100,
 	}, 1000)
 
-	if _, found := w.db.User(chatID); found {
+	if _, found := w.db.UserByChatID(chatID); found {
 		t.Error("malformed successful payment created a stray user")
 	}
 }

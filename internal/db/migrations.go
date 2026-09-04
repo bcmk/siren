@@ -96,7 +96,10 @@ func (d *Database) isMigrationApplied(name string) bool {
 	var exists bool
 	err := d.db.QueryRow(
 		context.Background(),
-		"select exists(select 1 from schema_migrations where name = $1)",
+		`
+			select exists(select 1 from schema_migrations where name = $1)
+			/*name='is_migration_applied'*/
+		`,
 		name,
 	).Scan(&exists)
 	if err == pgx.ErrNoRows || err != nil {
@@ -113,22 +116,26 @@ const migrationLock = 0x5152454E
 
 // lockMigrations blocks until this is the only migration run, and says so while it waits.
 func (d *Database) lockMigrations() {
-	var acquired bool
-	d.MustQuery(
-		"select pg_try_advisory_lock($1)",
-		QueryParams{migrationLock},
-		ScanTo{&acquired},
-		func() {})
+	acquired := d.MustBool(`
+		select pg_try_advisory_lock($1)
+		/*name='lock_migrations_try'*/`,
+		migrationLock)
 	if !acquired {
 		linf("another migration run holds the lock, waiting for it")
-		d.MustExec("select pg_advisory_lock($1)", migrationLock)
+		d.MustExec(`
+			select pg_advisory_lock($1)
+			/*name='lock_migrations_wait'*/`,
+			migrationLock)
 	}
 }
 
 // unlockMigrations is best effort: the lock dies with the session anyway,
 // and failing here while a migration error unwinds would replace it with something less useful.
 func (d *Database) unlockMigrations() {
-	_, _ = d.db.Exec(context.Background(), "select pg_advisory_unlock($1)", migrationLock)
+	_, _ = d.db.Exec(context.Background(), `
+		select pg_advisory_unlock($1)
+		/*name='unlock_migrations'*/`,
+		migrationLock)
 }
 
 // ApplyMigrations applies all migrations to the database
@@ -212,7 +219,9 @@ func (d *Database) pendingPrebuild(migrations []migration) string {
 // which replay would fail on.
 // A no_transaction migration cannot have that, and must therefore be one that a replay can survive.
 func (d *Database) applyMigration(m migration) {
-	const record = "insert into schema_migrations (name, applied_at) values ($1, $2) on conflict do nothing"
+	const record = `
+		insert into schema_migrations (name, applied_at) values ($1, $2) on conflict do nothing
+		/*name='record_migration'*/`
 
 	if m.noTransaction {
 		d.MustExecScript(m.sql)

@@ -511,10 +511,10 @@ func TestProcessTGUpdateAppliesMigrations(t *testing.T) {
 					MigrateFromChatID: tc.from,
 				}},
 			})
-			if _, found := w.db.User(toID); !found {
+			if _, found := w.db.UserByChatID(toID); !found {
 				t.Errorf("the chat's rows did not move to %d", toID)
 			}
-			if _, found := w.db.User(-999); found && tc.chat == -999 {
+			if _, found := w.db.UserByChatID(-999); found && tc.chat == -999 {
 				t.Error("the untrusted chat id gained a row")
 			}
 		})

@@ -26,8 +26,10 @@ staged=$(git diff --cached)
 # A `//` right after a colon is a URL in a string, not a comment.
 # Shell covers the extensionless scripts/* files and every *.sh; a `#!` shebang is not a comment.
 docs=$(git diff --cached -U0 -- '*.md' | grep -E '^\+[^+]' || true)
+# A SQL name tag is not prose: tidy-docs does not apply to it.
 comment_re='^\+[[:space:]]*(//|/\*|\*)|^\+.*[^:]//|^\+.*/\*'
-comments=$(git diff --cached -U0 -- '*.go' | grep -E "$comment_re" || true)
+tag_re='^\+[[:space:]]*/\*name='\''[a-z0-9_]+'\''\*/(`[^[:alnum:]]*)?$'
+comments=$(git diff --cached -U0 -- '*.go' | grep -E "$comment_re" | grep -Ev "$tag_re" || true)
 shell=$(git diff --cached -U0 -- 'scripts/*' '*.sh' | grep -E '^\+[[:space:]]*#([^!]|$)' || true)
 [ -n "$docs$comments$shell" ] || exit 0
 

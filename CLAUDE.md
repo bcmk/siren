@@ -55,7 +55,8 @@
   ```go
   d.MustExec(`
       select foo
-      from bar`,
+      from bar
+      /*name='foo'*/`,
       args)
   ```
   When arguments are on separate lines, the backtick goes on its own line:
@@ -65,6 +66,7 @@
       `
           select foo
           from bar
+          /*name='foo'*/
       `,
       longArg2)
   ```
@@ -263,6 +265,12 @@
 - pgx caches prepared statements, which can cause
   PostgreSQL to use slow generic plans.
   We use `pgx.QueryExecModeExec` to avoid this when needed.
+- Every SQL statement that non-test code in `internal/db` runs ends with a tag,
+  e.g. `/*name='set_limit'*/`, on its own line, even in a statement that fits on one line.
+  Exempt: migration files, `set`, `set_config`, `CopyFrom`, and the config's `sql_prelude`.
+  Names are snake_case, unique, and say what the statement does. A bad name is a bug.
+  Two statements equal up to constants and the tag share one method and one name.
+  Non-test bot code runs no SQL of its own.
 
 ## Database Migrations
 

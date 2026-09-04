@@ -181,10 +181,10 @@ func TestMigrateChat(t *testing.T) {
 
 		d.MigrateChat(oldID, newID)
 
-		if _, found := d.User(oldID); found {
+		if _, found := d.UserByChatID(oldID); found {
 			t.Error("source user still present after migration")
 		}
-		user, found := d.User(newID)
+		user, found := d.UserByChatID(newID)
 		if !found {
 			t.Fatal("destination user missing after migration")
 		}
@@ -230,7 +230,7 @@ func TestMigrateChat(t *testing.T) {
 		if id := d.ReferralID(d.userID(oldID)); id != nil {
 			t.Errorf("source still has referral_id %v", *id)
 		}
-		if owner := d.UserForReferralID("refOld"); owner == nil || *owner != d.userID(newID) {
+		if owner := d.UserByReferralID("refOld"); owner == nil || *owner != d.userID(newID) {
 			t.Errorf("refOld resolves to %v, want the user for %d", owner, newID)
 		}
 		if n, found := d.referredUsers(newID); !found || n != 2 {
@@ -267,13 +267,13 @@ func TestMigrateChat(t *testing.T) {
 		d.MigrateChat(oldID, newID)
 
 		// The source is kept as a tombstone, linked to the destination.
-		if _, found := d.User(oldID); !found {
+		if _, found := d.UserByChatID(oldID); !found {
 			t.Error("source tombstone removed")
 		}
 		if to, found := d.migratedToChat(oldID); !found || to != newID {
 			t.Errorf("source migrated_to chat = (%d, %v), want (%d, true)", to, found, newID)
 		}
-		user, found := d.User(newID)
+		user, found := d.UserByChatID(newID)
 		if !found {
 			t.Fatal("destination user missing")
 		}
@@ -314,7 +314,7 @@ func TestMigrateChat(t *testing.T) {
 		if n, found := d.referredUsers(newID); !found || n != 3 {
 			t.Errorf("referred_users = (%d, %v), want (3, true)", n, found)
 		}
-		if owner := d.UserForReferralID("refOld"); owner != nil {
+		if owner := d.UserByReferralID("refOld"); owner != nil {
 			t.Errorf("dropped link refOld still resolves to %d", *owner)
 		}
 
@@ -352,7 +352,7 @@ func TestMigrateChat(t *testing.T) {
 
 		d.MigrateChat(oldID, newID)
 
-		user, found := d.User(newID)
+		user, found := d.UserByChatID(newID)
 		if !found {
 			t.Fatal("destination user missing")
 		}
@@ -411,7 +411,7 @@ func TestMigrateChat(t *testing.T) {
 		if n, found := d.referredUsers(newID); !found || n != 4 {
 			t.Errorf("destination referred_users = (%d, %v), want (4, true)", n, found)
 		}
-		if owner := d.UserForReferralID("refKeep"); owner == nil || *owner != d.userID(newID) {
+		if owner := d.UserByReferralID("refKeep"); owner == nil || *owner != d.userID(newID) {
 			t.Errorf("refKeep resolves to %v, want the user for %d", owner, newID)
 		}
 		if id := d.ReferralID(d.userID(oldID)); id != nil {
@@ -429,7 +429,7 @@ func TestMigrateChat(t *testing.T) {
 
 		// Both absent: nothing is created.
 		d.MigrateChat(oldID, newID)
-		if _, found := d.User(newID); found {
+		if _, found := d.UserByChatID(newID); found {
 			t.Error("destination created from an absent source")
 		}
 
@@ -439,7 +439,7 @@ func TestMigrateChat(t *testing.T) {
 		d.MigrateChat(oldID, newID)
 		d.MigrateChat(oldID, newID)
 
-		user, found := d.User(newID)
+		user, found := d.UserByChatID(newID)
 		if !found {
 			t.Fatal("destination missing after migration")
 		}
@@ -449,7 +449,7 @@ func TestMigrateChat(t *testing.T) {
 		if got, want := d.subNicknames(newID, ep), []string{"alice"}; !equalStrings(got, want) {
 			t.Errorf("subscriptions = %v, want %v", got, want)
 		}
-		if _, found := d.User(oldID); found {
+		if _, found := d.UserByChatID(oldID); found {
 			t.Error("source reappeared after redelivery")
 		}
 	})
@@ -469,7 +469,7 @@ func TestMigrateChat(t *testing.T) {
 		if d.MigrateChat(realID, 0) == nil {
 			t.Fatal("a migration to chat 0 did not apply")
 		}
-		if _, found := d.User(0); !found {
+		if _, found := d.UserByChatID(0); !found {
 			t.Error("rows did not move to chat_id = 0")
 		}
 		if got, want := d.subNicknames(0, ep), []string{"alice"}; !equalStrings(got, want) {
@@ -498,7 +498,7 @@ func TestMigrateChat(t *testing.T) {
 		// The source stays as a tombstone,
 		// but its payment ledger and referral attribution move
 		// to the destination for consolidated reporting.
-		if _, found := d.User(oldID); !found {
+		if _, found := d.UserByChatID(oldID); !found {
 			t.Fatal("source tombstone removed")
 		}
 		if to, found := d.migratedToChat(oldID); !found || to != newID {
@@ -545,7 +545,7 @@ func TestMigrateChat(t *testing.T) {
 		if m := d.MigrateChat(oldID, newID); m != nil {
 			t.Errorf("redelivered migration = %+v, want nil (no-op)", m)
 		}
-		if user, found := d.User(newID); !found || user.MaxSubs != 7 {
+		if user, found := d.UserByChatID(newID); !found || user.MaxSubs != 7 {
 			t.Errorf("destination after redelivery: found=%v max_subs=%d, want 7", found, user.MaxSubs)
 		}
 	})

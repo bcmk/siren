@@ -1034,7 +1034,7 @@ func TestUserReferral(t *testing.T) {
 		}
 
 		// Verify follower got bonus subs
-		follower, exists := w.db.User(21)
+		follower, exists := w.db.UserByChatID(21)
 		if !exists {
 			t.Fatal("expected follower user to exist")
 		}
@@ -1044,7 +1044,7 @@ func TestUserReferral(t *testing.T) {
 		}
 
 		// Verify referrer got bonus subs
-		referrer, exists := w.db.User(20)
+		referrer, exists := w.db.UserByChatID(20)
 		if !exists {
 			t.Fatal("expected referrer user to exist")
 		}
@@ -1112,7 +1112,7 @@ func TestUserReferral(t *testing.T) {
 		}
 
 		// Verify referrer max_subs unchanged
-		referrer, _ := w.db.User(40)
+		referrer, _ := w.db.UserByChatID(40)
 		if referrer.MaxSubs != w.cfg.MaxSubs {
 			t.Errorf("expected referrer max_subs unchanged at %d, got %d",
 				w.cfg.MaxSubs, referrer.MaxSubs)
@@ -1357,7 +1357,7 @@ func TestStatusConfirmations(t *testing.T) {
 	}
 }
 
-func TestQueryLastSubscriptionStatuses(t *testing.T) {
+func TestSubscribedStreamerStatuses(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
@@ -1387,7 +1387,7 @@ func TestQueryLastSubscriptionStatuses(t *testing.T) {
 		"test", 2, "model_without_status",
 	)
 
-	statuses := w.db.QueryLastSubscriptionStatuses()
+	statuses := w.db.SubscribedStreamerStatuses()
 
 	// Model with unconfirmed_status should return correct status
 	if statuses["model_with_status"] != cmdlib.StatusOnline {

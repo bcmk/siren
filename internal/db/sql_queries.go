@@ -34,7 +34,8 @@ func (d *Database) NewNotifications() []Notification {
 		join users u on u.id = n.user_id
 		join streamers s on s.id = n.streamer_id
 		where n.sending = 0
-		order by n.id`,
+		order by n.id
+		/*name='new_notifications'*/`,
 		nil,
 		ScanTo{
 			&iter.ID,
@@ -63,7 +64,9 @@ func (d *Database) NewNotifications() []Notification {
 		},
 		func() { nots = append(nots, iter) },
 	)
-	d.MustExec("update notification_queue set sending = 1 where sending = 0")
+	d.MustExec(`
+		update notification_queue set sending = 1 where sending = 0
+		/*name='new_notifications_mark_sending'*/`)
 	return nots
 }
 
@@ -92,7 +95,8 @@ func (d *Database) StoreNotifications(nots []Notification) {
 				fields_hint,
 				subject
 			)
-			values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+			values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+			/*name='store_notifications'*/`,
 			n.Endpoint, int64(n.UserID), n.StreamerID, n.Status, n.TimeDiff, n.ImageURL, n.Viewers,
 			n.ShowKind, n.Social, n.Priority, n.Sound, n.Kind, nullableCommand(n.Command), n.ReplySeq,
 			n.FieldsHint, n.Subject,
@@ -127,7 +131,8 @@ func (d *Database) UsersForStreamers(streamerIDs []int) (users map[int][]User, e
 		from subscriptions sub
 		join users u on u.id = sub.user_id
 		left join block b on b.user_id = sub.user_id and b.endpoint = sub.endpoint
-		where sub.streamer_id = any($1)`,
+		where sub.streamer_id = any($1)
+		/*name='users_for_streamers'*/`,
 		QueryParams{streamerIDs},
 		ScanTo{&streamerID, &chatID, &userID, &endpoint, &offlineNotifications, &showImages, &showSubject, &blocked},
 		func() {
@@ -157,7 +162,8 @@ func (d *Database) BroadcastUsers(endpoint string) (users []User) {
 		join users u on u.id = sub.user_id
 		left join block b on b.user_id = u.id and b.endpoint = $1
 		where sub.endpoint = $1 and u.chat_id > 0
-		order by u.id`,
+		order by u.id
+		/*name='broadcast_users'*/`,
 		QueryParams{endpoint},
 		ScanTo{&id, &blocked},
 		func() { users = append(users, User{UserID: UserID(id), Blocked: blocked}) })
@@ -172,7 +178,8 @@ func (d *Database) StreamersForUser(endpoint string, userID UserID) (streamers [
 		from subscriptions sub
 		join streamers s on s.id = sub.streamer_id
 		where sub.user_id = $1 and sub.endpoint = $2
-		order by s.nickname`,
+		order by s.nickname
+		/*name='streamers_for_user'*/`,
 		QueryParams{int64(userID), endpoint},
 		ScanTo{&iter.ID, &iter.Nickname},
 		func() { streamers = append(streamers, iter) })
@@ -194,7 +201,8 @@ func (d *Database) UnconfirmedStatusesForUser(endpoint string, userID UserID) (s
 		from subscriptions sub
 		join streamers s on s.id = sub.streamer_id
 		where sub.user_id = $1 and sub.endpoint = $2
-		order by s.nickname`,
+		order by s.nickname
+		/*name='unconfirmed_statuses_for_user'*/`,
 		QueryParams{int64(userID), endpoint},
 		ScanTo{
 			&iter.ID,
@@ -218,7 +226,8 @@ func (d *Database) SubscribedOrPending(endpoint string, userID UserID, nickname 
 			union all
 			select 1 from pending_subscriptions ps
 			where ps.user_id = $1 and ps.nickname = $2 and ps.endpoint = $3
-		)`,
+		)
+		/*name='subscribed_or_pending'*/`,
 		int64(userID), nickname, endpoint)
 }
 
@@ -235,7 +244,8 @@ func (d *Database) SubscribedOrPendingNicknames(endpoint string, userID UserID) 
 		select ps.nickname
 		from pending_subscriptions ps
 		where ps.user_id = $1 and ps.endpoint = $2
-		order by nickname`,
+		order by nickname
+		/*name='subscribed_or_pending_nicknames'*/`,
 		QueryParams{int64(userID), endpoint},
 		ScanTo{&iter},
 		func() { nicknames = append(nicknames, iter) })
@@ -250,12 +260,13 @@ func (d *Database) SubscribedOrPendingCount(endpoint string, userID UserID) int 
 			(select count(*) from subscriptions sub
 			where sub.user_id = $1 and sub.endpoint = $2) +
 			(select count(*) from pending_subscriptions ps
-			where ps.user_id = $1 and ps.endpoint = $2)`,
+			where ps.user_id = $1 and ps.endpoint = $2)
+			/*name='subscribed_or_pending_count'*/`,
 		int64(userID), endpoint)
 }
 
-// User queries a user with particular ID
-func (d *Database) User(chatID int64) (user User, found bool) {
+// UserByChatID queries a user by its chat id
+func (d *Database) UserByChatID(chatID int64) (user User, found bool) {
 	// Follow migrated_to like addUser, so a tombstoned chat reads its live user.
 	// The walk is repeated in full in each resolver by design, not shared.
 	// migrated_to is acyclic (the group-to-supergroup upgrade is one-way),
@@ -284,6 +295,7 @@ func (d *Database) User(chatID int64) (user User, found bool) {
 			timezone
 		from users
 		where id = (select id from chain where migrated_to is null)
+		/*name='user_by_chat_id'*/
 	`,
 		QueryParams{chatID},
 		ScanTo{
@@ -327,6 +339,7 @@ func (d *Database) UserByID(userID UserID) (user User, found bool) {
 			timezone
 		from users
 		where id = $1
+		/*name='user_by_id'*/
 	`,
 		QueryParams{int64(userID)},
 		ScanTo{
@@ -395,11 +408,15 @@ func (d *Database) addUser(q querier, chatID int64, maxSubs int, now int, chatTy
 			from users u
 			join chain c on u.id = c.migrated_to
 		)
-		select id, chat_type from chain where migrated_to is null`,
+		select id, chat_type from chain where migrated_to is null
+		/*name='add_user_resolve'*/`,
 		chatID).Scan(&raw, &storedType)
 	if err == nil {
 		if storedType == nil && chatType != "" {
-			_, err := q.Exec(ctx, "update users set chat_type = $1 where id = $2", chatType, raw)
+			_, err := q.Exec(ctx, `
+				update users set chat_type = $1 where id = $2
+				/*name='add_user_set_chat_type'*/`,
+				chatType, raw)
 			checkErr(err)
 		}
 		return UserID(raw), false
@@ -416,7 +433,8 @@ func (d *Database) addUser(q querier, chatID int64, maxSubs int, now int, chatTy
 		values ($1, $2, $3, nullif($4, ''))
 		on conflict (chat_id) do update
 		set chat_type = case when users.chat_type is null then excluded.chat_type else users.chat_type end
-		returning id, (xmax = 0)`,
+		returning id, (xmax = 0)
+		/*name='add_user_insert'*/`,
 		chatID, maxSubs, now, chatType).Scan(&raw, &created))
 	return UserID(raw), created
 }
@@ -451,7 +469,8 @@ func (d *Database) ChatIDForUser(userID UserID) (int64, bool) {
 			from users u
 			join chain c on u.id = c.migrated_to
 		)
-		select chat_id from chain where migrated_to is null`,
+		select chat_id from chain where migrated_to is null
+		/*name='chat_id_for_user'*/`,
 		int64(userID)).Scan(&chatID)
 	if err == pgx.ErrNoRows {
 		return 0, false
@@ -479,7 +498,8 @@ func (d *Database) LiveUserID(userID UserID) UserID {
 			from users u
 			join chain c on u.id = c.migrated_to
 		)
-		select id from chain where migrated_to is null`,
+		select id from chain where migrated_to is null
+		/*name='live_user_id'*/`,
 		int64(userID)).Scan(&id)
 	if err == pgx.ErrNoRows {
 		return userID
@@ -531,7 +551,10 @@ func (d *Database) MigrateChat(fromID, toID int64) *ChatMigration {
 	// a tombstone keeps it, so migrated_to marks an applied one.
 	var srcID int64
 	var migratedTo *int64
-	err = tx.QueryRow(ctx, "select id, migrated_to from users where chat_id = $1", fromID).Scan(&srcID, &migratedTo)
+	err = tx.QueryRow(ctx, `
+		select id, migrated_to from users where chat_id = $1
+		/*name='migrate_chat_source'*/`,
+		fromID).Scan(&srcID, &migratedTo)
 	if err == pgx.ErrNoRows {
 		return nil
 	}
@@ -541,13 +564,18 @@ func (d *Database) MigrateChat(fromID, toID int64) *ChatMigration {
 	}
 
 	var dstID int64
-	err = tx.QueryRow(ctx, "select id from users where chat_id = $1", toID).Scan(&dstID)
+	err = tx.QueryRow(ctx, `
+		select id from users where chat_id = $1
+		/*name='migrate_chat_destination'*/`,
+		toID).Scan(&dstID)
 	if err == pgx.ErrNoRows {
 		// The destination is new: just rename the chat.
 		// The new chat is always a supergroup,
 		// and every child row follows by its user_id.
-		_, err = tx.Exec(ctx,
-			"update users set chat_id = $1, chat_type = 'supergroup' where id = $2", toID, srcID)
+		_, err = tx.Exec(ctx, `
+			update users set chat_id = $1, chat_type = 'supergroup' where id = $2
+			/*name='migrate_chat_rename'*/`,
+			toID, srcID)
 		checkErr(err)
 		checkErr(tx.Commit(ctx))
 		return &ChatMigration{Renamed: true}
@@ -566,41 +594,64 @@ func (d *Database) MigrateChat(fromID, toID int64) *ChatMigration {
 		member_subscriptions = d.member_subscriptions or s.member_subscriptions,
 		timezone = coalesce(d.timezone, s.timezone)
 		from users s
-		where d.id = $1 and s.id = $2`,
+		where d.id = $1 and s.id = $2
+		/*name='migrate_chat_merge'*/`,
 		dstID, srcID)
 	checkErr(err)
 	del := func(q string) {
 		_, err := tx.Exec(ctx, q, srcID)
 		checkErr(err)
 	}
-	del("delete from subscriptions where user_id = $1")
-	del("delete from pending_subscriptions where user_id = $1")
-	del("delete from block where user_id = $1")
+	del(`
+		delete from subscriptions where user_id = $1
+		/*name='migrate_chat_delete_subscriptions'*/`)
+	del(`
+		delete from pending_subscriptions where user_id = $1
+		/*name='migrate_chat_delete_pending_subscriptions'*/`)
+	del(`
+		delete from block where user_id = $1
+		/*name='migrate_chat_delete_block'*/`)
 	// Keep an in-flight notification (sending = 1): a send is mid-delivery
 	// for it and the resend carries its id, so dropping the row here
 	// would leave a crash or an overflowed resend with nothing to re-arm.
 	// The tombstone still resolves to the destination chat,
 	// so a re-armed row redelivers there.
-	del("delete from notification_queue where user_id = $1 and sending = 0")
+	del(`
+		delete from notification_queue where user_id = $1 and sending = 0
+		/*name='migrate_chat_delete_notifications'*/`)
 	// Keep the source's referral key when the destination has none:
 	// move it, so links shared for the old chat still credit the merged user.
 	// Otherwise drop it, since a user has a single key.
 	_, err = tx.Exec(ctx, `
 		update referrals set user_id = $1
-		where user_id = $2 and not exists (select 1 from referrals where user_id = $1)`,
+		where user_id = $2 and not exists (select 1 from referrals where user_id = $1)
+		/*name='migrate_chat_move_referral'*/`,
 		dstID, srcID)
 	checkErr(err)
-	del("delete from referrals where user_id = $1")
+	del(`
+		delete from referrals where user_id = $1
+		/*name='migrate_chat_delete_referrals'*/`)
 	move := func(q string) int64 {
 		tag, err := tx.Exec(ctx, q, dstID, srcID)
 		checkErr(err)
 		return tag.RowsAffected()
 	}
-	feedback := move("update feedback set user_id = $1 where user_id = $2")
-	payments := move("update star_payments set user_id = $1 where user_id = $2")
-	referrals := move("update referral_events set referrer_user_id = $1 where referrer_user_id = $2") +
-		move("update referral_events set follower_user_id = $1 where follower_user_id = $2")
-	_, err = tx.Exec(ctx, "update users set migrated_to = $1 where id = $2", dstID, srcID)
+	feedback := move(`
+		update feedback set user_id = $1 where user_id = $2
+		/*name='migrate_chat_move_feedback'*/`)
+	payments := move(`
+		update star_payments set user_id = $1 where user_id = $2
+		/*name='migrate_chat_move_payments'*/`)
+	referrals := move(`
+		update referral_events set referrer_user_id = $1 where referrer_user_id = $2
+		/*name='migrate_chat_move_referrer_events'*/`) +
+		move(`
+			update referral_events set follower_user_id = $1 where follower_user_id = $2
+			/*name='migrate_chat_move_follower_events'*/`)
+	_, err = tx.Exec(ctx, `
+		update users set migrated_to = $1 where id = $2
+		/*name='migrate_chat_tombstone'*/`,
+		dstID, srcID)
 	checkErr(err)
 	checkErr(tx.Commit(ctx))
 	return &ChatMigration{Feedback: feedback, Payments: payments, Referrals: referrals}
@@ -619,7 +670,8 @@ func (d *Database) MaybeStreamer(nickname string) *Streamer {
 			prev_unconfirmed_status,
 			prev_unconfirmed_timestamp
 		from streamers
-		where nickname = $1`,
+		where nickname = $1
+		/*name='streamer_by_nickname'*/`,
 		QueryParams{nickname},
 		ScanTo{
 			&result.ID,
@@ -663,7 +715,8 @@ func (d *Database) ChangesFromToForStreamers(streamerIDs []int, from int, to int
 			and sc.timestamp <= $3
 			offset 0
 		) sc on true
-		order by s.id, sc.timestamp`,
+		order by s.id, sc.timestamp
+		/*name='changes_from_to_for_streamers'*/`,
 		QueryParams{streamerIDs, from, to},
 		ScanTo{&streamerID, &opening, &status, &timestamp},
 		func() {
@@ -684,7 +737,10 @@ func (d *Database) ChangesFromToForStreamers(streamerIDs []int, from int, to int
 
 // SetLimit updates a particular user with its max subs limit
 func (d *Database) SetLimit(userID UserID, maxSubs int) {
-	d.MustExec("update users set max_subs = $1 where id = $2", maxSubs, int64(userID))
+	d.MustExec(`
+		update users set max_subs = $1 where id = $2
+		/*name='set_limit'*/`,
+		maxSubs, int64(userID))
 }
 
 // GrantStarPaymentSubs records the charge and bumps max_subs
@@ -717,7 +773,8 @@ func (d *Database) GrantStarPaymentSubs(
 			user_id, endpoint, telegram_payment_charge_id,
 			stars_amount, product, quantity, payload, timestamp)
 		values ($1, $2, $3, $4, $5, $6, $7, $8)
-		on conflict (telegram_payment_charge_id) do nothing`,
+		on conflict (telegram_payment_charge_id) do nothing
+		/*name='grant_star_payment_subs_record_payment'*/`,
 		userID, endpoint, chargeID, stars, product, quantity, payload, now)
 	checkErr(err)
 	if tag.RowsAffected() == 0 {
@@ -725,8 +782,9 @@ func (d *Database) GrantStarPaymentSubs(
 		// so AddUserInTx found it and the id is valid despite the rollback.
 		return false, 0, userID
 	}
-	err = tx.QueryRow(context.Background(),
-		"update users set max_subs = max_subs + $1 where id = $2 returning max_subs",
+	err = tx.QueryRow(context.Background(), `
+		update users set max_subs = max_subs + $1 where id = $2 returning max_subs
+		/*name='grant_star_payment_subs_add_subs'*/`,
 		quantity, userID).Scan(&maxSubs)
 	checkErr(err)
 	checkErr(tx.Commit(context.Background()))
@@ -763,29 +821,29 @@ func (d *Database) ConfirmSub(sub PendingSubscription) int {
 		select id from new_streamer
 		union all
 		select id from streamers where nickname = $1
-		limit 1`,
+		limit 1
+		/*name='confirm_sub_ensure_streamer'*/`,
 		sub.Nickname).Scan(&streamerID)
 	checkErr(err)
-	_, err = tx.Exec(context.Background(), `
-		insert into subscriptions (user_id, streamer_id, endpoint)
-		values ($1, $2, $3)`,
-		int64(sub.UserID), streamerID, sub.Endpoint)
-	checkErr(err)
-	_, err = tx.Exec(context.Background(), `
-		delete from pending_subscriptions
-		where user_id = $1 and endpoint = $2 and nickname = $3`,
-		int64(sub.UserID), sub.Endpoint, sub.Nickname)
-	checkErr(err)
+	d.addSubscription(tx, sub.UserID, streamerID, sub.Endpoint)
+	d.deletePendingSubscription(tx, sub)
 	checkErr(tx.Commit(context.Background()))
 	return streamerID
 }
 
 // DenySub denies a pending subscription
 func (d *Database) DenySub(sub PendingSubscription) {
-	d.MustExec(`
+	defer d.Measure("db: deny sub")()
+	d.deletePendingSubscription(d.db, sub)
+}
+
+func (d *Database) deletePendingSubscription(q querier, sub PendingSubscription) {
+	_, err := q.Exec(context.Background(), `
 		delete from pending_subscriptions
-		where user_id = $1 and endpoint = $2 and nickname = $3`,
+		where user_id = $1 and endpoint = $2 and nickname = $3
+		/*name='delete_pending_subscription'*/`,
 		int64(sub.UserID), sub.Endpoint, sub.Nickname)
+	checkErr(err)
 }
 
 // UnconfirmedStatusesForStreamers returns unconfirmed statuses for specific streamers
@@ -795,7 +853,8 @@ func (d *Database) UnconfirmedStatusesForStreamers(nicknames []string) map[strin
 	d.MustQuery(`
 		select nickname, unconfirmed_status, unconfirmed_timestamp
 		from streamers
-		where nickname = any($1)`,
+		where nickname = any($1)
+		/*name='unconfirmed_statuses_for_streamers'*/`,
 		QueryParams{nicknames},
 		ScanTo{&statusChange.Nickname, &statusChange.Status, &statusChange.Timestamp},
 		func() { statusChanges[statusChange.Nickname] = statusChange })
@@ -806,8 +865,9 @@ func (d *Database) UnconfirmedStatusesForStreamers(nicknames []string) map[strin
 func (d *Database) StreamersToPoll() []string {
 	var streamers []string
 	var nickname string
-	d.MustQuery(
-		`select nickname from streamers where poll`,
+	d.MustQuery(`
+		select nickname from streamers where poll
+		/*name='streamers_to_poll'*/`,
 		nil,
 		ScanTo{&nickname},
 		func() { streamers = append(streamers, nickname) })
@@ -830,7 +890,8 @@ func (d *Database) PolledStreamersWithStatus() []Streamer {
 			prev_unconfirmed_timestamp
 		from streamers
 		where poll
-		order by nickname`,
+		order by nickname
+		/*name='polled_streamers_with_status'*/`,
 		nil,
 		ScanTo{
 			&iter.ID,
@@ -849,8 +910,9 @@ func (d *Database) PolledStreamersWithStatus() []Streamer {
 // Used by the bot to surface streamers whose polled checks fail
 // repeatedly so admins can spot typos or sites that block them.
 func (d *Database) IncrementPollErrors(nicknames []string) {
-	d.MustExec(
-		`update streamers set poll_error_count = poll_error_count + 1 where nickname = any($1)`,
+	d.MustExec(`
+		update streamers set poll_error_count = poll_error_count + 1 where nickname = any($1)
+		/*name='increment_poll_errors'*/`,
 		nicknames)
 }
 
@@ -858,7 +920,10 @@ func (d *Database) IncrementPollErrors(nicknames []string) {
 // Disabling a missing streamer returns false so admins catch typos.
 func (d *Database) SetPoll(nickname string, on bool) bool {
 	if !on {
-		return d.MustExec(`update streamers set poll = false where nickname = $1`, nickname) > 0
+		return d.MustExec(`
+			update streamers set poll = false where nickname = $1
+			/*name='set_poll_off'*/`,
+			nickname) > 0
 	}
 	d.MustExec(`
 		with new_streamer as (
@@ -867,7 +932,8 @@ func (d *Database) SetPoll(nickname string, on bool) bool {
 			returning (xmax = 0) as is_new
 		)
 		insert into nicknames (nickname)
-		select $1 from new_streamer where is_new`,
+		select $1 from new_streamer where is_new
+		/*name='set_poll_on'*/`,
 		nickname)
 	return true
 }
@@ -879,34 +945,37 @@ func (d *Database) SubscribedStreamers() map[string]bool {
 	d.MustQuery(`
 		select distinct s.nickname
 		from subscriptions sub
-		join streamers s on s.id = sub.streamer_id`,
+		join streamers s on s.id = sub.streamer_id
+		/*name='subscribed_streamers'*/`,
 		nil,
 		ScanTo{&nickname},
 		func() { streamers[nickname] = true })
 	return streamers
 }
 
-// QueryLastSubscriptionStatuses returns latest statuses for subscriptions
-func (d *Database) QueryLastSubscriptionStatuses() map[string]cmdlib.StatusKind {
+// SubscribedStreamerStatuses returns each subscribed streamer's unconfirmed status
+func (d *Database) SubscribedStreamerStatuses() map[string]cmdlib.StatusKind {
 	statuses := map[string]cmdlib.StatusKind{}
 	var nickname string
 	var status cmdlib.StatusKind
 	d.MustQuery(`
 		select s.nickname, s.unconfirmed_status
 		from (select distinct streamer_id from subscriptions) sub
-		join streamers s on s.id = sub.streamer_id`,
+		join streamers s on s.id = sub.streamer_id
+		/*name='subscribed_streamer_statuses'*/`,
 		nil,
 		ScanTo{&nickname, &status},
 		func() { statuses[nickname] = status })
 	return statuses
 }
 
-// QueryLastOnlineStreamers queries latest online streamers
-func (d *Database) QueryLastOnlineStreamers() map[string]bool {
+// OnlineStreamers returns the streamers whose unconfirmed status is online
+func (d *Database) OnlineStreamers() map[string]bool {
 	onlineStreamers := map[string]bool{}
 	var nickname string
-	d.MustQuery(
-		`select nickname from streamers where unconfirmed_status = $1`,
+	d.MustQuery(`
+		select nickname from streamers where unconfirmed_status = $1
+		/*name='online_streamers'*/`,
 		QueryParams{cmdlib.StatusOnline},
 		ScanTo{&nickname},
 		func() { onlineStreamers[nickname] = true })
@@ -917,8 +986,9 @@ func (d *Database) QueryLastOnlineStreamers() map[string]bool {
 func (d *Database) KnownStreamers() map[string]bool {
 	streamers := map[string]bool{}
 	var nickname string
-	d.MustQuery(
-		`select nickname from streamers where unconfirmed_status != 0`,
+	d.MustQuery(`
+		select nickname from streamers where unconfirmed_status != 0
+		/*name='known_streamers'*/`,
 		nil,
 		ScanTo{&nickname},
 		func() { streamers[nickname] = true })
@@ -991,6 +1061,7 @@ func (d *Database) SearchStreamers(term string) []string {
 			create temp table _search_results on commit drop as
 			select nickname from streamers
 			where nickname = $1
+			/*name='search_streamers_exact'*/
 		`,
 		pgx.QueryExecModeExec, term)
 	checkErr(err)
@@ -1016,6 +1087,7 @@ func (d *Database) SearchStreamers(term string) []string {
 				select nickname from nicknames
 				where nickname like '%' || $1 || '%'
 				limit 100
+				/*name='search_streamers_infix'*/
 			`,
 			pgx.QueryExecModeSimpleProtocol, escaped)
 		checkErr(err)
@@ -1040,6 +1112,7 @@ func (d *Database) SearchStreamers(term string) []string {
 				select nickname from nicknames
 				where nickname %> $1
 				limit 100
+				/*name='search_streamers_similarity'*/
 			`,
 			pgx.QueryExecModeSimpleProtocol, term)
 		checkErr(err)
@@ -1066,6 +1139,7 @@ func (d *Database) SearchStreamers(term string) []string {
 				where max_repeated_alnum_run(nickname) >= $1
 				and nickname like '%' || $2 || '%'
 				limit 100
+				/*name='search_streamers_repeated_runs'*/
 			`,
 			pgx.QueryExecModeSimpleProtocol,
 			maxRepeatedAlnumRun, escaped)
@@ -1089,6 +1163,7 @@ func (d *Database) SearchStreamers(term string) []string {
 				where max_nonalnum_run(nickname) >= $1
 				and nickname like '%' || $2 || '%'
 				limit 100
+				/*name='search_streamers_nonalnum_runs'*/
 			`,
 			pgx.QueryExecModeSimpleProtocol,
 			maxNonalnumRun, escaped)
@@ -1111,6 +1186,7 @@ func (d *Database) SearchStreamers(term string) []string {
 				select nickname from streamers
 				where nickname like $1 || '%'
 				limit 100
+				/*name='search_streamers_prefix'*/
 			`,
 			pgx.QueryExecModeSimpleProtocol, escaped)
 		checkErr(err)
@@ -1129,6 +1205,7 @@ func (d *Database) SearchStreamers(term string) []string {
 				+ levenshtein(left(nickname, 255), left($1, 255))::float
 					/ greatest(length(nickname), length($1), 1)
 			limit 7
+			/*name='search_streamers_rank'*/
 		`,
 		pgx.QueryExecModeExec, term)
 	checkErr(err)
@@ -1149,8 +1226,9 @@ func (d *Database) SearchStreamers(term string) []string {
 // ReferralID returns referral identifier
 func (d *Database) ReferralID(userID UserID) *string {
 	var referralID string
-	if !d.MaybeRecord(
-		"select referral_id from referrals where user_id = $1",
+	if !d.MaybeRecord(`
+		select referral_id from referrals where user_id = $1
+		/*name='referral_id'*/`,
 		QueryParams{int64(userID)},
 		ScanTo{&referralID}) {
 		return nil
@@ -1158,11 +1236,12 @@ func (d *Database) ReferralID(userID UserID) *string {
 	return &referralID
 }
 
-// UserForReferralID returns the user id for a particular referral id
-func (d *Database) UserForReferralID(referralID string) *UserID {
+// UserByReferralID returns the user id for a particular referral id
+func (d *Database) UserByReferralID(referralID string) *UserID {
 	var id int64
-	if !d.MaybeRecord(
-		"select user_id from referrals where referral_id = $1",
+	if !d.MaybeRecord(`
+		select user_id from referrals where referral_id = $1
+		/*name='user_by_referral_id'*/`,
 		QueryParams{referralID},
 		ScanTo{&id}) {
 		return nil
@@ -1171,10 +1250,19 @@ func (d *Database) UserForReferralID(referralID string) *UserID {
 	return &userID
 }
 
+// ReferralIDExists reports whether a referral id is already taken
+func (d *Database) ReferralIDExists(referralID string) bool {
+	return d.MustBool(`
+		select exists(select 1 from referrals where referral_id = $1)
+		/*name='referral_id_exists'*/`,
+		referralID)
+}
+
 // ProfilePhotoUploaded reports whether this hash is the endpoint's last uploaded profile photo
 func (d *Database) ProfilePhotoUploaded(endpoint string, hash string) bool {
-	return d.MustBool(
-		"select exists(select 1 from profile_photos where endpoint = $1 and hash = $2)",
+	return d.MustBool(`
+		select exists(select 1 from profile_photos where endpoint = $1 and hash = $2)
+		/*name='profile_photo_uploaded'*/`,
 		endpoint, hash)
 }
 
@@ -1183,7 +1271,8 @@ func (d *Database) SetProfilePhotoHash(endpoint string, hash string) {
 	d.MustExec(`
 		insert into profile_photos (endpoint, hash)
 		values ($1, $2)
-		on conflict (endpoint) do update set hash = excluded.hash`,
+		on conflict (endpoint) do update set hash = excluded.hash
+		/*name='set_profile_photo_hash'*/`,
 		endpoint,
 		hash)
 }
@@ -1193,15 +1282,17 @@ func (d *Database) IncrementBlock(endpoint string, userID UserID) {
 	d.MustExec(`
 		insert into block as b (endpoint, user_id, block)
 		values ($1, $2, 1)
-		on conflict (user_id, endpoint) do update set block = b.block + 1`,
+		on conflict (user_id, endpoint) do update set block = b.block + 1
+		/*name='increment_block'*/`,
 		endpoint,
 		int64(userID))
 }
 
 // ResetBlock resets blocking count for particular user
 func (d *Database) ResetBlock(endpoint string, userID UserID) {
-	d.MustExec(
-		"update block set block = 0 where endpoint = $1 and user_id = $2",
+	d.MustExec(`
+		update block set block = 0 where endpoint = $1 and user_id = $2
+		/*name='reset_block'*/`,
 		endpoint, int64(userID))
 }
 
@@ -1249,6 +1340,7 @@ func (d *Database) UpsertUnconfirmedStatusChanges(
 				unconfirmed_status = excluded.unconfirmed_status,
 				unconfirmed_timestamp = excluded.unconfirmed_timestamp
 			returning id, nickname, prev_unconfirmed_status, (xmax = 0) as is_new
+			/*name='upsert_unconfirmed_status_changes_streamers'*/
 		`,
 		nicknames, statuses, timestamp,
 	)
@@ -1284,7 +1376,10 @@ func (d *Database) UpsertUnconfirmedStatusChanges(
 		insertNicknamesStart := time.Now()
 		_, err = tx.Exec(
 			context.Background(),
-			`insert into nicknames (nickname) select unnest($1::text[])`,
+			`
+				insert into nicknames (nickname) select unnest($1::text[])
+				/*name='upsert_unconfirmed_status_changes_nicknames'*/
+			`,
 			newNicknames)
 		checkErr(err)
 		timings.InsertNicknamesMs = int(time.Since(insertNicknamesStart).Milliseconds())
@@ -1314,12 +1409,17 @@ func (d *Database) UpsertUnconfirmedStatusChanges(
 
 // AddSubscription inserts a confirmed subscription
 func (d *Database) AddSubscription(userID UserID, streamerID int, endpoint string) {
-	d.MustExec(`
+	defer d.Measure("db: add subscription")()
+	d.addSubscription(d.db, userID, streamerID, endpoint)
+}
+
+func (d *Database) addSubscription(q querier, userID UserID, streamerID int, endpoint string) {
+	_, err := q.Exec(context.Background(), `
 		insert into subscriptions (user_id, streamer_id, endpoint)
-		values ($1, $2, $3)`,
-		int64(userID),
-		streamerID,
-		endpoint)
+		values ($1, $2, $3)
+		/*name='add_subscription'*/`,
+		int64(userID), streamerID, endpoint)
+	checkErr(err)
 }
 
 // AddPendingSubscription inserts a pending subscription for an unknown streamer
@@ -1333,7 +1433,8 @@ func (d *Database) AddPendingSubscription(
 ) {
 	d.MustExec(`
 		insert into pending_subscriptions (user_id, nickname, endpoint, referral, command, reply_seq)
-		values ($1, $2, $3, $4, $5, $6)`,
+		values ($1, $2, $3, $4, $5, $6)
+		/*name='add_pending_subscription'*/`,
 		int64(userID),
 		nickname,
 		endpoint,
@@ -1344,50 +1445,80 @@ func (d *Database) AddPendingSubscription(
 
 // SetShowImages updates the show_images setting for a user
 func (d *Database) SetShowImages(userID UserID, showImages bool) {
-	d.MustExec("update users set show_images = $1 where id = $2", showImages, int64(userID))
+	d.MustExec(`
+		update users set show_images = $1 where id = $2
+		/*name='set_show_images'*/`,
+		showImages, int64(userID))
 }
 
 // SetOfflineNotifications updates the offline_notifications setting for a user
 func (d *Database) SetOfflineNotifications(userID UserID, offlineNotifications bool) {
-	d.MustExec("update users set offline_notifications = $1 where id = $2", offlineNotifications, int64(userID))
+	d.MustExec(`
+		update users set offline_notifications = $1 where id = $2
+		/*name='set_offline_notifications'*/`,
+		offlineNotifications, int64(userID))
 }
 
 // SetShowSubject updates the show_subject setting for a user
 func (d *Database) SetShowSubject(userID UserID, showSubject bool) {
-	d.MustExec("update users set show_subject = $1 where id = $2", showSubject, int64(userID))
+	d.MustExec(`
+		update users set show_subject = $1 where id = $2
+		/*name='set_show_subject'*/`,
+		showSubject, int64(userID))
 }
 
 // SetSilentMessages updates the silent_messages setting for a user
 func (d *Database) SetSilentMessages(userID UserID, silentMessages bool) {
-	d.MustExec("update users set silent_messages = $1 where id = $2", silentMessages, int64(userID))
+	d.MustExec(`
+		update users set silent_messages = $1 where id = $2
+		/*name='set_silent_messages'*/`,
+		silentMessages, int64(userID))
 }
 
 // SetMemberSubscriptions updates the member_subscriptions setting for a user
 func (d *Database) SetMemberSubscriptions(userID UserID, memberSubscriptions bool) {
-	d.MustExec("update users set member_subscriptions = $1 where id = $2", memberSubscriptions, int64(userID))
+	d.MustExec(`
+		update users set member_subscriptions = $1 where id = $2
+		/*name='set_member_subscriptions'*/`,
+		memberSubscriptions, int64(userID))
 }
 
 // SetTimezone updates a user's IANA zone name, empty to clear it back to unset.
 func (d *Database) SetTimezone(userID UserID, timezone string) {
 	if timezone == "" {
-		d.MustExec("update users set timezone = null where id = $1", int64(userID))
+		d.MustExec(`
+			update users set timezone = null where id = $1
+			/*name='clear_timezone'*/`,
+			int64(userID))
 		return
 	}
-	d.MustExec("update users set timezone = $1 where id = $2", timezone, int64(userID))
+	d.MustExec(`
+		update users set timezone = $1 where id = $2
+		/*name='set_timezone'*/`,
+		timezone, int64(userID))
 }
 
 // SetAffiliateParams updates a user's custom affiliate params, empty to clear.
 func (d *Database) SetAffiliateParams(userID UserID, params map[string]string) {
 	if len(params) == 0 {
-		d.MustExec("update users set affiliate_params = null where id = $1", int64(userID))
+		d.MustExec(`
+			update users set affiliate_params = null where id = $1
+			/*name='clear_affiliate_params'*/`,
+			int64(userID))
 		return
 	}
-	d.MustExec("update users set affiliate_params = $1 where id = $2", params, int64(userID))
+	d.MustExec(`
+		update users set affiliate_params = $1 where id = $2
+		/*name='set_affiliate_params'*/`,
+		params, int64(userID))
 }
 
 // UpdateMemberCount updates the member_count for a user
 func (d *Database) UpdateMemberCount(userID UserID, memberCount int) {
-	d.MustExec("update users set member_count = $1 where id = $2", memberCount, int64(userID))
+	d.MustExec(`
+		update users set member_count = $1 where id = $2
+		/*name='update_member_count'*/`,
+		memberCount, int64(userID))
 }
 
 // RemoveSubscription deletes a specific subscription
@@ -1402,12 +1533,14 @@ func (d *Database) RemoveSubscription(userID UserID, nickname string, endpoint s
 		delete from subscriptions sub
 		using streamers s
 		where sub.streamer_id = s.id
-		and sub.user_id = $1 and s.nickname = $2 and sub.endpoint = $3`,
+		and sub.user_id = $1 and s.nickname = $2 and sub.endpoint = $3
+		/*name='remove_subscription'*/`,
 		int64(userID), nickname, endpoint)
 	checkErr(err)
 	_, err = tx.Exec(context.Background(), `
 		delete from pending_subscriptions ps
-		where ps.user_id = $1 and ps.nickname = $2 and ps.endpoint = $3`,
+		where ps.user_id = $1 and ps.nickname = $2 and ps.endpoint = $3
+		/*name='remove_subscription_pending'*/`,
 		int64(userID), nickname, endpoint)
 	checkErr(err)
 	checkErr(tx.Commit(context.Background()))
@@ -1422,11 +1555,13 @@ func (d *Database) RemoveAllSubscriptions(userID UserID, endpoint string) {
 	defer func() { _ = tx.Rollback(context.Background()) }()
 
 	_, err = tx.Exec(context.Background(), `
-		delete from subscriptions where user_id = $1 and endpoint = $2`,
+		delete from subscriptions where user_id = $1 and endpoint = $2
+		/*name='remove_all_subscriptions'*/`,
 		int64(userID), endpoint)
 	checkErr(err)
 	_, err = tx.Exec(context.Background(), `
-		delete from pending_subscriptions where user_id = $1 and endpoint = $2`,
+		delete from pending_subscriptions where user_id = $1 and endpoint = $2
+		/*name='remove_all_subscriptions_pending'*/`,
 		int64(userID), endpoint)
 	checkErr(err)
 	checkErr(tx.Commit(context.Background()))
@@ -1436,7 +1571,8 @@ func (d *Database) RemoveAllSubscriptions(userID UserID, endpoint string) {
 func (d *Database) AddFeedback(endpoint string, userID UserID, text string, timestamp int) {
 	d.MustExec(`
 		insert into feedback (endpoint, user_id, text, timestamp)
-		values ($1, $2, $3, $4)`,
+		values ($1, $2, $3, $4)
+		/*name='add_feedback'*/`,
 		endpoint,
 		int64(userID),
 		text,
@@ -1445,18 +1581,25 @@ func (d *Database) AddFeedback(endpoint string, userID UserID, text string, time
 
 // BlacklistUser sets the blacklist flag for a user
 func (d *Database) BlacklistUser(userID UserID) {
-	d.MustExec("update users set blacklist = true where id = $1", int64(userID))
+	d.MustExec(`
+		update users set blacklist = true where id = $1
+		/*name='blacklist_user'*/`,
+		int64(userID))
 }
 
 // AddReferrerBonus adds a bonus to a referrer's max_subs
 func (d *Database) AddReferrerBonus(userID UserID, bonus int) {
-	d.MustExec("update users set max_subs = max_subs + $1 where id = $2", bonus, int64(userID))
+	d.MustExec(`
+		update users set max_subs = max_subs + $1 where id = $2
+		/*name='add_referrer_bonus'*/`,
+		bonus, int64(userID))
 }
 
 // IncrementReferredUsers increments the referred_users count for a referral
 func (d *Database) IncrementReferredUsers(userID UserID) {
-	d.MustExec(
-		"update referrals set referred_users = referred_users + 1 where user_id = $1",
+	d.MustExec(`
+		update referrals set referred_users = referred_users + 1 where user_id = $1
+		/*name='increment_referred_users'*/`,
 		int64(userID))
 }
 
@@ -1469,7 +1612,8 @@ func (d *Database) AddReferralEvent(timestamp int, referrerUserID *UserID, follo
 	}
 	d.MustExec(`
 		insert into referral_events (timestamp, referrer_user_id, follower_user_id, streamer_id)
-		values ($1, $2, $3, $4)`,
+		values ($1, $2, $3, $4)
+		/*name='add_referral_event'*/`,
 		timestamp,
 		referrer,
 		int64(followerUserID),
@@ -1478,8 +1622,9 @@ func (d *Database) AddReferralEvent(timestamp int, referrerUserID *UserID, follo
 
 // AddReferral adds a new referral record
 func (d *Database) AddReferral(userID UserID, referralID string) {
-	d.MustExec(
-		"insert into referrals (user_id, referral_id) values ($1, $2)",
+	d.MustExec(`
+		insert into referrals (user_id, referral_id) values ($1, $2)
+		/*name='add_referral'*/`,
 		int64(userID), referralID)
 }
 
@@ -1490,7 +1635,8 @@ func (d *Database) AddReferral(userID UserID, referralID string) {
 func (d *Database) LogReceivedMessage(timestamp int, endpoint string, userID UserID, command string) {
 	d.MustExec(`
 		insert into received_message_log (timestamp, endpoint, user_id, command)
-		values ($1, $2, $3, $4)`,
+		values ($1, $2, $3, $4)
+		/*name='log_received_message'*/`,
 		timestamp,
 		endpoint,
 		int64(userID),
@@ -1501,8 +1647,9 @@ func (d *Database) LogReceivedMessage(timestamp int, endpoint string, userID Use
 func (d *Database) LogPerformance(timestamp int, kind PerformanceLogKind, durationMs int, data map[string]any) {
 	jsonData, err := json.Marshal(data)
 	checkErr(err)
-	d.MustExec(
-		"insert into performance_log (timestamp, kind, duration_ms, data) values ($1, $2, $3, $4)",
+	d.MustExec(`
+		insert into performance_log (timestamp, kind, duration_ms, data) values ($1, $2, $3, $4)
+		/*name='log_performance'*/`,
 		timestamp,
 		kind,
 		durationMs,
@@ -1511,24 +1658,65 @@ func (d *Database) LogPerformance(timestamp int, kind PerformanceLogKind, durati
 
 // MaintainBrinIndexes summarizes new values for BRIN indexes
 func (d *Database) MaintainBrinIndexes() {
-	d.MustExec("select brin_summarize_new_values('ix_sent_message_log_timestamp')")
-	d.MustExec("select brin_summarize_new_values('ix_received_message_log_timestamp')")
-	d.MustExec("select brin_summarize_new_values('ix_performance_log_timestamp')")
+	for _, index := range []string{
+		"ix_sent_message_log_timestamp",
+		"ix_received_message_log_timestamp",
+		"ix_performance_log_timestamp",
+	} {
+		d.MustExec(`
+			select brin_summarize_new_values($1::text::regclass)
+			/*name='maintain_brin_indexes'*/`,
+			index)
+	}
+}
+
+// UnconfirmedSubs returns the nicknames of pending subscriptions not yet being checked
+func (d *Database) UnconfirmedSubs() map[string]bool {
+	nicknames := map[string]bool{}
+	var nickname string
+	d.MustQuery(`
+		select nickname from pending_subscriptions where not checking
+		/*name='unconfirmed_subs'*/`,
+		nil,
+		ScanTo{&nickname},
+		func() { nicknames[nickname] = true })
+	return nicknames
+}
+
+// CheckingSubs returns the pending subscriptions under check for nicknames, keyed by nickname
+func (d *Database) CheckingSubs(nicknames []string) map[string][]PendingSubscription {
+	subs := map[string][]PendingSubscription{}
+	var iter PendingSubscription
+	d.MustQuery(`
+		select ps.endpoint, ps.nickname, ps.user_id, ps.referral, coalesce(ps.command, ''), ps.reply_seq
+		from pending_subscriptions ps
+		where ps.checking and ps.nickname = any($1)
+		/*name='checking_subs'*/`,
+		QueryParams{nicknames},
+		ScanTo{&iter.Endpoint, &iter.Nickname, &iter.UserID, &iter.Referral, &iter.Command, &iter.ReplySeq},
+		func() { subs[iter.Nickname] = append(subs[iter.Nickname], iter) })
+	return subs
 }
 
 // MarkUnconfirmedAsChecking marks pending subscriptions as checking
 func (d *Database) MarkUnconfirmedAsChecking() {
-	d.MustExec("update pending_subscriptions set checking = true where not checking")
+	d.MustExec(`
+		update pending_subscriptions set checking = true where not checking
+		/*name='mark_unconfirmed_as_checking'*/`)
 }
 
 // ResetCheckingToUnconfirmed resets checking pending subscriptions back to not checking
 func (d *Database) ResetCheckingToUnconfirmed() {
-	d.MustExec("update pending_subscriptions set checking = false where checking")
+	d.MustExec(`
+		update pending_subscriptions set checking = false where checking
+		/*name='reset_checking_to_unconfirmed'*/`)
 }
 
 // ResetNotificationSending resets all sending notifications to not sending
 func (d *Database) ResetNotificationSending() {
-	d.MustExec("update notification_queue set sending=0")
+	d.MustExec(`
+		update notification_queue set sending=0
+		/*name='reset_notification_sending'*/`)
 }
 
 // LogSentMessage logs a sent message.
@@ -1548,7 +1736,8 @@ func (d *Database) LogSentMessage(
 	d.MustExec(`
 		insert into sent_message_log (
 			timestamp, user_id, result, endpoint, priority, latency, kind, command, reply_seq)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		/*name='log_sent_message'*/`,
 		timestamp,
 		int64(userID),
 		result,
@@ -1585,19 +1774,26 @@ func (d *Database) LogDiceSkippedSends(
 		insert into sent_message_log (
 			timestamp, user_id, result, endpoint, priority, latency, kind, command, reply_seq)
 		select $1, t.user_id, $2, t.endpoint, $3, 0, $4, null, 0
-		from unnest($5::bigint[], $6::text[]) as t(user_id, endpoint)`,
+		from unnest($5::bigint[], $6::text[]) as t(user_id, endpoint)
+		/*name='log_dice_skipped_sends'*/`,
 		timestamp, result, priority, kind, ids, endpoints)
 }
 
 // DeleteNotification deletes a notification by ID
 func (d *Database) DeleteNotification(id int) {
-	d.MustExec("delete from notification_queue where id = $1", id)
+	d.MustExec(`
+		delete from notification_queue where id = $1
+		/*name='delete_notification'*/`,
+		id)
 }
 
 // RequeueNotification puts a notification back in the queue,
 // so a later fetch picks it up again.
 func (d *Database) RequeueNotification(id int) {
-	d.MustExec("update notification_queue set sending = 0 where id = $1", id)
+	d.MustExec(`
+		update notification_queue set sending = 0 where id = $1
+		/*name='requeue_notification'*/`,
+		id)
 }
 
 // IncrementReports counts one notification per id passed in, duplicates included.
@@ -1616,7 +1812,8 @@ func (d *Database) IncrementReports(userIDs []UserID) {
 			from unnest($1::bigint[]) as t(user_id)
 			group by user_id
 		) c
-		where u.id = c.user_id`,
+		where u.id = c.user_id
+		/*name='increment_reports'*/`,
 		ids)
 }
 
@@ -1648,6 +1845,7 @@ func (d *Database) ConfirmStatusChanges(
 				or (unconfirmed_status = 1 and $1 - unconfirmed_timestamp >= $3)
 				or unconfirmed_status = 0
 			)
+			/*name='confirm_status_changes_collect'*/
 		`,
 		now, onlineSeconds, offlineSeconds)
 	checkErr(err)
@@ -1659,12 +1857,16 @@ func (d *Database) ConfirmStatusChanges(
 			set confirmed_status = tc.unconfirmed_status
 			from to_confirm tc
 			where c.id = tc.id
+			/*name='confirm_status_changes_update'*/
 		`)
 	checkErr(err)
 
 	rows, err := tx.Query(
 		context.Background(),
-		`select id, nickname, unconfirmed_status, confirmed_status from to_confirm`,
+		`
+			select id, nickname, unconfirmed_status, confirmed_status from to_confirm
+			/*name='confirm_status_changes_result'*/
+		`,
 	)
 	checkErr(err)
 	defer rows.Close()
