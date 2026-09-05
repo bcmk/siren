@@ -3,7 +3,11 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
-## Unreleased
+## v5.6.0 — 2026-09-05
+
+### Added
+
+- Every SQL statement ends with a `/*name='…'*/` tag for `pg_stat_statements`
 
 ### Changed
 
