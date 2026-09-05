@@ -1116,6 +1116,47 @@ func TestOnlinePicsCarryTheHintInTheLastMessage(t *testing.T) {
 	}
 }
 
+// TestPicsHintRollsTheDice checks the tip obeys fields_hint_chance_percent:
+// a zero chance never marks the last message, a full one always does.
+func TestPicsHintRollsTheDice(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		chance int
+		want   bool
+	}{
+		{"a zero chance never hints", 0, false},
+		{"a full chance always hints", 100, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := newTestWorker()
+			defer w.terminate()
+			w.createDatabase()
+			w.initCache()
+			cfg := testConfig
+			cfg.FieldsHintChancePercent = tc.chance
+			w.cfg = &cfg
+			insertTestStreamer(&w.db, db.Streamer{Nickname: "online_0", UnconfirmedStatus: cmdlib.StatusOnline})
+			insertSubscription(&w.db, "test", 1, "online_0")
+			const answers = 20
+			for range answers {
+				w.listOnlineStreamers(testMessage(w, 1, "pics", 100))
+			}
+			nots := w.db.NewNotifications()
+			if len(nots) != answers {
+				t.Fatalf("queued %d notifications, want %d", len(nots), answers)
+			}
+			for _, n := range nots {
+				if n.FieldsHint != tc.want {
+					t.Fatalf("FieldsHint = %v, want %v", n.FieldsHint, tc.want)
+				}
+			}
+		})
+	}
+}
+
 // A pending add answers three times, minutes apart:
 // the checking notice, then the result, then the streamer's status.
 // All three belong to one answer, so none may share a number.

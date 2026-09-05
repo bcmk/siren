@@ -36,6 +36,8 @@ var testConfig = botconfig.Config{
 	FollowerBonus:        1,
 	OfflineNotifications: true,
 	BlockedSendThreshold: 15,
+	// Certain, so the hint tests stay deterministic; the gate has a test of its own.
+	FieldsHintChancePercent: 100,
 	StatusConfirmationSeconds: botconfig.StatusConfirmationSeconds{
 		Offline: 5,
 	},

@@ -30,8 +30,8 @@ type Notification struct {
 	Command string
 	// ReplySeq is the message's place in one answer, zero for the first.
 	ReplySeq int
-	// FieldsHint marks the last message of an answer,
-	// which carries the customization hint where the chat is one that can act on it.
+	// FieldsHint marks the last message of an answer that won the hint roll;
+	// it carries the customization hint where the chat is one that can act on it.
 	FieldsHint bool
 	Subject    string
 

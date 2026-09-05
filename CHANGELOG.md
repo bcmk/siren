@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## Unreleased
+
+### Changed
+
+- The customization tip rides the last `/pics` message
+  with `fields_hint_chance_percent` probability (default 10), rather than every time
+
 ## v5.6.0 — 2026-09-05
 
 ### Added

@@ -68,6 +68,7 @@ type Config struct {
 	NotificationsReadyPeriodSeconds int                       `mapstructure:"notifications_ready_period_seconds"` // notifications ready check period
 	ShowImages                      bool                      `mapstructure:"show_images"`                        // images support
 	AdChancePercent                 int                       `mapstructure:"ad_chance_percent"`                  // probability of showing an ad (0–100)
+	FieldsHintChancePercent         int                       `mapstructure:"fields_hint_chance_percent"`         // probability of the customization tip on a /pics answer (0–100), defaults to 10
 	BlockedSendThreshold            int                       `mapstructure:"blocked_send_threshold"`             // consecutive blocked sends before an attempt rolls the dice, defaults to 100
 	BotLinkPeriod                   int                       `mapstructure:"bot_link_period"`                    // channel bot-link cadence in alerts, 0 disables, defaults to 12
 	WhitelistChats                  []int64                   `mapstructure:"whitelist_chats"`                    // if set, only these chats are processed
@@ -90,6 +91,7 @@ func ReadConfig(cfgPath string) *Config {
 	cfg := &Config{
 		ShowImages:                true,
 		AdChancePercent:           20,
+		FieldsHintChancePercent:   10,
 		EnableCustomAffiliateLink: true,
 		BotLinkPeriod:             12,
 		BlockedSendThreshold:      100,

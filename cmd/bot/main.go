@@ -2114,7 +2114,8 @@ func (w *worker) listOnlineStreamers(m receivedMessage) {
 	// Carried by the last message of the answer, in its caption where that message has a picture,
 	// so the hint arrives with the pictures it explains rather than a tick ahead of them.
 	// It shares that message's fate: a hint with no picture left to explain is not worth a retry.
-	nots[len(nots)-1].FieldsHint = true
+	// Rolled once per answer, so the queue carries the outcome.
+	nots[len(nots)-1].FieldsHint = rand.Intn(100) < w.cfg.FieldsHintChancePercent
 	w.storeNotifications(nots)
 }
 
