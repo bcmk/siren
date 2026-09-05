@@ -93,6 +93,8 @@
 - Prefer short comments: one line is the default.
   Add more lines only when required to understand the code.
   The `tidy-docs` skill applies this rule too — see Skills.
+  Don't you dare write fucking essays instead of comments or I'll rip your balls off.
+  Shorter is better.
 - Never write a comment that only answers a review:
   one justifying an edit, defending a line that was deleted,
   or restating the code beside it.
