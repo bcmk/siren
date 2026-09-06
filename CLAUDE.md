@@ -31,7 +31,7 @@
   A released tag is permanent
 - A doc change that is not part of the feature belongs at the base of the branch,
   right after origin, so it can go to origin without waiting on a review
-- A request to commit stands until it is withdrawn.
+- Commit when the work is done, without being asked.
   Commit each round of work as it finishes,
   rather than carrying it uncommitted and reporting that it is.
 - After a mistake is corrected, ask if a new guideline
