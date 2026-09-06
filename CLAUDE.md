@@ -188,6 +188,9 @@
   and serves the main checkout's results for a file of the same name,
   with paths outside the worktree and mismatched line numbers.
   Run `golangci-lint cache clean` before trusting the first lint in a worktree.
+- Create temporary worktrees under `.claude/worktrees/` and nowhere else.
+  Outside the working directories the file tools prompt on their first read,
+  and a bare `cd` is reset at once.
 
 ## Go Module Version
 
@@ -233,8 +236,7 @@
   Where the finding is a judgment call, the fix may be to accept it and change nothing.
   Start `Fix:` on its own line.
 - During a code review, never touch the working tree.
-  Run mutation tests and other experiments in a temporary worktree or copy —
-  there they need no permission.
+  Run mutation tests and other experiments in a temporary worktree or copy.
 - Write each finding to stand alone,
   so one can be handed to another agent without the rest of the list or the conversation.
   Avoid pointing to other findings by number; restate what the reader needs.
