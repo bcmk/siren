@@ -1333,7 +1333,7 @@ func (d *Database) UpsertUnconfirmedStatusChanges(
 		context.Background(),
 		`
 			insert into streamers (nickname, unconfirmed_status, unconfirmed_timestamp)
-			select unnest($1::text[]), unnest($2::int[]), $3
+			select unnest($1::text[]), unnest($2::int[]), $3::int
 			on conflict(nickname) do update set
 				prev_unconfirmed_status = streamers.unconfirmed_status,
 				prev_unconfirmed_timestamp = streamers.unconfirmed_timestamp,
