@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v5.7.1 — 2026-09-07
+
+### Changed
+
+- The streamers join in the status change query stays a per-id primary key lookup
+
+### Fixed
+
+- The streamer upsert casts its timestamp, so it keeps one `queryid`
+
 ## v5.7.0 — 2026-09-05
 
 ### Changed
