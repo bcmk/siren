@@ -701,7 +701,14 @@ func (d *Database) ChangesFromToForStreamers(streamerIDs []int, from int, to int
 	d.MustQuery(`
 		select s.id, coalesce(sc.prev_status, s.unconfirmed_status), sc.status, sc.timestamp
 		from unnest($1::integer[]) as ids(id)
-		join streamers s on s.id = ids.id
+		-- A plain join lets the planner read all of streamers and merge join it.
+		-- The lateral with offset 0 keeps each id a primary key lookup.
+		join lateral (
+			select st.id, st.unconfirmed_status, st.unconfirmed_timestamp
+			from streamers st
+			where st.id = ids.id
+			offset 0
+		) s on true
 		-- unconfirmed_timestamp is the newest change, so a streamer older than the window has none.
 		-- offset 0 keeps the subquery from being flattened,
 		-- which makes that a one-time filter and skips the index scan.
