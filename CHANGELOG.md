@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v5.8.0 — 2026-09-08
+
+### Added
+
+- The find and add app rides on every failed `/add` reply, opened on the nickname the reply names
+- The choose and remove app rides on every `/remove` reply that leaves something to remove
+
+### Changed
+
+- A line before each web app button reads into its label, left out where no button rides along
+- The failed-add reply drops the syntax line, which repeated a command the user typed correctly
+
 ## v5.7.1 — 2026-09-07
 
 ### Changed
