@@ -12,7 +12,7 @@ add_error:
   str: |-
     Could not add the channel {{ .streamer }}
     Check the channel name or try later
-    Syntax: {{ command "add" }} <code>CHANNEL</code>
+    {{- if .has_button }}{{ print "\n" }}{{ template "or_button_hint" }}{{ end }}
 checking_streamer:
   parse: raw
   str: Give us a second. We are checking this channel
@@ -51,6 +51,7 @@ syntax_add:
   parse: html
   str: |-
     Specify a channel, e.g., <code>{{ template "add_example" }}</code>
+    {{- if .has_button }}{{ print "\n" }}{{ template "or_button_hint" }}{{ end }}
 search_header:
   parse: raw
   str: Find and add a channel
@@ -64,6 +65,7 @@ syntax_remove:
   parse: html
   str: |-
     Specify a channel, e.g., <code>{{ template "remove_example" }}</code>
+    {{- if .has_button }}{{ print "\n" }}{{ template "or_button_hint" }}{{ end }}
 unknown_command:
   parse: html
   str: |-
@@ -147,7 +149,9 @@ faq_pricing:
 invalid_symbols:
   parse: raw
   disable_preview: true
-  str: 'The channel name {{ .streamer }} has invalid symbols'
+  str: |-
+    The channel name {{ .streamer }} has invalid symbols
+    {{- if .has_button }}{{ print "\n" }}{{ template "try_button_hint" }}{{ end }}
 profile_removed:
   parse: raw
   str: 'The channel {{ .streamer }} is probably removed'

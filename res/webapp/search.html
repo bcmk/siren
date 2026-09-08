@@ -84,8 +84,9 @@ body {
 <h1 class="header">{{.Header}}</h1>
 <div class="search-box">
     <input type="text" id="q" placeholder="{{.Placeholder}}"
-        maxlength="32" autocomplete="off" autocorrect="off"
-        autocapitalize="off" spellcheck="false" autofocus>
+        value="{{.Term}}" maxlength="{{.MaxTerm}}" autocomplete="off"
+        autocorrect="off" autocapitalize="off" spellcheck="false"
+        autofocus>
 </div>
 <div class="spinner" id="spinner"></div>
 <ul class="results" id="results"></ul>
@@ -105,12 +106,16 @@ var hint = document.getElementById("hint");
 var spinner = document.getElementById("spinner");
 var timer = null;
 var selectedIdx = -1;
+// Only the newest search may paint: an open prefilled with a term
+// has a request in flight before the first keystroke.
+var seq = 0;
 
 input.addEventListener("input", function() {
     clearTimeout(timer);
     selectedIdx = -1;
     var q = this.value.trim();
     if (q.length < 1) {
+        seq++;
         spinner.style.display = "none";
         resultsList.innerHTML = "";
         hint.textContent = "";
@@ -159,6 +164,7 @@ function updateSelection() {
 }
 
 function search(q) {
+    var mine = ++seq;
     spinner.style.display = "block";
     resultsList.innerHTML = "";
     var url = "/apps/add/api/search?endpoint=" + encodeURIComponent(endpoint) +
@@ -168,6 +174,7 @@ function search(q) {
     })
     .then(function(r) { return r.json(); })
     .then(function(ids) {
+        if (mine !== seq) return;
         spinner.style.display = "none";
         resultsList.innerHTML = "";
         hint.textContent = "";
@@ -186,6 +193,7 @@ function search(q) {
         });
     })
     .catch(function() {
+        if (mine !== seq) return;
         spinner.style.display = "none";
         hint.textContent = searchFailed;
     });
@@ -216,6 +224,11 @@ function addStreamer(id) {
         input.disabled = false;
         hint.textContent = failedToAdd + " " + id;
     });
+}
+
+// The term the button carried never fires an input event, so open on its results.
+if (input.value.trim().length > 0) {
+    search(input.value.trim());
 }
 </script>
 </body>

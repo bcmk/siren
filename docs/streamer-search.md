@@ -8,8 +8,10 @@ in Telegram commands.
 ## Solution
 
 Telegram Mini App (Web App) opened via inline keyboard button.
-User taps "Or Find and Add", searches in the Mini App,
+User taps "Find and Add", searches in the Mini App,
 taps a result, and the Mini App calls the add API directly.
+A reply about one streamer carries its nickname in the button's `term`,
+so the app opens on its results rather than on an empty box.
 
 ## Search implementation
 

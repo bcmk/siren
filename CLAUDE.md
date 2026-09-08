@@ -346,7 +346,7 @@ Call the broadcaster a streamer and their name a nickname.
 Use those words everywhere — code, comments, test names, commit messages, conversation —
 except in code and translations belonging to one site,
 which say that site's own word: "model" on the adult sites, "channel" on Twitch and Kick.
-"camname" is user-facing wording alone: it belongs in `res/translations/` and nowhere else.
+"camname" is user-facing wording alone: it belongs in `res/translations/` and docs quoting them.
 
 ## Documentation
 

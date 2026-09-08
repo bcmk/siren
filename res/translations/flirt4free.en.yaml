@@ -9,8 +9,8 @@ add_error:
   str: |-
     Could not add the model {{ .streamer }}
     Check the camname or try later
-    Syntax: {{ command "add" }} <code>CAMNAME</code>
     {{ template "address_line" }}
+    {{- if .has_button }}{{ print "\n" }}{{ template "or_button_hint" }}{{ end }}
 help:
   parse: html
   disable_preview: true
@@ -60,12 +60,14 @@ syntax_add:
     Specify a model, e.g., <code>{{ template "add_example" }}</code>
 
     {{ template "address_line" }}
+    {{- if .has_button }}{{ print "\n" }}{{ template "or_button_hint" }}{{ end }}
 syntax_remove:
   parse: html
   str: |-
     Specify a model, e.g., <code>{{ template "remove_example" }}</code>
 
     {{ template "address_line" }}
+    {{- if .has_button }}{{ print "\n" }}{{ template "or_button_hint" }}{{ end }}
 unknown_command:
   parse: html
   str: |-

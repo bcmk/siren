@@ -9,6 +9,8 @@ import (
 	"container/heap"
 	"time"
 
+	"github.com/go-telegram/bot/models"
+
 	"github.com/bcmk/siren/v5/internal/db"
 	"github.com/bcmk/siren/v5/lib/cmdlib"
 )
@@ -125,7 +127,30 @@ func (w *worker) replyTr(
 	translation *cmdlib.Translation,
 	data tplData,
 ) {
-	w.enqueueTr(priority, m.endpoint, m.userID, notify, translation, data, nil, m.tag(), 0)
+	w.replyTrMarkup(m, priority, notify, translation, data, nil)
+}
+
+// replyTrMarkup is replyTr with a keyboard riding along.
+func (w *worker) replyTrMarkup(
+	m receivedMessage,
+	priority db.Priority,
+	notify bool,
+	translation *cmdlib.Translation,
+	data tplData,
+	markup models.ReplyMarkup,
+) {
+	w.enqueueTr(priority, m.endpoint, m.userID, notify, translation, withButton(data, markup),
+		nil, markup, m.tag(), 0)
+}
+
+// withButton tells the translation whether a keyboard rode along,
+// so a line reading into the button is left out of a chat that gets none.
+func withButton(data tplData, markup models.ReplyMarkup) tplData {
+	if data == nil {
+		data = tplData{}
+	}
+	data["has_button"] = markup != nil
+	return data
 }
 
 // replyToOwner answers an owner command with raw text.
@@ -138,11 +163,6 @@ func (w *worker) replyToOwner(endpoint, text string) {
 // replyToOwnerNth answers as the seq-th message of an owner answer.
 func (w *worker) replyToOwnerNth(endpoint string, seq int, parse cmdlib.ParseKind, text string) {
 	w.sendText(db.PriorityHigh, endpoint, w.ownerUserID, false, true, parse, text, replyNth("", seq))
-}
-
-// replyMessage answers with a prebuilt message, always to the sender.
-func (w *worker) replyMessage(m receivedMessage, priority db.Priority, msg sendable) {
-	w.enqueueMessage(priority, m.endpoint, msg, m.tag(), m.userID, 0)
 }
 
 // adTag tags an advertisement,

@@ -1320,6 +1320,10 @@ func TestUnknownCommandLogsNoCommand(t *testing.T) {
 	}
 }
 
+// testWebhookDomain is the domain searchConfig writes,
+// which every web app URL a test asserts is built on.
+const testWebhookDomain = "bot.example.invalid"
+
 // searchConfig writes a minimal valid config and reads it back,
 // the only way to obtain a populated Endpoints map: its value type
 // is unexported, so a test cannot build one by hand.
@@ -1343,7 +1347,7 @@ func searchConfig(t *testing.T, botToken string, whitelist []int64) *botconfig.C
 		"notifications_ready_period_seconds": 1,
 		"whitelist_chats":                    whitelist,
 		"endpoints": map[string]any{"test": map[string]any{
-			"webhook_domain":       "bot.example.invalid",
+			"webhook_domain":       testWebhookDomain,
 			"bot_token":            botToken,
 			"translation":          []string{"t.yaml"},
 			"images":               "img",

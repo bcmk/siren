@@ -158,6 +158,8 @@ type PendingSubscription struct {
 	UserID   UserID
 	Nickname string
 	Endpoint string
+	// ChatID is joined from users, so the confirmation reply knows the chat kind it lands in.
+	ChatID   int64
 	Referral bool
 	// Command is the command that asked for the subscription.
 	// The confirmation reply lands much later,

@@ -682,11 +682,12 @@ func (w *worker) enqueueTr(
 	translation *cmdlib.Translation,
 	data tplData,
 	image []byte,
+	markup models.ReplyMarkup,
 	tag sendTag,
 	notificationID int,
 ) {
 	params := &renderParams{templates: w.tpl[endpoint], key: translation.Key, data: data}
-	msg := params.asDeferredSendable(translation, notify, image)
+	msg := params.asDeferredSendable(translation, notify, image, markup)
 	w.enqueueMessage(priority, endpoint, msg, tag, userID, notificationID)
 }
 
@@ -701,7 +702,22 @@ func (w *worker) sendTr(
 ) {
 	// Replies leave the chat id to trySend;
 	// a single reply per command makes the per-dispatch lookup negligible.
-	w.enqueueTr(priority, endpoint, userID, notify, translation, data, nil, tag, 0)
+	w.sendTrMarkup(priority, endpoint, userID, notify, translation, data, nil, tag)
+}
+
+// sendTrMarkup is sendTr with a keyboard riding along.
+func (w *worker) sendTrMarkup(
+	priority db.Priority,
+	endpoint string,
+	userID db.UserID,
+	notify bool,
+	translation *cmdlib.Translation,
+	data tplData,
+	markup models.ReplyMarkup,
+	tag sendTag,
+) {
+	w.enqueueTr(priority, endpoint, userID, notify, translation, withButton(data, markup),
+		nil, markup, tag, 0)
 }
 
 func (w *worker) sendAdsTr(
@@ -714,7 +730,7 @@ func (w *worker) sendAdsTr(
 ) {
 	tag := adTag(command)
 	params := &renderParams{templates: w.tplAds[endpoint], key: translation.Key}
-	msg := params.asDeferredSendable(translation, notify, translation.ImageBytes)
+	msg := params.asDeferredSendable(translation, notify, translation.ImageBytes, nil)
 	w.enqueueMessage(priority, endpoint, msg, tag, userID, 0)
 }
 
@@ -787,9 +803,11 @@ func (w *worker) notifyOfAddResults(priority db.Priority, notifications []db.Not
 		data := tplData{"streamer": n.Nickname}
 		if n.Status&(cmdlib.StatusOnline|cmdlib.StatusOffline|cmdlib.StatusDenied) != 0 {
 			w.sendTr(priority, n.Endpoint, n.UserID, false, w.tr[n.Endpoint].StreamerAdded, data, notificationTag(n))
-		} else {
-			w.sendTr(priority, n.Endpoint, n.UserID, false, w.tr[n.Endpoint].AddError, data, notificationTag(n))
+			continue
 		}
+		keyboard := w.searchKeyboard(n.Endpoint, n.ChatID, n.Nickname)
+		w.sendTrMarkup(priority, n.Endpoint, n.UserID, false, w.tr[n.Endpoint].AddError, data, keyboard,
+			notificationTag(n))
 	}
 }
 
@@ -1033,7 +1051,7 @@ func (w *worker) notifyOfStatus(p plannedNotification, image []byte) {
 			"fields_hint": p.FieldsHint && !isGroupOrChannel(p.ChatID),
 			"bot_link":    w.channelBotLink(p.Notification, p.reports),
 		}
-		w.enqueueTr(p.Priority, p.Endpoint, p.UserID, notify, p.translation, data, image,
+		w.enqueueTr(p.Priority, p.Endpoint, p.UserID, notify, p.translation, data, image, nil,
 			notificationTag(p.Notification), p.ID)
 	}
 	if p.Social && w.cfg.AdChancePercent > 0 && rand.Intn(100) < w.cfg.AdChancePercent {
@@ -1277,28 +1295,50 @@ func (w *worker) showMonth(m receivedMessage, nickname string) {
 	}
 }
 
+// webAppKeyboard is a one-button keyboard opening a web app,
+// nil in a group or channel, where such a button does not work.
+func webAppKeyboard(chatID int64, label, url string) models.ReplyMarkup {
+	if isGroupOrChannel(chatID) {
+		return nil
+	}
+	return &models.InlineKeyboardMarkup{
+		InlineKeyboard: [][]models.InlineKeyboardButton{{
+			{Text: label, WebApp: &models.WebAppInfo{URL: url}},
+		}},
+	}
+}
+
+// searchKeyboard is the find-and-add web app button, opening on term where there is one,
+// nil for a fixed-list checker, whose table holds nothing a search could surface.
+func (w *worker) searchKeyboard(endpoint string, chatID int64, term string) models.ReplyMarkup {
+	if w.checker.Capabilities().UsesFixedListOnline() {
+		return nil
+	}
+	// Trimmed and measured as handleSearch does, so the button carries what a search would run.
+	term = strings.TrimSpace(term)
+	if len(term) > maxSearchTerm {
+		term = ""
+	}
+	return webAppKeyboard(chatID, w.tr[endpoint].SearchButton.Str, w.webAppURL(endpoint, term))
+}
+
+// removalKeyboard is the choose-and-remove web app button.
+// No capability gate, unlike the search button:
+// the list is the chat's own subscriptions, which every checker has.
+func (w *worker) removalKeyboard(endpoint string, chatID int64) models.ReplyMarkup {
+	return webAppKeyboard(chatID, w.tr[endpoint].RemoveButton.Str, w.removalAppURL(endpoint))
+}
+
 func (w *worker) addStreamer(m receivedMessage, nickname string, referral bool) *int {
 	if nickname == "" {
-		tr := w.tr[m.endpoint].SyntaxAdd
-		params := &renderParams{templates: w.tpl[m.endpoint], key: tr.Key}
-		msg := params.asDeferredText(true, tr.DisablePreview, tr.Parse)
-		// A private chat, the only place a web app button works.
-		if !w.checker.Capabilities().UsesFixedListOnline() && !isGroupOrChannel(m.chatID) {
-			msg.ReplyMarkup = &models.InlineKeyboardMarkup{
-				InlineKeyboard: [][]models.InlineKeyboardButton{{
-					{
-						Text:   w.tr[m.endpoint].SearchButton.Str,
-						WebApp: &models.WebAppInfo{URL: w.webAppURL(m.endpoint)},
-					},
-				}},
-			}
-		}
-		w.replyMessage(m, db.PriorityHigh, msg)
+		w.replyTrMarkup(m, db.PriorityHigh, true, w.tr[m.endpoint].SyntaxAdd, nil,
+			w.searchKeyboard(m.endpoint, m.chatID, ""))
 		return nil
 	}
 	nickname = w.checker.NicknamePreprocessing(nickname)
 	if !w.checker.NicknameRegexp().MatchString(nickname) {
-		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].InvalidSymbols, tplData{"streamer": nickname})
+		w.replyTrMarkup(m, db.PriorityHigh, false, w.tr[m.endpoint].InvalidSymbols,
+			tplData{"streamer": nickname}, w.searchKeyboard(m.endpoint, m.chatID, nickname))
 		return nil
 	}
 
@@ -1317,7 +1357,8 @@ func (w *worker) addStreamer(m receivedMessage, nickname string, referral bool) 
 	if streamer == nil {
 		caps := w.checker.Capabilities()
 		if !caps.SupportsQueryStatus && !caps.SupportsQueryFixedListStatuses {
-			w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].AddError, tplData{"streamer": nickname})
+			w.replyTrMarkup(m, db.PriorityHigh, false, w.tr[m.endpoint].AddError,
+				tplData{"streamer": nickname}, w.searchKeyboard(m.endpoint, m.chatID, nickname))
 			return nil
 		}
 		// The confirmation lands later, so it takes the next number.
@@ -1403,7 +1444,6 @@ func (w *worker) buySubs(m receivedMessage) {
 		return
 	}
 	tr := w.tr[m.endpoint].BuySubs
-	params := &renderParams{templates: w.tpl[m.endpoint], key: tr.Key}
 	buttonTpl := w.tr[m.endpoint].BuySubsPackageButton
 	base := w.cfg.SubsTiers[0]
 	buttons := make([][]models.InlineKeyboardButton, 0, len(w.cfg.SubsTiers))
@@ -1419,9 +1459,8 @@ func (w *worker) buySubs(m receivedMessage) {
 			CallbackData: fmt.Sprintf("buy:stars:%d", t.Count),
 		}})
 	}
-	msg := params.asDeferredText(true, tr.DisablePreview, tr.Parse)
-	msg.ReplyMarkup = &models.InlineKeyboardMarkup{InlineKeyboard: buttons}
-	w.replyMessage(m, db.PriorityHigh, msg)
+	w.replyTrMarkup(m, db.PriorityHigh, true, tr, nil,
+		&models.InlineKeyboardMarkup{InlineKeyboard: buttons})
 }
 
 func (w *worker) sendSubsInvoice(m receivedMessage, tier botconfig.SubsTier) {
@@ -1701,27 +1740,13 @@ func (w *worker) chatLocation(user db.User) (*time.Location, string) {
 // and belongs to the bare command, which asks what the zone is:
 // one that has just set or cleared it is answered with the zone alone.
 func (w *worker) replyTimezone(m receivedMessage, zone string, help bool) {
-	tr := w.tr[m.endpoint].Timezone
-	params := &renderParams{
-		templates: w.tpl[m.endpoint],
-		key:       tr.Key,
-		data:      tplData{"timezone": zone, "help": help},
+	var keyboard models.ReplyMarkup
+	if help {
+		keyboard = webAppKeyboard(
+			m.chatID, w.tr[m.endpoint].TimezoneButton.Str, w.timezoneAppURL(m.endpoint, zone))
 	}
-	// Silent, as a replyTr answer is. The bare /add reply, which carries a picker button too,
-	// notifies instead: whichever is right, the two should move together.
-	msg := params.asDeferredText(false, tr.DisablePreview, tr.Parse)
-	// A private chat, the only place a web app button works.
-	if help && !isGroupOrChannel(m.chatID) {
-		msg.ReplyMarkup = &models.InlineKeyboardMarkup{
-			InlineKeyboard: [][]models.InlineKeyboardButton{{
-				{
-					Text:   w.tr[m.endpoint].TimezoneButton.Str,
-					WebApp: &models.WebAppInfo{URL: w.timezoneAppURL(m.endpoint, zone)},
-				},
-			}},
-		}
-	}
-	w.replyMessage(m, db.PriorityHigh, msg)
+	w.replyTrMarkup(m, db.PriorityHigh, false, w.tr[m.endpoint].Timezone,
+		tplData{"timezone": zone, "help": help}, keyboard)
 }
 
 // setTimezone shows the chat's zone or sets it from a typed IANA name.
@@ -1900,24 +1925,8 @@ func (w *worker) botLink(endpoint string) string {
 
 func (w *worker) removeStreamer(m receivedMessage, nickname string) {
 	if nickname == "" {
-		tr := w.tr[m.endpoint].SyntaxRemove
-		params := &renderParams{templates: w.tpl[m.endpoint], key: tr.Key}
-		// Silent, as the replyTr answer was before the button rode along.
-		msg := params.asDeferredText(false, tr.DisablePreview, tr.Parse)
-		// A private chat, the only place a web app button works.
-		// No capability gate, unlike the search button:
-		// the list is the chat's own subscriptions, which every checker has.
-		if !isGroupOrChannel(m.chatID) {
-			msg.ReplyMarkup = &models.InlineKeyboardMarkup{
-				InlineKeyboard: [][]models.InlineKeyboardButton{{
-					{
-						Text:   w.tr[m.endpoint].RemoveButton.Str,
-						WebApp: &models.WebAppInfo{URL: w.removalAppURL(m.endpoint)},
-					},
-				}},
-			}
-		}
-		w.replyMessage(m, db.PriorityHigh, msg)
+		w.replyTrMarkup(m, db.PriorityHigh, false, w.tr[m.endpoint].SyntaxRemove, nil,
+			w.removalKeyboard(m.endpoint, m.chatID))
 		return
 	}
 	nickname = w.checker.NicknamePreprocessing(nickname)
@@ -2492,8 +2501,17 @@ func (w *worker) webAppBase(endpoint string) string {
 	return "https://" + w.cfg.Endpoints[endpoint].WebhookDomain
 }
 
-func (w *worker) webAppURL(endpoint string) string {
-	return w.webAppBase(endpoint) + "/apps/add?endpoint=" + endpoint
+// maxSearchTerm is the longest term a search runs on, in bytes.
+// The page takes it as MaxTerm, so the box and the query cap alike.
+const maxSearchTerm = 32
+
+// webAppURL opens the search page, on term's results where the caller passes one.
+func (w *worker) webAppURL(endpoint, term string) string {
+	page := w.webAppBase(endpoint) + "/apps/add?endpoint=" + endpoint
+	if term == "" {
+		return page
+	}
+	return page + "&term=" + url.QueryEscape(term)
 }
 
 // timezoneAppURL carries the chat's zone to the page, which has no way to ask for it.
@@ -2559,14 +2577,20 @@ func (w *worker) handleWebApp(rw http.ResponseWriter, r *http.Request) {
 	}
 	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
 	tr := w.tr[endpoint]
+	// The query names the term: the page is served before any init data is read.
+	term := r.URL.Query().Get("term")
 	data := struct {
 		Header      string
+		Term        string
+		MaxTerm     int
 		Placeholder string
 		NoResults   string
 		Failed      string
 		FailedToAdd string
 	}{
 		Header:      tr.SearchHeader.Str,
+		Term:        term,
+		MaxTerm:     maxSearchTerm,
 		Placeholder: tr.SearchPlaceholder.Str,
 		NoResults:   tr.SearchNoResults.Str,
 		Failed:      tr.SearchFailed.Str,
@@ -2705,7 +2729,7 @@ func (w *worker) handleSearch(rw http.ResponseWriter, r *http.Request) {
 	}
 	term := strings.TrimSpace(strings.ToLower(r.URL.Query().Get("term")))
 	var results []string
-	if len(term) >= 1 && len(term) <= 32 {
+	if len(term) >= 1 && len(term) <= maxSearchTerm {
 		req := searchRequest{
 			endpoint: endpoint,
 			chatID:   chatID,
@@ -4503,6 +4527,7 @@ func (w *worker) processSubsConfirmations(res *cmdlib.ExistenceListResults) {
 				n := db.Notification{
 					Endpoint:   sub.Endpoint,
 					UserID:     sub.UserID,
+					ChatID:     sub.ChatID,
 					StreamerID: streamerID,
 					Nickname:   nickname,
 					Status:     info.Status,

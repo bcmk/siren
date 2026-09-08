@@ -3,6 +3,8 @@ package main
 import (
 	"testing"
 
+	"github.com/go-telegram/bot/models"
+
 	"github.com/bcmk/siren/v5/lib/cmdlib"
 )
 
@@ -24,9 +26,15 @@ func TestPhotoFallbackKeepsPreviewSetting(t *testing.T) {
 			t.Parallel()
 			tr := &cmdlib.Translation{Key: "online", DisablePreview: tc.disablePreview}
 			var noRender *renderParams
-			photo := noRender.asDeferredSendable(tr, true, []byte("image")).(*photoParams)
+			keyboard := &models.InlineKeyboardMarkup{
+				InlineKeyboard: [][]models.InlineKeyboardButton{{{Text: "button"}}},
+			}
+			photo := noRender.asDeferredSendable(tr, true, []byte("image"), keyboard).(*photoParams)
 			photo.Caption = "already rendered"
 			text := photo.toText()
+			if text.ReplyMarkup != keyboard {
+				t.Errorf("the keyboard did not carry across: %+v", text.ReplyMarkup)
+			}
 			disabled := text.LinkPreviewOptions != nil &&
 				text.LinkPreviewOptions.IsDisabled != nil &&
 				*text.LinkPreviewOptions.IsDisabled

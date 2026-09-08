@@ -31,11 +31,20 @@ func (d *renderParams) render(mention string) string {
 
 // asDeferredSendable packages the render as the message its translation calls for:
 // a photo when it carries one, text otherwise.
-func (d *renderParams) asDeferredSendable(tr *cmdlib.Translation, notify bool, img []byte) sendable {
+func (d *renderParams) asDeferredSendable(
+	tr *cmdlib.Translation,
+	notify bool,
+	img []byte,
+	markup models.ReplyMarkup,
+) sendable {
 	if len(img) == 0 {
-		return d.asDeferredText(notify, tr.DisablePreview, tr.Parse)
+		msg := d.asDeferredText(notify, tr.DisablePreview, tr.Parse)
+		msg.ReplyMarkup = markup
+		return msg
 	}
-	return d.asDeferredPhoto(notify, tr.DisablePreview, tr.Parse, img)
+	photo := d.asDeferredPhoto(notify, tr.DisablePreview, tr.Parse, img)
+	photo.ReplyMarkup = markup
+	return photo
 }
 
 // asDeferredText packages the render as a text message;
@@ -164,6 +173,7 @@ func (p *photoParams) toText() *messageParams {
 		Text:                p.Caption,
 		ParseMode:           p.ParseMode,
 		DisableNotification: p.DisableNotification,
+		ReplyMarkup:         p.ReplyMarkup,
 	}
 	if p.disablePreview {
 		params.LinkPreviewOptions = &models.LinkPreviewOptions{IsDisabled: bot.True()}

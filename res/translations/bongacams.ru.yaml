@@ -9,8 +9,8 @@ add_error:
   str: |-
     Не получилось добавить модель {{ .streamer }}
     Проверьте идентификатор модели или попробуйте позже
-    Формат команды: {{ command "add" }} <code>МОДЕЛЬ</code>
     {{ template "address_line" }}
+    {{- if .has_button }}{{ print "\n" }}{{ template "or_button_hint" }}{{ end }}
 help:
   parse: html
   disable_preview: true
@@ -91,12 +91,14 @@ syntax_add:
     Укажите модель, например, <code>{{ template "add_example" }}</code>
 
     {{ template "address_line" }}
+    {{- if .has_button }}{{ print "\n" }}{{ template "or_button_hint" }}{{ end }}
 syntax_remove:
   parse: html
   str: |-
     Укажите модель, например, <code>{{ template "remove_example" }}</code>
 
     {{ template "address_line" }}
+    {{- if .has_button }}{{ print "\n" }}{{ template "or_button_hint" }}{{ end }}
 unknown_command:
   parse: html
   str: |-

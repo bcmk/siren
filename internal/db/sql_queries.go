@@ -1695,12 +1695,17 @@ func (d *Database) CheckingSubs(nicknames []string) map[string][]PendingSubscrip
 	subs := map[string][]PendingSubscription{}
 	var iter PendingSubscription
 	d.MustQuery(`
-		select ps.endpoint, ps.nickname, ps.user_id, ps.referral, coalesce(ps.command, ''), ps.reply_seq
+		select
+			ps.endpoint, ps.nickname, ps.user_id, u.chat_id,
+			ps.referral, coalesce(ps.command, ''), ps.reply_seq
 		from pending_subscriptions ps
+		join users u on u.id = ps.user_id
 		where ps.checking and ps.nickname = any($1)
 		/*name='checking_subs'*/`,
 		QueryParams{nicknames},
-		ScanTo{&iter.Endpoint, &iter.Nickname, &iter.UserID, &iter.Referral, &iter.Command, &iter.ReplySeq},
+		ScanTo{
+			&iter.Endpoint, &iter.Nickname, &iter.UserID, &iter.ChatID,
+			&iter.Referral, &iter.Command, &iter.ReplySeq},
 		func() { subs[iter.Nickname] = append(subs[iter.Nickname], iter) })
 	return subs
 }

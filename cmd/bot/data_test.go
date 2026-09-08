@@ -10,6 +10,8 @@ import (
 	"testing"
 	"text/template"
 
+	"github.com/go-telegram/bot/models"
+
 	"github.com/bcmk/siren/v5/internal/botconfig"
 	"github.com/bcmk/siren/v5/internal/checkers"
 	"github.com/bcmk/siren/v5/internal/db"
@@ -82,6 +84,8 @@ var testTranslations = cmdlib.Translations{
 		Key: "timezone_app_no_results", Str: "TimezoneAppNoResults", Parse: cmdlib.ParseRaw},
 	TimezoneAppFailed: &cmdlib.Translation{
 		Key: "timezone_app_failed", Str: "TimezoneAppFailed", Parse: cmdlib.ParseRaw},
+	SearchButton: &cmdlib.Translation{
+		Key: "search_button", Str: "SearchButton", Parse: cmdlib.ParseRaw},
 	RemoveButton: &cmdlib.Translation{
 		Key: "remove_button", Str: "RemoveButton", Parse: cmdlib.ParseRaw},
 	RemovalAppHeader: &cmdlib.Translation{
@@ -298,6 +302,33 @@ func newTestWorker() *testWorker {
 	// No drop database: the container's teardown takes every clone with it.
 	w.terminate = func() { checkErr(w.db.Close()) }
 	return w
+}
+
+// webAppTestWorker is a worker whose config carries a real Endpoints map:
+// its value type is unexported, so a test cannot build one by hand,
+// and a nil one yields the empty-domain URL the button assertions exist to catch.
+func webAppTestWorker(t *testing.T) *testWorker {
+	w := newTestWorker()
+	w.createDatabase()
+	w.initCache()
+	w.cfg = searchConfig(t, "123:test-token", nil)
+	return w
+}
+
+// webAppButtonURL pops the next queued message and reports what its button opens,
+// empty where the message carries no keyboard.
+func webAppButtonURL(t *testing.T, w *testWorker) string {
+	t.Helper()
+	queued := w.sendQueue.pop()
+	markup, _ := queued.message.(*messageParams).ReplyMarkup.(*models.InlineKeyboardMarkup)
+	if markup == nil {
+		return ""
+	}
+	webApp := markup.InlineKeyboard[0][0].WebApp
+	if webApp == nil {
+		t.Fatal("the button opens no web app")
+	}
+	return webApp.URL
 }
 
 func confirmedStatusesForChat(d *db.Database, endpoint string, chatID int64) (statuses []db.Streamer) {

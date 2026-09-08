@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-telegram/bot/models"
-
 	"github.com/bcmk/siren/v5/lib/cmdlib"
 )
 
@@ -277,17 +275,14 @@ func TestPerformWebAppTimezoneIsWhitelistGated(t *testing.T) {
 // and a malformed one fails the message rather than just the button.
 func TestReplyTimezoneOffersThePicker(t *testing.T) {
 	t.Parallel()
-	const domain = "bot.example.invalid"
+	const appURL = "https://" + testWebhookDomain + "/apps/timezone?endpoint=test&current=UTC"
 	tests := []struct {
 		name    string
 		chatID  int64
 		help    bool
 		wantURL string
 	}{
-		{
-			"the bare command", 10, true,
-			"https://" + domain + "/apps/timezone?endpoint=test&current=UTC",
-		},
+		{"the bare command", 10, true, appURL},
 		{"a group asking", -10, true, ""},
 		// Just set or cleared, so there is nothing to offer: the zone alone answers it.
 		{"after a change", 10, false, ""},
@@ -295,37 +290,12 @@ func TestReplyTimezoneOffersThePicker(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			w := newTestWorker()
+			w := webAppTestWorker(t)
 			defer w.terminate()
-			w.createDatabase()
-			w.initCache()
-			// A real Endpoints map: its value type is unexported, so it cannot be built by hand,
-			// and a nil one would assert the button against the very URL this guards against.
-			cfg := searchConfig(t, "123:test-token", nil)
-			endpoint := cfg.Endpoints["test"]
-			endpoint.WebhookDomain = domain
-			cfg.Endpoints["test"] = endpoint
-			w.cfg = cfg
 
-			m := testMessage(w, tc.chatID, "timezone", 100)
-			w.replyTimezone(m, utcZone, tc.help)
-			queued := w.sendQueue.pop()
-			markup, _ := queued.message.(*messageParams).ReplyMarkup.(*models.InlineKeyboardMarkup)
-			if tc.wantURL == "" {
-				if markup != nil {
-					t.Errorf("got a picker button that cannot open: %+v", markup)
-				}
-				return
-			}
-			if markup == nil {
-				t.Fatal("got no picker button")
-			}
-			webApp := markup.InlineKeyboard[0][0].WebApp
-			if webApp == nil {
-				t.Fatal("the picker button opens no web app")
-			}
-			if webApp.URL != tc.wantURL {
-				t.Errorf("button URL = %q, want %q", webApp.URL, tc.wantURL)
+			w.replyTimezone(testMessage(w, tc.chatID, "timezone", 100), utcZone, tc.help)
+			if got := webAppButtonURL(t, w); got != tc.wantURL {
+				t.Errorf("picker button URL = %q, want %q", got, tc.wantURL)
 			}
 		})
 	}
