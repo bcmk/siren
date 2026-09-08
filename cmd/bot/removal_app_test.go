@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-telegram/bot/models"
-
 	"github.com/bcmk/siren/v5/internal/db"
 	"github.com/bcmk/siren/v5/lib/cmdlib"
 )
@@ -358,55 +356,36 @@ func TestPerformWebAppRemoveIsWhitelistGated(t *testing.T) {
 	}
 }
 
-// TestSyntaxRemoveOffersTheRemovalApp: the app is a way to remove,
-// so it rides with the bare command's syntax help,
+// TestRemoveOffersTheRemovalApp: the app is a way to remove,
+// so it rides with every reply that leaves the chat with removing left to do,
 // and only in a private chat, the one place a web app button opens.
 // The URL is asserted whole, as the timezone picker's is.
-func TestSyntaxRemoveOffersTheRemovalApp(t *testing.T) {
+func TestRemoveOffersTheRemovalApp(t *testing.T) {
 	t.Parallel()
-	const domain = "bot.example.invalid"
+	const appURL = "https://" + testWebhookDomain + "/apps/remove?endpoint=test"
 	tests := []struct {
-		name    string
-		chatID  int64
-		wantURL string
+		name string
+		// nickname is what /remove carries, empty for the bare command.
+		nickname string
+		chatID   int64
+		wantURL  string
 	}{
-		{"a private chat", 10, "https://" + domain + "/apps/remove?endpoint=test"},
-		{"a group asking", -10, ""},
+		{"the bare command in a private chat", "", 10, appURL},
+		{"the bare command in a group", "", -10, ""},
+		{"a streamer not in the list, in a private chat", "not_subscribed", 10, appURL},
+		{"a streamer not in the list, in a group", "not_subscribed", -10, ""},
+		{"an invalid nickname, in a private chat", "Anna Smith", 10, appURL},
+		{"an invalid nickname, in a group", "Anna Smith", -10, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			w := newTestWorker()
+			w := webAppTestWorker(t)
 			defer w.terminate()
-			w.createDatabase()
-			w.initCache()
-			// A real Endpoints map: its value type is unexported, so it cannot be built by hand,
-			// and a nil one would assert the button against the very URL this guards against.
-			cfg := searchConfig(t, "123:test-token", nil)
-			endpoint := cfg.Endpoints["test"]
-			endpoint.WebhookDomain = domain
-			cfg.Endpoints["test"] = endpoint
-			w.cfg = cfg
 
-			m := testMessage(w, tc.chatID, "remove", 100)
-			w.removeStreamer(m, "")
-			queued := w.sendQueue.pop()
-			markup, _ := queued.message.(*messageParams).ReplyMarkup.(*models.InlineKeyboardMarkup)
-			if tc.wantURL == "" {
-				if markup != nil {
-					t.Errorf("got a removal button that cannot open: %+v", markup)
-				}
-				return
-			}
-			if markup == nil {
-				t.Fatal("got no removal button")
-			}
-			webApp := markup.InlineKeyboard[0][0].WebApp
-			if webApp == nil {
-				t.Fatal("the removal button opens no web app")
-			}
-			if webApp.URL != tc.wantURL {
-				t.Errorf("button URL = %q, want %q", webApp.URL, tc.wantURL)
+			w.removeStreamer(testMessage(w, tc.chatID, "remove", 100), tc.nickname)
+			if got := webAppButtonURL(t, w); got != tc.wantURL {
+				t.Errorf("removal button URL = %q, want %q", got, tc.wantURL)
 			}
 		})
 	}

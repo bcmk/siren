@@ -83,7 +83,7 @@ func TestButtonHintFollowsTheButton(t *testing.T) {
 		"ru": {"Или нажмите кнопку ниже, чтобы", "Можно нажать кнопку ниже, чтобы"},
 	}
 	_, tpl := cmdlib.LoadAllTranslations(files)
-	keys := []string{"syntax_add", "syntax_remove", "add_error", "invalid_symbols"}
+	keys := []string{"syntax_add", "syntax_remove", "add_error", "invalid_symbols", "streamer_not_in_list"}
 	for lang := range files {
 		for _, key := range keys {
 			t.Run(lang+"/"+key, func(t *testing.T) {

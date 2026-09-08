@@ -130,7 +130,9 @@ streamer_added:
     Bot will notify you whenever it is online
 streamer_not_in_list:
   parse: raw
-  str: 'Channel {{ .streamer }} is not in your list'
+  str: |-
+    Channel {{ .streamer }} is not in your list
+    {{- if .has_button }}{{ print "\n" }}{{ template "try_button_hint" }}{{ end }}
 streamer_removed:
   parse: raw
   str: 'Channel {{ .streamer }} removed successfully'

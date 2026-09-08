@@ -1931,11 +1931,13 @@ func (w *worker) removeStreamer(m receivedMessage, nickname string) {
 	}
 	nickname = w.checker.NicknamePreprocessing(nickname)
 	if !w.checker.NicknameRegexp().MatchString(nickname) {
-		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].InvalidSymbols, tplData{"streamer": nickname})
+		w.replyTrMarkup(m, db.PriorityHigh, false, w.tr[m.endpoint].InvalidSymbols,
+			tplData{"streamer": nickname}, w.removalKeyboard(m.endpoint, m.chatID))
 		return
 	}
 	if !w.db.SubscribedOrPending(m.endpoint, m.userID, nickname) {
-		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].StreamerNotInList, tplData{"streamer": nickname})
+		w.replyTrMarkup(m, db.PriorityHigh, false, w.tr[m.endpoint].StreamerNotInList,
+			tplData{"streamer": nickname}, w.removalKeyboard(m.endpoint, m.chatID))
 		return
 	}
 	w.db.RemoveSubscription(m.userID, nickname, m.endpoint)
