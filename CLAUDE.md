@@ -340,6 +340,14 @@ an `ok` bool, a nil pointer, a branch not taken.
 Past that, a chat ID is just a number:
 never compare one to 0 to mean absent, invalid, or "nothing to handle".
 
+## Terminology
+
+Call the broadcaster a streamer and their name a nickname.
+Use those words everywhere — code, comments, test names, commit messages, conversation —
+except in code and translations belonging to one site,
+which say that site's own word: "model" on the adult sites, "channel" on Twitch and Kick.
+"camname" is user-facing wording alone: it belongs in `res/translations/` and nowhere else.
+
 ## Documentation
 
 - Don't mention other projects in CLAUDE.md or docs; keep them about this repo.
