@@ -22,3 +22,20 @@ and the cutover checks the copy, appends the tail, and swaps the table in.
 It needs free disk for a second copy of the table.
 Rows a rename fold deletes during the prebuild survive in the copy as orphaned history.
 `pg_class.reltuples` of the table no longer counts its rows; `approximate_row_count` does.
+
+## Background workers
+
+TimescaleDB runs one launcher plus one scheduler process per database that has the extension.
+Each is a PostgreSQL background worker and holds a slot from `max_worker_processes` for good,
+as do the logical replication, pg_cron and failover-slots launchers,
+and every parallel query worker takes one while it runs.
+With the default of 8 slots and twelve bot databases, four schedulers fill the pool:
+the rest never start, no job can start, and no query gets a parallel worker.
+
+Two caps grow with the database count.
+`timescaledb.max_background_workers` must hold the launcher, one scheduler per database,
+and a few spare.
+`max_worker_processes` must hold that, the three other launchers,
+and the parallel workers wanted, which `max_parallel_workers` caps in turn.
+On the Apache edition no job can run, so the schedulers only idle, which is harmless.
+Sizing and setting them is the deployment's job; adding a bot database means recomputing them.
