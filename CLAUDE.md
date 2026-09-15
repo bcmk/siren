@@ -241,6 +241,7 @@
   so one can be handed to another agent without the rest of the list or the conversation.
   Avoid pointing to other findings by number; restate what the reader needs.
 - Always look for simplifications, in fix checks and new code as much as in the reviewed diff
+- A hunk the feature does not need is a finding, even when it is harmless
 
 ## Platform Notes
 
