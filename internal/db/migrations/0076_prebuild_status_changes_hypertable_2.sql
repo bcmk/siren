@@ -9,11 +9,12 @@
 -- A rename fold may still delete a copied streamer's rows;
 -- the copy keeps them, and 0080 tolerates the surplus: orphaned history hurts nothing.
 
+-- The constraints carry their final names: a rename of the table would leave them behind
 create table status_changes_new (
-    timestamp integer not null,
-    streamer_id integer not null,
-    status smallint not null,
-    prev_status smallint not null
+    timestamp integer constraint status_changes_timestamp_not_null not null,
+    streamer_id integer constraint status_changes_streamer_id_not_null not null,
+    status smallint constraint status_changes_status_not_null not null,
+    prev_status smallint constraint status_changes_prev_status_not_null not null
 ) with (
     tsdb.hypertable,
     tsdb.partition_column = 'timestamp',

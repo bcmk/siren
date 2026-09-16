@@ -75,17 +75,7 @@ drop table status_changes;
 
 alter table status_changes_new rename to status_changes;
 
--- Renaming a table renames neither its indexes nor its constraints,
--- and postgres named the not-null ones after the table it created them on.
-alter table status_changes
-rename constraint status_changes_new_timestamp_not_null to status_changes_timestamp_not_null;
-alter table status_changes
-rename constraint status_changes_new_streamer_id_not_null to status_changes_streamer_id_not_null;
-alter table status_changes
-rename constraint status_changes_new_status_not_null to status_changes_status_not_null;
-alter table status_changes
-rename constraint status_changes_new_prev_status_not_null to status_changes_prev_status_not_null;
-
+-- Renaming a table does not rename its indexes
 alter index ix_status_changes_new_streamer_id_timestamp
 rename to ix_status_changes_streamer_id_timestamp;
 
