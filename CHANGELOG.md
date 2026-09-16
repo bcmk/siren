@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v5.9.1 — 2026-09-16
+
+### Added
+
+- `checker_only` runs the checker and its writes alone: no endpoints, no bots, no deliveries
+
 ## v5.8.0 — 2026-09-08
 
 ### Added
