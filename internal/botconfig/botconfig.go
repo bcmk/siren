@@ -136,8 +136,8 @@ func checkConfig(cfg *Config) error {
 	if _, found := cfg.Endpoints[cfg.OwnerEndpoint]; !found {
 		return errors.New("configure admin_endpoint")
 	}
-	if cfg.PeriodSeconds == 0 {
-		return errors.New("configure period_seconds")
+	if cfg.PeriodSeconds <= 0 {
+		return errors.New("configure a positive period_seconds")
 	}
 	if cfg.MaxSubs == 0 {
 		return errors.New("configure max_subs")
@@ -176,11 +176,15 @@ func checkConfig(cfg *Config) error {
 	if cfg.BlockedSendThreshold <= 0 {
 		return errors.New("configure a positive blocked_send_threshold")
 	}
-	if cfg.SubsConfirmationPeriodSeconds == 0 {
-		return errors.New("configure subs_confirmation_period_seconds")
+	if cfg.SubsConfirmationPeriodSeconds <= 0 {
+		return errors.New("configure a positive subs_confirmation_period_seconds")
 	}
-	if cfg.NotificationsReadyPeriodSeconds == 0 {
-		return errors.New("configure notifications_ready_period_seconds")
+	if cfg.NotificationsReadyPeriodSeconds <= 0 {
+		return errors.New("configure a positive notifications_ready_period_seconds")
+	}
+	// Zero disables it; a negative would read as disabled rather than fail.
+	if cfg.MaintainDBPeriodSeconds < 0 {
+		return errors.New("configure a non-negative maintain_db_period_seconds")
 	}
 	if err := validateSubsTiers(cfg.SubsTiers); err != nil {
 		return err

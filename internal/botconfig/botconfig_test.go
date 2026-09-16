@@ -165,3 +165,36 @@ func TestCheckConfigRequiresEndpointFields(t *testing.T) {
 		})
 	}
 }
+
+// TestCheckConfigBoundsThePeriods pins the three tick periods as positive
+// and maintain_db_period_seconds as non-negative, zero being its documented disable:
+// a non-positive period reads as disabled, so a negative would start a bot that never ticks.
+func TestCheckConfigBoundsThePeriods(t *testing.T) {
+	tests := []struct {
+		name   string
+		mangle func(*Config)
+	}{
+		{name: "negative period_seconds", mangle: func(c *Config) { c.PeriodSeconds = -1 }},
+		{
+			name:   "negative subs_confirmation_period_seconds",
+			mangle: func(c *Config) { c.SubsConfirmationPeriodSeconds = -1 },
+		},
+		{
+			name:   "negative notifications_ready_period_seconds",
+			mangle: func(c *Config) { c.NotificationsReadyPeriodSeconds = -1 },
+		},
+		{
+			name:   "negative maintain_db_period_seconds",
+			mangle: func(c *Config) { c.MaintainDBPeriodSeconds = -1 },
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig(validEndpoint())
+			tt.mangle(cfg)
+			if err := checkConfig(cfg); err == nil {
+				t.Error("a negative period was accepted")
+			}
+		})
+	}
+}

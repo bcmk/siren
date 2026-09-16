@@ -4563,6 +4563,15 @@ type startupTimers struct {
 	notificationSender <-chan time.Time
 }
 
+// tickerC returns the channel a ticker sends on, or nil when the period is not positive.
+// A nil channel never fires, so its select arm sits dormant for the run.
+func tickerC(seconds int) <-chan time.Time {
+	if seconds <= 0 {
+		return nil
+	}
+	return time.NewTicker(time.Duration(seconds) * time.Second).C
+}
+
 // finishStartup completes the loop-owned initialization
 // once the database is ready: the periodic timers, the checker daemon,
 // signal handling, the queued we-are-up replies, and the payment gate.
@@ -4572,12 +4581,10 @@ func (w *worker) finishStartup(
 	waitingUsers map[waitingUser]bool,
 ) startupTimers {
 	timers := startupTimers{
-		request:            time.NewTicker(time.Duration(w.cfg.PeriodSeconds) * time.Second).C,
-		subsConfirm:        time.NewTicker(time.Duration(w.cfg.SubsConfirmationPeriodSeconds) * time.Second).C,
-		notificationSender: time.NewTicker(time.Duration(w.cfg.NotificationsReadyPeriodSeconds) * time.Second).C,
-	}
-	if w.cfg.MaintainDBPeriodSeconds != 0 {
-		timers.maintainDB = time.NewTicker(time.Duration(w.cfg.MaintainDBPeriodSeconds) * time.Second).C
+		request:            tickerC(w.cfg.PeriodSeconds),
+		subsConfirm:        tickerC(w.cfg.SubsConfirmationPeriodSeconds),
+		notificationSender: tickerC(w.cfg.NotificationsReadyPeriodSeconds),
+		maintainDB:         tickerC(w.cfg.MaintainDBPeriodSeconds),
 	}
 	checkers.StartCheckerDaemon(ctx, w.checker)
 	// Install signals only now: a SIGTERM during migrations
