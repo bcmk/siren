@@ -1727,7 +1727,7 @@ func (d *Database) ResetCheckingToUnconfirmed() {
 // ResetNotificationSending resets all sending notifications to not sending
 func (d *Database) ResetNotificationSending() {
 	d.MustExec(`
-		update notification_queue set sending=0
+		update notification_queue set sending = 0 where sending <> 0
 		/*name='reset_notification_sending'*/`)
 }
 
