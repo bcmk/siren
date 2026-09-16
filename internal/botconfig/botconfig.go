@@ -40,6 +40,7 @@ type SubsTier struct {
 type Config struct {
 	Debug                           bool                      `mapstructure:"debug"`                              // debug mode
 	CheckGID                        bool                      `mapstructure:"check_gid"`                          // check goroutines ids
+	CheckerOnly                     bool                      `mapstructure:"checker_only"`                       // run the checker and its writes only: no endpoints, no bots, no deliveries
 	ListenAddress                   string                    `mapstructure:"listen_address"`                     // the address to listen to
 	Website                         string                    `mapstructure:"website"`                            // a checker's Site name from the registry in internal/checkers/factory.go
 	WebsiteLink                     string                    `mapstructure:"website_link"`                       // legacy affiliate link to website, superseded by affiliate_base
@@ -99,6 +100,7 @@ func ReadConfig(cfgPath string) *Config {
 	cmdlib.BindEnvForConfig(v, cfg)
 	checkErr(v.Unmarshal(&cfg, cmdlib.StrictConfigDecoder))
 	checkErr(checkConfig(cfg))
+	applyCheckerOnly(cfg)
 
 	return cfg
 }
@@ -191,6 +193,17 @@ func checkConfig(cfg *Config) error {
 	}
 
 	return nil
+}
+
+// applyCheckerOnly drops what the run never reads.
+// The checks run first, on the whole config, so one rehearsed under the mode starts without it.
+func applyCheckerOnly(cfg *Config) {
+	if !cfg.CheckerOnly {
+		return
+	}
+	cmdlib.Linf("checker_only: dropping endpoints and admin_endpoint, which the run does not read")
+	cfg.Endpoints = nil
+	cfg.OwnerEndpoint = ""
 }
 
 // validateSubsTiers requires ascending counts and non-increasing per-sub price.

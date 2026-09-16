@@ -401,6 +401,10 @@ func (w *worker) enqueueMessage(
 	userID db.UserID,
 	notificationID int,
 ) {
+	// Under checker_only the owner's startup notices are all that get this far, and neither is sent.
+	if w.cfg.CheckerOnly {
+		return
+	}
 	w.sendSeq++
 	w.enqueue(&queuedMessage{
 		userID:         userID,

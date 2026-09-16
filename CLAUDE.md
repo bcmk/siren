@@ -364,6 +364,8 @@ which say that site's own word: "model" on the adult sites, "channel" on Twitch 
   (buying subscriptions, invoices, pre-checkout, refunds).
 - Read `docs/writing-translations.md` every time you add or edit a message
   in `res/translations/` (punctuation, commands, parse modes, en/ru sync).
+- Read `docs/load-testing.md` before changing the checker-only mode (`checker_only`),
+  which runs a bot with no endpoints and no deliveries
 
 ## Skills
 

@@ -871,6 +871,10 @@ func (w *worker) planNotifications(nots []db.Notification) []plannedNotification
 // storeNotifications queues a batch and counts the alerts in it against their chats.
 // A row is counted where it is created, once, however many times a requeue composes it again.
 func (w *worker) storeNotifications(nots []db.Notification) {
+	// checker_only queues none: nothing here delivers them, and the next normal start would.
+	if w.cfg.CheckerOnly {
+		return
+	}
 	w.db.StoreNotifications(nots)
 	var userIDs []db.UserID
 	for _, n := range nots {
@@ -4572,6 +4576,21 @@ func tickerC(seconds int) <-chan time.Time {
 	return time.NewTicker(time.Duration(seconds) * time.Second).C
 }
 
+// newStartupTimers arms the periodic work.
+// checker_only runs the checker alone: a confirmation pass would query the site and write,
+// and a fetch would claim the copy's queued rows and delete them unsent.
+func (w *worker) newStartupTimers() startupTimers {
+	timers := startupTimers{
+		request:    tickerC(w.cfg.PeriodSeconds),
+		maintainDB: tickerC(w.cfg.MaintainDBPeriodSeconds),
+	}
+	if !w.cfg.CheckerOnly {
+		timers.subsConfirm = tickerC(w.cfg.SubsConfirmationPeriodSeconds)
+		timers.notificationSender = tickerC(w.cfg.NotificationsReadyPeriodSeconds)
+	}
+	return timers
+}
+
 // finishStartup completes the loop-owned initialization
 // once the database is ready: the periodic timers, the checker daemon,
 // signal handling, the queued we-are-up replies, and the payment gate.
@@ -4580,12 +4599,7 @@ func (w *worker) finishStartup(
 	cancel context.CancelFunc,
 	waitingUsers map[waitingUser]bool,
 ) startupTimers {
-	timers := startupTimers{
-		request:            tickerC(w.cfg.PeriodSeconds),
-		subsConfirm:        tickerC(w.cfg.SubsConfirmationPeriodSeconds),
-		notificationSender: tickerC(w.cfg.NotificationsReadyPeriodSeconds),
-		maintainDB:         tickerC(w.cfg.MaintainDBPeriodSeconds),
-	}
+	timers := w.newStartupTimers()
 	checkers.StartCheckerDaemon(ctx, w.checker)
 	// Install signals only now: a SIGTERM during migrations
 	// should kill the process outright,

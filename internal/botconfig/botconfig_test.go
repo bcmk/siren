@@ -166,6 +166,45 @@ func TestCheckConfigRequiresEndpointFields(t *testing.T) {
 	}
 }
 
+// TestCheckConfigCheckerOnly pins the mode on the shape the doc tells the operator to run:
+// a production config with the flag set, checked whole and then stripped of what it will not read.
+func TestCheckConfigCheckerOnly(t *testing.T) {
+	tests := []struct {
+		name    string
+		mangle  func(*Config)
+		wantErr bool
+	}{
+		{name: "a production config with the flag", mangle: func(*Config) {}},
+		{
+			// The mode checks the whole config, so a rehearsed one starts without the flag too.
+			name:    "no endpoints to begin with",
+			mangle:  func(c *Config) { c.Endpoints = nil; c.OwnerEndpoint = "" },
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig(validEndpoint())
+			cfg.CheckerOnly = true
+			tt.mangle(cfg)
+			err := checkConfig(cfg)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("err = %v, wantErr = %v", err, tt.wantErr)
+			}
+			if err != nil {
+				return
+			}
+			applyCheckerOnly(cfg)
+			if len(cfg.Endpoints) != 0 {
+				t.Errorf("checker_only kept %d endpoints, want none", len(cfg.Endpoints))
+			}
+			if cfg.OwnerEndpoint != "" {
+				t.Errorf("checker_only kept admin_endpoint %q, want none", cfg.OwnerEndpoint)
+			}
+		})
+	}
+}
+
 // TestCheckConfigBoundsThePeriods pins the three tick periods as positive
 // and maintain_db_period_seconds as non-negative, zero being its documented disable:
 // a non-positive period reads as disabled, so a negative would start a bot that never ticks.
