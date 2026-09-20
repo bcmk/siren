@@ -101,6 +101,7 @@
   one justifying an edit, defending a line that was deleted,
   or restating the code beside it.
   Write for a reader who never saw the discussion.
+- Multiline code goes in a code block
 - Keep lines no longer than 120 characters
 - Never split a URL to satisfy a length limit; a line carrying a URL may run over
 - Never hardcode user-facing strings — always use
