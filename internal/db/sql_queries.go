@@ -3,10 +3,12 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
 	"github.com/bcmk/siren/v5/lib/cmdlib"
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -714,6 +716,10 @@ const changesFromToForStreamersSQL = `
 	order by s.id, sc.timestamp
 	/*name='changes_from_to_for_streamers'*/`
 
+// BotReachDays is past the furthest the bot reads status changes back, its month grid's 35 days.
+// A compactor rewrite locks a chunk out, so it stays past this.
+const BotReachDays = 36
+
 // ChangesFromToForStreamers returns each streamer's status changes in [from, to],
 // opening with the status the window starts in and closing with a sentinel at its end.
 // to is assumed to be the present:
@@ -725,9 +731,11 @@ func (d *Database) ChangesFromToForStreamers(streamerIDs []int, from int, to int
 	var opening cmdlib.StatusKind
 	var status *cmdlib.StatusKind
 	var timestamp *int
+	// Planned per call, so it locks only the window's chunks: a generic plan locks them all,
+	// and would wait out a compactor's rewrite of an old one
 	d.MustQuery(
 		changesFromToForStreamersSQL,
-		QueryParams{streamerIDs, from},
+		QueryParams{pgx.QueryExecModeExec, streamerIDs, from},
 		ScanTo{&streamerID, &opening, &status, &timestamp},
 		func() {
 			if result[streamerID] == nil {
@@ -1671,6 +1679,370 @@ func (d *Database) MaintainBrinIndexes() {
 			/*name='maintain_brin_indexes'*/`,
 			index)
 	}
+}
+
+// ShortOfflineRule says an offline period whose end is After seconds old goes
+// when shorter than ShorterThan seconds, and Rewrite rewrites a chunk once the rule is done with it
+type ShortOfflineRule struct {
+	After       int
+	ShorterThan int
+	Rewrite     bool
+}
+
+// ErrLockBusy says status_changes_lock is held, so an editor skips its turn
+var ErrLockBusy = errors.New("status_changes_lock is busy")
+
+// ErrMigrating says a migration holds the migration lock
+var ErrMigrating = errors.New("a migration is at work")
+
+// LockStatusChanges takes status_changes_lock in exclusive mode for tx,
+// before anything on status_changes, as docs/status-changes.md's Invariant asks of an editor,
+// and the migration lock shared, so a migration waits for the commit.
+// A held lock is ErrLockBusy, a held migration lock ErrMigrating.
+func (d *Database) LockStatusChanges(ctx context.Context, tx pgx.Tx) error {
+	// Exclusive, not access exclusive: pg_dump's access share lock must not conflict
+	_, err := tx.Exec(ctx, `
+		lock table status_changes_lock in exclusive mode nowait
+		/*name='lock_status_changes_lock_nowait'*/`)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.LockNotAvailable {
+		return ErrLockBusy
+	}
+	if err != nil {
+		return err
+	}
+	var locked bool
+	err = tx.QueryRow(ctx, `
+		select pg_try_advisory_xact_lock_shared($1)
+		/*name='lock_migrations_shared_xact_try'*/`,
+		migrationLock).Scan(&locked)
+	if err != nil {
+		return err
+	}
+	if !locked {
+		return ErrMigrating
+	}
+	return nil
+}
+
+// StatusChangesChunk is a status_changes chunk: its name, quoted for a statement, and its range
+type StatusChangesChunk struct {
+	Name       string
+	Start, End int
+}
+
+// OldestStatusChange returns the oldest row's timestamp, or fallback with no rows
+func (d *Database) OldestStatusChange(ctx context.Context, fallback int) (int, error) {
+	var oldest int
+	err := d.db.QueryRow(ctx, `
+		select coalesce(min(timestamp), $1::integer) from status_changes
+		/*name='oldest_status_change'*/`,
+		fallback).Scan(&oldest)
+	return oldest, err
+}
+
+// CompactionCoverage is a status_changes_lock row: the stretch a rule examined,
+// docs/status-changes.md's $c$
+type CompactionCoverage struct{ ShorterThan, Begin, End int }
+
+// TakeCompactionCoverages deletes the coverages in tx and returns them with the latest run's time
+func (d *Database) TakeCompactionCoverages(ctx context.Context, tx pgx.Tx) ([]CompactionCoverage, int, error) {
+	rows, err := tx.Query(ctx, `
+		delete from status_changes_lock
+		returning shorter_than, begin_timestamp, end_timestamp, run_timestamp
+		/*name='take_compaction_coverages'*/`)
+	if err != nil {
+		return nil, 0, err
+	}
+	lastRun := 0
+	coverages, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (CompactionCoverage, error) {
+		var c CompactionCoverage
+		var run int
+		err := row.Scan(&c.ShorterThan, &c.Begin, &c.End, &run)
+		lastRun = max(lastRun, run)
+		return c, err
+	})
+	return coverages, lastRun, err
+}
+
+// DeleteShortOfflinePeriods deletes in tx the offline periods shorter than shorterThan
+// that end in [begin, end), docs/status-changes.md's Compaction, and returns the rows deleted
+func (d *Database) DeleteShortOfflinePeriods(
+	ctx context.Context,
+	tx pgx.Tx,
+	shorterThan int,
+	begin int,
+	end int,
+) (int64, error) {
+	tag, err := tx.Exec(ctx, `
+		with ends as (
+			select streamer_id, timestamp
+			from status_changes
+			where timestamp >= $1::integer and timestamp < $2::integer
+			and status = 2 and prev_status = 1
+		),
+		-- Materialized, or the planner joins the delete target in first and probes per pair
+		periods as materialized (
+			select e.streamer_id, a.timestamp as start_timestamp, e.timestamp as end_timestamp
+			from ends e
+			-- The band's own bounds too, so the probe is planned onto the band's chunks
+			join lateral (
+				select timestamp, prev_status
+				from status_changes
+				where streamer_id = e.streamer_id
+				and timestamp > e.timestamp - $3::integer and timestamp < e.timestamp
+				and timestamp > $1::integer - $3::integer and timestamp < $2::integer
+				order by timestamp desc
+				limit 1
+			) a on true
+			-- The lateral with offset 0 keeps each id a primary key lookup, made only for a probe's hit
+			join lateral (
+				select st.prev_unconfirmed_timestamp
+				from streamers st
+				where st.id = e.streamer_id and a.prev_status = 2
+				offset 0
+			) s on true
+			where e.timestamp < s.prev_unconfirmed_timestamp
+		)
+		delete from status_changes sc
+		using periods p
+		where sc.streamer_id = p.streamer_id
+		and sc.timestamp in (p.start_timestamp, p.end_timestamp)
+		and sc.timestamp > $1::integer - $3::integer and sc.timestamp < $2::integer
+		/*name='delete_short_offline_periods'*/`,
+		pgx.QueryExecModeExec, begin, end, shorterThan)
+	return tag.RowsAffected(), err
+}
+
+// StoreCompactionCoverage stores in tx a rule's coverage, from base to end, as of the run's time
+func (d *Database) StoreCompactionCoverage(
+	ctx context.Context,
+	tx pgx.Tx,
+	rule ShortOfflineRule,
+	base int,
+	end int,
+	run int,
+) error {
+	_, err := tx.Exec(ctx, `
+		insert into status_changes_lock (after, shorter_than, begin_timestamp, end_timestamp, run_timestamp)
+		values ($1, $2, $3, $4, $5)
+		/*name='store_compaction_coverage'*/`,
+		rule.After, rule.ShorterThan, base, end, run)
+	return err
+}
+
+// StatusChangesChunks returns status_changes' chunks in tx, oldest first
+func (d *Database) StatusChangesChunks(ctx context.Context, tx pgx.Tx) ([]StatusChangesChunk, error) {
+	// The chunks come from the catalog, as a chunk interval change shapes new chunks only
+	rows, err := tx.Query(ctx, `
+		select format('%I.%I', chunk_schema, chunk_name), range_start_integer, range_end_integer
+		from timescaledb_information.chunks
+		where hypertable_name = 'status_changes'
+		order by range_start_integer
+		/*name='status_changes_chunks'*/`)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (StatusChangesChunk, error) {
+		var c StatusChangesChunk
+		err := row.Scan(&c.Name, &c.Start, &c.End)
+		return c, err
+	})
+}
+
+// StatusChangesVacuum is a chunk to vacuum, rewriting it first with Rewrite
+type StatusChangesVacuum struct {
+	Chunk   string
+	Rewrite bool
+}
+
+// QueueStatusChangesVacuums queues vacuums in tx, each chunk at most once,
+// so a queued vacuum survives the process as the deletes do.
+// A chunk queued already keeps its place, rewritten if either asks.
+func (d *Database) QueueStatusChangesVacuums(ctx context.Context, tx pgx.Tx, vacuums []StatusChangesVacuum) error {
+	if len(vacuums) == 0 {
+		return nil
+	}
+	chunks := make([]string, len(vacuums))
+	rewrites := make([]bool, len(vacuums))
+	for i, v := range vacuums {
+		chunks[i], rewrites[i] = v.Chunk, v.Rewrite
+	}
+	_, err := tx.Exec(ctx, `
+		insert into status_changes_vacuum_queue (chunk, rewrite)
+		select * from unnest($1::text[], $2::boolean[])
+		on conflict (chunk) do update
+		set rewrite = status_changes_vacuum_queue.rewrite or excluded.rewrite
+		/*name='queue_status_changes_vacuums'*/`,
+		chunks, rewrites)
+	return err
+}
+
+// VacuumNextStatusChangesChunk vacuums the chunk queued first, dequeues it and returns 1,
+// rewriting it first when it was queued for a rewrite and rewrites says a rule still rewrites.
+// It returns 0 with an empty queue, while a migration keeps the chunk queued,
+// for a chunk another session holds, which goes to the back of the queue,
+// and for a chunk gone since it was queued, which it dequeues.
+// A chunk left with dead rows, which a snapshot older than their delete still sees,
+// goes to the back of the queue instead, as their pages stay out of the visibility map,
+// for a plain vacuum: a rewrite has given its space back already.
+func (d *Database) VacuumNextStatusChangesChunk(ctx context.Context, rewrites bool) (int, error) {
+	var id int64
+	var name string
+	var rewrite bool
+	// Flushes the stats too: deletes just made on this connection, counted after the vacuum,
+	// would requeue a clean chunk
+	err := d.db.QueryRow(ctx, `
+		select id, chunk, rewrite
+		from status_changes_vacuum_queue, pg_stat_force_next_flush()
+		order by id
+		limit 1
+		/*name='first_queued_vacuum_flushing_stats'*/`).Scan(&id, &name, &rewrite)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	done, err := d.vacuumStatusChangesChunk(ctx, id, name, rewrite && rewrites)
+	// So the chunks behind it go on meanwhile
+	if errors.Is(err, errChunkHeld) {
+		_, err := d.db.Exec(ctx, `
+			update status_changes_vacuum_queue
+			set id = default
+			where id = $1
+			/*name='requeue_held_vacuum'*/`,
+			id)
+		return 0, err
+	}
+	if !done || err != nil {
+		return 0, err
+	}
+	// The vacuum leaves the rows it could not remove in the chunk's dead tuple count
+	var exists bool
+	if err := d.db.QueryRow(ctx, `
+		with dead as (
+			select coalesce((select n_dead_tup from pg_stat_all_tables where relid = to_regclass($2)), 0) > 0 as remain
+		),
+		requeued as (
+			update status_changes_vacuum_queue
+			set id = default
+			where id = $1 and (select remain from dead)
+		),
+		dequeued as (
+			delete from status_changes_vacuum_queue
+			where id = $1 and not (select remain from dead)
+		)
+		select to_regclass($2) is not null
+		/*name='dequeue_or_requeue_vacuum'*/`,
+		id, name).Scan(&exists); err != nil || !exists {
+		return 0, err
+	}
+	return 1, nil
+}
+
+// QueuedStatusChangesVacuums returns how many chunks wait for a vacuum
+func (d *Database) QueuedStatusChangesVacuums(ctx context.Context) (int, error) {
+	var n int
+	err := d.db.QueryRow(ctx, `
+		select count(*)
+		from status_changes_vacuum_queue
+		/*name='count_queued_vacuums'*/`).Scan(&n)
+	return n, err
+}
+
+// vacuumStatusChangesChunk vacuums queued chunk id, name, rewriting it first with rewrite,
+// under the migration lock, shared, so a migration waits for one chunk at most.
+// It returns false while a migration holds the lock,
+// errChunkHeld while another session holds the chunk, and true for a chunk gone since it was named.
+func (d *Database) vacuumStatusChangesChunk(ctx context.Context, id int64, name string, rewrite bool) (bool, error) {
+	var locked bool
+	if err := d.db.QueryRow(ctx, `
+		select pg_try_advisory_lock_shared($1)
+		/*name='lock_migrations_shared_try'*/`,
+		migrationLock).Scan(&locked); err != nil || !locked {
+		return false, err
+	}
+	// Past deadlock_timeout, so an autovacuum on the chunk yields to the plain vacuum,
+	// and bounded, as a migration may wait on this meanwhile
+	_, err := d.db.PgConn().Exec(ctx, `set lock_timeout = '5s'`).ReadAll()
+	if err == nil && rewrite {
+		err = d.rewriteStatusChangesChunk(ctx, id, name)
+	}
+	if err == nil {
+		// The simple protocol, as vacuum takes no parameters; the name comes quoted from the catalog.
+		// Index pass forced: PostgreSQL skips it under 2% of dead pages, which stay not all-visible.
+		// After a rewrite, it fills the visibility map, which the rewrite leaves empty.
+		_, err = d.db.PgConn().Exec(ctx, `
+			vacuum (index_cleanup on) `+name+`
+			/*name='vacuum_status_changes_chunk'*/`).ReadAll()
+	}
+	_, resetErr := d.db.PgConn().Exec(context.Background(), `set lock_timeout = default`).ReadAll()
+	// A lock left held would block every migration for as long as this session lives,
+	// so a failed unlock is an error, which ends the daemon and the session with it
+	_, unlockErr := d.db.Exec(context.Background(), `
+		select pg_advisory_unlock_shared($1)
+		/*name='unlock_migrations_shared'*/`,
+		migrationLock)
+	if resetErr != nil || unlockErr != nil {
+		return false, errors.Join(err, resetErr, unlockErr)
+	}
+	var pgErr *pgconn.PgError
+	switch {
+	case errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UndefinedTable:
+		return true, nil
+	case errors.As(err, &pgErr) && pgErr.Code == pgerrcode.LockNotAvailable:
+		return false, errChunkHeld
+	}
+	return err == nil, err
+}
+
+// errChunkHeld says another session held a chunk that a vacuum was to take
+var errChunkHeld = errors.New("another session holds the chunk")
+
+// rewriteStatusChangesChunk rewrites queued chunk id, name, with vacuum full,
+// releasing its free space, then clears its flag, so a restart doesn't rewrite it again.
+// It skips a chunk another session holds, returning errChunkHeld:
+// waiting, it would queue the chunk's readers behind it and fail pg_dump's nowait locks.
+// A full disk leaves the chunk to the plain vacuum.
+func (d *Database) rewriteStatusChangesChunk(ctx context.Context, id int64, name string) error {
+	fileNode := func() (node int64, err error) {
+		err = d.db.QueryRow(ctx, `
+			select pg_relation_filenode($1::text::regclass)::bigint
+			/*name='status_changes_chunk_file_node'*/`,
+			name).Scan(&node)
+		return node, err
+	}
+	before, err := fileNode()
+	if err != nil {
+		return err
+	}
+	_, err = d.db.PgConn().Exec(ctx, `
+		vacuum (full, skip_locked) `+name+`
+		/*name='rewrite_status_changes_chunk'*/`).ReadAll()
+	if err == nil {
+		// A rewrite gives the chunk a new file, and skip_locked returns quietly without one
+		after, err := fileNode()
+		if err != nil {
+			return err
+		}
+		if after == before {
+			return errChunkHeld
+		}
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.DiskFull {
+		lerr("no room to rewrite a chunk, vacuuming it instead: chunk = %s", name)
+	} else if err != nil {
+		return err
+	}
+	_, err = d.db.Exec(ctx, `
+		update status_changes_vacuum_queue
+		set rewrite = false
+		where id = $1
+		/*name='clear_queued_rewrite'*/`,
+		id)
+	return err
 }
 
 // UnconfirmedSubs returns the nicknames of pending subscriptions not yet being checked

@@ -22,6 +22,8 @@ A unique index builds neither concurrently nor chunk by chunk,
 and a managed instance's role cannot build one chunk by chunk by hand:
 `_timescaledb_internal` is not its to create in.
 So adding one without downtime means a staged copy, as 0081–0085 did.
+The compactor stays stopped from a staged copy's prebuild through its cutover,
+as `docs/status-changes.md` says.
 
 ## Background workers
 

@@ -97,6 +97,9 @@ const (
 
 	// PerformanceLogImageDownload represents an image download
 	PerformanceLogImageDownload PerformanceLogKind = 2
+
+	// PerformanceLogCompaction represents a compactor run
+	PerformanceLogCompaction PerformanceLogKind = 4
 )
 
 // User represents a chat

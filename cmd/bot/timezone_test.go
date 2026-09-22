@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-telegram/bot/models"
 
+	"github.com/bcmk/siren/v5/internal/db"
 	"github.com/bcmk/siren/v5/lib/cmdlib"
 )
 
@@ -231,6 +232,36 @@ func TestMonthWindow(t *testing.T) {
 			// The count monthRows chunks into rows, which must never open a sixth row.
 			if cells := (to - from + monthCellSeconds - 1) / monthCellSeconds; cells != tc.cells {
 				t.Errorf("cells = %d, want %d", cells, tc.cells)
+			}
+		})
+	}
+}
+
+// TestMonthWindowStaysWithinBotReach pins the month grid within db.BotReachDays,
+// which the compactor's rewrites stay past, at every hour of a year in zones far apart
+func TestMonthWindowStaysWithinBotReach(t *testing.T) {
+	t.Parallel()
+	zones := []string{
+		"UTC",
+		"Europe/Berlin",
+		"America/Asuncion",
+		"Antarctica/Troll",
+		"Pacific/Kiritimati",
+		"Pacific/Pago_Pago",
+	}
+	for _, zone := range zones {
+		t.Run(zone, func(t *testing.T) {
+			t.Parallel()
+			loc, err := time.LoadLocation(zone)
+			if err != nil {
+				t.Fatal(err)
+			}
+			start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+			for now := start; now.Before(start.AddDate(1, 0, 0)); now = now.Add(time.Hour) {
+				if from, _, _ := monthWindow(now, loc); int(now.Unix())-from >= db.BotReachDays*24*60*60 {
+					t.Fatalf("at %s the grid reads from %s, %d days back or more",
+						now, time.Unix(int64(from), 0).UTC(), db.BotReachDays)
+				}
 			}
 		})
 	}

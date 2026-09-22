@@ -113,16 +113,17 @@ func (d *Database) isMigrationApplied(name string) bool {
 // A prebuild records itself only once it finishes,
 // so for the hours it runs it still reads as pending,
 // and a second runner would convert the same rows again.
+// The compactor takes it shared for a run and for a chunk's vacuum, so a migration waits for those.
 const migrationLock = 0x5152454E
 
-// lockMigrations blocks until this is the only migration run, and says so while it waits.
+// lockMigrations blocks until it holds the migration lock exclusively, and says so while it waits.
 func (d *Database) lockMigrations() {
 	acquired := d.MustBool(`
 		select pg_try_advisory_lock($1)
 		/*name='lock_migrations_try'*/`,
 		migrationLock)
 	if !acquired {
-		linf("another migration run holds the lock, waiting for it")
+		linf("the migration lock is held, waiting for it")
 		d.MustExec(`
 			select pg_advisory_lock($1)
 			/*name='lock_migrations_wait'*/`,

@@ -2,3 +2,4 @@
 **/*.ignore.*
 cmd/bot/bot
 cmd/migrator/migrator
+cmd/compactor/compactor

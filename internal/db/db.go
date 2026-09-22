@@ -223,6 +223,18 @@ func (d *Database) Throttle() {
 	d.MustExec("set siren.chunk_pause = '2'")
 }
 
+// CurrentDatabase returns the name of the database the connection is in
+func (d *Database) CurrentDatabase() string {
+	var name string
+	d.MustQuery(`
+		select current_database()
+		/*name='current_database'*/`,
+		nil,
+		ScanTo{&name},
+		func() {})
+	return name
+}
+
 // SetWorkMem raises the memory this connection may use to sort and to build indexes.
 // A prebuild converts a whole table, and the defaults are sized for queries.
 // One value serves both, since the migrator runs a single statement at a time.

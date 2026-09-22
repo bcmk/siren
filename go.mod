@@ -4,6 +4,7 @@ require (
 	github.com/coder/websocket v1.8.14
 	github.com/go-telegram/bot v1.18.0
 	github.com/go-viper/mapstructure/v2 v2.5.0
+	github.com/jackc/pgerrcode v0.0.0-20250907135507-afb5586c32a6
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/nicklaw5/helix/v2 v2.32.0
 	github.com/spf13/pflag v1.0.6

@@ -7,6 +7,7 @@
 cmd/bot/bot
 cmd/checktr/checktr
 cmd/migrator/migrator
+cmd/compactor/compactor
 cmd/schema-dump/schema-dump
 cmd/siren-check/siren-check
 cmd/adapter-mfc/adapter-mfc

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cur="$(dirname "$(readlink -f "$0")")"
+cd "$cur/.."
+
+SIREN_VERSION="${1:-$(git describe --tags)}"
+SIREN_VERSION="${SIREN_VERSION#v}"
+ldflags="-s -w -X 'github.com/bcmk/siren/v5/lib/cmdlib.Version=${SIREN_VERSION}'"
+go build -o cmd/compactor/compactor -ldflags="$ldflags" ./cmd/compactor

@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strings"
@@ -305,5 +306,38 @@ func TestChangesFromToForStreamersSkipsStaleStreamers(t *testing.T) {
 	plan := strings.Join(lines, "\n")
 	if !strings.Contains(plan, "One-Time Filter: (st.unconfirmed_timestamp >=") {
 		t.Errorf("the stale-streamer gate is not a one-time filter:\n%s", plan)
+	}
+}
+
+// TestChangesFromToForStreamersSkipsALockedOldChunk pins the read's plan, made for each call:
+// a chunk older than the window, locked out as a compactor rewrite does, never holds it up,
+// however many times it runs
+func TestChangesFromToForStreamersSkipsALockedOldChunk(t *testing.T) {
+	t.Parallel()
+	db := newTestDB(t)
+	defer db.terminate()
+	// Rows in chunks 20 and 28
+	db.UpsertUnconfirmedStatusChanges([]StatusChange{{Nickname: "a", Status: cmdlib.StatusOnline}}, 140*day)
+	db.UpsertUnconfirmedStatusChanges([]StatusChange{{Nickname: "a", Status: cmdlib.StatusOffline}}, 199*day)
+	id := streamerID(t, db.Database, "a")
+	holder := NewDatabase(db.connStr, false, 5)
+	defer func() { _ = holder.Close() }()
+	ctx := context.Background()
+	tx, err := holder.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, "lock table "+chunkName(db.Database, 140*day)+" in access exclusive mode"); err != nil {
+		t.Fatal(err)
+	}
+	db.MustExec("set statement_timeout = '2s'")
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("a read waited on the locked chunk: %v", r)
+		}
+	}()
+	for range 10 {
+		db.ChangesFromToForStreamers([]int{id}, 198*day, 200*day)
 	}
 }
