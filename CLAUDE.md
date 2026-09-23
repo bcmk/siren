@@ -177,9 +177,6 @@
   CLI flag removals/renames, env-var renames, ops-action-required
   schema migrations). Bump minor for new features, patch for fixes.
   `git log v<prev>..HEAD` is the source of truth for what's in scope.
-- After publishing, bump the matching `siren-config` image refs:
-  `bump-all-bots v<version>` (covers prod/test bot charts) plus a
-  `sed` on `prod/prod-adapter-mfc/values.yaml` when the adapter ships.
 - Pushing tags to origin requires explicit permission, like any push.
 - Never push a tag that is not reachable from `master`.
 
