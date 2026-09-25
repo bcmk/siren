@@ -11,7 +11,7 @@ from (
         timestamp,
         status,
         prev_status,
-        lag(status) over (partition by streamer_id order by timestamp, ctid) as preceding_status
+        lag(status) over (partition by streamer_id order by timestamp) as preceding_status
     from status_changes
 ) sc
 where prev_status is distinct from coalesce(preceding_status, 0);

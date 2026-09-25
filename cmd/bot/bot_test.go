@@ -687,7 +687,7 @@ func checkPrevStatuses(t *testing.T, d *db.Database) {
 				sc.status,
 				sc.prev_status,
 				coalesce(
-					lag(sc.status) over (partition by sc.streamer_id order by sc.timestamp, sc.ctid),
+					lag(sc.status) over (partition by sc.streamer_id order by sc.timestamp),
 					0::smallint) as preceding_status
 			from status_changes sc
 			join streamers s on s.id = sc.streamer_id

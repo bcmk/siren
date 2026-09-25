@@ -2026,7 +2026,8 @@ func (w *worker) listStreamers(m receivedMessage) {
 func (w *worker) streamerDuration(c db.Streamer, now int) *int {
 	if c.UnconfirmedStatus == cmdlib.StatusOnline || c.UnconfirmedStatus == cmdlib.StatusOffline {
 		if c.UnconfirmedTimestamp != 0 && c.PrevUnconfirmedStatus != cmdlib.StatusUnknown {
-			dur := now - c.UnconfirmedTimestamp
+			// A stamp can lead the clock
+			dur := max(0, now-c.UnconfirmedTimestamp)
 			return &dur
 		}
 	}

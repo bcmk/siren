@@ -178,6 +178,13 @@ func (d *Database) MustStrings(queryString string, args ...interface{}) (result 
 	return
 }
 
+// MustInts executes the query and returns the ints it yields
+func (d *Database) MustInts(queryString string, args ...interface{}) (result []int) {
+	var current int
+	d.MustQuery(queryString, args, ScanTo{&current}, func() { result = append(result, current) })
+	return
+}
+
 // MustQuery executes the query and stores data using store function
 func (d *Database) MustQuery(queryString string, args QueryParams, record ScanTo, store func()) {
 	defer d.Measure("db: " + queryString)()

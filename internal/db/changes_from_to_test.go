@@ -142,6 +142,24 @@ var changesTests = []changesTestCase{
 			},
 		},
 	},
+	{
+		// A stamp can lead the clock, which to stands for
+		name: "change stamped after the end",
+		inserts: []statusInsert{
+			{"a", cmdlib.StatusOffline, 100},
+			{"a", cmdlib.StatusOnline, 155},
+		},
+		streamers: []string{"a"},
+		from:      120,
+		to:        150,
+		expected: map[string][]StatusChange{
+			"a": {
+				{Status: cmdlib.StatusOffline, Timestamp: 120},
+				{Status: cmdlib.StatusOnline, Timestamp: 150},
+				{Timestamp: 150},
+			},
+		},
+	},
 }
 
 func TestChangesFromToForStreamers(t *testing.T) {
@@ -282,7 +300,7 @@ func TestChangesFromToForStreamersSkipsStaleStreamers(t *testing.T) {
 	db.UpsertUnconfirmedStatusChanges([]StatusChange{{Nickname: "a", Status: cmdlib.StatusOnline}}, 1500)
 	lines := db.MustStrings(
 		"explain (costs off)"+changesFromToForStreamersSQL,
-		[]int{streamerID(t, db.Database, "a")}, 1000, 2000)
+		[]int{streamerID(t, db.Database, "a")}, 1000)
 
 	plan := strings.Join(lines, "\n")
 	if !strings.Contains(plan, "One-Time Filter: (st.unconfirmed_timestamp >=") {

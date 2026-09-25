@@ -13,15 +13,15 @@ Bump the image together with the extension version production installs.
 
 `ix_status_changes_timestamp` is a plain btree, one copy per chunk
 (`create_default_indexes => false` keeps TimescaleDB from adding its own).
-Unlike the BRIN it replaced, it does not depend on row order,
+Unlike a BRIN, it does not depend on row order,
 so rows can be deleted or compacted freely, and `vacuum` and `cluster` are safe at any time.
 
-The conversion is a staged copy on the prev_status pipeline's pattern:
-prebuild migrations stream closed weeks into the hypertable while the bot serves,
-and the cutover checks the copy, appends the tail, and swaps the table in.
-It needs free disk for a second copy of the table.
-Rows a rename fold deletes during the prebuild survive in the copy as orphaned history.
-`pg_class.reltuples` of the table no longer counts its rows; `approximate_row_count` does.
+Count rows with `approximate_row_count`, not `pg_class.reltuples`: the rows live in the chunks.
+
+A unique index builds neither concurrently nor chunk by chunk,
+and a managed instance's role cannot build one chunk by chunk by hand:
+`_timescaledb_internal` is not its to create in.
+So adding one without downtime means a staged copy, as 0081–0085 did.
 
 ## Background workers
 

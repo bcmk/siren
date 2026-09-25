@@ -21,6 +21,17 @@ Status changes are detected by comparing the in-memory cache of online streamers
 3. Not in cache, exists in DB, not in result, not already offline → offline
 4. Not requested known streamer → unknown (unsubscribed)
 
+## Timestamps
+
+A timestamp can lead the clock by seconds, or by as much as the clock stepped back:
+when it is not past the streamer's previous one, we advance it a second past that,
+so a streamer's timestamps are strictly increasing.
+We enforce their uniqueness with the unique index `ix_status_changes_streamer_id_timestamp`.
+
+Readers comparing a timestamp to the present allow for the lead:
+`ChangesFromToForStreamers` moves a later change to the window's end,
+`streamerDuration` never goes below zero, and confirmation comes later by the lead.
+
 ## Previous status
 
 Every row also stores `prev_status`, the status the change left behind.

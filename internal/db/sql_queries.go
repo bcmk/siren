@@ -709,7 +709,6 @@ const changesFromToForStreamersSQL = `
 		where s.unconfirmed_timestamp >= $2
 		and sc.streamer_id = s.id
 		and sc.timestamp >= $2
-		and sc.timestamp <= $3
 		offset 0
 	) sc on true
 	order by s.id, sc.timestamp
@@ -717,9 +716,9 @@ const changesFromToForStreamersSQL = `
 
 // ChangesFromToForStreamers returns each streamer's status changes in [from, to],
 // opening with the status the window starts in and closing with a sentinel at its end.
-// A window holding no change opens on the streamer's current status,
-// which assumes to is the present:
-// a window closing in the past would open on a status later changes have overtaken.
+// to is assumed to be the present:
+// a window holding no change opens on the streamer's current status,
+// and a change stamped after to, ahead of the clock, lands at to.
 func (d *Database) ChangesFromToForStreamers(streamerIDs []int, from int, to int) map[int][]StatusChange {
 	result := make(map[int][]StatusChange)
 	var streamerID int
@@ -728,7 +727,7 @@ func (d *Database) ChangesFromToForStreamers(streamerIDs []int, from int, to int
 	var timestamp *int
 	d.MustQuery(
 		changesFromToForStreamersSQL,
-		QueryParams{streamerIDs, from, to},
+		QueryParams{streamerIDs, from},
 		ScanTo{&streamerID, &opening, &status, &timestamp},
 		func() {
 			if result[streamerID] == nil {
@@ -737,7 +736,7 @@ func (d *Database) ChangesFromToForStreamers(streamerIDs []int, from int, to int
 			if timestamp != nil {
 				result[streamerID] = append(
 					result[streamerID],
-					StatusChange{Status: *status, Timestamp: *timestamp})
+					StatusChange{Status: *status, Timestamp: min(*timestamp, to)})
 			}
 		})
 	for _, id := range streamerIDs {
@@ -1340,6 +1339,7 @@ func (d *Database) UpsertUnconfirmedStatusChanges(
 		nicknames[i] = sc.Nickname
 		statuses[i] = int(sc.Status)
 	}
+	// greatest stamps a change after the streamer's previous one, even within the same second
 	rows, err := tx.Query(
 		context.Background(),
 		`
@@ -1349,8 +1349,10 @@ func (d *Database) UpsertUnconfirmedStatusChanges(
 				prev_unconfirmed_status = streamers.unconfirmed_status,
 				prev_unconfirmed_timestamp = streamers.unconfirmed_timestamp,
 				unconfirmed_status = excluded.unconfirmed_status,
-				unconfirmed_timestamp = excluded.unconfirmed_timestamp
-			returning id, nickname, prev_unconfirmed_status, (xmax = 0) as is_new
+				unconfirmed_timestamp = greatest(excluded.unconfirmed_timestamp, streamers.unconfirmed_timestamp + 1)
+			returning
+				id, nickname, unconfirmed_timestamp, unconfirmed_status, prev_unconfirmed_status,
+				(xmax = 0) as is_new
 			/*name='upsert_unconfirmed_status_changes_streamers'*/
 		`,
 		nicknames, statuses, timestamp,
@@ -1358,19 +1360,15 @@ func (d *Database) UpsertUnconfirmedStatusChanges(
 	checkErr(err)
 	// prev_unconfirmed_status is the status this change leaves behind:
 	// the update has already moved it aside.
-	type upsertedStreamer struct {
-		id         int
-		prevStatus cmdlib.StatusKind
-	}
-	upserted := make(map[string]upsertedStreamer, len(changedStatuses))
+	copyRows := make([][]interface{}, 0, len(changedStatuses))
 	var newNicknames []string
 	for rows.Next() {
-		var id int
+		var id, stamp int
 		var nickname string
-		var prevStatus cmdlib.StatusKind
+		var status, prevStatus int16
 		var isNew bool
-		checkErr(rows.Scan(&id, &nickname, &prevStatus, &isNew))
-		upserted[nickname] = upsertedStreamer{id: id, prevStatus: prevStatus}
+		checkErr(rows.Scan(&id, &nickname, &stamp, &status, &prevStatus, &isNew))
+		copyRows = append(copyRows, []interface{}{stamp, id, status, prevStatus})
 		if isNew {
 			newNicknames = append(newNicknames, nickname)
 		}
@@ -1398,11 +1396,6 @@ func (d *Database) UpsertUnconfirmedStatusChanges(
 
 	// Use CopyFrom for fast bulk insert into status_changes
 	insertStart := time.Now()
-	copyRows := make([][]interface{}, len(changedStatuses))
-	for i, sc := range changedStatuses {
-		u := upserted[sc.Nickname]
-		copyRows[i] = []interface{}{timestamp, u.id, int16(sc.Status), int16(u.prevStatus)}
-	}
 	_, err = tx.CopyFrom(
 		context.Background(),
 		pgx.Identifier{"status_changes"},

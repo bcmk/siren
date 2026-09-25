@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## Unreleased
+
+### Changed
+
+- A streamer's status change timestamps are strictly increasing;
+  the covering index enforces their uniqueness.
+  `status_changes` is rebuilt as a copy by prebuild migrations 0081–0084 and swapped in by 0085;
+  the copy needs free disk for a second table and its indexes until the cutover.
+
 ## v5.10.0 — 2026-09-30
 
 ### Added
