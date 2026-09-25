@@ -118,6 +118,7 @@ func (c *StripchatChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithS
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusNotFound}, nil
 	case 200:
 	default:
+		cmdlib.Lerr("unexpected query status: model = %s, status = %d", modelID, resp.StatusCode)
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
 	buf := bytes.Buffer{}
