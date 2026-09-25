@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v5.9.2 — 2026-09-25
+
+### Fixed
+
+- Stripchat status queries log the response code when it is neither 200 nor 404
+
 ## v5.9.1 — 2026-09-16
 
 ### Added
