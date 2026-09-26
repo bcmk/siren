@@ -278,25 +278,14 @@ func TestChangesFromToForStreamersSkipsStaleStreamers(t *testing.T) {
 	db := newTestDB(t)
 	defer db.terminate()
 
-	lines := db.MustStrings(`
-		explain (costs off)
-		select s.id, coalesce(sc.prev_status, s.unconfirmed_status), sc.status, sc.timestamp
-		from unnest($1::integer[]) as ids(id)
-		join streamers s on s.id = ids.id
-		left join lateral (
-			select sc.prev_status, sc.status, sc.timestamp
-			from status_changes sc
-			where s.unconfirmed_timestamp >= $2
-			and sc.streamer_id = s.id
-			and sc.timestamp >= $2
-			and sc.timestamp <= $3
-			offset 0
-		) sc on true
-		order by s.id, sc.timestamp`,
-		[]int{1}, 1000, 2000)
+	// A row, or the empty hypertable plans every variant as a constant false filter
+	db.UpsertUnconfirmedStatusChanges([]StatusChange{{Nickname: "a", Status: cmdlib.StatusOnline}}, 1500)
+	lines := db.MustStrings(
+		"explain (costs off)"+changesFromToForStreamersSQL,
+		[]int{streamerID(t, db.Database, "a")}, 1000, 2000)
 
 	plan := strings.Join(lines, "\n")
-	if !strings.Contains(plan, "One-Time Filter") {
+	if !strings.Contains(plan, "One-Time Filter: (st.unconfirmed_timestamp >=") {
 		t.Errorf("the stale-streamer gate is not a one-time filter:\n%s", plan)
 	}
 }
