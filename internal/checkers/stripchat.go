@@ -1,16 +1,17 @@
 package checkers
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
+	"net/http"
 	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/bcmk/siren/v5/lib/cmdlib"
@@ -80,13 +81,24 @@ type onlineResponse struct {
 	Models map[string]onlineModel `json:"models"`
 }
 
-type stripchatBroadcastItem struct {
-	IsLive            bool   `json:"isLive"`
-	IsBlocked         bool   `json:"isBlocked"`
-	IsDeleted         bool   `json:"isDeleted"`
-	Status            string `json:"status"`
-	ModelID           int64  `json:"modelId"`
-	SnapshotTimestamp int64  `json:"snapshotTimestamp"`
+type stripchatUserIDResponse struct {
+	ID          int64  `json:"id"`
+	NewUsername string `json:"newUsername"`
+}
+
+type stripchatUserResponse struct {
+	Item struct {
+		IsModel   bool `json:"isModel"`
+		IsDeleted bool `json:"isDeleted"`
+		IsBlocked bool `json:"isBlocked"`
+	} `json:"item"`
+}
+
+type stripchatStatusesResponse struct {
+	Statuses []struct {
+		ID     int64  `json:"id"`
+		Status string `json:"status"`
+	} `json:"statuses"`
 }
 
 func stripchatShowKind(status string) cmdlib.ShowKind {
@@ -101,55 +113,102 @@ func stripchatShowKind(status string) cmdlib.ShowKind {
 	return cmdlib.ShowUnknown
 }
 
-type stripchatBroadcastResponse struct {
-	Item stripchatBroadcastItem `json:"item"`
-}
-
-// QueryStatus checks Stripchat model status via the per-model broadcasts endpoint.
+// QueryStatus checks Stripchat model status
 func (c *StripchatChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
-	endpoint := fmt.Sprintf("https://stripchat.com/api/front/v1/broadcasts/%s", url.PathEscape(modelID))
-	resp := c.DoGetRequest(endpoint, c.Cfg.Headers)
-	if resp == nil {
-		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
+	// Look up the model's ID, then its status among live models
+	unknown := cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}
+	notFound := cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusNotFound}
+
+	endpoint := "https://stripchat.com/api/front/users/user-ids/" + url.PathEscape(modelID)
+	resp, buf, err := cmdlib.OnlineQuery(endpoint, c.Client, c.Cfg.Headers)
+	if err != nil {
+		cmdlib.Lerr("cannot query status: model = %s, url = %s, %v", modelID, endpoint, err)
+		return unknown, nil
 	}
-	defer cmdlib.CloseBody(resp.Body)
+	cmdlib.Ldbg("query status: url = %s, status = %d", endpoint, resp.StatusCode)
 	switch resp.StatusCode {
 	case 404:
-		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusNotFound}, nil
+		return notFound, nil
 	case 200:
 	default:
-		cmdlib.Lerr("unexpected query status: model = %s, status = %d", modelID, resp.StatusCode)
-		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
+		cmdlib.Lerr("unexpected query status: model = %s, url = %s, status = %d", modelID, endpoint, resp.StatusCode)
+		return unknown, nil
 	}
-	buf := bytes.Buffer{}
-	if _, err := buf.ReadFrom(resp.Body); err != nil {
-		cmdlib.Lerr("cannot read response for model %s, %v", modelID, err)
-		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
-	}
-	parsed := &stripchatBroadcastResponse{}
-	if err := json.Unmarshal(buf.Bytes(), parsed); err != nil {
-		cmdlib.Lerr("cannot parse response for model %s, %v", modelID, err)
+	user := &stripchatUserIDResponse{}
+	if err := json.Unmarshal(buf.Bytes(), user); err != nil {
+		cmdlib.Lerr("cannot parse response: model = %s, url = %s, %v", modelID, endpoint, err)
 		cmdlib.Ldbg("response: %s", buf.String())
-		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
+		return unknown, nil
 	}
-	item := parsed.Item
-	if item.IsDeleted || item.IsBlocked {
-		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusNotFound}, nil
+	// An old nickname of a renamed model resolves to the renamed account
+	if user.NewUsername != "" {
+		return notFound, nil
 	}
-	if !item.IsLive {
-		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOffline}, nil
+
+	// min_request_interval_ms paces each request, not just each status query
+	time.Sleep(c.Cfg.MinRequestInterval())
+	endpoint = "https://stripchat.com/api/front/models/get-statuses"
+	req, err := http.NewRequest("POST", endpoint, strings.NewReader(fmt.Sprintf(`{"ids":[%d]}`, user.ID)))
+	cmdlib.CheckErr(err)
+	for _, h := range c.Cfg.Headers {
+		req.Header.Set(h[0], h[1])
 	}
-	imageURL := ""
-	if item.SnapshotTimestamp > 0 && item.ModelID > 0 {
-		imageURL = fmt.Sprintf("https://img.doppiocdn.com/thumbs/%d/%d", item.SnapshotTimestamp, item.ModelID)
+	req.Header.Set("Content-Type", "application/json")
+	resp, buf, err = cmdlib.OnlineRequest(req, c.Client)
+	if err != nil {
+		cmdlib.Lerr("cannot query status: model = %s, url = %s, %v", modelID, endpoint, err)
+		return unknown, nil
 	}
-	return cmdlib.StreamerInfoWithStatus{
-		StreamerInfo: cmdlib.StreamerInfo{
-			ImageURL: imageURL,
-			ShowKind: stripchatShowKind(item.Status),
-		},
-		Status: cmdlib.StatusOnline,
-	}, nil
+	cmdlib.Ldbg("query status: url = %s, status = %d", endpoint, resp.StatusCode)
+	if resp.StatusCode != 200 {
+		cmdlib.Lerr("unexpected query status: model = %s, url = %s, status = %d", modelID, endpoint, resp.StatusCode)
+		return unknown, nil
+	}
+	statuses := &stripchatStatusesResponse{}
+	if err := json.Unmarshal(buf.Bytes(), statuses); err != nil {
+		cmdlib.Lerr("cannot parse response: model = %s, url = %s, %v", modelID, endpoint, err)
+		cmdlib.Ldbg("response: %s", buf.String())
+		return unknown, nil
+	}
+	for _, s := range statuses.Statuses {
+		if s.ID == user.ID {
+			return cmdlib.StreamerInfoWithStatus{
+				StreamerInfo: cmdlib.StreamerInfo{
+					// The CDN serves the latest snapshot for any recent timestamp
+					ImageURL: fmt.Sprintf("https://img.doppiocdn.com/thumbs/%d/%d", time.Now().Unix(), user.ID),
+					ShowKind: stripchatShowKind(s.Status),
+				},
+				Status: cmdlib.StatusOnline,
+			}, nil
+		}
+	}
+	// Offline and idle models are missing from the statuses, as are deleted ones
+	time.Sleep(c.Cfg.MinRequestInterval())
+	endpoint = fmt.Sprintf("https://stripchat.com/api/front/v2/users/%d", user.ID)
+	resp, buf, err = cmdlib.OnlineQuery(endpoint, c.Client, c.Cfg.Headers)
+	if err != nil {
+		cmdlib.Lerr("cannot query status: model = %s, url = %s, %v", modelID, endpoint, err)
+		return unknown, nil
+	}
+	cmdlib.Ldbg("query status: url = %s, status = %d", endpoint, resp.StatusCode)
+	switch resp.StatusCode {
+	case 404:
+		return notFound, nil
+	case 200:
+	default:
+		cmdlib.Lerr("unexpected query status: model = %s, url = %s, status = %d", modelID, endpoint, resp.StatusCode)
+		return unknown, nil
+	}
+	profile := &stripchatUserResponse{}
+	if err := json.Unmarshal(buf.Bytes(), profile); err != nil {
+		cmdlib.Lerr("cannot parse response: model = %s, url = %s, %v", modelID, endpoint, err)
+		cmdlib.Ldbg("response: %s", buf.String())
+		return unknown, nil
+	}
+	if !profile.Item.IsModel || profile.Item.IsDeleted || profile.Item.IsBlocked {
+		return notFound, nil
+	}
+	return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOffline}, nil
 }
 
 func (c *StripchatChecker) checkOnlyOnline() (map[string]cmdlib.StreamerInfo, error) {
