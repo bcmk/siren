@@ -170,28 +170,24 @@ func (d *Database) ApplyNextPrebuildMigrations() bool {
 
 	// A prebuild assumes the schema the migrations before it leave behind,
 	// so it runs only while it is the first thing pending.
-	start := -1
-	for i, m := range migrations {
-		if d.isMigrationApplied(m.name) {
-			continue
-		}
-		if m.prebuild {
-			start = i
-		} else if blocked := d.pendingPrebuild(migrations[i:]); blocked != "" {
-			checkErr(fmt.Errorf(
-				"migration %s is pending, let the bot apply it before prebuilding %s", m.name, blocked))
-		}
-		break
+	start := 0
+	for start < len(migrations) && d.isMigrationApplied(migrations[start].name) {
+		start++
 	}
-	if start < 0 {
+	end := start
+	for end < len(migrations) && migrations[end].prebuild {
+		end++
+	}
+	// Refuse two unapplied prebuild groups: the bot would run the second.
+	if left := d.pendingPrebuild(migrations[end:]); left != "" {
+		checkErr(fmt.Errorf("prebuild %s waits behind an ordinary migration, so startup would run it", left))
+	}
+	if start == end {
 		linf("no prebuild migrations pending")
 		return false
 	}
 
-	for _, m := range migrations[start:] {
-		if !m.prebuild {
-			break
-		}
+	for _, m := range migrations[start:end] {
 		if d.isMigrationApplied(m.name) {
 			continue
 		}

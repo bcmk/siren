@@ -314,6 +314,8 @@
   named `NNNN_prebuild_name.sql`, or `NNNN_prebuild_no_transaction_name.sql` when both apply,
   and applied by `migrator --prebuild`.
   Startup runs any that were not, so a prebuild only ever moves work out of the downtime.
+- A release brings at most one prebuild group, with no ordinary migration ahead of it.
+  `migrator --prebuild` refuses two unapplied prebuild groups.
 - The bot owns its tables, and the logins that run migrations do not,
   so the migrator config gives every bot the role to create them as, and requires it
 

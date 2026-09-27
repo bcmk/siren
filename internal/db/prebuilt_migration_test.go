@@ -2,6 +2,8 @@ package db
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -113,6 +115,32 @@ func TestPrebuildRefusesAheadOfPendingMigration(t *testing.T) {
 		}
 	}()
 	db.ApplyNextPrebuildMigrations()
+}
+
+// A prebuild group behind an ordinary migration could only run at startup,
+// so the prebuild refuses before doing any of the work.
+func TestPrebuildRefusesGroupBehindOrdinaryMigration(t *testing.T) {
+	t.Parallel()
+	db := newTestDB(t)
+	defer db.terminate()
+
+	// Pending: the prev_status group, its ordinary cutover, then the hypertable group.
+	db.MustExec(`
+		delete from schema_migrations
+		where name like '%status_changes_prev_status%' or name like '%status_changes_hypertable%'`)
+
+	func() {
+		defer func() {
+			if r := recover(); !strings.Contains(fmt.Sprint(r), "waits behind an ordinary migration") {
+				t.Errorf("expected the group behind the cutover to be refused, got %v", r)
+			}
+		}()
+		db.ApplyNextPrebuildMigrations()
+	}()
+
+	if n := db.MustInt(`select count(*) from schema_migrations where name like '%status_changes_prev_status%'`); n != 0 {
+		t.Errorf("the refusal should come before any work, but %d migrations were recorded", n)
+	}
 }
 
 // The boundary splits by ctid while prev_status follows timestamp,
