@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v5.9.3 — 2026-09-27
+
+### Fixed
+
+- Stripchat status queries no longer fail with 403 in some countries
+
 ## v5.9.2 — 2026-09-25
 
 ### Fixed
