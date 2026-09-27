@@ -63,3 +63,29 @@ func (c config) bot(name string) (botConfig, error) {
 	}
 	return bot, nil
 }
+
+// readBotDSN reads the database connection string from a bot config, ignoring the rest,
+// so a newer migrator can read the config of the version still running.
+func readBotDSN(path string) (string, error) {
+	var cfg struct {
+		DSN string `mapstructure:"db_connection_string"`
+	}
+	v := viper.New()
+	v.SetConfigType("json")
+	v.SetConfigFile(path)
+	if err := v.ReadInConfig(); err != nil {
+		return "", fmt.Errorf("reading %q: %w", path, err)
+	}
+	v.SetEnvPrefix("XRN")
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AutomaticEnv()
+	cmdlib.BindEnvForConfig(v, &cfg)
+	if err := v.Unmarshal(&cfg); err != nil {
+		return "", fmt.Errorf("parsing %q: %w", path, err)
+	}
+	if cfg.DSN == "" {
+		return "", fmt.Errorf("no db_connection_string in %q", path)
+	}
+	cmdlib.Linf("successfully read the database from bot config %q", path)
+	return cfg.DSN, nil
+}
