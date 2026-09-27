@@ -214,6 +214,8 @@ func TestMigrationRunsAreSerialized(t *testing.T) {
 	other := NewDatabase(connStrFor(name), false, 5)
 	defer func() { _ = other.Close() }()
 
+	// Replay-safe, and pending as a running prebuild is.
+	holder.MustExec(`delete from schema_migrations where name = 'message_log_chat_id_indexes_rework_2'`)
 	holder.MustExec("select pg_advisory_lock($1)", migrationLock)
 
 	done := make(chan struct{})
@@ -229,11 +231,40 @@ func TestMigrationRunsAreSerialized(t *testing.T) {
 	}
 
 	holder.MustExec("select pg_advisory_unlock($1)", migrationLock)
+	// A run that never proceeds hits go test's own timeout, before Close takes its connection.
+	<-done
+}
 
+// A bot with nothing to apply starts without waiting for a prebuild holding the lock.
+func TestMigrationRunSkipsLockWhenNothingPending(t *testing.T) {
+	t.Parallel()
+	holder := newTestDB(t)
+	defer holder.terminate()
+
+	var name string
+	holder.MustQuery("select current_database()", nil, ScanTo{&name}, func() {})
+	other := NewDatabase(connStrFor(name), false, 5)
+	defer func() { _ = other.Close() }()
+
+	holder.MustExec("select pg_advisory_lock($1)", migrationLock)
+
+	done := make(chan struct{})
+	go func() {
+		other.ApplyMigrations()
+		close(done)
+	}()
+
+	waited := false
 	select {
 	case <-done:
-	case <-time.After(30 * time.Second):
-		t.Fatal("the second run should have proceeded once the lock was released")
+	case <-time.After(10 * time.Second):
+		waited = true
+	}
+	// The run must end before the deferred Close takes its connection.
+	holder.MustExec("select pg_advisory_unlock($1)", migrationLock)
+	<-done
+	if waited {
+		t.Fatal("a run with nothing to apply should not have waited for the lock")
 	}
 }
 

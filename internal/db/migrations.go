@@ -5,6 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -140,13 +141,19 @@ func (d *Database) unlockMigrations() {
 
 // ApplyMigrations applies all migrations to the database
 func (d *Database) ApplyMigrations() {
+	migrations, err := loadMigrations()
+	checkErr(err)
+	// With nothing to apply, don't wait on a running prebuild's lock.
+	first := slices.IndexFunc(migrations, func(m migration) bool { return !d.isMigrationApplied(m.name) })
+	if first < 0 {
+		linf("no more migrations")
+		return
+	}
+
 	d.lockMigrations()
 	defer d.unlockMigrations()
 
-	migrations, err := loadMigrations()
-	checkErr(err)
-
-	for _, m := range migrations {
+	for _, m := range migrations[first:] {
 		// Check DB each time — migration 0000 populates schema_migrations
 		// with all existing migration names, so they'll be skipped.
 		if d.isMigrationApplied(m.name) {
