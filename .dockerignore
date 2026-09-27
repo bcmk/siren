@@ -1,3 +1,4 @@
 **/*.ignore
 **/*.ignore.*
 cmd/bot/bot
+cmd/migrator/migrator

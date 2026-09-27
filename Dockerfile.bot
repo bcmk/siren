@@ -4,6 +4,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 RUN apk add --no-cache bash
 COPY cmd/bot/ cmd/bot/
+COPY cmd/migrator/ cmd/migrator/
 COPY internal/ internal/
 COPY lib/ lib/
 COPY scripts/build-bot scripts/build-bot
@@ -11,10 +12,12 @@ ARG SIREN_VERSION=devel
 ENV CGO_ENABLED=0
 ENV GOFLAGS=-trimpath
 RUN ./scripts/build-bot "$SIREN_VERSION"
+RUN go build -o cmd/migrator/migrator -ldflags="-s -w" ./cmd/migrator
 
 FROM alpine:3.22
 WORKDIR /app
 RUN apk add --no-cache ca-certificates
 COPY res/ ./res/
 COPY --from=gobuilder /app/cmd/bot/bot ./cmd/bot/bot
+COPY --from=gobuilder /app/cmd/migrator/migrator ./cmd/migrator/migrator
 ENTRYPOINT ["./cmd/bot/bot"]
