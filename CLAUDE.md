@@ -39,6 +39,7 @@
 - Before modifying a file using an ad-hoc script (e.g. `sed`),
   `git add` it first so the pre-script state can be restored.
   This includes new untracked files
+- Stage the files you changed by name, not with `git add -A` or `git add .`
 
 ## Refactoring
 
