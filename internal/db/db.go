@@ -201,7 +201,9 @@ func (d *Database) SetRole(role string) {
 
 // Throttle keeps a prebuild from crowding out the bot it runs beside:
 // no parallel workers, dirty pages written back in small batches, and a paced vacuum.
+// It also lifts any statement timeout, which an hours-long prebuild would hit.
 func (d *Database) Throttle() {
+	d.MustExec("set statement_timeout = 0")
 	d.MustExec("set max_parallel_workers_per_gather = 0")
 	d.MustExec("set max_parallel_maintenance_workers = 0")
 	d.MustExec("set backend_flush_after = '2MB'")
