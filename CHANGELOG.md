@@ -3,6 +3,23 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v5.10.0 — 2026-09-30
+
+### Added
+
+- The bot image ships the migrator,
+  and `migrator --prebuild --bot-config <path>` prebuilds with a bot's own config
+
+### Changed
+
+- `migrator --prebuild` refuses two unapplied prebuild groups, before doing any work
+- A prebuild lifts any statement timeout
+- Startup with no migrations to apply no longer waits for a running prebuild's lock
+
+### Removed
+
+- The unused `sql_prelude` bot config key
+
 ## v5.9.3 — 2026-09-27
 
 ### Fixed
