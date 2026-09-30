@@ -56,7 +56,6 @@ type Config struct {
 	FollowerBonus                   int                       `mapstructure:"follower_bonus"`                     // number of additional subscriptions for a new user registered by a referral link
 	StatusConfirmationSeconds       StatusConfirmationSeconds `mapstructure:"status_confirmation_seconds"`        // a status is confirmed only if it lasts for at least this number of seconds
 	OfflineNotifications            bool                      `mapstructure:"offline_notifications"`              // enable offline notifications
-	SQLPrelude                      []string                  `mapstructure:"sql_prelude"`                        // run these SQL commands before any other
 	EnableWeek                      bool                      `mapstructure:"enable_week"`                        // enable week command
 	EnableMonth                     bool                      `mapstructure:"enable_month"`                       // enable month command
 	AffiliateLink                   string                    `mapstructure:"affiliate_link"`                     // legacy affiliate link template, superseded by affiliate_base
