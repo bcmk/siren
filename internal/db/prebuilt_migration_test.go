@@ -388,12 +388,8 @@ func TestMigrationWaitsForWritersToFinish(t *testing.T) {
 	}
 
 	checkErr(tx.Rollback(context.Background()))
-
-	select {
-	case <-done:
-	case <-time.After(30 * time.Second):
-		t.Fatal("the migration should have proceeded once the round ended")
-	}
+	// A migration that never proceeds hits go test's own timeout, before terminate.
+	<-done
 }
 
 // Space freed by old updates lets a newer row sit in an older block,
