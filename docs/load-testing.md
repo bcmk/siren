@@ -104,4 +104,4 @@ The binary needs `--checker-config` as well.
 and `min_request_interval_ms` in the checker config paces the requests within it.
 
 Run it against a copy of production, never production.
-It applies the migrations and resets the query stats, as any bot start does.
+It resets the query stats, then applies the migrations, as any bot start does.

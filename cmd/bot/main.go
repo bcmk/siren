@@ -738,8 +738,9 @@ func (w *worker) sendAdsTr(
 
 func (w *worker) createDatabase() {
 	linf("ensuring database created...")
-	w.db.ApplyMigrations()
+	// Reset first, so the stats keep the migrations' statements.
 	w.db.ResetQueryStats()
+	w.db.ApplyMigrations()
 }
 
 // initTimezones loads the zone spellings the embedded tzdata holds,

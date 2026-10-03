@@ -9,6 +9,10 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 - A migration logs its duration
 
+### Fixed
+
+- Query stats are reset before migrations, not after
+
 ## v6.9.0 — 2026-11-10
 
 ### Changed

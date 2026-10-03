@@ -137,11 +137,13 @@ func (d *Database) MustExecScript(script string) {
 // so its numbers cover only the current process's lifetime.
 // The reset is scoped to the current database via the dbid argument
 // (pg_stat_statements counters are cluster-wide otherwise).
-// It is best-effort: the extension must be created
-// (see the pg_stat_statements migration)
-// and loaded via shared_preload_libraries,
+// It skips a database whose migrations have not created the extension yet.
+// It is best-effort otherwise: the extension must be loaded via shared_preload_libraries,
 // and a reset failure must never take down startup.
 func (d *Database) ResetQueryStats() {
+	if !d.isMigrationApplied("pg_stat_statements") {
+		return
+	}
 	const query = `
 		select pg_stat_statements_reset(
 			0,
