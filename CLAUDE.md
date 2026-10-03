@@ -142,16 +142,10 @@
   Without `-o`, the binary lands in the current directory, not cmd/bot/.
 - Do not clean up binaries you built while they sit in their correct
   directories — the project's `.gitignore` already excludes them.
-- To build a Docker image and publish to the registry,
-  run the matching `scripts/publish-<name>` script
-  (e.g. `scripts/publish-bot`, `scripts/publish-adapter-mfc`).
-  All publish scripts use `git describe --tags` as the version.
+- Images are built from `Dockerfile.<name>` and published from outside this repository,
+  versioned by `git describe --tags`.
 - Only create tags for completed features ready to be published.
-  Publish scripts work without tagging —
-  they produce versions like `v2.9.0-2-gabcdef12`.
-- Run `scripts/query-registry-versions <repo>`
-  (e.g. `scripts/query-registry-versions bot`) to list images
-  in the container registry.
+  An untagged commit publishes as a version like `v2.9.0-2-gabcdef12`.
 
 ## Releases
 
@@ -161,8 +155,7 @@
   section fresh from `git log v<prev>..HEAD`. Don't presume Unreleased
   is maintained between releases — sometimes it isn't there.
   Commit the CHANGELOG update as `chore: release v<version>`,
-  then `git tag v<version>` on that commit and run the publish
-  scripts.
+  then `git tag v<version>` on that commit and publish the images.
 - Publishing to the registry is not releasing.
   Iterate with test publishes as needed,
   but land exactly one `chore: release v<version>` commit, at the very end.
