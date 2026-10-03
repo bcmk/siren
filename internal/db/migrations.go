@@ -260,6 +260,17 @@ func (d *Database) pendingPrebuild(migrations []migration) string {
 // which replay would fail on.
 // A no_transaction migration cannot have that, and must therefore be one that a replay can survive.
 func (d *Database) applyMigration(m migration) {
+	began := time.Now()
+	applied := false
+	defer func() {
+		took := time.Since(began).Round(time.Millisecond)
+		if applied {
+			linf("migration applied: name = %s, took = %v", m.name, took)
+		} else {
+			lerr("migration failed: name = %s, took = %v", m.name, took)
+		}
+	}()
+
 	const record = `
 		insert into schema_migrations (name, applied_at) values ($1, $2) on conflict do nothing
 		/*name='record_migration'*/`
@@ -267,6 +278,7 @@ func (d *Database) applyMigration(m migration) {
 	if m.noTransaction {
 		d.MustExecScript(m.sql)
 		d.MustExec(record, m.name, time.Now().Unix())
+		applied = true
 		return
 	}
 
@@ -280,4 +292,5 @@ func (d *Database) applyMigration(m migration) {
 	_, err = tx.Exec(ctx, record, m.name, time.Now().Unix())
 	checkErr(err)
 	checkErr(tx.Commit(ctx))
+	applied = true
 }

@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## Unreleased
+
+### Added
+
+- A migration logs its duration
+
 ## v6.9.0 — 2026-11-10
 
 ### Changed
