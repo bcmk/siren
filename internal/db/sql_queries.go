@@ -1309,7 +1309,6 @@ func (d *Database) ResetBlock(endpoint string, userID UserID) {
 // UpsertUnconfirmedTimings holds per-phase timing for UpsertUnconfirmedStatusChanges.
 type UpsertUnconfirmedTimings struct {
 	UpsertStreamersMs     int
-	InsertNicknamesMs     int
 	InsertStatusChangesMs int
 	CommitMs              int
 }
@@ -1343,17 +1342,24 @@ func (d *Database) UpsertUnconfirmedStatusChanges(
 	rows, err := tx.Query(
 		context.Background(),
 		`
-			insert into streamers (nickname, unconfirmed_status, unconfirmed_timestamp)
-			select unnest($1::text[]), unnest($2::int[]), $3::int
-			on conflict(nickname) do update set
-				prev_unconfirmed_status = streamers.unconfirmed_status,
-				prev_unconfirmed_timestamp = streamers.unconfirmed_timestamp,
-				unconfirmed_status = excluded.unconfirmed_status,
-				unconfirmed_timestamp = greatest(excluded.unconfirmed_timestamp, streamers.unconfirmed_timestamp + 1)
-			returning
-				id, nickname, unconfirmed_timestamp, unconfirmed_status, prev_unconfirmed_status,
-				(xmax = 0) as is_new
-			/*name='upsert_unconfirmed_status_changes_streamers'*/
+			with upserted as (
+				insert into streamers (nickname, unconfirmed_status, unconfirmed_timestamp)
+				select unnest($1::text[]), unnest($2::int[]), $3::int
+				on conflict(nickname) do update set
+					prev_unconfirmed_status = streamers.unconfirmed_status,
+					prev_unconfirmed_timestamp = streamers.unconfirmed_timestamp,
+					unconfirmed_status = excluded.unconfirmed_status,
+					unconfirmed_timestamp = greatest(
+						excluded.unconfirmed_timestamp, streamers.unconfirmed_timestamp + 1)
+				returning
+					id, nickname, unconfirmed_timestamp, unconfirmed_status, prev_unconfirmed_status,
+					(xmax = 0) as is_new
+			),
+			new_nicknames as (
+				insert into nicknames (nickname) select nickname from upserted where is_new
+			)
+			select id, unconfirmed_timestamp, unconfirmed_status, prev_unconfirmed_status from upserted
+			/*name='upsert_unconfirmed_statuses'*/
 		`,
 		nicknames, statuses, timestamp,
 	)
@@ -1361,38 +1367,16 @@ func (d *Database) UpsertUnconfirmedStatusChanges(
 	// prev_unconfirmed_status is the status this change leaves behind:
 	// the update has already moved it aside.
 	copyRows := make([][]interface{}, 0, len(changedStatuses))
-	var newNicknames []string
 	for rows.Next() {
 		var id, stamp int
-		var nickname string
 		var status, prevStatus int16
-		var isNew bool
-		checkErr(rows.Scan(&id, &nickname, &stamp, &status, &prevStatus, &isNew))
+		checkErr(rows.Scan(&id, &stamp, &status, &prevStatus))
 		copyRows = append(copyRows, []interface{}{stamp, id, status, prevStatus})
-		if isNew {
-			newNicknames = append(newNicknames, nickname)
-		}
 	}
 	checkErr(rows.Err())
 	rows.Close()
 	var timings UpsertUnconfirmedTimings
 	timings.UpsertStreamersMs = int(time.Since(upsertStart).Milliseconds())
-
-	// Insert only new nicknames into the nicknames table.
-	// The nicknames table holds search indexes (GIN trigram, etc.)
-	// separately from streamers to avoid GIN write overhead on upserts.
-	if len(newNicknames) > 0 {
-		insertNicknamesStart := time.Now()
-		_, err = tx.Exec(
-			context.Background(),
-			`
-				insert into nicknames (nickname) select unnest($1::text[])
-				/*name='upsert_unconfirmed_status_changes_nicknames'*/
-			`,
-			newNicknames)
-		checkErr(err)
-		timings.InsertNicknamesMs = int(time.Since(insertNicknamesStart).Milliseconds())
-	}
 
 	// Use CopyFrom for fast bulk insert into status_changes
 	insertStart := time.Now()

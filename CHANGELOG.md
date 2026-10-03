@@ -9,6 +9,10 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 - A migration logs its duration
 
+### Changed
+
+- A checker cycle with new streamers runs one query fewer
+
 ### Fixed
 
 - Query stats are reset before migrations, not after

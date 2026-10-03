@@ -4790,7 +4790,6 @@ func main() {
 				"confirmed_count":                      processed.confirmedChangesCount,
 				"notifications_count":                  len(processed.notifications),
 				"upsert_unconfirmed_streamers_ms":      processed.upsertTimings.UpsertStreamersMs,
-				"insert_nicknames_ms":                  processed.upsertTimings.InsertNicknamesMs,
 				"insert_unconfirmed_status_changes_ms": processed.upsertTimings.InsertStatusChangesMs,
 				"commit_unconfirmed_ms":                processed.upsertTimings.CommitMs,
 				"confirm_changes_ms":                   processed.confirmChangesMs,
