@@ -45,6 +45,10 @@ func NewDatabase(connString string, shouldCheckGID bool, defaultMaxSubs int) Dat
 	config.OnNotice = func(_ *pgconn.PgConn, n *pgconn.Notice) {
 		linf("db: %s", n.Message)
 	}
+	// A statement outlives a client killed outright, holding its locks,
+	// unless the server checks the socket.
+	// It is no timeout: a live client is never cut off.
+	config.RuntimeParams["client_connection_check_interval"] = "1s"
 	db, err := pgx.ConnectConfig(context.Background(), config)
 	checkErr(err)
 	return Database{
