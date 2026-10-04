@@ -206,6 +206,7 @@
   ask for it.
 - Answer as briefly as the question allows.
   Give the short answer first, and only then the reasoning if needed.
+- Answer each question sent mid-turn in that turn's final message
 - When asked to "remember" or "write somewhere",
   save to CLAUDE.md or docs/\* files, not memory files,
   unless specifically asked for memory files
