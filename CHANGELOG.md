@@ -3,6 +3,20 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v5.12.9 — 2026-10-10
+
+### Added
+
+- A compactor that deletes short offline periods from old status history
+  and gives the oldest chunks' space back
+
+### Fixed
+
+- A killed client's statements no longer linger on the server
+- A config integer is read in base 10 only:
+  a leading zero, hex, a fraction, an empty string or a bool is refused
+- The performance log is migrated to TimescaleDB
+
 ## v5.11.0 — 2026-09-30
 
 ### Changed
