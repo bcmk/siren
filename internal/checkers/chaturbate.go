@@ -146,6 +146,8 @@ func chaturbateStatus(status string) cmdlib.StatusKind {
 		return cmdlib.StatusDenied
 	case "unauthorized":
 		return cmdlib.StatusDenied
+	case "password-required":
+		return cmdlib.StatusOnline | cmdlib.StatusOffline
 	}
 	return cmdlib.StatusUnknown
 }
