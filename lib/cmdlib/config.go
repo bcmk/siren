@@ -14,10 +14,11 @@ import (
 )
 
 // StrictConfigDecoder configures a viper Unmarshal to reject unknown keys
-// and apply the standard config decode-hook chain: comma-split strings
-// into slices, duration strings, RFC3339 strings into time.Time,
-// encoding.TextUnmarshaler types, and JSON strings into maps (the last
-// few let XRN_ env vars carry slice/map/duration/time values).
+// and apply the standard config decode-hook chain:
+// comma-split strings into slices, duration strings, RFC3339 strings into time.Time,
+// encoding.TextUnmarshaler types, JSON strings into maps
+// (the last few let XRN_ env vars carry slice/map/duration/time values),
+// and integers from base 10 strings and whole numbers only.
 func StrictConfigDecoder(dc *mapstructure.DecoderConfig) {
 	dc.ErrorUnused = true
 	dc.DecodeHook = mapstructure.ComposeDecodeHookFunc(
@@ -26,6 +27,7 @@ func StrictConfigDecoder(dc *mapstructure.DecoderConfig) {
 		mapstructure.StringToTimeHookFunc(time.RFC3339),
 		mapstructure.TextUnmarshallerHookFunc(),
 		StringToMapHookFunc(),
+		IntegerHookFunc(),
 	)
 }
 
