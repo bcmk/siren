@@ -1,27 +1,27 @@
-## Status values
+# Status values
 
 Checkers can return OR'd statuses (e.g., `StatusNotFound | StatusDenied`).
 Before storing in the database, these are normalized to one of three values:
 unknown (0), offline (1), or online (2).
 
-## Storing status changes
+# Storing status changes
 
 Status changes are detected by comparing the in-memory cache of online streamers
 (`unconfirmedOnlineStreamers`) against checker results.
 
-### Online list checkers (e.g., Chaturbate)
+## Online list checkers (e.g., Chaturbate)
 
 1. Was in cache but not in result → offline
 2. In result but not in cache → online
 
-### Fixed list checkers (e.g., Twitch)
+## Fixed list checkers (e.g., Twitch)
 
 1. Was in cache, not in result, and was requested → offline
 2. In result but not in cache → online
 3. Not in cache, exists in DB, not in result, not already offline → offline
 4. Not requested known streamer → unknown (unsubscribed)
 
-## Timestamps
+# Timestamps
 
 A timestamp can lead the clock by seconds, or by as much as the clock stepped back:
 when it is not past the streamer's previous one, we advance it a second past that,
@@ -32,7 +32,7 @@ Readers comparing a timestamp to the present allow for the lead:
 `ChangesFromToForStreamers` moves a later change to the window's end,
 `streamerDuration` never goes below zero, and confirmation comes later by the lead.
 
-## Previous status
+# Previous status
 
 Every row also stores `prev_status`, the status the change left behind.
 The upsert of `streamers` returns `prev_unconfirmed_status`,
@@ -43,14 +43,14 @@ The status a window opens in is its first change's `prev_status`,
 or the streamer's current status where the window holds no change.
 `ChangesFromToForStreamers` reads both, which is why it joins `streamers`.
 
-## Row layout
+# Row layout
 
 Columns are ordered four-byte first, then the two-byte statuses.
 A row is 40 bytes either way, but the order leaves four bytes of slack
 that one more four-byte column can use without growing the row or the covering index.
 Putting a `smallint` before an `integer` spends that slack on padding instead.
 
-## Denormalization
+# Denormalization
 
 The `streamers` table stores the last two statuses from `status_changes`:
 
@@ -68,7 +68,7 @@ We upsert streamers first to obtain integer IDs,
 then bulk insert into `status_changes` with those IDs,
 updating the denormalized fields in the same transaction.
 
-## Constraints
+# Constraints
 
 `status_changes.status`, `status_changes.prev_status`
 and `streamers.confirmed_status` are constrained
@@ -80,7 +80,7 @@ which adds overhead to every bulk insert into `status_changes`.
 Since all writes go through a single well-tested code path,
 application-level consistency is sufficient.
 
-## Invariant: status_changes and streamers must be in sync
+# Invariant: status_changes and streamers must be in sync
 
 The unconfirmed statuses in `streamers`
 must always match the latest entries in `status_changes`.
@@ -92,7 +92,7 @@ a row's `prev_status` never equals its `status`,
 and always equals the previous row's `status` for that streamer.
 No status change is recorded unless the status actually changed.
 
-## First offline status
+# First offline status
 
 For fixed list checkers (e.g., Twitch),
 the first offline status must be recorded after subscription
@@ -105,14 +105,14 @@ If we have only unknown -> online transition,
 the streamer could have been online much longer than we detected,
 making duration data unreliable.
 
-## Confirmation
+# Confirmation
 
 Confirmation adds a delay before notifying users of status changes.
 This prevents notification spam when streamers flicker online/offline.
 A status is confirmed only after it remains stable for a configured duration.
 Unknown status confirmations are immediate since they don't generate notifications.
 
-## Indexes
+# Indexes
 
 Status change insertion and confirmation are performance-critical —
 they run on every checker cycle and must complete quickly.
