@@ -209,9 +209,7 @@ func TestMigrationRunsAreSerialized(t *testing.T) {
 	holder := newTestDB(t)
 	defer holder.terminate()
 
-	var name string
-	holder.MustQuery("select current_database()", nil, ScanTo{&name}, func() {})
-	other := NewDatabase(connStrFor(name), false, 5)
+	other := NewDatabase(holder.connStr, false, 5)
 	defer func() { _ = other.Close() }()
 
 	// Replay-safe, and pending as a running prebuild is.
@@ -241,9 +239,7 @@ func TestMigrationRunSkipsLockWhenNothingPending(t *testing.T) {
 	holder := newTestDB(t)
 	defer holder.terminate()
 
-	var name string
-	holder.MustQuery("select current_database()", nil, ScanTo{&name}, func() {})
-	other := NewDatabase(connStrFor(name), false, 5)
+	other := NewDatabase(holder.connStr, false, 5)
 	defer func() { _ = other.Close() }()
 
 	holder.MustExec("select pg_advisory_lock($1)", migrationLock)
@@ -362,9 +358,7 @@ func TestMigrationWaitsForWritersToFinish(t *testing.T) {
 		t.Fatal("expected pending prebuild migrations")
 	}
 
-	var name string
-	db.MustQuery("select current_database()", nil, ScanTo{&name}, func() {})
-	writer := NewDatabase(connStrFor(name), false, 5)
+	writer := NewDatabase(db.connStr, false, 5)
 	defer func() { _ = writer.Close() }()
 
 	tx, err := writer.Begin()
