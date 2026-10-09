@@ -100,9 +100,8 @@ Each instance opens two connections, the bot's and the fuzzy search daemon's,
 which sits idle here but is still dialled.
 
 `maintain_db_period_seconds` arms the BRIN maintenance,
-but only `performance_log` grows in this mode, at two rows a tick:
-`sent_message_log` and `received_message_log` get nothing,
-and `status_changes`, the table the run does hammer, carries no BRIN index.
+but it covers only `sent_message_log` and `received_message_log`, which get no rows in this mode.
+The tables the run grows, `status_changes` and `performance_log`, carry btrees.
 Set it to rehearse the statement, not to size it.
 
 The binary needs `--checker-config` as well.

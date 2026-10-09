@@ -1,6 +1,6 @@
 # TimescaleDB
 
-`status_changes` is a hypertable partitioned by `timestamp`.
+`status_changes` and `performance_log` are hypertables partitioned by `timestamp`.
 The column holds unix seconds, so the chunk interval is in seconds too: 7 days.
 
 Production runs the Apache-2 edition (`timescaledb.license = apache`).
@@ -11,9 +11,9 @@ Tests and `schema-dump` run on the matching `-oss` image, `pgtest.Image`,
 so a feature outside the edition fails in tests first.
 Bump the image together with the extension version production installs.
 
-`ix_status_changes_timestamp` is a plain btree, one copy per chunk
-(`create_default_indexes => false` keeps TimescaleDB from adding its own).
-Unlike a BRIN, it does not depend on row order,
+`ix_status_changes_timestamp` and `ix_performance_log_timestamp` are plain btrees,
+one copy per chunk (`create_default_indexes => false` keeps TimescaleDB from adding its own).
+Unlike a BRIN, a btree does not depend on row order,
 so rows can be deleted or compacted freely, and `vacuum` and `cluster` are safe at any time.
 
 Count rows with `approximate_row_count`, not `pg_class.reltuples`: the rows live in the chunks.

@@ -255,7 +255,7 @@
 
 - Run `cmd/schema-dump/schema-dump` to get the full database schema
 - BRIN indexes require explicit `brin_summarize_new_values` calls
-- `status_changes` is a TimescaleDB hypertable on the Apache-2 edition:
+- `status_changes` and `performance_log` are TimescaleDB hypertables on the Apache-2 edition:
   no compression, continuous aggregates, or policies
 - Read `docs/testing-database.md` before working with the
   testing database environment

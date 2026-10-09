@@ -1665,7 +1665,6 @@ func (d *Database) MaintainBrinIndexes() {
 	for _, index := range []string{
 		"ix_sent_message_log_timestamp",
 		"ix_received_message_log_timestamp",
-		"ix_performance_log_timestamp",
 	} {
 		d.MustExec(`
 			select brin_summarize_new_values($1::text::regclass)
