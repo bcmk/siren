@@ -284,6 +284,8 @@
   follow up with `vacuum analyze` in `no_transaction` migrations.
   `cluster` resets the visibility map and leaves correlation stats out of date.
   Plain `analyze` updates `pg_stats` but does not touch the visibility map.
+  A BRIN-ordered table takes `analyze` alone:
+  a vacuum scatters its next rows (`docs/brin-maintenance.md`).
   Refs: <https://www.postgresql.org/docs/current/sql-cluster.html>,
   <https://www.postgresql.org/docs/current/storage-vm.html>.
 - When a migration needs multiple files, use `_1`, `_2` suffixes.
