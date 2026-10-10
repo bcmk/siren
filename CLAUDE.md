@@ -254,8 +254,8 @@
 ## Database
 
 - Run `cmd/schema-dump/schema-dump` to get the full database schema
-- BRIN indexes require explicit `brin_summarize_new_values` calls
-- `status_changes` and `performance_log` are TimescaleDB hypertables on the Apache-2 edition:
+- `status_changes`, `performance_log`, `sent_message_log` and `received_message_log`
+  are TimescaleDB hypertables on the Apache-2 edition:
   no compression, continuous aggregates, or policies
 - Read `docs/testing-database.md` before working with the
   testing database environment
@@ -354,9 +354,8 @@ which say that site's own word: "model" on the adult sites, "channel" on Twitch 
 - Read `docs/streamer-search.md` before modifying streamer fuzzy search
 - Read `docs/architecture-diagrams.md` before adding or regenerating
   an architecture diagram (`docs/*.dot` / `docs/*.pdf`)
-- Read `docs/brin-maintenance.md` before changing any BRIN index,
-  recreating one, or running operations
-  that could affect physical row order on a BRIN-indexed table.
+- Read `docs/brin-maintenance.md` before adding or changing a BRIN index,
+  or running operations that could affect physical row order on a BRIN-indexed table.
 - Read `docs/timescaledb.md` before changing a hypertable or using a TimescaleDB feature
 - Read `docs/telegram-stars.md` before changing Telegram Stars payment handling
   (buying subscriptions, invoices, pre-checkout, refunds).

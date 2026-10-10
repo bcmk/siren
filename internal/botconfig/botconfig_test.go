@@ -205,9 +205,8 @@ func TestCheckConfigCheckerOnly(t *testing.T) {
 	}
 }
 
-// TestCheckConfigBoundsThePeriods pins the three tick periods as positive
-// and maintain_db_period_seconds as non-negative, zero being its documented disable:
-// a non-positive period reads as disabled, so a negative would start a bot that never ticks.
+// TestCheckConfigBoundsThePeriods pins the three tick periods as positive:
+// the bot's ticker panics on a non-positive one.
 func TestCheckConfigBoundsThePeriods(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -221,10 +220,6 @@ func TestCheckConfigBoundsThePeriods(t *testing.T) {
 		{
 			name:   "negative notifications_ready_period_seconds",
 			mangle: func(c *Config) { c.NotificationsReadyPeriodSeconds = -1 },
-		},
-		{
-			name:   "negative maintain_db_period_seconds",
-			mangle: func(c *Config) { c.MaintainDBPeriodSeconds = -1 },
 		},
 	}
 	for _, tt := range tests {

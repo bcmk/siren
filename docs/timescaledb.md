@@ -1,6 +1,7 @@
 # TimescaleDB
 
-`status_changes` and `performance_log` are hypertables partitioned by `timestamp`.
+`status_changes`, `performance_log`, `sent_message_log` and `received_message_log`
+are hypertables partitioned by `timestamp`.
 The column holds unix seconds, so the chunk interval is in seconds too: 7 days.
 
 Production runs the Apache-2 edition (`timescaledb.license = apache`).
@@ -11,7 +12,7 @@ Tests and `schema-dump` run on the matching `-oss` image, `pgtest.Image`,
 so a feature outside the edition fails in tests first.
 Bump the image together with the extension version production installs.
 
-`ix_status_changes_timestamp` and `ix_performance_log_timestamp` are plain btrees,
+Their `timestamp` indexes are plain btrees,
 one copy per chunk (`create_default_indexes => false` keeps TimescaleDB from adding its own).
 Unlike a BRIN, a btree does not depend on row order,
 so rows can be deleted or compacted freely, and `vacuum` and `cluster` are safe at any time.
@@ -24,6 +25,20 @@ and a managed instance's role cannot build one chunk by chunk by hand:
 So adding one without downtime means a staged copy, as 0081–0085 did.
 The compactor stays stopped from a staged copy's prebuild through its cutover,
 as `docs/status-changes.md` says.
+
+## Foreign keys
+
+TimescaleDB copies a hypertable's foreign key onto every chunk,
+and each copy adds its own triggers to the referenced table.
+`sent_message_log` and `received_message_log` reference `users`, so with a chunk a week:
+
+- Every update of `users` runs a check per chunk, which makes bulk updates several times slower
+- The first insert of a week creates a chunk and takes `share row exclusive` on `users`,
+  so it waits behind any open writer of `users`
+- `drop_chunks` takes `access exclusive` on `users`
+
+We keep them so a delete from `users` fails instead of orphaning log rows.
+`status_changes` has none, for the per-row cost (`docs/status-changes.md`).
 
 ## Background workers
 

@@ -529,7 +529,7 @@ type ChatMigration struct {
 // its limit is raised to the larger of the two.
 // The source's operational rows are dropped, its small history
 // (feedback, payments, referrals) moves to the destination,
-// and the source is kept as a tombstone for its BRIN message logs,
+// and the source is kept as a tombstone for its message logs,
 // linked via migrated_to.
 //
 // It returns the outcome, or nil when there was nothing to do: a degenerate migration,
@@ -587,7 +587,7 @@ func (d *Database) MigrateChat(fromID, toID int64) *ChatMigration {
 	// The destination is an active chat (the same chat recorded twice).
 	// Keep the more permissive setup of the two and drop the source's operational rows.
 	// Move its small history (feedback, payments, referrals) to the destination,
-	// then keep the source as a tombstone for its BRIN message logs,
+	// then keep the source as a tombstone for its message logs,
 	// linked via migrated_to.
 	_, err = tx.Exec(ctx, `
 		update users d set
@@ -1666,19 +1666,6 @@ func (d *Database) LogPerformance(timestamp int, kind PerformanceLogKind, durati
 		kind,
 		durationMs,
 		jsonData)
-}
-
-// MaintainBrinIndexes summarizes new values for BRIN indexes
-func (d *Database) MaintainBrinIndexes() {
-	for _, index := range []string{
-		"ix_sent_message_log_timestamp",
-		"ix_received_message_log_timestamp",
-	} {
-		d.MustExec(`
-			select brin_summarize_new_values($1::text::regclass)
-			/*name='maintain_brin_indexes'*/`,
-			index)
-	}
 }
 
 // ShortOfflineRule says an offline period whose end is After seconds old goes

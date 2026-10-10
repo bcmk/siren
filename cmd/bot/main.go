@@ -4129,10 +4129,6 @@ func getOurIDs(c *botconfig.Config) []int64 {
 	return ids
 }
 
-func (w *worker) maintainDB() {
-	w.db.MaintainBrinIndexes()
-}
-
 // maintenanceReply handles an update that arrives while migrations run:
 // it rejects pre-checkouts, answers callbacks,
 // and replies to commands with the maintenance notice,
@@ -4555,17 +4551,12 @@ func (w *worker) processSubsConfirmations(res *cmdlib.ExistenceListResults) {
 // startupTimers holds the main loop's periodic timer channels.
 type startupTimers struct {
 	request            <-chan time.Time
-	maintainDB         <-chan time.Time
 	subsConfirm        <-chan time.Time
 	notificationSender <-chan time.Time
 }
 
-// tickerC returns the channel a ticker sends on, or nil when the period is not positive.
-// A nil channel never fires, so its select arm sits dormant for the run.
+// tickerC returns the channel a ticker sends on
 func tickerC(seconds int) <-chan time.Time {
-	if seconds <= 0 {
-		return nil
-	}
 	return time.NewTicker(time.Duration(seconds) * time.Second).C
 }
 
@@ -4574,8 +4565,7 @@ func tickerC(seconds int) <-chan time.Time {
 // and a fetch would claim the copy's queued rows and delete them unsent.
 func (w *worker) newStartupTimers() startupTimers {
 	timers := startupTimers{
-		request:    tickerC(w.cfg.PeriodSeconds),
-		maintainDB: tickerC(w.cfg.MaintainDBPeriodSeconds),
+		request: tickerC(w.cfg.PeriodSeconds),
 	}
 	if !w.cfg.CheckerOnly {
 		timers.subsConfirm = tickerC(w.cfg.SubsConfirmationPeriodSeconds)
@@ -4707,8 +4697,6 @@ func main() {
 		case <-timers.request:
 			runtime.GC()
 			w.periodic()
-		case <-timers.maintainDB:
-			w.maintainDB()
 		case <-timers.subsConfirm:
 			w.queryUnconfirmedSubs()
 		case <-timers.notificationSender:

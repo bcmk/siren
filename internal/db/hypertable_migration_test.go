@@ -1,6 +1,7 @@
 package db
 
 import (
+	"slices"
 	"testing"
 	"time"
 )
@@ -217,4 +218,152 @@ func TestPrebuiltPerformanceLogHypertable(t *testing.T) {
 		where relname in ('performance_log_conversion', 'performance_log_new')`); n != 0 {
 		t.Error("the cutover should have dropped the conversion table and the copy")
 	}
+}
+
+// TestPrebuiltMessageLogsHypertable replays the message logs' prebuild and cutover,
+// with rows written after the prebuild at the boundary and above it.
+func TestPrebuiltMessageLogsHypertable(t *testing.T) {
+	t.Parallel()
+	db := newTestDB(t)
+	defer db.terminate()
+
+	// Back to the shape before 0089
+	db.MustExec(`drop table sent_message_log`)
+	db.MustExec(`drop table received_message_log`)
+	db.MustExec(`
+		create table sent_message_log (
+			priority integer not null,
+			timestamp integer not null,
+			endpoint text not null,
+			user_id bigint not null,
+			result integer not null,
+			latency integer not null,
+			kind integer not null default 0,
+			command text,
+			reply_seq integer not null default 0,
+			constraint chk_sent_message_log_priority check (priority in (0, 1)),
+			constraint fk_sent_message_log_user_id foreign key (user_id) references users(id) on delete restrict)`)
+	db.MustExec(`
+		create table received_message_log (
+			timestamp integer not null,
+			endpoint text not null,
+			user_id bigint not null,
+			command text,
+			constraint fk_received_message_log_user_id foreign key (user_id) references users(id) on delete restrict)`)
+	db.MustExec(`
+		create index ix_sent_message_log_timestamp on sent_message_log
+		using brin ("timestamp") with (pages_per_range = 8)`)
+	db.MustExec(`create index ix_sent_message_log_user_id_timestamp on sent_message_log (user_id, timestamp)`)
+	db.MustExec(`
+		create index ix_received_message_log_timestamp on received_message_log
+		using brin ("timestamp") with (pages_per_range = 8)`)
+	db.MustExec(`create index ix_received_message_log_user_id_timestamp on received_message_log (user_id, timestamp)`)
+	db.MustExec(`delete from schema_migrations where name like '%message_logs_hypertable%'`)
+	before := map[string][]string{}
+	for _, table := range []string{"sent_message_log", "received_message_log"} {
+		before[table] = logShape(db, table)
+	}
+
+	db.MustExec(`insert into users (id, chat_id) values (1, 1), (2, 2)`)
+
+	// Three rows of each log below the boundary, an hour behind now, and one above it
+	now := int(time.Now().Unix())
+	w2 := now/604800*604800 - 2*604800
+	db.MustExec(`
+		insert into sent_message_log (priority, timestamp, endpoint, user_id, result, latency, kind, command, reply_seq)
+		values
+		(0, $1, 'en', 1, 200, 15, 1, 'list', 3), (1, $2, 'ru', 2, 403, 20, 0, null, 0),
+		(0, $3, 'en', 1, 200, 25, 0, null, 0), (0, $4, 'en', 2, 200, 30, 0, null, 0)`,
+		w2+100, w2+604800+100, now-7200, now)
+	db.MustExec(`
+		insert into received_message_log (timestamp, endpoint, user_id, command) values
+		($1, 'en', 1, 'start'), ($2, 'ru', 2, null), ($3, 'en', 1, 'list'), ($4, 'en', 2, 'help')`,
+		w2+100, w2+604800+100, now-7200, now)
+
+	if !db.ApplyNextPrebuildMigrations() {
+		t.Fatal("expected pending prebuild migrations")
+	}
+	if n := db.MustInt(`select count(*) from sent_message_log_new`); n != 3 {
+		t.Fatalf("prebuild should have copied the 3 sent messages below the boundary, got %d", n)
+	}
+	if n := db.MustInt(`select count(*) from received_message_log_new`); n != 3 {
+		t.Fatalf("prebuild should have copied the 3 received messages below the boundary, got %d", n)
+	}
+
+	// The bot keeps writing, at the boundary and above it
+	boundary := db.MustInt(`select boundary from message_logs_conversion`)
+	db.MustExec(`
+		insert into sent_message_log (priority, timestamp, endpoint, user_id, result, latency, kind, command, reply_seq)
+		values (0, $1, 'en', 1, 200, 35, 0, null, 0), (0, $2, 'en', 2, 200, 40, 0, 'add', 1)`,
+		boundary, boundary+10)
+	db.MustExec(`
+		insert into received_message_log (timestamp, endpoint, user_id, command) values
+		($1, 'en', 1, null), ($2, 'ru', 2, 'add')`,
+		boundary, boundary+10)
+
+	db.ApplyMigrations()
+
+	if n := db.MustInt(`select count(*) from sent_message_log`); n != 6 {
+		t.Errorf("expected 6 sent messages after the cutover, got %d", n)
+	}
+	if n := db.MustInt(`select count(*) from received_message_log`); n != 6 {
+		t.Errorf("expected 6 received messages after the cutover, got %d", n)
+	}
+	if n := db.MustInt(`select count(*) from sent_message_log where timestamp = $1`, boundary); n != 1 {
+		t.Error("the sent message at the boundary should have been appended at the cutover")
+	}
+	if n := db.MustInt(`select count(*) from received_message_log where timestamp = $1`, boundary); n != 1 {
+		t.Error("the received message at the boundary should have been appended at the cutover")
+	}
+	for _, table := range []string{"sent_message_log", "received_message_log"} {
+		if n := db.MustInt(`
+			select count(*) from timescaledb_information.hypertables
+			where hypertable_name = $1`, table); n != 1 {
+			t.Errorf("%s should be a hypertable after the cutover", table)
+		}
+		for _, index := range []string{"ix_" + table + "_timestamp", "ix_" + table + "_user_id_timestamp"} {
+			if n := db.MustInt(`
+				select count(*) from pg_indexes
+				where tablename = $1 and indexname = $2 and indexdef like '%USING btree%'`,
+				table, index); n != 1 {
+				t.Errorf("btree %s missing after the cutover", index)
+			}
+		}
+		if after := logShape(db, table); !slices.Equal(after, before[table]) {
+			t.Errorf("%s's constraints and defaults changed:\nbefore %q\nafter  %q", table, before[table], after)
+		}
+	}
+	if n := db.MustInt(`
+		select count(*) from sent_message_log
+		where timestamp = $1 and priority = 0 and endpoint = 'en' and user_id = 1 and result = 200
+		and latency = 15 and kind = 1 and command = 'list' and reply_seq = 3`,
+		w2+100); n != 1 {
+		t.Error("a copied sent message lost its values")
+	}
+	if n := db.MustInt(`
+		select count(*) from pg_class
+		where relname in ('message_logs_conversion', 'sent_message_log_new', 'received_message_log_new')`); n != 0 {
+		t.Error("the cutover should have dropped the conversion table and the copies")
+	}
+}
+
+// logShape lists a table's constraints, by name and definition, and its column defaults,
+// so the swapped-in copy can be compared with the table it replaced
+func logShape(db *testDB, table string) []string {
+	var shape []string
+	var item string
+	db.MustQuery(`
+		select conname || ' ' || pg_get_constraintdef(oid)
+		from pg_constraint
+		where conrelid = $1::regclass
+		union all
+		select a.attname || ' default ' || pg_get_expr(d.adbin, d.adrelid)
+		from pg_attrdef d
+		join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum
+		where d.adrelid = $1::regclass
+		order by 1`,
+		QueryParams{table},
+		ScanTo{&item},
+		func() { shape = append(shape, item) })
+	return shape
 }

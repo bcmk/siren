@@ -45,7 +45,6 @@ type Config struct {
 	Website                         string                    `mapstructure:"website"`                            // a checker's Site name from the registry in internal/checkers/factory.go
 	WebsiteLink                     string                    `mapstructure:"website_link"`                       // legacy affiliate link to website, superseded by affiliate_base
 	PeriodSeconds                   int                       `mapstructure:"period_seconds"`                     // the period of querying streamer statuses
-	MaintainDBPeriodSeconds         int                       `mapstructure:"maintain_db_period_seconds"`         // the maintain DB period
 	MaxSubs                         int                       `mapstructure:"max_subs"`                           // maximum subscriptions per user
 	OwnerID                         int64                     `mapstructure:"admin_id"`                           // the owner's Telegram ID (wire name kept for compatibility)
 	OwnerEndpoint                   string                    `mapstructure:"admin_endpoint"`                     // the endpoint serving the owner; wire name as above
@@ -182,10 +181,6 @@ func checkConfig(cfg *Config) error {
 	}
 	if cfg.NotificationsReadyPeriodSeconds <= 0 {
 		return errors.New("configure a positive notifications_ready_period_seconds")
-	}
-	// Zero disables it; a negative would read as disabled rather than fail.
-	if cfg.MaintainDBPeriodSeconds < 0 {
-		return errors.New("configure a non-negative maintain_db_period_seconds")
 	}
 	if err := validateSubsTiers(cfg.SubsTiers); err != nil {
 		return err

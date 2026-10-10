@@ -1,9 +1,15 @@
 # BRIN Index Maintenance
 
-The BRIN indexes on the `timestamp` of `sent_message_log` and `received_message_log`
-rely on physical row order matching timestamp order.
+None of our tables has a BRIN index now; this doc applies if one is added.
+
+A BRIN index on `timestamp`, say `ix_dummy_log_timestamp` on `dummy_log`,
+relies on physical row order matching timestamp order.
 Each range of 8 pages stores the minimum and maximum timestamp in it,
 and a query skips only the ranges whose span misses its bounds.
+
+Create the index with `(pages_per_range = 8, autosummarize = on)`:
+ranges filled since the last summary stay out of the index, and every query reads them.
+`autosummarize` summarizes each range as it fills, without a vacuum.
 
 ## Not for rows of varying size
 
@@ -32,10 +38,10 @@ After a `cluster`, new rows go to the table's end until a vacuum marks the old p
 `cluster` rewrites a table in an index's order, in O(n) time whatever the existing order.
 A BRIN index cannot order it, so it takes a temporary btree:
 
-    create index ix_sent_message_log_timestamp_btree on sent_message_log (timestamp);
-    cluster sent_message_log using ix_sent_message_log_timestamp_btree;
-    drop index ix_sent_message_log_timestamp_btree;
-    analyze sent_message_log;
+    create index ix_dummy_log_timestamp_btree on dummy_log (timestamp);
+    cluster dummy_log using ix_dummy_log_timestamp_btree;
+    drop index ix_dummy_log_timestamp_btree;
+    analyze dummy_log;
 
 Follow it with `analyze` alone, never `vacuum`,
 which would mark every page's free space and send the next rows back across the table.
@@ -51,7 +57,7 @@ which a managed database's privilege tooling can take away even from the owner:
 In order, a week's rows fill a run of pages at the table's end:
 
     select count(*), count(distinct (ctid::text::point)[0]), min((ctid::text::point)[0])
-    from sent_message_log
+    from dummy_log
     where timestamp > extract(epoch from now() - interval '7 days')::bigint;
 
 Spread over thousands of pages, or starting far from the end, they are scattered.
@@ -60,4 +66,4 @@ Spread over thousands of pages, or starting far from the end, they are scattered
 
 To list inversions between neighbouring rows,
 run `sql-scripts/check-timestamp-inversions.sql` with the table as a psql variable:
-`psql -v table=sent_message_log -f <script>`.
+`psql -v table=dummy_log -f <script>`.
