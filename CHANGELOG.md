@@ -3,6 +3,29 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v6.0.0 — 2026-10-10
+
+### Upgrading
+
+- Remove `maintain_db_period_seconds` from bot configs with the image bump:
+  a config that sets it refuses the start
+- The module path is `github.com/bcmk/siren/v6`
+- Prebuild migrations 0089–0094 copy both message logs, and 0095 swaps them in;
+  the copy needs free disk for a second copy of both logs and their indexes until the cutover
+
+### Added
+
+- `migrator --set name=value` and a `settings` list in `migrator.json`
+  set a prebuild's session settings
+
+### Changed
+
+- `sent_message_log` and `received_message_log` are TimescaleDB hypertables, a chunk a week
+
+### Removed
+
+- The BRIN maintenance and its `maintain_db_period_seconds` config key
+
 ## v5.12.9 — 2026-10-10
 
 ### Added
