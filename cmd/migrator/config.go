@@ -20,8 +20,11 @@ type botConfig struct {
 }
 
 type config struct {
-	WorkMem string               `mapstructure:"work_mem"`
-	Bots    map[string]botConfig `mapstructure:"bots"`
+	WorkMem string `mapstructure:"work_mem"`
+	// Settings are name=value pairs as --set takes them:
+	// viper would split a map key like siren.chunk_pause
+	Settings []string             `mapstructure:"settings"`
+	Bots     map[string]botConfig `mapstructure:"bots"`
 }
 
 // readConfig loads migrator.json from ~/.config/siren, or from an explicit path.

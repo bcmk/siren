@@ -17,6 +17,10 @@ func main() {
 	cfgPath := pflag.String("config", "", "path to migrator.json (overrides the default search)")
 	botCfgPath := pflag.String("bot-config", "", "read the database from this bot config instead of migrator.json")
 	workMem := pflag.String("work-mem", "", "sort and index-build memory for a prebuild migration, e.g. 128MB")
+	sets := pflag.StringArray(
+		"set",
+		nil,
+		"a session setting for a prebuild migration as name=value, e.g. vacuum_cost_delay=0; repeatable")
 	pflag.Usage = func() {
 		fmt.Fprintf(
 			os.Stderr,
@@ -57,6 +61,8 @@ func main() {
 		if *workMem == "" {
 			*workMem = cfg.WorkMem
 		}
+		// The flags come last, so they win over the config
+		*sets = append(cfg.Settings, *sets...)
 		database = db.NewDatabase(bot.DSN, false, 0)
 		database.SetRole(bot.Role)
 	}
@@ -68,6 +74,14 @@ func main() {
 	database.Throttle()
 	if *workMem != "" {
 		database.SetWorkMem(*workMem)
+	}
+	for _, s := range *sets {
+		name, value, ok := strings.Cut(s, "=")
+		if !ok || name == "" {
+			cmdlib.CheckErr(fmt.Errorf("a setting is name=value, not %q", s))
+		}
+		database.SetSetting(name, value)
+		cmdlib.Linf("prebuild setting: %s = %s", name, value)
 	}
 	database.ApplyNextPrebuildMigrations()
 }

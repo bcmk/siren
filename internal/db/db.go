@@ -247,6 +247,11 @@ func (d *Database) SetWorkMem(size string) {
 	d.MustExec("select set_config('maintenance_work_mem', $1, false)", size)
 }
 
+// SetSetting sets a session setting, overriding Throttle's choice for a prebuild
+func (d *Database) SetSetting(name, value string) {
+	d.MustExec("select set_config($1, $2, false)", name, value)
+}
+
 // Begin begins a transaction
 func (d *Database) Begin() (pgx.Tx, error) { return d.db.Begin(context.Background()) }
 
