@@ -12,7 +12,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
-	"github.com/bcmk/siren/v5/lib/cmdlib"
+	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
 
 // Image is the Apache-2 TimescaleDB build, at the version production runs

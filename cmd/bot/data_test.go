@@ -7,11 +7,11 @@ import (
 
 	"github.com/go-telegram/bot/models"
 
-	"github.com/bcmk/siren/v5/internal/botconfig"
-	"github.com/bcmk/siren/v5/internal/checkers"
-	"github.com/bcmk/siren/v5/internal/db"
-	"github.com/bcmk/siren/v5/internal/pgtest"
-	"github.com/bcmk/siren/v5/lib/cmdlib"
+	"github.com/bcmk/siren/v6/internal/botconfig"
+	"github.com/bcmk/siren/v6/internal/checkers"
+	"github.com/bcmk/siren/v6/internal/db"
+	"github.com/bcmk/siren/v6/internal/pgtest"
+	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
 
 // nextOutgoing pops the message the sender would send next.

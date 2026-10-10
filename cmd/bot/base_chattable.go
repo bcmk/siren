@@ -9,7 +9,7 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 
-	"github.com/bcmk/siren/v5/lib/cmdlib"
+	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
 
 // renderParams is what a message needs to produce its text,

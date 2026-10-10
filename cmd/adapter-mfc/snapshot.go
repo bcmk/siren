@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bcmk/siren/v5/lib/cmdlib"
+	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
 
 // streamer is one online model's last known state, keyed by uid in the snapshot.

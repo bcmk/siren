@@ -6,8 +6,8 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/bcmk/siren/v5/internal/botconfig"
-	"github.com/bcmk/siren/v5/internal/db"
+	"github.com/bcmk/siren/v6/internal/botconfig"
+	"github.com/bcmk/siren/v6/internal/db"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )

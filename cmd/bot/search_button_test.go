@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bcmk/siren/v5/internal/checkers"
-	"github.com/bcmk/siren/v5/internal/db"
-	"github.com/bcmk/siren/v5/lib/cmdlib"
+	"github.com/bcmk/siren/v6/internal/checkers"
+	"github.com/bcmk/siren/v6/internal/db"
+	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
 
 // TestFailedAddOffersSearch holds the find-and-add button to the chats a web app opens in,

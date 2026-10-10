@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bcmk/siren/v5/lib/cmdlib"
+	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
 
 // tzdata holds upstream data verbatim; scripts/update-timezones refreshes it.

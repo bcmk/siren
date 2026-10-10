@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/bcmk/siren/v5/internal/db"
+	"github.com/bcmk/siren/v6/internal/db"
 )
 
 // TestChunksToVacuum pins the vacuums a run queues: a chunk once a band passes its end

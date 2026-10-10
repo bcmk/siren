@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bcmk/siren/v5/internal/db"
-	"github.com/bcmk/siren/v5/lib/cmdlib"
+	"github.com/bcmk/siren/v6/internal/db"
+	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
 
 // sweepDays is the sweep history's length: nine periods a day, 4 to 100 minutes long,

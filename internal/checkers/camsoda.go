@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bcmk/siren/v5/lib/cmdlib"
+	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
 
 // CamSodaChecker implements a checker for CamSoda

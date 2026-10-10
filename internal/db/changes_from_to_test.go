@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bcmk/siren/v5/lib/cmdlib"
+	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
 
 func streamerID(t *testing.T, d *Database, nickname string) int {

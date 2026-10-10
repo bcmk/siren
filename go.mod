@@ -1,4 +1,4 @@
-module github.com/bcmk/siren/v5
+module github.com/bcmk/siren/v6
 
 require (
 	github.com/coder/websocket v1.8.14

@@ -6,9 +6,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bcmk/siren/v5/internal/db"
-	"github.com/bcmk/siren/v5/internal/pgtest"
-	"github.com/bcmk/siren/v5/lib/cmdlib"
+	"github.com/bcmk/siren/v6/internal/db"
+	"github.com/bcmk/siren/v6/internal/pgtest"
+	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
 
 var (

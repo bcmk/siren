@@ -6,7 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/bcmk/siren/v5/internal/db"
+	"github.com/bcmk/siren/v6/internal/db"
 )
 
 // step is a rule's step: its band, begin to end

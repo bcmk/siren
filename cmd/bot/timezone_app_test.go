@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bcmk/siren/v5/lib/cmdlib"
+	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
 
 // testZoneNames stands in for what initTimezones loads,
