@@ -115,14 +115,17 @@ func TestPrebuiltStatusChangesUnique(t *testing.T) {
 		where conrelid = 'status_changes'::regclass and conname like 'chk_status_changes_%'`); n != 3 {
 		t.Errorf("expected the 3 check constraints, got %d", n)
 	}
-	if n := db.MustInt(`
-		select count(*) from pg_constraint
-		where conrelid = 'status_changes'::regclass and conname in (
-			'status_changes_timestamp_not_null',
-			'status_changes_streamer_id_not_null',
-			'status_changes_status_not_null',
-			'status_changes_prev_status_not_null')`); n != 4 {
-		t.Errorf("expected the 4 not-null constraints under their final names, got %d", n)
+	// PostgreSQL catalogues a table's not-null constraints from 18 on
+	if db.MustInt(`select current_setting('server_version_num')::integer`) >= 180000 {
+		if n := db.MustInt(`
+			select count(*) from pg_constraint
+			where conrelid = 'status_changes'::regclass and conname in (
+				'status_changes_timestamp_not_null',
+				'status_changes_streamer_id_not_null',
+				'status_changes_status_not_null',
+				'status_changes_prev_status_not_null')`); n != 4 {
+			t.Errorf("expected the 4 not-null constraints under their final names, got %d", n)
+		}
 	}
 	if n := db.MustInt(`
 		select count(*) from pg_class

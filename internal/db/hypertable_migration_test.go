@@ -204,14 +204,17 @@ func TestPrebuiltPerformanceLogHypertable(t *testing.T) {
 		and indexname = 'ix_performance_log_timestamp' and indexdef like '%USING btree%'`); n != 1 {
 		t.Error("timestamp btree missing after the cutover")
 	}
-	if n := db.MustInt(`
-		select count(*) from pg_constraint
-		where conrelid = 'performance_log'::regclass and contype = 'n' and conname in (
-			'performance_log_timestamp_not_null',
-			'performance_log_kind_not_null',
-			'performance_log_duration_ms_not_null',
-			'performance_log_data_not_null')`); n != 4 {
-		t.Errorf("expected the 4 not-null constraints under their final names, got %d", n)
+	// PostgreSQL catalogues a table's not-null constraints from 18 on
+	if db.MustInt(`select current_setting('server_version_num')::integer`) >= 180000 {
+		if n := db.MustInt(`
+			select count(*) from pg_constraint
+			where conrelid = 'performance_log'::regclass and contype = 'n' and conname in (
+				'performance_log_timestamp_not_null',
+				'performance_log_kind_not_null',
+				'performance_log_duration_ms_not_null',
+				'performance_log_data_not_null')`); n != 4 {
+			t.Errorf("expected the 4 not-null constraints under their final names, got %d", n)
+		}
 	}
 	if n := db.MustInt(`
 		select count(*) from pg_class

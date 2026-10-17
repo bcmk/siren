@@ -16,7 +16,7 @@ import (
 )
 
 // Image is the Apache-2 TimescaleDB build, at the version production runs
-const Image = "timescale/timescaledb:2.29.1-pg18-oss"
+const Image = "timescale/timescaledb:2.22.1-pg17-oss"
 
 // Run starts a server whose first database is dbName.
 // TimescaleDB's job scheduler is off:
