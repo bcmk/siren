@@ -1,6 +1,6 @@
 **[English](README.md)**
 
-# <img src="https://xiren-assets.s3.nl-ams.scw.cloud/icons/siren-dia.svg" height="23">&ensp;SIREN
+# <img src="https://assets.siren.chat/icons/siren-dia.svg" height="23">&ensp;SIREN
 
 Telegram-бот для оповещений о вебкастах
 
