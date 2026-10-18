@@ -104,6 +104,18 @@
   or restating the code beside it.
   Write for a reader who never saw the discussion.
 - Multiline code goes in a code block
+- Keep an HTML, XML or SVG element on one line when it fits.
+  Otherwise put each attribute on its own line, with `>` after the last one,
+  then the content on its own line and the closing tag on its own line under the opening one:
+  ```svg
+  <text
+      x="320"
+      fill="#b4b9c2">
+      $text
+  </text>
+  ```
+- Indent shell scripts with tabs
+- Prefer human-readable indentation to machine-pleasing indentation
 - Keep lines no longer than 120 characters
 - Never split a URL to satisfy a length limit; a line carrying a URL may run over
 - Never hardcode user-facing strings — always use
