@@ -104,6 +104,7 @@ type Translations struct {
 	WeAreUp                     *Translation `yaml:"we_are_up"`
 	FieldsCustomizationHint     *Translation `yaml:"fields_customization_hint"`
 	BotLinkHint                 *Translation `yaml:"bot_link_hint"`
+	ImageUnavailable            *Translation `yaml:"image_unavailable"`
 	SearchButton                *Translation `yaml:"search_button"`
 	SearchHeader                *Translation `yaml:"search_header"`
 	SearchPlaceholder           *Translation `yaml:"search_placeholder"`

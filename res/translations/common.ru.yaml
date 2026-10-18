@@ -664,3 +664,5 @@ fields_customization_hint:
   str: '<i>Совет: Вы можете настроить, что отображать, в {{ command "settings" }}</i>'
 bot_link_hint:
   str: '<i>Оповещения от {{ .bot_link }}</i>'
+image_unavailable:
+  image: image-unavailable.ru.png

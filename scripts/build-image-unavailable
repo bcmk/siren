@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Renders the image_unavailable placeholders: res/images/image-unavailable.<lang>.png.
+#
+# Usage:
+#   scripts/build-image-unavailable
+#
+# Requires: rsvg-convert (librsvg), ImageMagick, and the Montserrat font.
+set -euo pipefail
+
+cur="$(dirname "$(readlink -f "$0")")"
+cd "$cur/.."
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+
+render() {
+	local lang="$1" text="$2"
+	cat > "$work/$lang.svg" <<-EOF
+		<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+			<rect width="640" height="360" fill="#2a2d33"/>
+			<g fill="none" stroke="#8a909a" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+				<rect x="266" y="96" width="108" height="84" rx="10"/>
+				<polyline points="280,166 306,136 324,154 338,142 360,166"/>
+				<circle cx="346" cy="118" r="8"/>
+			</g>
+			<line x1="256" y1="84" x2="384" y2="192" stroke="#2a2d33" stroke-width="18" stroke-linecap="round"/>
+			<line x1="256" y1="84" x2="384" y2="192" stroke="#8a909a" stroke-width="6" stroke-linecap="round"/>
+			<text
+				x="320"
+				y="252"
+				text-anchor="middle"
+				font-family="Montserrat"
+				font-weight="500"
+				font-size="30"
+				fill="#b4b9c2">
+				$text
+			</text>
+		</svg>
+	EOF
+	rsvg-convert "$work/$lang.svg" -o "$work/$lang.png"
+	# 32 colors and no metadata keep the file a few KB.
+	magick "$work/$lang.png" -strip -colors 32 "PNG8:res/images/image-unavailable.$lang.png"
+}
+
+render en "Image unavailable"
+render ru "Изображение недоступно"

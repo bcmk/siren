@@ -663,3 +663,5 @@ fields_customization_hint:
   str: '<i>Tip: You can customize what is shown in {{ command "settings" }}</i>'
 bot_link_hint:
   str: '<i>Alerts by {{ .bot_link }}</i>'
+image_unavailable:
+  image: image-unavailable.en.png

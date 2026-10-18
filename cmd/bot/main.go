@@ -1024,6 +1024,9 @@ func (w *worker) notifyOfStatus(p plannedNotification, image []byte) {
 		notify := false
 		if p.Status == cmdlib.StatusOnline {
 			notify = !p.SilentMessages
+			if image == nil && w.cfg.ShowImages && p.ImageURL != "" {
+				image = w.tr[p.Endpoint].ImageUnavailable.ImageBytes
+			}
 		} else {
 			// Only an online notification carries a picture.
 			image = nil
