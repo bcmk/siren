@@ -331,26 +331,34 @@ func TestAttempt(t *testing.T) {
 		want       photoOutcome
 	}{
 		{"an upload learns its id", site, "", fakeReply{body: photoSent},
-			"upload", messageSent, photoOutcome{uploadedID: "large"}},
+			"upload", messageSent, photoOutcome{fileUpload: true, uploadedID: "large"}},
 		{"a held id sends the image", site, "known", fakeReply{body: photoSent},
 			"known", messageSent, photoOutcome{}},
 		{"a refused id is reported", site, "stale", fakeReply{body: unknownFileID},
 			"stale", messageFileIDRejected, photoOutcome{rejected: true}},
 		{"a timed-out upload is reported", site, "", timeout,
-			"upload", messageTimeout, photoOutcome{timedOut: true}},
+			"upload", messageTimeout, photoOutcome{fileUpload: true, timedOut: true}},
 		{"a send by id that times out is no upload timeout", site, "known", timeout,
 			"known", messageTimeout, photoOutcome{}},
 		{"another bad request is no refusal", site, "known", fakeReply{body: chatNotFound},
 			"known", messageChatNotFound, photoOutcome{}},
 		{"an upload is never a refused id", site, "", fakeReply{body: unknownFileID},
-			"upload", messageFileIDRejected, photoOutcome{}},
+			"upload", messageFileIDRejected, photoOutcome{fileUpload: true}},
+		{name: "a skipped chat uploads nothing", img: site, wantResult: messageSkipped},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			f := &fakeTelegram{replies: []fakeReply{tc.reply}}
+			cfg := &botconfig.Config{}
+			var wantSent []string
+			if tc.wantSent == "" {
+				cfg.WhitelistChats = []int64{2}
+			} else {
+				wantSent = []string{tc.wantSent}
+			}
 			w := &worker{
-				cfg:  &botconfig.Config{},
+				cfg:  cfg,
 				bots: map[string]*bot.Bot{"ep": newFakeBot(t, f)},
 			}
 			p := &photoParams{
@@ -364,8 +372,8 @@ func TestAttempt(t *testing.T) {
 			if result != tc.wantResult {
 				t.Errorf("result = %d, want %d", result, tc.wantResult)
 			}
-			if !slices.Equal(f.sent, []string{tc.wantSent}) {
-				t.Errorf("sent %v, want %s", f.sent, tc.wantSent)
+			if !slices.Equal(f.sent, wantSent) {
+				t.Errorf("sent %v, want %v", f.sent, wantSent)
 			}
 			tc.want.key = tc.img.key
 			if got != tc.want {
@@ -580,13 +588,15 @@ func TestFanOutUploadsOnce(t *testing.T) {
 		wantSent      []string
 		wantDownloads int
 		wantRefusals  int
+		// wantUploads counts the logged sends that carried the image's bytes, then those that did not.
+		wantUploads [2]int
 	}{
 		{"the next sends name the uploaded id",
 			[]fakeReply{{body: photoSent}, {body: photoSent}, {body: photoSent}},
-			3, []string{"upload", "large", "large"}, 1, 0},
+			3, []string{"upload", "large", "large"}, 1, 0, [2]int{1, 2}},
 		{"a refused id gives way to the next photo's upload, whose id the refused one goes by",
 			[]fakeReply{{body: photoSent}, {body: unknownFileID}, {body: photoSent}, {body: photoSent}},
-			4, []string{"upload", "large", "upload", "large"}, 1, 1},
+			4, []string{"upload", "large", "upload", "large"}, 1, 1, [2]int{2, 2}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -619,6 +629,13 @@ func TestFanOutUploadsOnce(t *testing.T) {
 			refusals := w.db.MustInt(`select count(*) from sent_message_log where result = $1`, messageFileIDRejected)
 			if refusals != tc.wantRefusals {
 				t.Errorf("refusals logged = %d, want %d", refusals, tc.wantRefusals)
+			}
+			uploads := [2]int{
+				w.db.MustInt(`select count(*) from sent_message_log where file_upload`),
+				w.db.MustInt(`select count(*) from sent_message_log where not file_upload`),
+			}
+			if uploads != tc.wantUploads {
+				t.Errorf("uploads and other sends logged = %v, want %v", uploads, tc.wantUploads)
 			}
 			if sent := w.db.MustInt(`select count(*) from sent_message_log where result = $1`, messageSent); sent != len(users) {
 				t.Errorf("sends logged = %d, want %d", sent, len(users))

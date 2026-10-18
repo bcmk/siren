@@ -2099,11 +2099,12 @@ func (d *Database) LogSentMessage(
 	kind PacketKind,
 	command string,
 	replySeq int,
+	fileUpload bool,
 ) {
 	d.MustExec(`
 		insert into sent_message_log (
-			timestamp, user_id, result, endpoint, priority, latency, kind, command, reply_seq)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			timestamp, user_id, result, endpoint, priority, latency, kind, command, reply_seq, file_upload)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		/*name='log_sent_message'*/`,
 		timestamp,
 		int64(userID),
@@ -2113,7 +2114,8 @@ func (d *Database) LogSentMessage(
 		latency,
 		kind,
 		nullableCommand(command),
-		replySeq)
+		replySeq,
+		fileUpload)
 }
 
 // SkippedSend names one dice-skipped recipient for LogDiceSkippedSends.
