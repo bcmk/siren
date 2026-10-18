@@ -1898,7 +1898,7 @@ func TestNotifyOfStatuses(t *testing.T) {
 		{UserID: w.db.EnsureUser(201), Endpoint: "test", Nickname: "d", Status: cmdlib.StatusOnline, Priority: db.PriorityHigh},
 	}
 
-	w.enqueueNotifications(notificationBatch{notifications: nots})
+	w.enqueueNotifications(nots)
 
 	if w.sendQueue.Len() != 4 {
 		t.Errorf("expected 4 outgoing messages, got %d", w.sendQueue.Len())
@@ -1934,13 +1934,14 @@ func TestDeliverOffMainGoroutine(t *testing.T) {
 	done := make(chan any, 1)
 	go func() {
 		defer func() { done <- recover() }()
+		msg := &migrateThenOK{id: 100, target: 200}
 		w.deliver(&queuedMessage{
 			userID:   userID,
 			endpoint: "test",
-			message:  &migrateThenOK{id: 100, target: 200},
+			message:  msg,
 			order:    queueOrder{priority: db.PriorityHigh},
 			tag:      unprompted(db.MessagePacket),
-		})
+		}, msg)
 	}()
 	if r := <-done; r != nil {
 		t.Fatalf("deliver touched the database off the main goroutine: %v", r)

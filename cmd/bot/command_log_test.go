@@ -193,7 +193,7 @@ func TestDeferredAddedStreamerStatusLogsItsCommand(t *testing.T) {
 	if len(nots) != 1 {
 		t.Fatalf("expected 1 notification, got %d", len(nots))
 	}
-	w.enqueueNotifications(notificationBatch{notifications: nots, images: map[string][]byte{}})
+	w.enqueueNotifications(nots)
 
 	commands := drainSendQueueToLog(t, w)
 	t.Logf("deferred status logged: %q", commands)
@@ -231,7 +231,7 @@ func TestDeferredOnlinePicsLogItsCommand(t *testing.T) {
 	if nots[0].Command != "pics" {
 		t.Errorf("the command did not survive the queue, got %q", nots[0].Command)
 	}
-	w.enqueueNotifications(notificationBatch{notifications: nots, images: map[string][]byte{}})
+	w.enqueueNotifications(nots)
 
 	// The reply, hint included, named by the command.
 	commands := drainSendQueueToLog(t, w)
@@ -1061,9 +1061,9 @@ func TestOnlinePicsCarryTheHintInTheLastMessage(t *testing.T) {
 			// Above the three images, so the group cap is not what suppresses the hint.
 			cfg := testConfig
 			cfg.MaxSubscriptionsForPics = 10
+			cfg.ShowImages = true
 			w.cfg = &cfg
 
-			images := map[string][]byte{}
 			for i := range 3 {
 				nickname := fmt.Sprintf("online_%d", i)
 				insertTestStreamer(&w.db, db.Streamer{
@@ -1074,7 +1074,6 @@ func TestOnlinePicsCarryTheHintInTheLastMessage(t *testing.T) {
 				if tc.withPic {
 					url := "http://" + nickname + ".jpg"
 					w.unconfirmedOnlineStreamers[nickname] = cmdlib.StreamerInfo{ImageURL: url}
-					images[url] = []byte("image")
 				}
 			}
 			w.listOnlineStreamers(testMessage(w, tc.chatID, "pics", 100))
@@ -1088,7 +1087,8 @@ func TestOnlinePicsCarryTheHintInTheLastMessage(t *testing.T) {
 			if len(nots) != 3 {
 				t.Fatalf("expected 3 notifications, got %d", len(nots))
 			}
-			w.enqueueNotifications(notificationBatch{notifications: nots, images: images})
+			w.enqueueNotifications(nots)
+			completeDownloads(w)
 
 			// Three messages and no fourth, numbered in order, the last carrying the hint.
 			var texts []string
@@ -1187,7 +1187,7 @@ func TestPendingAddNumbersItsWholeAnswer(t *testing.T) {
 	if len(nots) != 1 {
 		t.Fatalf("expected 1 notification, got %d", len(nots))
 	}
-	w.enqueueNotifications(notificationBatch{notifications: nots, images: map[string][]byte{}})
+	w.enqueueNotifications(nots)
 	if got := drainSeqsToLog(t, w); !slices.Equal(got, []int{2}) {
 		t.Errorf("the status collided with the add result, got %v", got)
 	}
@@ -1255,7 +1255,7 @@ func TestAddedStreamerNumbersItsWholeAnswer(t *testing.T) {
 	if len(nots) != 1 {
 		t.Fatalf("expected 1 notification, got %d", len(nots))
 	}
-	w.enqueueNotifications(notificationBatch{notifications: nots, images: map[string][]byte{}})
+	w.enqueueNotifications(nots)
 	if got := drainSeqsToLog(t, w); !slices.Equal(got, []int{1}) {
 		t.Errorf("the status did not sit between the two, got %v", got)
 	}

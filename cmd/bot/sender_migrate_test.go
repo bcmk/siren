@@ -54,13 +54,14 @@ func TestDeliverDropsMigrateToSelf(t *testing.T) {
 			sendResults: make(chan msgSendResult, 16),
 			cooledUsers: make(chan cooledUser, 16),
 		}
+		msg := &migrateToSelf{id: -100}
 		go w.deliver(&queuedMessage{
 			userID:   1,
 			endpoint: "ep",
-			message:  &migrateToSelf{id: -100},
+			message:  msg,
 			order:    queueOrder{priority: db.PriorityHigh},
 			tag:      unprompted(db.MessagePacket),
-		})
+		}, msg)
 
 		r := <-w.sendResults
 		if r.result != messageMigrate {
@@ -93,7 +94,7 @@ func TestDeliverReportsMigrateForRequeue(t *testing.T) {
 			order:    queueOrder{priority: db.PriorityHigh},
 			tag:      unprompted(db.MessagePacket),
 		}
-		go w.deliver(q)
+		go w.deliver(q, q.message)
 
 		r := <-w.sendResults
 		if r.result != messageMigrate || r.migrateToChatID != newID || r.resend != q {

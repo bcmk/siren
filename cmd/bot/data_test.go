@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"net/http"
 	"os"
 	"testing"
 	"text/template"
@@ -19,6 +21,13 @@ import (
 // tests read them there rather than from a channel.
 func (w *testWorker) nextOutgoing() *queuedMessage {
 	return w.sendQueue.pop()
+}
+
+// completeDownloads takes in every image download, sending the messages it lets go.
+func completeDownloads(w *testWorker) {
+	for w.imageDownloader.queue.running > 0 {
+		w.completeDownload(<-w.imageDownloader.results)
+	}
 }
 
 var testConfig = botconfig.Config{
@@ -140,6 +149,13 @@ var testTranslations = cmdlib.Translations{
 	},
 }
 
+// noNetwork fails every request, so a test's image downloads fail at once.
+type noNetwork struct{}
+
+func (noNetwork) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("no network in tests")
+}
+
 type testWorker struct {
 	worker
 	// sendQueue aliases the test endpoint's queue, where every test send parks.
@@ -214,7 +230,7 @@ func newTestWorker() *testWorker {
 			bots:        nil,
 			db:          db.NewDatabase(connStr, true, testConfig.MaxSubs),
 			cfg:         &testConfig,
-			client:      nil,
+			client:      &http.Client{Transport: noNetwork{}},
 			tr:          map[string]*cmdlib.Translations{"test": &testTranslations},
 			botNames:    map[string]string{"test": "bot"},
 			tpl:         map[string]*template.Template{"test": tpl},
@@ -225,6 +241,8 @@ func newTestWorker() *testWorker {
 			checker:     &checkers.RandomChecker{BaseChecker: checkers.NewBaseChecker(&checkers.TestCheckerConfig{})},
 		},
 	}
+	// A notification's photo starts its download, which only completeDownloads takes in.
+	w.imageDownloader = newImageDownloader[*queuedMessage](w.downloadImage)
 	// Hold the test endpoint's slot so enqueues park for inspection.
 	s := w.sender("test")
 	s.cooling = true

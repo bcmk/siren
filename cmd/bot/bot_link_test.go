@@ -102,9 +102,9 @@ func TestQueuingAnAlertCountsIt(t *testing.T) {
 		t.Errorf("the chat counts %d queued alerts, want 1", user.Reports)
 	}
 	// Composed twice over, as a requeue makes the fetch do.
-	w.enqueueNotifications(notificationBatch{notifications: w.db.NewNotifications()})
+	w.enqueueNotifications(w.db.NewNotifications())
 	w.db.RequeueNotification(1)
-	w.enqueueNotifications(notificationBatch{notifications: w.db.NewNotifications()})
+	w.enqueueNotifications(w.db.NewNotifications())
 
 	user, _ = w.db.UserByID(userID)
 	if user.Reports != 1 {
@@ -164,7 +164,7 @@ func TestChannelNotificationReachesTheChatWithTheLink(t *testing.T) {
 		nicknames[i] = fmt.Sprintf("streamer%d", i)
 	}
 	storeStatusNotifications(w, userID, nicknames...)
-	w.enqueueNotifications(notificationBatch{notifications: w.db.NewNotifications()})
+	w.enqueueNotifications(w.db.NewNotifications())
 
 	var linked []int
 	for i := 1; i <= testBotLinkPeriod; i++ {

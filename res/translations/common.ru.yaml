@@ -111,6 +111,7 @@ online:
   parse: html
   disable_preview: true
   str: |-
+    {{- if .image_unavailable }}{{ template "image_unavailable" }}{{ print "\n\n" }}{{ end -}}
     🟢
     {{- print " " -}}
     {{- .streamer_link -}}
@@ -665,4 +666,5 @@ fields_customization_hint:
 bot_link_hint:
   str: '<i>Оповещения от {{ .bot_link }}</i>'
 image_unavailable:
+  str: '[[ 🚫 изображение недоступно ]]'
   image: image-unavailable.ru.png

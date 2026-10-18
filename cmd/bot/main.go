@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"html"
 	htmltemplate "html/template"
-	"image"
+	goimage "image"
 	"io"
 	"maps"
 	"math/rand"
@@ -91,7 +91,6 @@ type worker struct {
 	trAds                      map[string]map[string]*cmdlib.Translation
 	tplAds                     map[string]*texttemplate.Template
 	checker                    checkers.Checker
-	imageDownloadLogs          chan imageDownloadLog
 	unconfirmedOnlineStreamers map[string]cmdlib.StreamerInfo
 	botNames                   map[string]string
 	senders                    map[string]*endpointSender
@@ -102,13 +101,12 @@ type worker struct {
 	deliverWG                  sync.WaitGroup
 	existenceListResults       chan *cmdlib.ExistenceListResults
 	checkerResults             chan cmdlib.CheckerResults
-	sendingNotifications       chan []db.Notification
-	imagedNotifications        chan notificationBatch
 	ourIDs                     []int64
 	searchHTML                 *htmltemplate.Template
 	timezoneHTML               *htmltemplate.Template
 	removalHTML                *htmltemplate.Template
 	profilePhotos              map[string][]byte
+	imageDownloader            imageDownloader[*queuedMessage]
 	// zoneNames maps a lowercased IANA name to the zone the binary loaded for it,
 	// whose own name is the spelling to store.
 	// Written once at startup and only read after, so a concurrent reader needs no lock.
@@ -221,6 +219,7 @@ const (
 	messageNoTextRights        = -8
 	messageTopicClosed         = -9
 	messageDiceSkipped         = -10
+	messageFileIDRejected      = -11
 )
 
 type msgSendResult struct {
@@ -239,6 +238,8 @@ type msgSendResult struct {
 	// handed back whole for the main loop to re-queue,
 	// so no field is lost in a copy on the way.
 	resend *queuedMessage
+	// photo is what a photo's send found out about its image, zero for any other message.
+	photo photoOutcome
 }
 
 type sendDisposition int
@@ -267,11 +268,6 @@ func (r msgSendResult) disposition() sendDisposition {
 type waitingUser struct {
 	chatID   int64
 	endpoint string
-}
-
-type imageDownloadLog struct {
-	success    bool
-	durationMs int
 }
 
 func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
@@ -315,7 +311,6 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 		legacyAffiliateTpl:         legacyAffiliateTpl,
 		trAds:                      trAds,
 		tplAds:                     tplAds,
-		imageDownloadLogs:          make(chan imageDownloadLog),
 		unconfirmedOnlineStreamers: map[string]cmdlib.StreamerInfo{},
 		botNames:                   map[string]string{},
 		senders:                    map[string]*endpointSender{},
@@ -324,8 +319,6 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 		shutdownCh:                 make(chan struct{}),
 		existenceListResults:       make(chan *cmdlib.ExistenceListResults),
 		checkerResults:             make(chan cmdlib.CheckerResults),
-		sendingNotifications:       make(chan []db.Notification, 1000),
-		imagedNotifications:        make(chan notificationBatch),
 		ourIDs:                     getOurIDs(cfg),
 		searchRequests:             make(chan searchRequest),
 		webAppAddRequests:          make(chan webAppAddRequest),
@@ -335,6 +328,7 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 		incomingPackets:            incomingPackets,
 	}
 	w.chatMember = w.getChatMember
+	w.imageDownloader = newImageDownloader[*queuedMessage](w.downloadImage)
 	// The bot starts in maintenance: the database is not created yet.
 	w.maintenance.Store(true)
 	for endpoint, a := range tr {
@@ -577,65 +571,71 @@ func (w *worker) sendMaintenance(endpoint string, chatID int64, notify bool, tex
 }
 
 // sendMessageInternal sends one message and classifies the outcome.
+// sent is what Telegram returned for the message, nil when it was not sent.
 // retryAfter is Telegram's requested 429 pause in seconds, 0 otherwise.
 func (w *worker) sendMessageInternal(
 	endpoint string,
 	msg sendable,
-) (result int, migrateTo int64, retryAfter int) {
+) (sent *models.Message, result int, migrateTo int64, retryAfter int) {
 	chatID := msg.chatID()
 	if !w.cfg.ChatWhitelisted(chatID) {
-		return messageSkipped, 0, 0
+		return nil, messageSkipped, 0, 0
 	}
 	ctx := context.Background()
-	if _, err := msg.send(ctx, w.bots[endpoint]); err != nil {
+	sent, err := msg.send(ctx, w.bots[endpoint])
+	if err != nil {
 		var migrateErr *bot.MigrateError
 		if errors.As(err, &migrateErr) {
 			ldbg("cannot send a message, group migration")
 			// The library builds a MigrateError only around a set target, never a zero.
-			return messageMigrate, int64(migrateErr.MigrateToChatID), 0
+			return nil, messageMigrate, int64(migrateErr.MigrateToChatID), 0
 		}
 		var tooManyErr *bot.TooManyRequestsError
 		if errors.As(err, &tooManyErr) {
 			ldbg("cannot send a message, too many requests: retry_after = %d", tooManyErr.RetryAfter)
-			return messageTooManyRequests, 0, tooManyErr.RetryAfter
+			return nil, messageTooManyRequests, 0, tooManyErr.RetryAfter
 		}
 		if errors.Is(err, bot.ErrorForbidden) {
 			ldbg("cannot send a message, bot blocked")
-			return messageBlocked, 0, 0
+			return nil, messageBlocked, 0, 0
 		}
 		if errors.Is(err, bot.ErrorBadRequest) {
 			if strings.Contains(err.Error(), "chat not found") {
 				ldbg("cannot send a message, chat not found")
-				return messageChatNotFound, 0, 0
+				return nil, messageChatNotFound, 0, 0
 			}
 			if strings.Contains(err.Error(), "not enough rights to send photos") {
 				ldbg("cannot send a message, no photo rights")
-				return messageNoPhotoRights, 0, 0
+				return nil, messageNoPhotoRights, 0, 0
 			}
 			if strings.Contains(err.Error(), "not enough rights to send text messages") {
 				ldbg("cannot send a message, no text rights")
-				return messageNoTextRights, 0, 0
+				return nil, messageNoTextRights, 0, 0
 			}
 			if strings.Contains(err.Error(), "TOPIC_CLOSED") {
 				ldbg("cannot send a message, topic closed")
-				return messageTopicClosed, 0, 0
+				return nil, messageTopicClosed, 0, 0
+			}
+			if strings.Contains(err.Error(), "file identifier") {
+				ldbg("cannot send a message, file id rejected")
+				return nil, messageFileIDRejected, 0, 0
 			}
 			lerr("cannot send a message, bad request, error: %v", err)
-			return messageBadRequest, 0, 0
+			return nil, messageBadRequest, 0, 0
 		}
 		var netErr net.Error
 		if errors.As(err, &netErr) {
 			if netErr.Timeout() {
 				ldbg("cannot send a message, timeout")
-				return messageTimeout, 0, 0
+				return nil, messageTimeout, 0, 0
 			}
 			lerr("cannot send a message, unknown network error")
-			return messageUnknownNetworkError, 0, 0
+			return nil, messageUnknownNetworkError, 0, 0
 		}
 		lerr("unexpected error type while sending a message to %d, %v", chatID, err)
-		return messageUnknownError, 0, 0
+		return nil, messageUnknownError, 0, 0
 	}
-	return messageSent, 0, 0
+	return sent, messageSent, 0, 0
 }
 
 func templateToString(t *texttemplate.Template, key string, data tplData) string {
@@ -678,13 +678,13 @@ func (w *worker) enqueueTr(
 	notify bool,
 	translation *cmdlib.Translation,
 	data tplData,
-	image []byte,
+	img *image,
 	markup models.ReplyMarkup,
 	tag sendTag,
 	notificationID int,
 ) {
 	params := &renderParams{templates: w.tpl[endpoint], key: translation.Key, data: data}
-	msg := params.asDeferredSendable(translation, notify, image, markup)
+	msg := params.asDeferredSendable(translation, notify, img, markup)
 	w.enqueueMessage(priority, endpoint, msg, tag, userID, notificationID)
 }
 
@@ -727,7 +727,7 @@ func (w *worker) sendAdsTr(
 ) {
 	tag := adTag(command)
 	params := &renderParams{templates: w.tplAds[endpoint], key: translation.Key}
-	msg := params.asDeferredSendable(translation, notify, translation.ImageBytes, nil)
+	msg := params.asDeferredSendable(translation, notify, shippedImage(translation), nil)
 	w.enqueueMessage(priority, endpoint, msg, tag, userID, 0)
 }
 
@@ -800,39 +800,30 @@ func (w *worker) notifyOfAddResults(priority db.Priority, notifications []db.Not
 	}
 }
 
-func (w *worker) downloadImages(notifications []db.Notification) map[string][]byte {
-	images := map[string][]byte{}
-	for _, n := range notifications {
-		if n.ImageURL != "" {
-			images[n.ImageURL] = nil
-		}
-	}
-	for url := range images {
-		images[url] = w.downloadImage(url)
-	}
-	return images
-}
-
-// notificationBatch pairs notifications with their fetched images.
-type notificationBatch struct {
-	notifications []db.Notification
-	images        map[string][]byte
-}
-
 // enqueueNotifications queues a fetched batch of status notifications.
 // Main goroutine only.
-func (w *worker) enqueueNotifications(batch notificationBatch) {
+func (w *worker) enqueueNotifications(nots []db.Notification) {
 	// NewNotifications orders by id.
 	// On an idle scheduler the first push dispatches at once,
 	// before its batch siblings reach the heap;
 	// order by priority so that first pick is the best of the batch.
-	sort.SliceStable(batch.notifications, func(i, j int) bool {
-		return batch.notifications[i].Priority < batch.notifications[j].Priority
+	sort.SliceStable(nots, func(i, j int) bool {
+		return nots[i].Priority < nots[j].Priority
 	})
-	plans := w.planNotifications(batch.notifications)
+	plans := w.planNotifications(nots)
 	w.numberNotifications(plans)
+	// One image per URL, so the queue holds each URL once.
+	images := map[string]*image{}
 	for _, p := range plans {
-		w.notifyOfStatus(p, batch.images[p.ImageURL])
+		var img *image
+		if w.cfg.ShowImages && p.ImageURL != "" {
+			img = images[p.ImageURL]
+			if img == nil {
+				img = &image{key: p.ImageURL}
+				images[p.ImageURL] = img
+			}
+		}
+		w.notifyOfStatus(p, img)
 	}
 }
 
@@ -1011,7 +1002,7 @@ func (w *worker) channelBotLink(n db.Notification, reports int) string {
 }
 
 // notifyOfStatus composes one fetched notification.
-func (w *worker) notifyOfStatus(p plannedNotification, image []byte) {
+func (w *worker) notifyOfStatus(p plannedNotification, img *image) {
 	if p.translation == nil {
 		// Nothing to send for this status, or an endpoint dropped from the config;
 		// clear the queue row so it doesn't strand.
@@ -1021,12 +1012,9 @@ func (w *worker) notifyOfStatus(p plannedNotification, image []byte) {
 		notify := false
 		if p.Status == cmdlib.StatusOnline {
 			notify = !p.SilentMessages
-			if image == nil && w.cfg.ShowImages && p.ImageURL != "" {
-				image = w.tr[p.Endpoint].ImageUnavailable.ImageBytes
-			}
 		} else {
 			// Only an online notification carries an image.
-			image = nil
+			img = nil
 		}
 		var timeDiff *timeDiff
 		if p.TimeDiff != nil {
@@ -1047,7 +1035,7 @@ func (w *worker) notifyOfStatus(p plannedNotification, image []byte) {
 			"fields_hint": p.FieldsHint && !isGroupOrChannel(p.ChatID),
 			"bot_link":    w.channelBotLink(p.Notification, p.reports),
 		}
-		w.enqueueTr(p.Priority, p.Endpoint, p.UserID, notify, p.translation, data, image, nil,
+		w.enqueueTr(p.Priority, p.Endpoint, p.UserID, notify, p.translation, data, img, nil,
 			notificationTag(p.Notification), p.ID)
 	}
 	if p.Social && w.cfg.AdChancePercent > 0 && rand.Intn(100) < w.cfg.AdChancePercent {
@@ -2043,18 +2031,7 @@ func (w *worker) streamerTimeDiff(c db.Streamer, now int) *timeDiff {
 	return nil
 }
 
-func (w *worker) downloadImage(url string) []byte {
-	start := time.Now()
-	imageBytes, err := w.downloadImageInternal(url)
-	elapsed := time.Since(start)
-	if err != nil {
-		linf("cannot download image, %v", err)
-	}
-	w.imageDownloadLogs <- imageDownloadLog{success: err == nil, durationMs: int(elapsed.Milliseconds())}
-	return imageBytes
-}
-
-func (w *worker) downloadImageInternal(url string) ([]byte, error) {
+func (w *worker) downloadImage(url string) ([]byte, error) {
 	resp, err := w.client.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("cannot query the image %s, %v", url, err)
@@ -2069,7 +2046,7 @@ func (w *worker) downloadImageInternal(url string) ([]byte, error) {
 		return nil, fmt.Errorf("cannot read the image %s, %v", url, err)
 	}
 	data := buf.Bytes()
-	_, _, err = image.Decode(bytes.NewReader(data))
+	_, _, err = goimage.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("cannot decode the image %s, %v", url, err)
 	}
@@ -4293,13 +4270,19 @@ func (w *worker) resolveResultUser(r *msgSendResult) {
 func (w *worker) completeSendResult(r msgSendResult) {
 	w.resolveResultUser(&r)
 	w.handleSendResult(r)
+	// Before the resend's re-queue, so it and the endpoint's next send see what this one found out.
+	w.sender(r.endpoint).images.learn(r.photo, time.Now())
+	if r.photo.timedOut {
+		linf("image upload timed out, pausing its uploads: endpoint = %s, image = %s",
+			r.endpoint, r.photo.key)
+	}
 	switch r.disposition() {
 	case dispFinalize:
 		w.finalizeNotification(r.notificationID)
 	case dispResend:
 		// Re-queue the original queued message:
 		// its seq keeps the queue position against later same-user messages,
-		// its requestedAt keeps the latency baseline,
+		// its enqueuedAt keeps the latency baseline,
 		// and its userID keeps it parked behind the cooling user,
 		// even when a merge migration has re-keyed the live user meanwhile
 		// (dispatch resolves the chat id through the tombstone chain).
@@ -4351,22 +4334,28 @@ func (w *worker) drainSendResults() {
 }
 
 // logShutdownLoss reports what exiting drops.
-// Queued notifications re-send next start;
-// other queued messages and the buffered updates are lost.
-// The re-send count reads the queue only,
+// Held or queued notifications re-send next start;
+// other held or queued messages and the buffered updates are lost.
+// The re-send count reads only what is held or queued,
 // so a notification drained as a re-arm
 // (a postpone or fallback landing mid-shutdown) is not counted:
 // an accepted undercount in a log line.
 func (w *worker) logShutdownLoss(bufferedUpdates int) {
 	var messages, notifications int
+	count := func(q *queuedMessage) {
+		if q.notificationID == 0 {
+			messages++
+		} else {
+			notifications++
+		}
+	}
+	for _, q := range w.imageDownloader.heldRequests() {
+		count(q)
+	}
 	for _, s := range w.senders {
 		for _, u := range s.queue.byUser {
 			for _, q := range u.items {
-				if q.notificationID == 0 {
-					messages++
-				} else {
-					notifications++
-				}
+				count(q)
 			}
 		}
 	}
@@ -4409,6 +4398,8 @@ func (w *worker) drainIncoming(ctx context.Context, incoming chan incomingPacket
 			w.completeSendResult(r)
 		case c := <-w.cooledUsers:
 			w.onUserCooled(c)
+		case r := <-w.imageDownloader.results:
+			w.completeDownload(r)
 		case <-botsDone:
 			botsDone = nil
 		case <-ctx.Done():
@@ -4435,19 +4426,7 @@ func (w *worker) shutdownBots(ctx context.Context) {
 	wg.Wait()
 }
 
-func (w *worker) sendReadyNotifications() { w.sendingNotifications <- w.db.NewNotifications() }
-
-// notificationFetcher downloads notification images off the main goroutine,
-// then hands the batch back for the main loop to enqueue.
-func (w *worker) notificationFetcher() {
-	for nots := range w.sendingNotifications {
-		images := map[string][]byte{}
-		if w.cfg.ShowImages {
-			images = w.downloadImages(nots)
-		}
-		w.imagedNotifications <- notificationBatch{notifications: nots, images: images}
-	}
-}
+func (w *worker) sendReadyNotifications() { w.enqueueNotifications(w.db.NewNotifications()) }
 
 func (w *worker) fuzzySearchDaemon() {
 	for req := range w.searchRequests {
@@ -4657,7 +4636,6 @@ func main() {
 	w.initBotNames()
 	w.serveEndpoints()
 	incoming := w.incoming()
-	go w.notificationFetcher()
 	go w.fuzzySearchDaemon()
 	// MaintenancePacket: the loop consumes its send result
 	// without touching the database, which is not created yet.
@@ -4745,6 +4723,8 @@ func main() {
 			w.completeSendResult(r)
 		case c := <-w.cooledUsers:
 			w.onUserCooled(c)
+		case r := <-w.imageDownloader.results:
+			w.completeDownload(r)
 		case r := <-w.existenceListResults:
 			now := int(time.Now().Unix())
 			w.db.LogPerformance(now, db.PerformanceLogExistenceQuery, int(r.Duration().Milliseconds()), map[string]any{
@@ -4752,13 +4732,6 @@ func main() {
 				"count":  r.Count(),
 			})
 			w.processSubsConfirmations(r)
-		case batch := <-w.imagedNotifications:
-			w.enqueueNotifications(batch)
-		case r := <-w.imageDownloadLogs:
-			now := int(time.Now().Unix())
-			w.db.LogPerformance(now, db.PerformanceLogImageDownload, r.durationMs, map[string]any{
-				"failed": !r.success,
-			})
 		}
 	}
 }

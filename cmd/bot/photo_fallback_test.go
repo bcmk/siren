@@ -29,7 +29,7 @@ func TestPhotoFallbackKeepsPreviewSetting(t *testing.T) {
 			keyboard := &models.InlineKeyboardMarkup{
 				InlineKeyboard: [][]models.InlineKeyboardButton{{{Text: "button"}}},
 			}
-			photo := noRender.asDeferredSendable(tr, true, []byte("image"), keyboard).(*photoParams)
+			photo := noRender.asDeferredSendable(tr, true, &image{data: []byte("image")}, keyboard).(*photoParams)
 			photo.Caption = "already rendered"
 			text := photo.toText()
 			if text.ReplyMarkup != keyboard {

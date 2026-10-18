@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"maps"
+	"time"
 
 	texttemplate "text/template"
 
@@ -29,15 +31,31 @@ func (d *renderParams) render(mention string) string {
 	return templateToString(tpl, d.key, d.data)
 }
 
+// image is what a photo shows: one from a site, downloaded once queued, or one the bot ships.
+type image struct {
+	// key names the image in a bot's imageCache: its URL, or a shipped image's file name.
+	key string
+	// data holds a shipped image's bytes, nil for an image from a site.
+	data []byte
+}
+
+// shippedImage is the image a translation ships with the bot, nil for none.
+func shippedImage(tr *cmdlib.Translation) *image {
+	if len(tr.ImageBytes) == 0 {
+		return nil
+	}
+	return &image{key: tr.Image, data: tr.ImageBytes}
+}
+
 // asDeferredSendable packages the render as the message its translation calls for:
 // a photo when it carries one, text otherwise.
 func (d *renderParams) asDeferredSendable(
 	tr *cmdlib.Translation,
 	notify bool,
-	img []byte,
+	img *image,
 	markup models.ReplyMarkup,
 ) sendable {
-	if len(img) == 0 {
+	if img == nil {
 		msg := d.asDeferredText(notify, tr.DisablePreview, tr.Parse)
 		msg.ReplyMarkup = markup
 		return msg
@@ -60,16 +78,17 @@ func (d *renderParams) asDeferredText(notify, disablePreview bool, parse cmdlib.
 func (d *renderParams) asDeferredPhoto(
 	notify, disablePreview bool,
 	parse cmdlib.ParseKind,
-	img []byte,
+	img *image,
 ) *photoParams {
 	return &photoParams{
 		SendPhotoParams: &bot.SendPhotoParams{
 			DisableNotification: !notify,
 			ParseMode:           parseMode(parse),
 		},
-		imageData:      img,
+		image:          img,
 		disablePreview: disablePreview,
 		renderParams:   d,
+		textRender:     d,
 	}
 }
 
@@ -82,6 +101,7 @@ type sendable interface {
 	// render produces the text once the chat is known,
 	// so a command it names can be addressed to the bot.
 	// It renders once: a retry resends that text, and the queue stops holding the data.
+	// A photo keeps its data, for the text it becomes without its image.
 	// A retry needs no new mention: a group becoming a supergroup keeps the chat id negative.
 	render(mention string)
 	send(ctx context.Context, b *bot.Bot) (*models.Message, error)
@@ -126,11 +146,24 @@ func (m *messageParams) send(ctx context.Context, b *bot.Bot) (*models.Message, 
 
 type photoParams struct {
 	*bot.SendPhotoParams
-	imageData []byte
+	image *image
+	// sentImage is the image a dispatch sends the photo with:
+	// its own, or the image-unavailable image when its download failed.
+	sentImage *image
+	// fileID names the sent image on Telegram; dispatch sets it when the bot holds one.
+	fileID string
+	// upload holds the bytes a send without an id uploads,
+	// downloaded at downloadedAt for an image from a site.
+	upload       []byte
+	downloadedAt time.Time
+	// downloadFailed has dispatch show the placeholder.
+	downloadFailed bool
 	// disablePreview is unused by a photo, and kept for the text it may become.
 	disablePreview bool
 	// renderParams is nil when the caption is already final.
 	renderParams *renderParams
+	// textRender outlives the caption's render, for the text the photo becomes without its image.
+	textRender *renderParams
 }
 
 func (p *photoParams) chatID() int64 {
@@ -159,14 +192,17 @@ func (p *photoParams) send(ctx context.Context, b *bot.Bot) (*models.Message, er
 	if p.renderParams != nil {
 		panic("send before render")
 	}
+	if p.fileID != "" {
+		p.Photo = &models.InputFileString{Data: p.fileID}
+		return b.SendPhoto(ctx, p.SendPhotoParams)
+	}
 	// Create reader here rather than pass it in.
 	// Otherwise retries consume it and we must rewind it.
-	p.Photo = &models.InputFileUpload{Filename: "preview", Data: bytes.NewReader(p.imageData)}
+	p.Photo = &models.InputFileUpload{Filename: "preview", Data: bytes.NewReader(p.upload)}
 	return b.SendPhoto(ctx, p.SendPhotoParams)
 }
 
-// toText swaps a photo for text where a chat takes no photo.
-// It runs after a send, so the caption is final and there is no render left to carry.
+// toText swaps a photo for text with the same caption, dropping any render still pending.
 func (p *photoParams) toText() *messageParams {
 	params := &bot.SendMessageParams{
 		ChatID:              p.ChatID,
@@ -179,4 +215,17 @@ func (p *photoParams) toText() *messageParams {
 		params.LinkPreviewOptions = &models.LinkPreviewOptions{IsDisabled: bot.True()}
 	}
 	return &messageParams{SendMessageParams: params}
+}
+
+// toUnavailableText is the photo as text rendered afresh with image_unavailable set,
+// which the online template reads to say the image is unavailable.
+// The flag goes into a copy, so the photo keeps its data for a later dispatch.
+func (p *photoParams) toUnavailableText() *messageParams {
+	d := *p.textRender
+	d.data = tplData{}
+	maps.Copy(d.data, p.textRender.data)
+	d.data["image_unavailable"] = true
+	m := p.toText()
+	m.renderParams = &d
+	return m
 }

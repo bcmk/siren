@@ -472,13 +472,14 @@ func TestDeliverTiming(t *testing.T) {
 			cooledUsers: make(chan cooledUser, 16),
 		}
 		start := time.Now()
+		msg := &okMessage{id: 1}
 		go w.deliver(&queuedMessage{
 			userID:   1,
 			endpoint: "ep",
-			message:  &okMessage{id: 1},
+			message:  msg,
 			order:    queueOrder{priority: db.PriorityHigh},
 			tag:      unprompted(db.MessagePacket),
-		})
+		}, msg)
 
 		if r := <-w.sendResults; r.result != messageSent {
 			t.Fatalf("result = %d, want messageSent", r.result)
@@ -521,12 +522,13 @@ func TestDeliverDropsMaintenanceOnTransientFailure(t *testing.T) {
 		}
 		done := make(chan struct{})
 		go func() {
+			msg := &tooManyRequests{id: 1}
 			w.deliver(&queuedMessage{
 				endpoint: "ep",
-				message:  &tooManyRequests{id: 1},
+				message:  msg,
 				order:    queueOrder{priority: db.PriorityHigh},
 				tag:      unprompted(db.MaintenancePacket),
-			})
+			}, msg)
 			close(done)
 		}()
 
@@ -571,7 +573,7 @@ func TestDeliverPostponesTooManyRequests(t *testing.T) {
 		start := time.Now()
 		done := make(chan struct{})
 		go func() {
-			w.deliver(q)
+			w.deliver(q, q.message)
 			close(done)
 		}()
 
@@ -626,7 +628,7 @@ func TestDeliverEndpointPaceOn429(t *testing.T) {
 						message:  tt.message,
 						order:    queueOrder{priority: db.PriorityHigh},
 						tag:      unprompted(db.MessagePacket),
-					})
+					}, tt.message)
 					close(done)
 				}()
 				<-w.sendResults
@@ -693,7 +695,7 @@ func TestDeliverCountsStalls(t *testing.T) {
 					tag:      unprompted(db.NotificationPacket),
 					stalls:   tt.stalls,
 				}
-				go w.deliver(q)
+				go w.deliver(q, q.message)
 
 				r := <-w.sendResults
 				if r.result != tt.wantResult {
@@ -726,13 +728,14 @@ func TestDeliverPaceEndsOnShutdown(t *testing.T) {
 		start := time.Now()
 		done := make(chan struct{})
 		go func() {
+			msg := &tooManyRequests{id: 1, retryAfter: 30}
 			w.deliver(&queuedMessage{
 				userID:   1,
 				endpoint: "ep",
-				message:  &tooManyRequests{id: 1, retryAfter: 30},
+				message:  msg,
 				order:    queueOrder{priority: db.PriorityHigh},
 				tag:      unprompted(db.MessagePacket),
-			})
+			}, msg)
 			close(done)
 		}()
 		<-w.sendResults

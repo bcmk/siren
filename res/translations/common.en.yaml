@@ -111,6 +111,7 @@ online:
   parse: html
   disable_preview: true
   str: |-
+    {{- if .image_unavailable }}{{ template "image_unavailable" }}{{ print "\n\n" }}{{ end -}}
     🟢
     {{- print " " -}}
     {{- .streamer_link }}
@@ -664,4 +665,5 @@ fields_customization_hint:
 bot_link_hint:
   str: '<i>Alerts by {{ .bot_link }}</i>'
 image_unavailable:
+  str: '[[ 🚫 image unavailable ]]'
   image: image-unavailable.en.png

@@ -7,6 +7,7 @@ package main
 
 import (
 	"container/heap"
+	"maps"
 	"time"
 
 	"github.com/go-telegram/bot/models"
@@ -27,12 +28,13 @@ const (
 	// transientErrorPostpone delays a timed-out or network-failed message
 	// before its redelivery.
 	transientErrorPostpone = 10 * time.Second
+	// timedOutUploadPostpone delays the retry of a timed-out upload, which goes without the image.
+	timedOutUploadPostpone = 2 * time.Second
 	// tooManyRequestsEndpointPause is the gap an endpoint holds after any 429,
 	// so a rate limit backs off that whole endpoint, not just the failing user.
 	tooManyRequestsEndpointPause = time.Second
 	// maxQueueLen caps an endpoint's outgoing queue; a broadcast past it drops its tail.
-	// A streamer's image is shared across subscribers, but a message parks its render data,
-	// so a full queue costs tens of megabytes.
+	// A message parks its render data, so a full queue costs over a hundred megabytes.
 	maxQueueLen = 100000
 	// sendChanCap sizes sendResults and cooledUsers.
 	// sendResults stays near-empty under single-flight-per-endpoint delivery.
@@ -43,7 +45,85 @@ const (
 	// until trySend drains cooledUsers — no deadlock, self-healing —
 	// so 64 sizes the common near-empty case, not the burst.
 	sendChanCap = 64
+	// imageTTL is how long a downloaded image lasts, since sites reuse URLs,
+	// and how long a timeout pauses uploads.
+	imageTTL = time.Minute
+	// imageIDTTL is how long a bot keeps the id of an image it uploaded.
+	imageIDTTL = time.Hour
 )
+
+// imageCache is what one bot learned of the images it sends.
+// It keeps an id for imageIDTTL and any other fact for imageTTL.
+type imageCache struct {
+	images map[string]imageState
+	// sweepAt is when the expired entries are next dropped.
+	sweepAt time.Time
+}
+
+// imageState is what a bot learned of one image.
+type imageState struct {
+	id string
+	// downloadedAt is when an image from a site was downloaded;
+	// its id serves messages queued up to an imageTTL later.
+	downloadedAt time.Time
+	idExpires    time.Time
+	// gaveUpUntil is when uploads may resume after one timed out.
+	gaveUpUntil time.Time
+}
+
+// photoOutcome is what a photo's send found out about its image.
+type photoOutcome struct {
+	// key names the image, empty for any other message.
+	key string
+	// rejected marks an id Telegram refused, uploadedID is the id the upload got.
+	rejected   bool
+	uploadedID string
+	// timedOut marks an upload that ran out of time.
+	timedOut bool
+	// downloadedAt is when an image from a site was downloaded, the time its id ages from.
+	downloadedAt time.Time
+}
+
+// lookup returns the id to send img by in a message queued at queuedAt, empty to upload it,
+// and whether it may upload.
+func (c *imageCache) lookup(img *image, now, queuedAt time.Time) (id string, uploads bool) {
+	e := c.images[img.key]
+	if now.Before(e.idExpires) && (img.data != nil || queuedAt.Before(e.downloadedAt.Add(imageTTL))) {
+		id = e.id
+	}
+	return id, !now.Before(e.gaveUpUntil)
+}
+
+// learn takes in what a photo's send found out about its image.
+func (c *imageCache) learn(o photoOutcome, now time.Time) {
+	c.sweep(now)
+	e := c.images[o.key]
+	switch {
+	case o.uploadedID != "":
+		e.id, e.downloadedAt, e.idExpires = o.uploadedID, o.downloadedAt, now.Add(imageIDTTL)
+	case o.timedOut:
+		e.gaveUpUntil = now.Add(imageTTL)
+	case o.rejected:
+		e.id = ""
+	default:
+		return
+	}
+	c.images[o.key] = e
+}
+
+// sweep makes the map on first use and drops the expired entries once an imageTTL.
+func (c *imageCache) sweep(now time.Time) {
+	if c.images == nil {
+		c.images = map[string]imageState{}
+	}
+	if now.Before(c.sweepAt) {
+		return
+	}
+	c.sweepAt = now.Add(imageTTL)
+	maps.DeleteFunc(c.images, func(_ string, e imageState) bool {
+		return !now.Before(e.idExpires) && !now.Before(e.gaveUpUntil)
+	})
+}
 
 // sendTag identifies an outgoing message:
 // its kind, the command it answers, empty when neither log names one,
@@ -193,24 +273,12 @@ type queuedMessage struct {
 	notificationID int
 	requestedAt    time.Time
 	stalls         int
-}
-
-// queueOrder is a message's place in a queue: its priority, then the order it came in.
-type queueOrder struct {
-	priority db.Priority
-	seq      uint64
-}
-
-// orderLess orders one user's messages: priority, then FIFO by seq.
-// Stalls are absent on purpose: a newer status must not pass a stalled one.
-func orderLess(a, b queueOrder) bool {
-	if a.priority != b.priority {
-		return a.priority < b.priority
-	}
-	return a.seq < b.seq
+	// enqueuedAt is when the message entered the send queue, which its latency counts from.
+	enqueuedAt time.Time
 }
 
 // msgHeap is one user's pending messages, ordered by orderLess.
+// Stalls are absent on purpose: a newer status must not pass a stalled one.
 type msgHeap []*queuedMessage
 
 func (h msgHeap) Len() int           { return len(h) }
@@ -284,6 +352,7 @@ type endpointSender struct {
 	// cooling claims the endpoint's send slot
 	// from dispatch until endpointCooldown after the delivery.
 	cooling bool
+	images  imageCache
 }
 
 // cooledUser names the (endpoint, user) pair a cooldown release frees.
@@ -392,33 +461,6 @@ func (s *sendQueue) stopCooling(userID db.UserID) {
 	}
 }
 
-// enqueueMessage adds a new message and tries to start a send.
-// Main goroutine only.
-// notificationID is the notification_queue row to clear, or 0 for a reply.
-func (w *worker) enqueueMessage(
-	priority db.Priority,
-	endpoint string,
-	msg sendable,
-	tag sendTag,
-	userID db.UserID,
-	notificationID int,
-) {
-	// Under checker_only the owner's startup notices are all that get this far, and neither is sent.
-	if w.cfg.CheckerOnly {
-		return
-	}
-	w.sendSeq++
-	w.enqueue(&queuedMessage{
-		userID:         userID,
-		endpoint:       endpoint,
-		message:        msg,
-		order:          queueOrder{priority: priority, seq: w.sendSeq},
-		tag:            tag,
-		notificationID: notificationID,
-		requestedAt:    time.Now(),
-	})
-}
-
 // enqueue inserts a prebuilt message and tries to start a send.
 // Main goroutine only.
 // A re-queued message (a fallback, postpone, or migrate) arrives here
@@ -455,13 +497,40 @@ func (w *worker) onSendDone(endpoint string) {
 	w.trySend(endpoint)
 }
 
+// pickImage sets the image the photo sends, by id or upload, and reports whether it can send one.
+// A failed download shows the placeholder, if shipped, unless an id serves the image.
+func (p *photoParams) pickImage(images *imageCache, placeholder *image, now, queuedAt time.Time) bool {
+	id, uploads := images.lookup(p.image, now, queuedAt)
+	p.sentImage = p.image
+	if id == "" && p.downloadFailed && placeholder != nil {
+		p.sentImage = placeholder
+		id, uploads = images.lookup(placeholder, now, queuedAt)
+	}
+	p.fileID = id
+	if p.sentImage.data != nil {
+		p.upload = p.sentImage.data
+	}
+	return id != "" || (uploads && p.upload != nil)
+}
+
 func (w *worker) trySend(endpoint string) {
 	s := w.sender(endpoint)
 	if s.cooling || !s.queue.hasReady() {
 		return
 	}
 	q := s.queue.pop()
+	// msg is what this dispatch sends: the queued message, or the text its photo goes as.
+	// It is chosen afresh on every dispatch, so a resend sees what the bot learned meanwhile.
+	msg := q.message
 	if q.tag.kind != db.MaintenancePacket {
+		if p, ok := q.message.(*photoParams); ok {
+			now := time.Now()
+			placeholder := shippedImage(w.tr[q.endpoint].ImageUnavailable)
+			// A photo with no image to send goes as text.
+			if !p.pickImage(&s.images, placeholder, now, q.requestedAt) {
+				msg = p.toUnavailableText()
+			}
+		}
 		chatID, ok := w.db.ChatIDForUser(q.userID)
 		if !ok {
 			// The user has no chat row (no delete path today, so defensive).
@@ -479,16 +548,16 @@ func (w *worker) trySend(endpoint string) {
 		// so the queue holds no chat id that can go stale on a migration,
 		// and nothing threads one through the send path.
 		// The lookup is cheap; single-flight pacing bounds dispatch.
-		q.message.setChatID(chatID)
+		msg.setChatID(chatID)
 	}
 	// Outside the branch above: a message tagged maintenance renders here too.
-	q.message.render(w.botMentionIfNeeded(q.endpoint, q.message.chatID()))
+	msg.render(w.botMentionIfNeeded(q.endpoint, msg.chatID()))
 	// Claim the endpoint's slot only now the send is committed to dispatch,
 	// so the no-chat drop above just returns, no set-then-reset.
 	s.cooling = true
 	// Track the in-flight send so shutdown can wait for it.
 	w.deliverWG.Go(func() {
-		w.deliver(q)
+		w.deliver(q, msg)
 	})
 }
 
@@ -519,26 +588,50 @@ func transientDelay(result int, retryAfterSeconds int) (pause time.Duration, tra
 	return 0, false, false
 }
 
-// deliver sends one message on its own goroutine — a single attempt, paced —
-// then reports back. It touches no shared state.
+// attempt sends the message once.
+// A photo goes by its id, or uploads the bytes dispatch gave it.
+func (w *worker) attempt(
+	endpoint string,
+	msg sendable,
+) (result int, migrateTo int64, retryAfter int, photo photoOutcome) {
+	sent, result, migrateTo, retryAfter := w.sendMessageInternal(endpoint, msg)
+	p, ok := msg.(*photoParams)
+	if !ok {
+		return result, migrateTo, retryAfter, photo
+	}
+	photo = photoOutcome{
+		key:          p.sentImage.key,
+		rejected:     p.fileID != "" && result == messageFileIDRejected,
+		timedOut:     p.fileID == "" && result == messageTimeout,
+		downloadedAt: p.downloadedAt,
+	}
+	if p.fileID == "" && sent != nil && len(sent.Photo) > 0 {
+		// Sizes come smallest first; the largest is the image as uploaded.
+		photo.uploadedID = sent.Photo[len(sent.Photo)-1].FileID
+	}
+	return result, migrateTo, retryAfter, photo
+}
+
+// deliver sends msg, what this dispatch of q sends, on its own goroutine —
+// a single attempt, paced — then reports back. It touches no shared state.
 // Every failure worth another try comes back as a resend
 // for the main loop to re-queue.
-func (w *worker) deliver(q *queuedMessage) {
+func (w *worker) deliver(q *queuedMessage, msg sendable) {
 	// Captured at entry: the main loop owns the envelope once the result is sent,
 	// so the cooldown tail works only from these locals, never from q.
 	// Not a live race today — the resend cannot dispatch
 	// until the tail itself releases the cooling user —
 	// but ownership by capture keeps the property structural.
 	// Capturing just the endpoint and the id also keeps the release closure
-	// from pinning the whole message, image payload included, for the whole pause.
+	// from pinning the whole message for the whole pause.
 	// isGroup survives the fallback's payload swap: toText copies the chat id.
-	isGroup := isGroupOrChannel(q.message.chatID())
+	isGroup := isGroupOrChannel(msg.chatID())
 	tag := q.tag
 	userID := q.userID
 	endpoint := q.endpoint
 	now := time.Now()
-	result, migrateTo, retryAfter := w.sendMessageInternal(q.endpoint, q.message)
-	latency := int(time.Since(q.requestedAt).Milliseconds())
+	result, migrateTo, retryAfter, photo := w.attempt(q.endpoint, msg)
+	latency := int(time.Since(q.enqueuedAt).Milliseconds())
 	// A 429, timeout, or network blip postpones the message:
 	// the main loop re-queues it,
 	// and the cooldown tail below keeps its user cooling for the whole postpone,
@@ -556,26 +649,33 @@ func (w *worker) deliver(q *queuedMessage) {
 	// it is dropped anyway: the notice is best-effort,
 	// and a group migrating mid-notice is not worth a special path.
 	pause, transient, stalled := transientDelay(result, retryAfter)
+	if photo.timedOut {
+		pause = timedOutUploadPostpone
+	}
 	// A migrate to the same chat id is degenerate (Telegram breaking its
 	// one-way migration contract): re-queuing it would loop forever
 	// on the same address, so require a genuinely new target.
-	migrated := result == messageMigrate && migrateTo != q.message.chatID()
+	migrated := result == messageMigrate && migrateTo != msg.chatID()
 	var resend *queuedMessage
-	if tag.kind != db.MaintenancePacket {
-		if transient || migrated {
-			if stalled {
-				q.stalls++
-			}
-			resend = q
+	p, isPhoto := msg.(*photoParams)
+	switch {
+	case tag.kind == db.MaintenancePacket:
+		// A maintenance send is never redelivered.
+	case isPhoto && (result == messageNoPhotoRights || photo.timedOut):
+		// The photo goes again as text: a group may take no photos,
+		// and a timed-out upload may have reached the chat after all.
+		// Ahead of the transient case, so a timed-out upload counts no stall.
+		// The swap precedes the result send, so the main loop sees it.
+		q.message = p.toText()
+		resend = q
+	case transient || migrated:
+		if stalled {
+			q.stalls++
 		}
-		// A photo to a no-photo-rights group falls back to text:
-		// swap the payload and re-queue the same envelope,
-		// so it waits out the user's cooldown.
-		// The swap precedes the result send, which orders it for the main loop.
-		if p, ok := q.message.(*photoParams); ok && result == messageNoPhotoRights {
-			q.message = p.toText()
-			resend = q
-		}
+		resend = q
+	case photo.rejected:
+		// The resend goes by an id gained meanwhile, uploads the bytes it holds, or else goes as text.
+		resend = q
 	}
 	// Pace the endpoint's rate before releasing its slot.
 	// A 429 holds it a full second, so a rate limit backs off the whole endpoint,
@@ -594,13 +694,14 @@ func (w *worker) deliver(q *queuedMessage) {
 		timestamp:       int(now.Unix()),
 		result:          result,
 		endpoint:        q.endpoint,
-		chatID:          q.message.chatID(),
+		chatID:          msg.chatID(),
 		userID:          userID,
 		migrateToChatID: migrateTo,
 		latency:         latency,
 		tag:             tag,
 		notificationID:  q.notificationID,
 		resend:          resend,
+		photo:           photo,
 	}
 	if tag.kind == db.MaintenancePacket {
 		// A maintenance send cools no user, so there is nothing to release.

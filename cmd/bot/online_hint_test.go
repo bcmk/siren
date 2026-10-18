@@ -120,6 +120,9 @@ func TestOnlinePicsClipALongSubject(t *testing.T) {
 	defer w.terminate()
 	w.createDatabase()
 	w.initCache()
+	cfg := testConfig
+	cfg.ShowImages = true
+	w.cfg = &cfg
 	w.tpl["test"] = realTemplates(t, "en")
 
 	const nickname = "online_model"
@@ -137,10 +140,8 @@ func TestOnlinePicsClipALongSubject(t *testing.T) {
 	if len(nots) != 1 {
 		t.Fatalf("expected 1 notification, got %d", len(nots))
 	}
-	w.enqueueNotifications(notificationBatch{
-		notifications: nots,
-		images:        map[string][]byte{url: []byte("image")},
-	})
+	w.enqueueNotifications(nots)
+	completeDownloads(w)
 
 	q := w.sendQueue.pop()
 	if q == nil {
