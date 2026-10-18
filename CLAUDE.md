@@ -380,6 +380,8 @@ Call what a message shows an image, and the Telegram message carrying one a phot
 - Read `docs/timescaledb.md` before changing a hypertable or using a TimescaleDB feature
 - Read `docs/telegram-stars.md` before changing Telegram Stars payment handling
   (buying subscriptions, invoices, pre-checkout, refunds).
+- Read `docs/image-sending.md` before changing how photos are sent:
+  file ids, image downloads, the image-unavailable placeholder
 - Read `docs/writing-translations.md` every time you add or edit a message
   in `res/translations/` (punctuation, commands, parse modes, en/ru sync).
 - Read `docs/load-testing.md` before changing the checker-only mode (`checker_only`),
