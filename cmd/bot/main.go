@@ -567,12 +567,9 @@ func (w *worker) sendText(
 	w.enqueueMessage(priority, endpoint, msg, tag, userID, 0)
 }
 
-// sendMaintenance queues a maintenance-window notice
-// addressed by a literal chat id.
-// Its userID is 0,
-// so the scheduler keeps that chat id rather than resolving one.
-// As a MaintenancePacket its send result skips all database bookkeeping,
-// so it may run before the database exists.
+// sendMaintenance queues a maintenance-window notice to a literal chat id.
+// As a MaintenancePacket it goes to that chat id as given and skips the per-user cooldown,
+// and its send result skips all database bookkeeping, so it may run before the database exists.
 func (w *worker) sendMaintenance(endpoint string, chatID int64, notify bool, text string) {
 	msg := textMessage(text, notify, true, cmdlib.ParseRaw)
 	msg.setChatID(chatID)

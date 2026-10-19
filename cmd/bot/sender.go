@@ -389,9 +389,6 @@ func (s *sendQueue) stopCooling(userID db.UserID) {
 
 // enqueueMessage adds a new message and tries to start a send.
 // Main goroutine only.
-// A MaintenancePacket kind marks a maintenance send:
-// it keeps the chat id it was built with, skips the per-user cooldown,
-// and never touches the database.
 // notificationID is the notification_queue row to clear, or 0 for a reply.
 func (w *worker) enqueueMessage(
 	priority db.Priority,
