@@ -24,7 +24,7 @@ type Notification struct {
 	Priority Priority
 	Kind     PacketKind
 	// Command is the command this notification answers, empty if none.
-	// A deferred reply (an add result, an online-list picture)
+	// A deferred reply (an add result, an online-list image)
 	// carries it across the queue,
 	// so its send logs the command that asked for it.
 	Command string

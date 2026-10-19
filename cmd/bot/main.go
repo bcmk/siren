@@ -981,9 +981,9 @@ func (w *worker) finalizeNotification(notificationID int) {
 
 // subjectLimit is the room subject's share of a photo caption,
 // which Telegram caps at 1024 UTF-16 units after entity parsing.
-// A caption over that cap is a 400 that loses the picture and every field on it.
+// A caption over that cap is a 400 that loses the image and every field on it.
 // The subject is the one unbounded field, and the rest runs to some 200 units at its longest.
-// A message with no picture caps at 4096 and clips the same, so one subject reads alike.
+// A message with no image caps at 4096 and clips the same, so one subject reads alike.
 const subjectLimit = 600
 
 // clipSubject cuts a subject to subjectLimit, counting UTF-16 units as Telegram counts a caption,
@@ -1028,7 +1028,7 @@ func (w *worker) notifyOfStatus(p plannedNotification, image []byte) {
 				image = w.tr[p.Endpoint].ImageUnavailable.ImageBytes
 			}
 		} else {
-			// Only an online notification carries a picture.
+			// Only an online notification carries an image.
 			image = nil
 		}
 		var timeDiff *timeDiff
@@ -2091,7 +2091,7 @@ func (w *worker) listOnlineStreamers(m receivedMessage) {
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].NoOnlineStreamers, nil)
 		return
 	}
-	// A group or channel, where a pile of pictures is worth capping.
+	// A group or channel, where a pile of images is worth capping.
 	if len(online) > w.cfg.MaxSubscriptionsForPics && isGroupOrChannel(m.chatID) {
 		data := tplData{"max_subs": w.cfg.MaxSubscriptionsForPics}
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].TooManySubscriptionsForPics, data)
@@ -2122,9 +2122,9 @@ func (w *worker) listOnlineStreamers(m receivedMessage) {
 		nots = append(nots, not)
 		m = m.next()
 	}
-	// Carried by the last message of the answer, in its caption where that message has a picture,
-	// so the hint arrives with the pictures it explains rather than a tick ahead of them.
-	// It shares that message's fate: a hint with no picture left to explain is not worth a retry.
+	// Carried by the last message of the answer, in its caption where that message has an image,
+	// so the hint arrives with the images it explains rather than a tick ahead of them.
+	// It shares that message's fate: a hint with no image left to explain is not worth a retry.
 	// Rolled once per answer, so the queue carries the outcome.
 	nots[len(nots)-1].FieldsHint = rand.Intn(100) < w.cfg.FieldsHintChancePercent
 	w.storeNotifications(nots)

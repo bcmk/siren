@@ -35,7 +35,7 @@ and for a message with no markup.
 - `markdown` — rarely used.
 
 Optional fields: `disable_preview: true` suppresses link previews;
-`image:` attaches a picture; `weight:` biases random selection (ads).
+`image:` attaches an image; `weight:` biases random selection (ads).
 
 ## Punctuation
 

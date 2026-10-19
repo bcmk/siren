@@ -365,6 +365,9 @@ except in code and translations belonging to one site,
 which say that site's own word: "model" on the adult sites, "channel" on Twitch and Kick.
 "camname" is user-facing wording alone: it belongs in `res/translations/` and docs quoting them.
 
+Call what a message shows an image, and the Telegram message carrying one a photo.
+"Picture" is user-facing wording alone, as in `/pics`.
+
 ## Documentation
 
 - Don't mention other projects in CLAUDE.md or docs; keep them about this repo.

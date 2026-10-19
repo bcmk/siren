@@ -202,7 +202,7 @@ func TestDeferredAddedStreamerStatusLogsItsCommand(t *testing.T) {
 	}
 }
 
-// The pictures /pics asks for are queued as notifications and sent later,
+// The images /pics asks for are queued as notifications and sent later,
 // so the command has to survive notification_queue.
 func TestDeferredOnlinePicsLogItsCommand(t *testing.T) {
 	t.Parallel()
@@ -233,11 +233,11 @@ func TestDeferredOnlinePicsLogItsCommand(t *testing.T) {
 	}
 	w.enqueueNotifications(notificationBatch{notifications: nots, images: map[string][]byte{}})
 
-	// The picture, hint included, named by the command.
+	// The reply, hint included, named by the command.
 	commands := drainSendQueueToLog(t, w)
-	t.Logf("deferred picture logged: %q", commands)
+	t.Logf("deferred reply logged: %q", commands)
 	if !slices.Equal(commands, []string{"pics"}) {
-		t.Errorf("the deferred picture lost its command, got %q", commands)
+		t.Errorf("the deferred reply lost its command, got %q", commands)
 	}
 }
 
@@ -1021,7 +1021,7 @@ func TestChunkedListNumbersItsReplies(t *testing.T) {
 }
 
 // queuedText renders a queued message and returns its text,
-// the caption where it carries a picture, and which of the two it was.
+// the caption where it carries an image, and which of the two it was.
 func queuedText(t *testing.T, msg sendable) (string, bool) {
 	t.Helper()
 	msg.render("")
@@ -1035,8 +1035,8 @@ func queuedText(t *testing.T, msg sendable) (string, bool) {
 	return "", false
 }
 
-// The hint explains the pictures, so it composes into the last message of the answer,
-// its caption where that message carries a picture, rather than trailing as a message of its own.
+// The hint explains the images, so it composes into the last message of the answer,
+// its caption where that message carries an image, rather than trailing as a message of its own.
 // A group or channel, where settings are admin-only, gets none at all.
 func TestOnlinePicsCarryTheHintInTheLastMessage(t *testing.T) {
 	t.Parallel()
@@ -1048,7 +1048,7 @@ func TestOnlinePicsCarryTheHintInTheLastMessage(t *testing.T) {
 		want    []string
 	}{
 		{"a private chat is hinted once, at the end", 1, false, []string{"Online", "Online", hinted}},
-		{"a picture carries the hint in its caption", 2, true, []string{"Online", "Online", hinted}},
+		{"a photo carries the hint in its caption", 2, true, []string{"Online", "Online", hinted}},
 		{"a group is not hinted", -1, false, []string{"Online", "Online", "Online"}},
 	}
 	for _, tc := range tests {
@@ -1058,7 +1058,7 @@ func TestOnlinePicsCarryTheHintInTheLastMessage(t *testing.T) {
 			defer w.terminate()
 			w.createDatabase()
 			w.initCache()
-			// Above the three pictures, so the group cap is not what suppresses the hint.
+			// Above the three images, so the group cap is not what suppresses the hint.
 			cfg := testConfig
 			cfg.MaxSubscriptionsForPics = 10
 			w.cfg = &cfg
@@ -1079,9 +1079,9 @@ func TestOnlinePicsCarryTheHintInTheLastMessage(t *testing.T) {
 			}
 			w.listOnlineStreamers(testMessage(w, tc.chatID, "pics", 100))
 
-			// Nothing goes out now: the answer waits for the pictures.
+			// Nothing goes out now: the answer waits for the images.
 			if got := drainSeqsToLog(t, w); len(got) != 0 {
-				t.Errorf("the answer did not wait for the pictures, got %v", got)
+				t.Errorf("the answer did not wait for the images, got %v", got)
 			}
 
 			nots := w.db.NewNotifications()

@@ -80,7 +80,7 @@ func TestOnlineTemplateMarksAClippedSubject(t *testing.T) {
 }
 
 // Telegram rejects a photo caption past 1024 UTF-16 units, entities parsed out,
-// which finalizes the notification and loses the picture with every field on it.
+// which finalizes the notification and loses the image with every field on it.
 // The worst message the templates can build has to fit, which is what clipSubject is sized for.
 func TestOnlineCaptionFitsTheTelegramLimit(t *testing.T) {
 	t.Parallel()
@@ -148,7 +148,7 @@ func TestOnlinePicsClipALongSubject(t *testing.T) {
 	}
 	caption, isPhoto := queuedText(t, q.message)
 	if !isPhoto {
-		t.Fatal("the message carries no picture, so no caption is under test")
+		t.Fatal("the message carries no image, so no caption is under test")
 	}
 	if !strings.Contains(caption, "…</blockquote>") {
 		t.Errorf("the cut topic reached the chat unmarked: %q", caption)

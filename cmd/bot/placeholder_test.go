@@ -10,7 +10,7 @@ import (
 	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
 
-// An online alert whose picture failed to download carries the placeholder instead.
+// An online alert whose image failed to download carries the placeholder instead.
 func TestFailedDownloadShowsPlaceholder(t *testing.T) {
 	t.Parallel()
 	const nickname = "online_model"
@@ -20,7 +20,7 @@ func TestFailedDownloadShowsPlaceholder(t *testing.T) {
 		images map[string][]byte
 		want   string
 	}{
-		{"a downloaded picture goes as it is", map[string][]byte{url: []byte("image")}, "image"},
+		{"a downloaded image goes as it is", map[string][]byte{url: []byte("image")}, "image"},
 		{"one that failed gives way to the placeholder", map[string][]byte{}, "placeholder"},
 	}
 	for _, tc := range tests {
@@ -50,7 +50,7 @@ func TestFailedDownloadShowsPlaceholder(t *testing.T) {
 				t.Fatal("the alert is not a photo")
 			}
 			if !bytes.Equal(p.imageData, []byte(tc.want)) {
-				t.Errorf("picture = %q, want %q", p.imageData, tc.want)
+				t.Errorf("image = %q, want %q", p.imageData, tc.want)
 			}
 		})
 	}
@@ -69,7 +69,7 @@ func TestImageUnavailableShips(t *testing.T) {
 			}})
 			image := trs["cb"].ImageUnavailable.Image
 			if image == "" {
-				t.Fatal("the translation names no picture")
+				t.Fatal("the translation names no image")
 			}
 			if _, err := os.Stat(filepath.Join(base, "images", image)); err != nil {
 				t.Error(err)
