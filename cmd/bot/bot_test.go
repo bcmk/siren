@@ -1907,7 +1907,7 @@ func TestNotifyOfStatuses(t *testing.T) {
 	highCount := 0
 	for range w.sendQueue.Len() {
 		p := w.nextOutgoing()
-		if p.priority == db.PriorityLow {
+		if p.order.priority == db.PriorityLow {
 			lowCount++
 		} else {
 			highCount++
@@ -1938,7 +1938,7 @@ func TestDeliverOffMainGoroutine(t *testing.T) {
 			userID:   userID,
 			endpoint: "test",
 			message:  &migrateThenOK{id: 100, target: 200},
-			priority: db.PriorityHigh,
+			order:    queueOrder{priority: db.PriorityHigh},
 			tag:      unprompted(db.MessagePacket),
 		})
 	}()

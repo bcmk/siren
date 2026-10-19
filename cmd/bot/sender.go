@@ -188,28 +188,33 @@ type queuedMessage struct {
 	userID         db.UserID
 	endpoint       string
 	message        sendable
-	priority       db.Priority
+	order          queueOrder
 	tag            sendTag
 	notificationID int
 	requestedAt    time.Time
-	seq            uint64
 	stalls         int
 }
 
-// messageLess orders one user's messages: priority, then FIFO by seq.
+// queueOrder is a message's place in a queue: its priority, then the order it came in.
+type queueOrder struct {
+	priority db.Priority
+	seq      uint64
+}
+
+// orderLess orders one user's messages: priority, then FIFO by seq.
 // Stalls are absent on purpose: a newer status must not pass a stalled one.
-func messageLess(a, b *queuedMessage) bool {
+func orderLess(a, b queueOrder) bool {
 	if a.priority != b.priority {
 		return a.priority < b.priority
 	}
 	return a.seq < b.seq
 }
 
-// msgHeap is one user's pending messages, ordered by messageLess.
+// msgHeap is one user's pending messages, ordered by orderLess.
 type msgHeap []*queuedMessage
 
 func (h msgHeap) Len() int           { return len(h) }
-func (h msgHeap) Less(i, j int) bool { return messageLess(h[i], h[j]) }
+func (h msgHeap) Less(i, j int) bool { return orderLess(h[i].order, h[j].order) }
 func (h msgHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
 
 func (h *msgHeap) Push(x any) { *h = append(*h, x.(*queuedMessage)) }
@@ -234,13 +239,13 @@ func (u *userQueue) head() *queuedMessage { return u.items[0] }
 // userLess ranks a stalling chat behind healthy ones of the same priority.
 func userLess(a, b *userQueue) bool {
 	x, y := a.head(), b.head()
-	if x.priority != y.priority {
-		return x.priority < y.priority
+	if x.order.priority != y.order.priority {
+		return x.order.priority < y.order.priority
 	}
 	if x.stalls != y.stalls {
 		return x.stalls < y.stalls
 	}
-	return x.seq < y.seq
+	return x.order.seq < y.order.seq
 }
 
 // readyHeap ranks dispatchable users by userLess,
@@ -407,11 +412,10 @@ func (w *worker) enqueueMessage(
 		userID:         userID,
 		endpoint:       endpoint,
 		message:        msg,
-		priority:       priority,
+		order:          queueOrder{priority: priority, seq: w.sendSeq},
 		tag:            tag,
 		notificationID: notificationID,
 		requestedAt:    time.Now(),
-		seq:            w.sendSeq,
 	})
 }
 
@@ -586,7 +590,7 @@ func (w *worker) deliver(q *queuedMessage) {
 	case <-w.shutdownCh:
 	}
 	w.sendResults <- msgSendResult{
-		priority:        q.priority,
+		priority:        q.order.priority,
 		timestamp:       int(now.Unix()),
 		result:          result,
 		endpoint:        q.endpoint,

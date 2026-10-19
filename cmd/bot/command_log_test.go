@@ -60,7 +60,7 @@ func completeQueuedSends(t *testing.T, w *testWorker) {
 				chatID, q.endpoint)
 		}
 		w.completeSendResult(msgSendResult{
-			priority:       q.priority,
+			priority:       q.order.priority,
 			timestamp:      100,
 			result:         messageSent,
 			endpoint:       q.endpoint,
@@ -718,12 +718,12 @@ func TestBroadcastAckQueuesBehindTheBroadcast(t *testing.T) {
 	if count != 4 {
 		t.Fatalf("expected 3 broadcast messages and an ack, got %d queued", count)
 	}
-	t.Logf("queued %d, last to user %d at priority %d", count, last.userID, last.priority)
+	t.Logf("queued %d, last to user %d at priority %d", count, last.userID, last.order.priority)
 	if last.userID != w.ownerUserID {
 		t.Errorf("the ack did not land last, it went to user %d", last.userID)
 	}
-	if last.priority != db.PriorityLow {
-		t.Errorf("the ack jumped the broadcast at priority %d", last.priority)
+	if last.order.priority != db.PriorityLow {
+		t.Errorf("the ack jumped the broadcast at priority %d", last.order.priority)
 	}
 }
 

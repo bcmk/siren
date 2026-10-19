@@ -58,7 +58,7 @@ func TestDeliverDropsMigrateToSelf(t *testing.T) {
 			userID:   1,
 			endpoint: "ep",
 			message:  &migrateToSelf{id: -100},
-			priority: db.PriorityHigh,
+			order:    queueOrder{priority: db.PriorityHigh},
 			tag:      unprompted(db.MessagePacket),
 		})
 
@@ -90,7 +90,7 @@ func TestDeliverReportsMigrateForRequeue(t *testing.T) {
 			userID:   userID,
 			endpoint: "ep",
 			message:  &migrateThenOK{id: oldID, target: int(newID)},
-			priority: db.PriorityHigh,
+			order:    queueOrder{priority: db.PriorityHigh},
 			tag:      unprompted(db.MessagePacket),
 		}
 		go w.deliver(q)
@@ -143,7 +143,7 @@ func TestMigrateAppliesBeforeResendDispatch(t *testing.T) {
 			userID:   userID,
 			endpoint: "test",
 			message:  msg,
-			priority: db.PriorityHigh,
+			order:    queueOrder{priority: db.PriorityHigh},
 			tag:      unprompted(db.MessagePacket),
 		},
 	})

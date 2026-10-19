@@ -262,7 +262,7 @@ func TestSendQueueOrder(t *testing.T) {
 				s.startCooling(c)
 			}
 			for _, it := range tt.items {
-				s.push(&queuedMessage{userID: it.userID, priority: it.priority, seq: it.seq})
+				s.push(&queuedMessage{userID: it.userID, order: queueOrder{priority: it.priority, seq: it.seq}})
 			}
 			var got []db.UserID
 			for s.Len() > 0 {
@@ -335,15 +335,14 @@ func TestSendQueueDemotesStalledUsers(t *testing.T) {
 			s := newSendQueue()
 			for _, it := range tt.items {
 				s.push(&queuedMessage{
-					userID:   it.userID,
-					priority: it.priority,
-					seq:      it.seq,
-					stalls:   it.stalls,
+					userID: it.userID,
+					order:  queueOrder{priority: it.priority, seq: it.seq},
+					stalls: it.stalls,
 				})
 			}
 			var got []uint64
 			for s.Len() > 0 {
-				got = append(got, s.pop().seq)
+				got = append(got, s.pop().order.seq)
 			}
 			if !slices.Equal(got, tt.want) {
 				t.Errorf("pop order = %v, want %v", got, tt.want)
@@ -359,17 +358,17 @@ func TestSendQueueDemotesStalledUsers(t *testing.T) {
 func TestSendQueueDemotesStalledResend(t *testing.T) {
 	t.Parallel()
 	s := newSendQueue()
-	s.push(&queuedMessage{userID: 1, priority: db.PriorityLow, seq: 1})
+	s.push(&queuedMessage{userID: 1, order: queueOrder{priority: db.PriorityLow, seq: 1}})
 	q := s.pop()
 	s.startCooling(q.userID) // as trySend cools the user it dispatches
 	q.stalls++               // as deliver counts the stall
 	s.push(q)                // as the main loop re-queues it, still cooling
-	s.push(&queuedMessage{userID: 2, priority: db.PriorityLow, seq: 3})
+	s.push(&queuedMessage{userID: 2, order: queueOrder{priority: db.PriorityLow, seq: 3}})
 	s.stopCooling(q.userID)
 
 	var got []uint64
 	for s.Len() > 0 {
-		got = append(got, s.pop().seq)
+		got = append(got, s.pop().order.seq)
 	}
 	if want := []uint64{3, 1}; !slices.Equal(got, want) {
 		t.Errorf("pop order = %v, want %v", got, want)
@@ -383,7 +382,7 @@ func TestSendQueueBookkeeping(t *testing.T) {
 	t.Parallel()
 	s := newSendQueue()
 	for i, userID := range []db.UserID{1, 1, 2} {
-		s.push(&queuedMessage{userID: userID, seq: uint64(i)})
+		s.push(&queuedMessage{userID: userID, order: queueOrder{seq: uint64(i)}})
 	}
 	if s.Len() != 3 || len(s.byUser) != 2 {
 		t.Fatalf("size = %d, users = %d, want 3 and 2", s.Len(), len(s.byUser))
@@ -477,7 +476,7 @@ func TestDeliverTiming(t *testing.T) {
 			userID:   1,
 			endpoint: "ep",
 			message:  &okMessage{id: 1},
-			priority: db.PriorityHigh,
+			order:    queueOrder{priority: db.PriorityHigh},
 			tag:      unprompted(db.MessagePacket),
 		})
 
@@ -525,7 +524,7 @@ func TestDeliverDropsMaintenanceOnTransientFailure(t *testing.T) {
 			w.deliver(&queuedMessage{
 				endpoint: "ep",
 				message:  &tooManyRequests{id: 1},
-				priority: db.PriorityHigh,
+				order:    queueOrder{priority: db.PriorityHigh},
 				tag:      unprompted(db.MaintenancePacket),
 			})
 			close(done)
@@ -566,7 +565,7 @@ func TestDeliverPostponesTooManyRequests(t *testing.T) {
 			userID:   1,
 			endpoint: "ep",
 			message:  &tooManyRequests{id: 1, retryAfter: 30},
-			priority: db.PriorityHigh,
+			order:    queueOrder{priority: db.PriorityHigh},
 			tag:      unprompted(db.MessagePacket),
 		}
 		start := time.Now()
@@ -625,7 +624,7 @@ func TestDeliverEndpointPaceOn429(t *testing.T) {
 						userID:   1,
 						endpoint: "ep",
 						message:  tt.message,
-						priority: db.PriorityHigh,
+						order:    queueOrder{priority: db.PriorityHigh},
 						tag:      unprompted(db.MessagePacket),
 					})
 					close(done)
@@ -690,7 +689,7 @@ func TestDeliverCountsStalls(t *testing.T) {
 					userID:   1,
 					endpoint: "ep",
 					message:  tt.message,
-					priority: db.PriorityLow,
+					order:    queueOrder{priority: db.PriorityLow},
 					tag:      unprompted(db.NotificationPacket),
 					stalls:   tt.stalls,
 				}
@@ -731,7 +730,7 @@ func TestDeliverPaceEndsOnShutdown(t *testing.T) {
 				userID:   1,
 				endpoint: "ep",
 				message:  &tooManyRequests{id: 1, retryAfter: 30},
-				priority: db.PriorityHigh,
+				order:    queueOrder{priority: db.PriorityHigh},
 				tag:      unprompted(db.MessagePacket),
 			})
 			close(done)
