@@ -515,6 +515,21 @@ func (p *photoParams) pickImage(images *imageCache, placeholder *image, now, que
 	return id != "" || (uploads && p.upload != nil)
 }
 
+// logDroppedAd logs an ad dropped before its send as a send result.
+func (w *worker) logDroppedAd(q *queuedMessage, now time.Time) {
+	r := msgSendResult{
+		priority:  q.order.priority,
+		timestamp: int(now.Unix()),
+		result:    messageAdDropped,
+		endpoint:  q.endpoint,
+		userID:    q.userID,
+		latency:   int(now.Sub(q.enqueuedAt).Milliseconds()),
+		tag:       q.tag,
+	}
+	w.resolveResultUser(&r)
+	w.handleSendResult(r)
+}
+
 func (w *worker) trySend(endpoint string) {
 	s := w.sender(endpoint)
 	if s.cooling || !s.queue.hasReady() {
@@ -528,8 +543,13 @@ func (w *worker) trySend(endpoint string) {
 		if p, ok := q.message.(*photoParams); ok {
 			now := time.Now()
 			placeholder := shippedImage(w.tr[q.endpoint].ImageUnavailable)
-			// A photo with no image to send goes as text.
+			// A photo with no image to send goes as text; an ad is dropped instead.
 			if !p.pickImage(&s.images, placeholder, now, q.requestedAt) {
+				if q.tag.kind == db.AdPacket {
+					w.logDroppedAd(q, now)
+					w.trySend(endpoint)
+					return
+				}
 				msg = p.toUnavailableText()
 			}
 		}
@@ -669,15 +689,19 @@ func (w *worker) deliver(q *queuedMessage, msg sendable) {
 		// and a timed-out upload may have reached the chat after all.
 		// Ahead of the transient case, so a timed-out upload counts no stall.
 		// The swap precedes the result send, so the main loop sees it.
-		q.message = p.toText()
-		resend = q
+		// An ad goes with its image or not at all.
+		if tag.kind != db.AdPacket {
+			q.message = p.toText()
+			resend = q
+		}
 	case transient || migrated:
 		if stalled {
 			q.stalls++
 		}
 		resend = q
 	case photo.rejected:
-		// The resend goes by an id gained meanwhile, uploads the bytes it holds, or else goes as text.
+		// The resend goes by an id gained meanwhile, uploads the bytes it holds,
+		// or else goes as text; an ad is dropped instead.
 		resend = q
 	}
 	// Pace the endpoint's rate before releasing its slot.

@@ -220,6 +220,7 @@ const (
 	messageTopicClosed         = -9
 	messageDiceSkipped         = -10
 	messageFileIDRejected      = -11
+	messageAdDropped           = -12
 )
 
 type msgSendResult struct {

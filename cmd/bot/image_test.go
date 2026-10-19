@@ -488,7 +488,7 @@ func TestBatchSharesImage(t *testing.T) {
 }
 
 // A photo whose image cannot upload becomes text rendered afresh with image_unavailable set,
-// whether it rendered already or carries no data, as an ad does.
+// whether it rendered already or carries no data.
 // The photo's own caption stays as it was, for a later dispatch that sends the photo.
 func TestUnavailableTextRendersAfresh(t *testing.T) {
 	t.Parallel()
@@ -882,6 +882,92 @@ func TestPhotoWithoutImageGoesAsText(t *testing.T) {
 				t.Errorf("downloads = %d, want 0", got)
 			}
 		})
+	}
+}
+
+// flagAd gives the test worker a flag ad and returns its translation.
+func flagAd(w *testWorker) *cmdlib.Translation {
+	ads := texttemplate.New("")
+	texttemplate.Must(ads.New("flag").Parse("Stop the war"))
+	w.tplAds = map[string]*texttemplate.Template{"test": ads}
+	return &cmdlib.Translation{Key: "flag", Parse: cmdlib.ParseRaw, Image: "flag.png", ImageBytes: []byte("flag")}
+}
+
+// An ad is dropped wherever its photo would go as text, and the message behind it still goes.
+// One dropped before its send is logged as dropped.
+func TestAdGoesWithItsImageOrNotAtAll(t *testing.T) {
+	t.Parallel()
+	noPhotoRights := fakeReply{
+		body: `{"ok":false,"error_code":400,"description":"Bad Request: not enough rights to send photos in the chat"}`,
+	}
+	tests := []struct {
+		name        string
+		givenUp     bool
+		replies     []fakeReply
+		wantSent    []string
+		wantDropped int
+	}{
+		{"its upload times out, and so the next ad of the image", false,
+			[]fakeReply{{err: os.ErrDeadlineExceeded}, {body: textSent}}, []string{"upload", "text"}, 1},
+		{"its chat takes no photos", false,
+			[]fakeReply{noPhotoRights, {body: photoSent}, {body: textSent}}, []string{"upload", "upload", "text"}, 0},
+		{"its image is given up", true, []fakeReply{{body: textSent}}, []string{"text"}, 2},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := &fakeTelegram{replies: tc.replies}
+			w, users := photoSendWorker(t, f, &http.Client{Transport: noNetwork{}}, 101, 102, 103)
+			tr := flagAd(w)
+			s := w.sender("test")
+			if tc.givenUp {
+				s.images.learn(photoOutcome{key: tr.Image, timedOut: true}, time.Now())
+			}
+			// Two ads and a text queue while a send is in flight, so a dropped ad has messages behind it.
+			s.cooling = true
+			for _, u := range users[:2] {
+				w.sendAdsTr(db.PriorityLow, "test", u, false, tr, "")
+			}
+			text := textMessage("next", true, true, cmdlib.ParseRaw)
+			w.enqueueMessage(db.PriorityLow, "test", text, unprompted(db.MessagePacket), users[2], 0)
+			w.onSendDone("test")
+			completeSends(w, len(tc.replies))
+			if !slices.Equal(f.sent, tc.wantSent) {
+				t.Errorf("sent %v, want %v", f.sent, tc.wantSent)
+			}
+			if n := s.queue.Len(); n != 0 || s.cooling {
+				t.Errorf("%d messages left to send and one in flight = %t, want none", n, s.cooling)
+			}
+			dropped := w.db.MustInt(`select count(*) from sent_message_log where result = $1`, messageAdDropped)
+			if dropped != tc.wantDropped {
+				t.Errorf("logged %d ads dropped before sending, want %d", dropped, tc.wantDropped)
+			}
+		})
+	}
+}
+
+// A dropped ad is logged under its user's live id, with the time it waited in the send queue.
+func TestDroppedAdLogsLiveUserAndWait(t *testing.T) {
+	t.Parallel()
+	w, users := photoSendWorker(t, &fakeTelegram{}, &http.Client{Transport: noNetwork{}}, 101)
+	tr := flagAd(w)
+	s := w.sender("test")
+	s.images.learn(photoOutcome{key: tr.Image, timedOut: true}, time.Now())
+	s.cooling = true
+	w.sendAdsTr(db.PriorityLow, "test", users[0], false, tr, "")
+	// The ad's user merges into another while the ad waits.
+	live, _ := w.db.AddUser(201, 3, 0, "private")
+	w.db.MigrateChat(101, 201)
+	const wait = 50 * time.Millisecond
+	time.Sleep(wait)
+	w.onSendDone("test")
+	userID := db.UserID(w.db.MustInt(`select user_id from sent_message_log where result = $1`, messageAdDropped))
+	if userID != live {
+		t.Errorf("logged under user %d, want the live %d", userID, live)
+	}
+	latency := w.db.MustInt(`select latency from sent_message_log where result = $1`, messageAdDropped)
+	if latency < int(wait.Milliseconds()) {
+		t.Errorf("latency = %d ms, want at least %d", latency, wait.Milliseconds())
 	}
 }
 
