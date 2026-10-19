@@ -241,8 +241,11 @@
 - Close every review finding with a one-line `Fix:` naming the change that resolves it.
   Where the finding is a judgment call, the fix may be to accept it and change nothing.
   Start `Fix:` on its own line.
-- During a code review, never touch the working tree.
-  Run mutation tests and other experiments in a temporary worktree or copy.
+- During a code review, never touch the working tree or move HEAD.
+  Run mutation tests and other experiments
+  in a temporary worktree or copy created at the commit they need.
+  A subagent names the worktree in every command (`go -C <dir> test ./...`):
+  its `cd` lasts one Bash call, and the next command runs in the main checkout.
 - Write each finding to stand alone,
   so one can be handed to another agent without the rest of the list or the conversation.
   Avoid pointing to other findings by number; restate what the reader needs.
