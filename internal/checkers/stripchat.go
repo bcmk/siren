@@ -48,6 +48,18 @@ var _ Checker = &StripchatChecker{}
 // Site returns the site name.
 func (*StripchatChecker) Site() string { return "stripchat" }
 
+var stripchatModelRegexp = regexp.MustCompile(
+	`^(?:https?://)?(?:[a-z]+\.)?(?:stripchat|xhamsterlive)\.com/([a-z0-9\-_@]+)(?:/(?:profile|timeline))?/?(?:\?.*)?$`)
+
+// NicknamePreprocessing extracts the nickname from a link and lowercases it
+func (c *StripchatChecker) NicknamePreprocessing(name string) string {
+	name = strings.ToLower(name)
+	if m := stripchatModelRegexp.FindStringSubmatch(name); len(m) == 2 {
+		return m[1]
+	}
+	return name
+}
+
 // Init loads stripchat-checker.json.
 func (c *StripchatChecker) Init(checkerCfgPath string) error {
 	if err := c.ensureUninitialised(); err != nil {
