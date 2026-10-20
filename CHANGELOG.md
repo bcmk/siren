@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v6.3.0 — 2026-10-20
+
+### Upgrading
+
+- Prebuild migration 0097 adds `notification_queue.missing_image`
+
+### Changed
+
+- An online alert or a `/pics` answer whose site reported no image
+  shows the image-unavailable placeholder
+
 ## v6.2.0 — 2026-10-20
 
 ### Changed
