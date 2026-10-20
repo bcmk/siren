@@ -499,20 +499,21 @@ func (w *worker) onSendDone(endpoint string) {
 	w.trySend(endpoint)
 }
 
-// pickImage sets the image the photo sends, by id or upload, and reports whether it can send one.
-// A failed download shows the placeholder, if shipped, unless an id serves the image.
+// pickImage sets what the photo sends, its own image or else the placeholder, by id or upload,
+// and reports whether it can send either.
+// While its own image's uploads are paused, the placeholder goes by id alone.
 func (p *photoParams) pickImage(images *imageCache, placeholder *image, now, queuedAt time.Time) bool {
 	id, uploads := images.lookup(p.image, now, queuedAt)
-	p.sentImage = p.image
-	if id == "" && p.downloadFailed && placeholder != nil {
-		p.sentImage = placeholder
-		id, uploads = images.lookup(placeholder, now, queuedAt)
+	p.sentImage, p.fileID, p.upload = p.image, id, p.downloaded
+	if p.image.data != nil {
+		p.upload = p.image.data
 	}
-	p.fileID = id
-	if p.sentImage.data != nil {
-		p.upload = p.sentImage.data
+	if own := id != "" || (uploads && p.upload != nil); own || placeholder == nil {
+		return own
 	}
-	return id != "" || (uploads && p.upload != nil)
+	placeholderID, placeholderUploads := images.lookup(placeholder, now, queuedAt)
+	p.sentImage, p.fileID, p.upload = placeholder, placeholderID, placeholder.data
+	return placeholderID != "" || (uploads && placeholderUploads)
 }
 
 // logDroppedAd logs an ad dropped before its send as a send result.
@@ -542,7 +543,11 @@ func (w *worker) trySend(endpoint string) {
 	if q.tag.kind != db.MaintenancePacket {
 		if p, ok := q.message.(*photoParams); ok {
 			now := time.Now()
-			placeholder := shippedImage(w.tr[q.endpoint].ImageUnavailable)
+			// An ad goes with its own image or not at all.
+			var placeholder *image
+			if q.tag.kind != db.AdPacket {
+				placeholder = shippedImage(w.tr[q.endpoint].ImageUnavailable)
+			}
 			// A photo with no image to send goes as text; an ad is dropped instead.
 			if !p.pickImage(&s.images, placeholder, now, q.requestedAt) {
 				if q.tag.kind == db.AdPacket {
@@ -684,24 +689,24 @@ func (w *worker) deliver(q *queuedMessage, msg sendable) {
 	switch {
 	case tag.kind == db.MaintenancePacket:
 		// A maintenance send is never redelivered.
-	case isPhoto && (result == messageNoPhotoRights || photo.timedOut):
-		// The photo goes again as text: a group may take no photos,
-		// and a timed-out upload may have reached the chat after all.
-		// Ahead of the transient case, so a timed-out upload counts no stall.
+	case isPhoto && result == messageNoPhotoRights:
+		// A group that takes no photos gets the caption alone; an ad is dropped instead.
 		// The swap precedes the result send, so the main loop sees it.
-		// An ad goes with its image or not at all.
 		if tag.kind != db.AdPacket {
 			q.message = p.toText()
+			resend = q
+		}
+	case photo.timedOut || photo.rejected:
+		// Dispatch picks the photo's image afresh, now its upload is paused or its id dropped.
+		// Ahead of the transient case, so a timed-out upload counts no stall.
+		// A timed-out ad is not retried: its image stays paused, and an ad takes no placeholder.
+		if !photo.timedOut || tag.kind != db.AdPacket {
 			resend = q
 		}
 	case transient || migrated:
 		if stalled {
 			q.stalls++
 		}
-		resend = q
-	case photo.rejected:
-		// The resend goes by an id gained meanwhile, uploads the bytes it holds,
-		// or else goes as text; an ad is dropped instead.
 		resend = q
 	}
 	// Pace the endpoint's rate before releasing its slot.

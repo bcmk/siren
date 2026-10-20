@@ -32,7 +32,7 @@ type downloadResult struct {
 
 // imageRequest is what the downloader needs of a request: to set its image's download outcome.
 type imageRequest interface {
-	setDownloadResult(data []byte, downloadedAt time.Time, failed bool)
+	setDownloadResult(data []byte, downloadedAt time.Time)
 }
 
 // pendingImageRequest is a request the downloader holds, with its order, image, endpoint and user.
@@ -254,7 +254,7 @@ func (dl *imageDownloader[R]) fetch(p *pendingImageRequest[R], now time.Time) {
 	d := dl.images[p.key]
 	if d != nil && d.data != nil {
 		if now.Before(d.downloadedAt.Add(imageTTL)) {
-			p.request.setDownloadResult(d.data, d.downloadedAt, false)
+			p.request.setDownloadResult(d.data, d.downloadedAt)
 			return
 		}
 		d = nil
@@ -341,7 +341,7 @@ func (dl *imageDownloader[R]) complete(r downloadResult, now time.Time) []R {
 	var released []R
 	for _, p := range d.requests {
 		p.awaits = false
-		p.request.setDownloadResult(r.data, now, r.err != nil)
+		p.request.setDownloadResult(d.data, now)
 		released = dl.release(endpointUser{p.endpoint, p.userID}, released)
 	}
 	d.requests = nil

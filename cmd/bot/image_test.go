@@ -43,19 +43,6 @@ type fakeTelegram struct {
 	uploads []string
 }
 
-// textsByChat maps each chat to the text sent to it.
-func (f *fakeTelegram) textsByChat() map[string]string {
-	texts := map[string]string{}
-	next := 0
-	for i, sent := range f.sent {
-		if sent == "text" {
-			texts[f.chats[i]] = f.texts[next]
-			next++
-		}
-	}
-	return texts
-}
-
 // fakeReply is the API's answer, or a transport failure when err is set.
 type fakeReply struct {
 	body string
@@ -644,7 +631,7 @@ func TestFanOutUploadsOnce(t *testing.T) {
 	}
 }
 
-// A timed-out upload retries as its caption after timedOutUploadPostpone, unranked by a stall.
+// A timed-out upload retries the photo after timedOutUploadPostpone, unranked by a stall.
 func TestTimedOutUploadPostponesBriefly(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -652,12 +639,11 @@ func TestTimedOutUploadPostponesBriefly(t *testing.T) {
 		chatID     int64
 		fileID     string
 		want       time.Duration
-		wantText   bool
 		wantStalls int
 	}{
-		{"a private chat waits timedOutUploadPostpone", 1, "", timedOutUploadPostpone, true, 0},
-		{"a group still waits its cooldown", -100, "", groupCooldown, true, 0},
-		{"a timed-out send by id keeps the transport postpone", 1, "known", transientErrorPostpone, false, 1},
+		{"a private chat waits timedOutUploadPostpone", 1, "", timedOutUploadPostpone, 0},
+		{"a group still waits its cooldown", -100, "", groupCooldown, 0},
+		{"a timed-out send by id keeps the transport postpone", 1, "known", transientErrorPostpone, 1},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -689,8 +675,8 @@ func TestTimedOutUploadPostponesBriefly(t *testing.T) {
 				if r.result != messageTimeout {
 					t.Fatalf("result = %d, want a timeout", r.result)
 				}
-				if _, text := r.resend.message.(*messageParams); text != tc.wantText {
-					t.Errorf("retry as text = %t, want %t", text, tc.wantText)
+				if r.resend.message != p {
+					t.Errorf("the retry sends %T, want the photo", r.resend.message)
 				}
 				if r.resend.stalls != tc.wantStalls {
 					t.Errorf("stalls = %d, want %d", r.resend.stalls, tc.wantStalls)
@@ -704,8 +690,8 @@ func TestTimedOutUploadPostponesBriefly(t *testing.T) {
 	}
 }
 
-// An image whose upload times out turns its alerts to text for a while,
-// and the timed-out chat gets its caption alone, since the photo may have reached it.
+// An image whose upload times out turns its alerts to image-unavailable text for a while,
+// the timed-out chat's included.
 func TestUnsendableImageGoesAsText(t *testing.T) {
 	t.Parallel()
 	srv, client, hits := imageServer(t)
@@ -721,12 +707,9 @@ func TestUnsendableImageGoesAsText(t *testing.T) {
 	if got := hits.Load(); got != 1 {
 		t.Errorf("downloads = %d, want 1", got)
 	}
-	texts := f.textsByChat()
-	for chat, prefix := range map[string]string{
-		"101": "🟢", "102": "[[ 🚫 image unavailable ]]\n\n🟢", "103": "[[ 🚫 image unavailable ]]\n\n🟢",
-	} {
-		if !strings.HasPrefix(texts[chat], prefix) {
-			t.Errorf("text to %s = %q, want it to open with %q", chat, texts[chat], prefix)
+	for i, text := range f.texts {
+		if !strings.HasPrefix(text, "[[ 🚫 image unavailable ]]\n\n🟢") {
+			t.Errorf("text %d = %q, want it to open with the image-unavailable line", i, text)
 		}
 	}
 }
@@ -740,7 +723,7 @@ func TestDownloadedBytesUploadHoweverOld(t *testing.T) {
 	p := &photoParams{
 		SendPhotoParams: &bot.SendPhotoParams{},
 		image:           &image{key: srv.URL + "/a.jpg"},
-		upload:          []byte("held"),
+		downloaded:      []byte("held"),
 		downloadedAt:    time.Now().Add(-2 * imageTTL),
 	}
 	w.enqueueMessage(db.PriorityLow, "test", p, unprompted(db.MessagePacket), users[0], 0)
@@ -769,18 +752,21 @@ func TestGivenUpImageGoesByID(t *testing.T) {
 	}
 }
 
-// A photo queued while its image's uploads are paused still takes the image's bytes:
-// it goes as text while the pause lasts, and uploads them once it lapses.
+// A photo queued while its image's uploads are paused still takes the image's bytes,
+// and uploads them once the pause lapses.
+// Meanwhile it goes with the placeholder by id, never uploading it, or else as text.
 func TestPausedImageStillDownloads(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name     string
-		lapsed   bool
-		reply    fakeReply
-		wantSent string
+		name          string
+		placeholderID string
+		lapsed        bool
+		reply         fakeReply
+		wantSent      string
 	}{
-		{"while the pause lasts", false, fakeReply{body: textSent}, "text"},
-		{"once it lapses", true, fakeReply{body: photoSent}, "upload"},
+		{"while the pause lasts", "", false, fakeReply{body: textSent}, "text"},
+		{"while the pause lasts, by the placeholder's id", "pid", false, fakeReply{body: photoSent}, "pid"},
+		{"once it lapses", "", true, fakeReply{body: photoSent}, "upload"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -792,6 +778,10 @@ func TestPausedImageStillDownloads(t *testing.T) {
 			s.cooling = true
 			img := &image{key: srv.URL + "/a.jpg"}
 			s.images.learn(photoOutcome{key: img.key, timedOut: true}, time.Now())
+			if tc.placeholderID != "" {
+				placeholder := w.tr["test"].ImageUnavailable.Image
+				s.images.learn(photoOutcome{key: placeholder, uploadedID: tc.placeholderID}, time.Now())
+			}
 			queueImages(w, users, []*image{img})
 			w.completeDownload(<-w.imageDownloader.results)
 			if tc.lapsed {
@@ -832,9 +822,8 @@ func TestFailedDownloadGoesByID(t *testing.T) {
 	}
 }
 
-// A photo that reaches its turn with neither an id nor bytes goes as text,
-// opening with the image-unavailable line.
-func TestPhotoWithoutImageGoesAsText(t *testing.T) {
+// A photo that reaches its turn with neither an id nor bytes goes with the placeholder.
+func TestPhotoWithoutImageGoesWithPlaceholder(t *testing.T) {
 	t.Parallel()
 	expire := func(s *endpointSender, key string) {
 		e := s.images.images[key]
@@ -849,8 +838,8 @@ func TestPhotoWithoutImageGoesAsText(t *testing.T) {
 		wantSent []string
 	}{
 		{"its id refused", photoOutcome{uploadedID: "stale"}, nil,
-			[]fakeReply{{body: unknownFileID}, {body: textSent}}, []string{"stale", "text"}},
-		{"its id expired", photoOutcome{uploadedID: "id"}, expire, []fakeReply{{body: textSent}}, []string{"text"}},
+			[]fakeReply{{body: unknownFileID}, {body: photoSent}}, []string{"stale", "upload"}},
+		{"its id expired", photoOutcome{uploadedID: "id"}, expire, []fakeReply{{body: photoSent}}, []string{"upload"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -875,8 +864,8 @@ func TestPhotoWithoutImageGoesAsText(t *testing.T) {
 			if !slices.Equal(f.sent, tc.wantSent) {
 				t.Errorf("sent %v, want %v", f.sent, tc.wantSent)
 			}
-			if !strings.HasPrefix(f.texts[0], "[[ 🚫 image unavailable ]]") {
-				t.Errorf("text = %q, want it to open with the image-unavailable line", f.texts[0])
+			if !slices.Equal(f.uploads, []string{"placeholder"}) {
+				t.Errorf("uploaded %q, want the placeholder", f.uploads)
 			}
 			if got := hits.Load(); got != 0 {
 				t.Errorf("downloads = %d, want 0", got)
@@ -923,6 +912,8 @@ func TestAdGoesWithItsImageOrNotAtAll(t *testing.T) {
 			if tc.givenUp {
 				s.images.learn(photoOutcome{key: tr.Image, timedOut: true}, time.Now())
 			}
+			// The placeholder has an id, which an ad never takes.
+			s.images.learn(photoOutcome{key: w.tr["test"].ImageUnavailable.Image, uploadedID: "pid"}, time.Now())
 			// Two ads and a text queue while a send is in flight, so a dropped ad has messages behind it.
 			s.cooling = true
 			for _, u := range users[:2] {

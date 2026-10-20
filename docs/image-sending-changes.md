@@ -47,21 +47,21 @@ The list aims to be complete.
   The chat moved behind other chats in the send queue,
   and it got a second copy if the first arrived after all.
 - Now: the bot stops uploading the image for a minute.
+  Its photos meanwhile go by id if the bot has one, else with the placeholder by its id,
+  or else as text opening with "[[ 🚫 image unavailable ]]".
   The timed-out chat keeps its place in the send queue,
-  and gets the caption alone after 2 s, or 3 s in a group or channel,
-  since the photo may have reached it.
-  Other chats meanwhile get the photo by id if the bot has one,
-  or text opening with "[[ 🚫 image unavailable ]]".
+  and gets the same after 2 s, or 3 s in a group or channel.
 - Example: Telegram is slow, and an upload to chat A times out.
   Before, A got the same upload again 10 s later, possibly as a duplicate,
   and chats B and C uploaded too, and could time out as well.
-  Now, A gets the caption, and B and C get the photo by id or the text.
+  Now, A, B and C get the photo by id, the placeholder by id, or the text.
 
-## The placeholder shows only when no id serves the image
+## The placeholder stands in whenever a photo cannot send its image
 
 - Before: a photo whose download failed always showed the placeholder, uploaded each time
-- Now: it shows the real image when the bot holds an id for it.
-  Otherwise it shows the placeholder, sent by id once uploaded.
+- Now: a photo shows its image when the bot holds an id for it or may upload its bytes.
+  Otherwise it shows the placeholder, sent by id once uploaded,
+  and uploaded only while the photo's own image may upload.
 - Example: a site fails for a moment, but another chat uploaded that streamer's image 20 s ago.
   Before, the placeholder; now, the real image by id.
 
@@ -69,7 +69,7 @@ The list aims to be complete.
 
 - Before: the bot sent no ids, so Telegram refused none
 - Now: a 400 "wrong file identifier" is logged as -11.
-  The photo is sent again by a newer id, with its bytes, or as text.
+  The photo is sent again by a newer id, with its bytes, with the placeholder, or as text.
 
 ## An ad goes with its image or not at all
 
@@ -87,7 +87,7 @@ The list aims to be complete.
 - Before: once 1000 fetched batches waited for downloads, the bot hung for good, replies included
 - Now: downloads never block the bot.
   Once the download step holds 100000 messages, a new photo skips the download:
-  it goes with bytes downloaded in the last minute, or as text.
+  it goes with bytes downloaded in the last minute, else with the placeholder, or as text.
 
 ## Logs
 

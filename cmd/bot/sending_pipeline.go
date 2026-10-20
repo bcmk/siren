@@ -103,8 +103,8 @@ func orderLess(a, b queueOrder) bool {
 	return a.seq < b.seq
 }
 
-// setDownloadResult sets the outcome of downloading the photo's image.
-func (q *queuedMessage) setDownloadResult(data []byte, downloadedAt time.Time, failed bool) {
+// setDownloadResult gives the photo its image's bytes, nil when the download failed.
+func (q *queuedMessage) setDownloadResult(data []byte, downloadedAt time.Time) {
 	p := q.message.(*photoParams)
-	p.upload, p.downloadedAt, p.downloadFailed = data, downloadedAt, failed
+	p.downloaded, p.downloadedAt = data, downloadedAt
 }

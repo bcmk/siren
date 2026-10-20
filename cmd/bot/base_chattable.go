@@ -147,17 +147,15 @@ func (m *messageParams) send(ctx context.Context, b *bot.Bot) (*models.Message, 
 type photoParams struct {
 	*bot.SendPhotoParams
 	image *image
-	// sentImage is the image a dispatch sends the photo with:
-	// its own, or the image-unavailable image when its download failed.
+	// sentImage is the image a dispatch sends the photo with: its own, or the placeholder.
 	sentImage *image
 	// fileID names the sent image on Telegram; dispatch sets it when the bot holds one.
 	fileID string
-	// upload holds the bytes a send without an id uploads,
-	// downloaded at downloadedAt for an image from a site.
-	upload       []byte
+	// upload holds the bytes a dispatch uploads when it holds no id.
+	upload []byte
+	// downloaded holds the bytes of an image from a site, downloaded at downloadedAt.
+	downloaded   []byte
 	downloadedAt time.Time
-	// downloadFailed has dispatch show the placeholder.
-	downloadFailed bool
 	// disablePreview is unused by a photo, and kept for the text it may become.
 	disablePreview bool
 	// renderParams is nil when the caption is already final.

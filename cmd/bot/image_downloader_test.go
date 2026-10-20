@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -106,24 +105,22 @@ func TestHeldPhotoHoldsBackWhatFollows(t *testing.T) {
 	}
 }
 
-// A photo reaching a full download step waits for no download and goes as text,
+// A photo reaching a full download step waits for no download and goes with the placeholder,
 // but still takes its image when it downloaded within an imageTTL.
 func TestFullDownloadStepStartsNoDownload(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name       string
 		downloaded bool
-		reply      string
-		wantSent   string
 	}{
-		{"an image to download goes as text", false, textSent, "text"},
-		{"an image downloaded within an imageTTL goes with it", true, photoSent, "upload"},
+		{"an image to download goes with the placeholder", false},
+		{"an image downloaded within an imageTTL goes with it", true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			srv, client, hits := imageServer(t)
-			f := &fakeTelegram{replies: []fakeReply{{body: tc.reply}}}
+			f := &fakeTelegram{replies: []fakeReply{{body: photoSent}}}
 			w, users := photoSendWorker(t, f, client, 101)
 			img := &image{key: srv.URL + "/a.jpg"}
 			if tc.downloaded {
@@ -134,11 +131,11 @@ func TestFullDownloadStepStartsNoDownload(t *testing.T) {
 			w.imageDownloader.size = maxDownloadBacklog
 			queueImages(w, users, []*image{img})
 			completeSends(w, 1)
-			if !slices.Equal(f.sent, []string{tc.wantSent}) {
-				t.Errorf("sent %v, want %s", f.sent, tc.wantSent)
+			if !slices.Equal(f.sent, []string{"upload"}) {
+				t.Fatalf("sent %v, want an upload", f.sent)
 			}
-			if tc.wantSent == "text" && !strings.HasPrefix(f.texts[0], "[[ 🚫 image unavailable ]]") {
-				t.Errorf("text = %q, want it to open with the image-unavailable line", f.texts[0])
+			if placeholder := f.uploads[0] == "placeholder"; placeholder == tc.downloaded {
+				t.Errorf("uploaded the placeholder = %t, want %t", placeholder, !tc.downloaded)
 			}
 			if got := hits.Load(); got != 0 {
 				t.Errorf("downloads = %d, want 0", got)
@@ -328,7 +325,7 @@ func TestDownloadServesLaterPhotos(t *testing.T) {
 			var upload []byte
 			if u := s.queue.byUser[users[1]]; u != nil {
 				p := u.head().message.(*photoParams)
-				upload = p.upload
+				upload = p.downloaded
 				if !p.downloadedAt.Equal(d.downloadedAt) {
 					t.Errorf("the later photo's bytes date from %v, want the download's %v", p.downloadedAt, d.downloadedAt)
 				}

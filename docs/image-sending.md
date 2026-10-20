@@ -46,7 +46,7 @@ A photo is `photoParams` in `cmd/bot/base_chattable.go`.
      Other messages are sent meanwhile.
    - Once the download step holds `maxDownloadBacklog` messages,
      a new photo skips the download.
-     It takes bytes downloaded within an `imageTTL`, or else goes as text.
+     It takes bytes downloaded within an `imageTTL`, or else goes with the placeholder.
    - One download serves the photos queued while it waits or runs,
      or within an `imageTTL` after it, whichever bots they are for
    - A pool runs at most `maxDownloads` downloads at once
@@ -58,12 +58,15 @@ A photo is `photoParams` in `cmd/bot/base_chattable.go`.
 3. When its turn comes, a photo the bot holds a file id for goes by that id and uploads nothing.
 4. Otherwise it uploads the image's bytes:
    a shipped image's, or those downloaded for the photo, however long ago.
-5. A photo with no id, and no bytes it may upload,
+5. A photo with no id, and no bytes it may upload, goes with the image-unavailable placeholder,
+   `res/images/image-unavailable.<lang>.png`, built by `scripts/build-image-unavailable`.
+   That happens when its download failed, when its id was refused or expired after it was queued,
+   when the download step was full as it was queued,
+   or while the bot has stopped uploading its image.
+   In that last case the placeholder goes by its id alone, as uploads are stalling.
+   A photo that cannot send the placeholder either
    goes as text opening with the image-unavailable line.
-   That happens while the bot has stopped uploading its image,
-   when its id was refused or expired after it was queued,
-   or when the download step was full as it was queued.
-   An ad is dropped instead.
+   An ad is dropped instead of either.
 6. Telegram answers an upload with the photo's sizes, and the bot keeps the largest one's file id.
 
 An image from a site shows only in messages queued within `imageTTL`, a minute, of its download,
@@ -75,17 +78,15 @@ A bot keeps an id for `imageIDTTL`, an hour.
 
 ## When it fails
 
-- **The download fails:** the photos waiting for it go with the image-unavailable placeholder,
-  `res/images/image-unavailable.<lang>.png`, built by `scripts/build-image-unavailable`.
+- **The download fails:** the photos waiting for it go with the placeholder.
   A photo the bot gains a file id for meanwhile goes by it instead.
   The next alert of that URL tries again.
 - **Telegram refuses the id:** the photo goes by an id the bot gains meanwhile,
-  uploads the bytes downloaded for it, or else goes as text
+  uploads the bytes downloaded for it, or else goes with the placeholder
 - **The upload times out:** the bot stops uploading the image for an `imageTTL`.
-  Photos of it meanwhile go by a file id, or else as text.
-  The timed-out chat gets its caption alone after `timedOutUploadPostpone`,
-  or `groupCooldown` in a group or channel,
-  since the photo may have reached it.
+  Photos of it meanwhile go by a file id, with the placeholder by its id, or else as text.
+  The timed-out photo goes the same way after `timedOutUploadPostpone`,
+  or `groupCooldown` in a group or channel.
 
 ## Logs
 
