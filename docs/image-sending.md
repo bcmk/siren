@@ -6,6 +6,7 @@ the download step, `cmd/bot/image_downloader.go` (`imageDownloader`),
 then the send step, `cmd/bot/sender.go` (`imageCache`, `trySend`).
 Any other message goes to the send step alone.
 A photo is `photoParams` in `cmd/bot/base_chattable.go`.
+`docs/image-sending.feature` specifies the behaviour as Gherkin scenarios.
 
 ## Telegram's side
 
