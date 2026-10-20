@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v6.3.1 — 2026-10-20
+
+### Fixed
+
+- The image-unavailable placeholder is centered vertically
+
+### Changed
+
+- `go.opentelemetry.io/otel/sdk` is 1.45.0
+
 ## v6.3.0 — 2026-10-20
 
 ### Upgrading
