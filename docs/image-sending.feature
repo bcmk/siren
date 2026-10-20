@@ -84,6 +84,11 @@ Feature: Image sending
       Then the alert goes with the placeholder
       And so does a /pics answer about them, whatever the chat's setting
 
+    Scenario: A /pics answer right after a start
+      Given the bot has started, and the checker has not reported since
+      When a user types /pics
+      Then the answer goes with the placeholder, as no image is known yet
+
     Scenario: A file id gained before the photo's turn beats the placeholder
       Given a photo's image failed to download
       When another chat downloads the image afresh and uploads it before the photo's turn
