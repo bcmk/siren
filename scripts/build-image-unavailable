@@ -19,15 +19,15 @@ render() {
 		<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
 			<rect width="640" height="360" fill="#2a2d33"/>
 			<g fill="none" stroke="#8a909a" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
-				<rect x="266" y="96" width="108" height="84" rx="10"/>
-				<polyline points="280,166 306,136 324,154 338,142 360,166"/>
-				<circle cx="346" cy="118" r="8"/>
+				<rect x="266" y="106" width="108" height="84" rx="10"/>
+				<polyline points="280,176 306,146 324,164 338,152 360,176"/>
+				<circle cx="346" cy="128" r="8"/>
 			</g>
-			<line x1="256" y1="84" x2="384" y2="192" stroke="#2a2d33" stroke-width="18" stroke-linecap="round"/>
-			<line x1="256" y1="84" x2="384" y2="192" stroke="#8a909a" stroke-width="6" stroke-linecap="round"/>
+			<line x1="256" y1="94" x2="384" y2="202" stroke="#2a2d33" stroke-width="18" stroke-linecap="round"/>
+			<line x1="256" y1="94" x2="384" y2="202" stroke="#8a909a" stroke-width="6" stroke-linecap="round"/>
 			<text
 				x="320"
-				y="252"
+				y="262"
 				text-anchor="middle"
 				font-family="Montserrat"
 				font-weight="500"
