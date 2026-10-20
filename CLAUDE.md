@@ -316,9 +316,14 @@
   the primary key `tablename_pkey` and a not-null `tablename_column_not_null`,
   and renaming the table leaves every one of them behind.
 - Name constraints and indexes:
-  foreign keys `fk_<table>_<column>`, check constraints `chk_<table>_<column>`,
-  indexes `ix_<table>_<columns>`, primary keys `<table>_pkey`.
-  Use a unique `ix_` index for uniqueness, not a unique constraint.
+  - Foreign keys `fk_<table>_<column>`
+  - Check constraints `chk_<table>_<column>`
+  - Primary keys `<table>_pkey`
+  - Indexes `ix_<table>_<columns>_<filter>`.
+    The filter names what a `where` tests, e.g. `ix_streamers_nickname_online`,
+    and is left out when it repeats the columns, e.g. `ix_users_migrated_to`.
+    A partial index on `id` alone leaves out the column, e.g. `ix_streamers_status_mismatch`.
+    Use a unique `ix_` index for uniqueness, not a unique constraint.
 - Don't indent continuation lines in multi-line SQL statements.
   What a bracket or a block opens indents one level,
   like a column list or a function's arguments.
