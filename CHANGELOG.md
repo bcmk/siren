@@ -3,6 +3,29 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v6.1.0 — 2026-10-20
+
+### Upgrading
+
+- Prebuild migration 0096 adds `sent_message_log.file_upload`
+
+### Added
+
+- A photo whose image fails to download shows an image-unavailable placeholder
+- `sent_message_log.file_upload` marks the sends that carried an image's bytes
+- `sent_message_log.result` is -11 for a refused file id and -12 for a dropped ad
+
+### Changed
+
+- A bot sends an image by the file id its first upload got, rather than uploading it to every chat
+- Images download in parallel, and a slow one holds back only the messages waiting on it
+- A timed-out upload is not repeated: the bot pauses that image's uploads for a minute
+- An ad goes with its image or not at all
+
+### Fixed
+
+- Migrations 0069–0080 run on PostgreSQL 17
+
 ## v6.0.0 — 2026-10-10
 
 ### Upgrading
