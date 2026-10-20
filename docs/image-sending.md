@@ -26,8 +26,14 @@ A photo is `photoParams` in `cmd/bot/base_chattable.go`.
   Between 01:00 and 01:30 UTC, one `/pics` photo in six timed out while text still got through,
   so large uploads stall when small requests do not.
 
-- A shorter timeout does not help:
-  over the same 40 days, successful `/pics` uploads on the `sc` bot took 4.5 s at p99
+- A request to the Telegram Bot API times out after `telegram_timeout_seconds`, set to 5 s.
+  Over the week to 2026-10-20, with the limit at 10 s,
+  the first photo of a `/pics` answer timed out in 1% of uploads, against 0.5% over 30 days,
+  and took 2.3 s at p99 and 5.5 s at p99.7 when it succeeded.
+  Its latency also counts the send in flight on its bot,
+  so those figures bound the upload from above; retries are left out.
+  A bot sends one message at a time, so a timeout stalls all its sends;
+  5 s halves that stall; at most 0.33% of uploads succeeded after 5 s.
 - `sendPhoto` uploads and delivers in one request.
   The Bot API has no way to upload a photo without sending it,
   so a bot learns an image's id only from a real send.
