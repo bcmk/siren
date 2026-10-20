@@ -78,6 +78,12 @@ Feature: Image sending
 
   Rule: The placeholder stands in whenever a photo cannot send its image
 
+    Scenario: The site reports no image
+      Given a chat with images on
+      When a streamer goes online and the site reports no image of them
+      Then the alert goes with the placeholder
+      And so does a /pics answer about them, whatever the chat's setting
+
     Scenario: A file id gained before the photo's turn beats the placeholder
       Given a photo's image failed to download
       When another chat downloads the image afresh and uploads it before the photo's turn

@@ -396,7 +396,8 @@ func TestDeferredSendableTakesAnImage(t *testing.T) {
 	}
 }
 
-// An online notification queues a photo of its image's URL, once the image downloads.
+// An online notification queues a photo of its image's URL, once the image downloads,
+// or of the placeholder when its site reported none.
 func TestNotificationQueuesImageURL(t *testing.T) {
 	t.Parallel()
 	const nickname = "online_model"
@@ -404,10 +405,12 @@ func TestNotificationQueuesImageURL(t *testing.T) {
 	tests := []struct {
 		name       string
 		showImages bool
-		wantPhoto  bool
+		url        string
+		wantImage  string
 	}{
-		{"with images on it is a photo", true, true},
-		{"with images off it is text", false, false},
+		{"with images on it is a photo", true, url, url},
+		{"with images off it is text", false, url, ""},
+		{"with no image reported it shows the placeholder", true, "", "image-unavailable.en.png"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -419,8 +422,11 @@ func TestNotificationQueuesImageURL(t *testing.T) {
 			cfg := testConfig
 			cfg.ShowImages = tc.showImages
 			w.cfg = &cfg
+			tr := testTranslations
+			tr.ImageUnavailable = &cmdlib.Translation{Image: "image-unavailable.en.png", ImageBytes: []byte("placeholder")}
+			w.tr["test"] = &tr
 			insertTestStreamer(&w.db, db.Streamer{Nickname: nickname, UnconfirmedStatus: cmdlib.StatusOnline})
-			w.unconfirmedOnlineStreamers[nickname] = cmdlib.StreamerInfo{ImageURL: url}
+			w.unconfirmedOnlineStreamers[nickname] = cmdlib.StreamerInfo{ImageURL: tc.url}
 			insertSubscription(&w.db, "test", 1, nickname)
 			w.listOnlineStreamers(testMessage(w, 1, "pics", 100))
 			w.enqueueNotifications(w.db.NewNotifications())
@@ -429,12 +435,56 @@ func TestNotificationQueuesImageURL(t *testing.T) {
 			if q == nil {
 				t.Fatal("nothing was queued")
 			}
-			p, isPhoto := q.message.(*photoParams)
-			if isPhoto != tc.wantPhoto {
-				t.Fatalf("photo = %t, want %t", isPhoto, tc.wantPhoto)
+			var image string
+			if p, ok := q.message.(*photoParams); ok {
+				image = p.image.key
 			}
-			if isPhoto && (p.image.key != url || p.image.data != nil) {
-				t.Errorf("image = %+v, want %s to download", p.image, url)
+			if image != tc.wantImage {
+				t.Errorf("the photo's image = %q, want %q", image, tc.wantImage)
+			}
+		})
+	}
+}
+
+// An online alert to a chat with images on is marked when its site reported no image,
+// so it shows the placeholder; an offline alert and a chat with images off are not.
+func TestBuildNotificationsMarksMissingImage(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		status     cmdlib.StatusKind
+		showImages bool
+		url        string
+		want       bool
+	}{
+		{"an online alert with no image", cmdlib.StatusOnline, true, "", true},
+		{"one with its image", cmdlib.StatusOnline, true, "http://a.jpg", false},
+		{"one to a chat with images off", cmdlib.StatusOnline, false, "", false},
+		{"an offline alert", cmdlib.StatusOffline, true, "", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := newTestWorker()
+			defer w.terminate()
+			w.createDatabase()
+			w.initCache()
+			cfg := testConfig
+			cfg.OfflineNotifications = true
+			w.cfg = &cfg
+			id := insertTestStreamer(&w.db, db.Streamer{Nickname: "s1"})
+			insertSubscription(&w.db, "test", 100, "s1")
+			w.db.MustExec("update users set show_images = $1, offline_notifications = true where chat_id = 100",
+				tc.showImages)
+			w.unconfirmedOnlineStreamers["s1"] = cmdlib.StreamerInfo{ImageURL: tc.url}
+			nots := w.buildNotifications([]db.ConfirmedStatusChange{
+				{StreamerID: id, Nickname: "s1", Status: tc.status, PrevStatus: cmdlib.StatusOnline},
+			}, 1000)
+			if len(nots) != 1 {
+				t.Fatalf("%d notifications, want 1", len(nots))
+			}
+			if nots[0].MissingImage != tc.want {
+				t.Errorf("missing image = %t, want %t", nots[0].MissingImage, tc.want)
 			}
 		})
 	}

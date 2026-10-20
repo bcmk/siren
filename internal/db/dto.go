@@ -17,12 +17,14 @@ type Notification struct {
 	Status   cmdlib.StatusKind
 	TimeDiff *int
 	ImageURL string
-	Viewers  *int
-	ShowKind cmdlib.ShowKind
-	Social   bool
-	Sound    bool
-	Priority Priority
-	Kind     PacketKind
+	// MissingImage marks a notification that should show an image its site did not report.
+	MissingImage bool
+	Viewers      *int
+	ShowKind     cmdlib.ShowKind
+	Social       bool
+	Sound        bool
+	Priority     Priority
+	Kind         PacketKind
 	// Command is the command this notification answers, empty if none.
 	// A deferred reply (an add result, an online-list image)
 	// carries it across the queue,

@@ -46,6 +46,7 @@ A photo is `photoParams` in `cmd/bot/base_chattable.go`.
 ## How a bot sends an image
 
 1. A photo shows an image from a site, downloaded by its URL, or one shipped with the bot.
+   An online alert or a `/pics` answer whose site reported no image shows the placeholder.
 2. A notification enters the send queue only once its image downloads,
    when its photo shows an image from a site that the bot holds no file id for.
    - Until then it holds back its user's notifications behind it on that bot, in order,

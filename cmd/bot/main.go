@@ -817,12 +817,16 @@ func (w *worker) enqueueNotifications(nots []db.Notification) {
 	images := map[string]*image{}
 	for _, p := range plans {
 		var img *image
-		if w.cfg.ShowImages && p.ImageURL != "" {
+		switch {
+		case !w.cfg.ShowImages:
+		case p.ImageURL != "":
 			img = images[p.ImageURL]
 			if img == nil {
 				img = &image{key: p.ImageURL}
 				images[p.ImageURL] = img
 			}
+		case p.MissingImage:
+			img = shippedImage(w.tr[p.Endpoint].ImageUnavailable)
 		}
 		w.notifyOfStatus(p, img)
 	}
@@ -2084,12 +2088,14 @@ func (w *worker) listOnlineStreamers(m receivedMessage) {
 			Nickname:   s.Nickname,
 			Status:     cmdlib.StatusOnline,
 			ImageURL:   info.ImageURL,
-			Viewers:    info.Viewers,
-			ShowKind:   info.ShowKind,
-			TimeDiff:   w.streamerDuration(s, m.timestamp),
-			Kind:       db.ReplyPacket,
-			Command:    m.command,
-			ReplySeq:   m.replySeq,
+			// An answer to /pics shows an image whatever the chat's setting.
+			MissingImage: info.ImageURL == "",
+			Viewers:      info.Viewers,
+			ShowKind:     info.ShowKind,
+			TimeDiff:     w.streamerDuration(s, m.timestamp),
+			Kind:         db.ReplyPacket,
+			Command:      m.command,
+			ReplySeq:     m.replySeq,
 		}
 		if user.ShowSubject {
 			not.Subject = info.Subject
@@ -3780,6 +3786,7 @@ func (w *worker) buildNotifications(
 					Kind:       db.NotificationPacket}
 				if user.ShowImages {
 					n.ImageURL = info.ImageURL
+					n.MissingImage = c.Status == cmdlib.StatusOnline && info.ImageURL == ""
 				}
 				if user.ShowSubject {
 					n.Subject = info.Subject

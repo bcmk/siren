@@ -29,7 +29,7 @@ func (d *Database) NewNotifications() []Notification {
 	d.MustQuery(`
 		select
 			n.id, n.endpoint, u.id, n.streamer_id, s.nickname, n.status,
-			n.time_diff, n.image_url, n.viewers, n.show_kind, n.social, n.priority,
+			n.time_diff, n.image_url, n.missing_image, n.viewers, n.show_kind, n.social, n.priority,
 			n.sound, n.kind, coalesce(n.command, ''), n.reply_seq, n.fields_hint,
 			n.subject, u.silent_messages, u.chat_id, u.chat_type, u.affiliate_params, u.reports
 		from notification_queue n
@@ -48,6 +48,7 @@ func (d *Database) NewNotifications() []Notification {
 			&iter.Status,
 			&iter.TimeDiff,
 			&iter.ImageURL,
+			&iter.MissingImage,
 			&iter.Viewers,
 			&iter.ShowKind,
 			&iter.Social,
@@ -86,6 +87,7 @@ func (d *Database) StoreNotifications(nots []Notification) {
 				status,
 				time_diff,
 				image_url,
+				missing_image,
 				viewers,
 				show_kind,
 				social,
@@ -97,9 +99,9 @@ func (d *Database) StoreNotifications(nots []Notification) {
 				fields_hint,
 				subject
 			)
-			values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+			values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 			/*name='store_notifications'*/`,
-			n.Endpoint, int64(n.UserID), n.StreamerID, n.Status, n.TimeDiff, n.ImageURL, n.Viewers,
+			n.Endpoint, int64(n.UserID), n.StreamerID, n.Status, n.TimeDiff, n.ImageURL, n.MissingImage, n.Viewers,
 			n.ShowKind, n.Social, n.Priority, n.Sound, n.Kind, nullableCommand(n.Command), n.ReplySeq,
 			n.FieldsHint, n.Subject,
 		)

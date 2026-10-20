@@ -147,6 +147,8 @@ var testTranslations = cmdlib.Translations{
 		Str:   "FieldsCustomizationHint",
 		Parse: cmdlib.ParseRaw,
 	},
+	// It ships no image, so a photo without one goes as text.
+	ImageUnavailable: &cmdlib.Translation{Key: "image_unavailable", Str: "ImageUnavailable", Parse: cmdlib.ParseRaw},
 }
 
 // noNetwork fails every request, so a test's image downloads fail at once.
