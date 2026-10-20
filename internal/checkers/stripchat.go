@@ -75,10 +75,11 @@ type stripchatResponse struct {
 
 type onlineModel struct {
 	Username string `json:"username"`
+	Status   string `json:"status"`
 }
 
 type onlineResponse struct {
-	Models map[string]onlineModel `json:"models"`
+	Models map[int64]onlineModel `json:"models"`
 }
 
 type stripchatUserIDResponse struct {
@@ -111,6 +112,11 @@ func stripchatShowKind(status string) cmdlib.ShowKind {
 		return cmdlib.ShowPrivate
 	}
 	return cmdlib.ShowUnknown
+}
+
+// stripchatImageURL returns the latest snapshot, which the CDN serves for any recent timestamp
+func stripchatImageURL(id int64) string {
+	return fmt.Sprintf("https://img.doppiocdn.com/thumbs/%d/%d", time.Now().Unix(), id)
 }
 
 // QueryStatus checks Stripchat model status
@@ -174,8 +180,7 @@ func (c *StripchatChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithS
 		if s.ID == user.ID {
 			return cmdlib.StreamerInfoWithStatus{
 				StreamerInfo: cmdlib.StreamerInfo{
-					// The CDN serves the latest snapshot for any recent timestamp
-					ImageURL: fmt.Sprintf("https://img.doppiocdn.com/thumbs/%d/%d", time.Now().Unix(), user.ID),
+					ImageURL: stripchatImageURL(user.ID),
 					ShowKind: stripchatShowKind(s.Status),
 				},
 				Status: cmdlib.StatusOnline,
@@ -240,11 +245,15 @@ func (c *StripchatChecker) checkOnlyOnline() (map[string]cmdlib.StreamerInfo, er
 		return nil, fmt.Errorf("cannot parse response, %v", err)
 	}
 	cmdlib.Ldbg("models count in the response: %d", len(parsed.Models))
-	for _, m := range parsed.Models {
+	// Every online model, with an image and show kind in case the models endpoint omits it
+	for id, m := range parsed.Models {
 		if m.Username != "" {
 			modelID := strings.ToLower(m.Username)
 			if _, ok := streamers[modelID]; !ok {
-				streamers[modelID] = cmdlib.StreamerInfo{}
+				streamers[modelID] = cmdlib.StreamerInfo{
+					ImageURL: stripchatImageURL(id),
+					ShowKind: stripchatShowKind(m.Status),
+				}
 			}
 		}
 	}
@@ -274,6 +283,10 @@ func (c *StripchatChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInf
 		q.Set("userId", userID)
 		q.Set("modelsList", modelIDs)
 		q.Set("strict", "1")
+		// Without status, the endpoint returns public models only
+		q.Set("status", "public,groupShow,private,p2p,p2pVoice,virtualPrivate")
+		// Otherwise the endpoint hides models geobanned where the bot runs
+		q.Set("applyGeobans", "0")
 		q.Set("limit", strconv.Itoa(len(chunk)))
 
 		request.RawQuery = q.Encode()
