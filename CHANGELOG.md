@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v6.2.0 — 2026-10-20
+
+### Changed
+
+- A photo that cannot send its own image goes with the image-unavailable placeholder,
+  by id or upload, and as text only when it cannot send that either
+- While an image's uploads are paused after a timeout, the placeholder goes by id alone
+- A photo whose upload timed out is retried that way, rather than as its bare caption
+
 ## v6.1.0 — 2026-10-20
 
 ### Upgrading
