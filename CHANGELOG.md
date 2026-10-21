@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v6.4.0 — 2026-10-22
+
+### Added
+
+- A Stripchat or xHamster Live link works in place of a nickname
+
+### Fixed
+
+- Stripchat streamers in private and group shows get their image and show kind again
+- Stripchat streamers geobanned where the bot runs get their image, viewer count and show kind
+
 ## v6.3.1 — 2026-10-20
 
 ### Fixed
