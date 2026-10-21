@@ -268,6 +268,8 @@
   chained commands trigger extra permission prompts.
   Run commands one after another instead.
 - Put loops, variables and conditionals in `python3 - <<'PY'`, not in the shell
+- Environment variables `XIREN_PROXY_1`, `XIREN_PROXY_2` and so on hold proxies.
+  You can send requests through any that is set.
 
 ## Database
 
