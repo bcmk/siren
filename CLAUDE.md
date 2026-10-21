@@ -393,6 +393,8 @@ Call what a message shows an image, and the Telegram message carrying one a phot
   in `res/translations/` (punctuation, commands, parse modes, en/ru sync).
 - Read `docs/load-testing.md` before changing the checker-only mode (`checker_only`),
   which runs a bot with no endpoints and no deliveries
+- Read `docs/online-streamer-list-coverage.md` before changing a checker's online list query,
+  and measure how the change moves coverage
 
 ## Skills
 
