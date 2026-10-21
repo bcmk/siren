@@ -35,7 +35,8 @@
   Commit each round of work as it finishes,
   rather than carrying it uncommitted and reporting that it is.
 - After a mistake is corrected, ask if a new guideline
-  should be added to CLAUDE.md to prevent it in the future
+  should be added to CLAUDE.md to prevent it in the future.
+  During a review, propose the guideline as a finding instead.
 - Before modifying a file using an ad-hoc script (e.g. `sed`),
   `git add` it first so the pre-script state can be restored.
   This includes new untracked files
@@ -252,6 +253,7 @@
 - Look hard at comments and docs in a review.
   A line that is vague, ambiguous, hard to parse, or reads as machine-written is a finding,
   and so is one that could say the same in fewer words.
+  A doc must hold for every case its scope claims, not only the one it was written from.
 - Always look for simplifications, in fix checks and new code as much as in the reviewed diff
 - A hunk the feature does not need is a finding, even when it is harmless
 
