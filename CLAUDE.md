@@ -219,6 +219,8 @@
   unless specifically asked for memory files
 - When doing a code review, only report findings;
   never fix anything automatically. Fix only when explicitly asked.
+- When reporting on findings you were asked to fix,
+  list the fixed and the declined ones separately
 - When a comment at or near the code documents a choice as deliberate,
   that is the answer, not context.
   Do not report a finding against it unless you can show
