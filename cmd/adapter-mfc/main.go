@@ -749,12 +749,12 @@ func (s *wsSession) requestNameLookup(ctx context.Context, uid int) error {
 }
 
 // lookupByName sends an FCTYPE.USERNAMELOOKUP whose payload is a username
-// (MFC accepts either uid or name in that slot) and waits for the matching
-// reply. Unlike requestNameLookup, the response is delivered straight to
-// this caller via the pending-qid registry; the snapshot is left untouched
-// so HTTP existence checks for offline models do not pollute the online
-// list. Returns the full reply message (including the notFound flag) so
-// the caller can distinguish MFC's two not-found shapes.
+// (MFC accepts either uid or name in that slot) and waits for the matching reply.
+// Unlike requestNameLookup, the reply skips the snapshot and goes straight to this caller,
+// so HTTP existence checks for offline models do not pollute the online list.
+// A reply arriving after the caller gave up reaches the snapshot like any other.
+// Returns the full reply message (including the notFound flag)
+// so the caller can distinguish MFC's two not-found shapes.
 func (s *wsSession) lookupByName(ctx context.Context, name string) (*lookupResponseMsg, error) {
 	qid := s.nextQueryID.Add(1)
 	ch := s.registerPendingLookup(qid)
