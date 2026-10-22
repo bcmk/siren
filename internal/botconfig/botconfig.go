@@ -61,6 +61,7 @@ type Config struct {
 	AffiliateBase                   string                    `mapstructure:"affiliate_base"`                     // affiliate redirect base, e.g. https://siren.chat/out/cb
 	EnableCustomAffiliateLink       bool                      `mapstructure:"enable_custom_affiliate_link"`       // let chats set their own affiliate link, defaults to true
 	TelegramTimeoutSeconds          int                       `mapstructure:"telegram_timeout_seconds"`           // the timeout for Telegram queries
+	TelegramKeepAlivePeriodSeconds  int                       `mapstructure:"telegram_keep_alive_period_seconds"` // the period of the keep-alive getMe calls, below 90, 0 disables, defaults to 30
 	ImageDownloadTimeoutSeconds     int                       `mapstructure:"image_download_timeout_seconds"`     // the timeout for image downloads, defaults to 5
 	MaxSubscriptionsForPics         int                       `mapstructure:"max_subscriptions_for_pics"`         // the maximum amount of subscriptions for pics in a group chat
 	SubsConfirmationPeriodSeconds   int                       `mapstructure:"subs_confirmation_period_seconds"`   // subscriptions confirmation period
@@ -88,12 +89,13 @@ func ReadConfig(cfgPath string) *Config {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 	cfg := &Config{
-		ShowImages:                true,
-		AdChancePercent:           20,
-		FieldsHintChancePercent:   10,
-		EnableCustomAffiliateLink: true,
-		BotLinkPeriod:             12,
-		BlockedSendThreshold:      100,
+		ShowImages:                     true,
+		AdChancePercent:                20,
+		FieldsHintChancePercent:        10,
+		EnableCustomAffiliateLink:      true,
+		BotLinkPeriod:                  12,
+		BlockedSendThreshold:           100,
+		TelegramKeepAlivePeriodSeconds: 30,
 	}
 	cmdlib.BindEnvForConfig(v, cfg)
 	checkErr(v.Unmarshal(&cfg, cmdlib.StrictConfigDecoder))
@@ -166,6 +168,12 @@ func checkConfig(cfg *Config) error {
 	if cfg.TelegramTimeoutSeconds == 0 {
 		return errors.New("configure telegram_timeout_seconds")
 	}
+	// A period at or past the idle timeout lets the client close the connection between calls.
+	if cfg.TelegramKeepAlivePeriodSeconds < 0 || cfg.TelegramKeepAlivePeriod() >= cmdlib.IdleConnTimeout {
+		return fmt.Errorf(
+			"configure telegram_keep_alive_period_seconds from 0 to %d",
+			int(cmdlib.IdleConnTimeout.Seconds())-1)
+	}
 	if cfg.ImageDownloadTimeoutSeconds == 0 {
 		cfg.ImageDownloadTimeoutSeconds = 5
 	}
@@ -226,6 +234,11 @@ func (c *Config) BuySubsEnabled() bool {
 // TelegramTimeout returns the configured Telegram HTTP timeout.
 func (c *Config) TelegramTimeout() time.Duration {
 	return time.Duration(c.TelegramTimeoutSeconds) * time.Second
+}
+
+// TelegramKeepAlivePeriod returns the configured period of the keep-alive getMe calls.
+func (c *Config) TelegramKeepAlivePeriod() time.Duration {
+	return time.Duration(c.TelegramKeepAlivePeriodSeconds) * time.Second
 }
 
 // ImageDownloadTimeout returns the configured image download HTTP timeout.

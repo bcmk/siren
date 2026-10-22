@@ -10,6 +10,9 @@ import (
 	"time"
 )
 
+// IdleConnTimeout is how long a client keeps an idle connection.
+const IdleConnTimeout = 90 * time.Second
+
 // NoRedirect tells HTTP client not to redirect
 func NoRedirect(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 
@@ -38,7 +41,7 @@ func httpClient(timeout time.Duration, proxy func(*http.Request) (*url.URL, erro
 			}).DialContext,
 			ForceAttemptHTTP2:     true,
 			MaxIdleConns:          10,
-			IdleConnTimeout:       http.DefaultTransport.(*http.Transport).IdleConnTimeout,
+			IdleConnTimeout:       IdleConnTimeout,
 			TLSHandshakeTimeout:   timeout,
 			ExpectContinueTimeout: time.Duration(0),
 			TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},

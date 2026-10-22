@@ -276,6 +276,11 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 
 	incomingPackets := make(chan incomingPacket, incomingBufferSize*len(cfg.Endpoints))
 	telegramClient := cmdlib.HTTPClientWithTimeout(cfg.TelegramTimeout())
+	// Pings close a connection that died silently, which the keep-alive keeps from going idle.
+	telegramClient.Transport.(*http.Transport).HTTP2 = &http.HTTP2Config{
+		SendPingTimeout: 15 * time.Second,
+		PingTimeout:     5 * time.Second,
+	}
 	bots := make(map[string]*bot.Bot)
 	// Fresh webhook secret tokens each startup; single replica only.
 	secretTokens := make(map[string]string)
@@ -4561,6 +4566,23 @@ func (w *worker) newStartupTimers() startupTimers {
 	return timers
 }
 
+// keepTelegramConnection keeps the shared Telegram connection open with periodic getMe calls.
+// The HTTP client closes a connection idle for 90 s, and the first send on a new one often hangs.
+func (w *worker) keepTelegramConnection(ctx context.Context, b *bot.Bot) {
+	ticker := time.NewTicker(w.cfg.TelegramKeepAlivePeriod())
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if _, err := b.GetMe(ctx); err != nil && ctx.Err() == nil {
+				linf("keep-alive getMe failed: %v", err)
+			}
+		}
+	}
+}
+
 // finishStartup completes the loop-owned initialization
 // once the database is ready: the periodic timers, the checker daemon,
 // signal handling, the queued we-are-up replies, and the payment gate.
@@ -4643,6 +4665,12 @@ func main() {
 	w.setDefaultAdminRights()
 	w.initBotNames()
 	w.serveEndpoints()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// checker_only builds no bots, so it runs no keep-alive.
+	if b, ok := w.bots[w.cfg.OwnerEndpoint]; ok && w.cfg.TelegramKeepAlivePeriodSeconds > 0 {
+		go w.keepTelegramConnection(ctx, b)
+	}
 	incoming := w.incoming()
 	go w.fuzzySearchDaemon()
 	// MaintenancePacket: the loop consumes its send result
@@ -4668,8 +4696,6 @@ func main() {
 		databaseDone <- true
 	}()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	waitingUsers := map[waitingUser]bool{}
 	// The timers stay nil until the database is ready,
 	// keeping every database-touching select arm dormant.

@@ -1,6 +1,10 @@
 package botconfig
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/bcmk/siren/v6/lib/cmdlib"
+)
 
 func TestValidateSubsTiers(t *testing.T) {
 	tests := []struct {
@@ -205,8 +209,9 @@ func TestCheckConfigCheckerOnly(t *testing.T) {
 	}
 }
 
-// TestCheckConfigBoundsThePeriods pins the three tick periods as positive:
-// the bot's ticker panics on a non-positive one.
+// TestCheckConfigBoundsThePeriods pins the three tick periods as positive,
+// since the bot's ticker panics on a non-positive one.
+// It holds the keep-alive period non-negative and below the idle timeout.
 func TestCheckConfigBoundsThePeriods(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -221,13 +226,21 @@ func TestCheckConfigBoundsThePeriods(t *testing.T) {
 			name:   "negative notifications_ready_period_seconds",
 			mangle: func(c *Config) { c.NotificationsReadyPeriodSeconds = -1 },
 		},
+		{
+			name:   "negative telegram_keep_alive_period_seconds",
+			mangle: func(c *Config) { c.TelegramKeepAlivePeriodSeconds = -1 },
+		},
+		{
+			name:   "telegram_keep_alive_period_seconds at the idle timeout",
+			mangle: func(c *Config) { c.TelegramKeepAlivePeriodSeconds = int(cmdlib.IdleConnTimeout.Seconds()) },
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := validConfig(validEndpoint())
 			tt.mangle(cfg)
 			if err := checkConfig(cfg); err == nil {
-				t.Error("a negative period was accepted")
+				t.Error("an out-of-bounds period was accepted")
 			}
 		})
 	}
