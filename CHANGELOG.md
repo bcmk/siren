@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v6.4.2 — 2026-10-22
+
+### Fixed
+
+- A quiet bot keeps its connection to Telegram open with a `getMe` every 30 s,
+  set by `telegram_keep_alive_period_seconds`
+- A bot drops a Telegram connection that stops answering HTTP/2 pings
+
 ## v6.4.0 — 2026-10-22
 
 ### Added
