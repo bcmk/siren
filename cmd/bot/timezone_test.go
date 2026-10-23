@@ -459,7 +459,6 @@ func settingsData(timezoneSet bool) tplData {
 		"show_images":                     true,
 		"offline_notifications_supported": true,
 		"offline_notifications":           true,
-		"subject_supported":               true,
 		"show_subject":                    true,
 		"silent_messages":                 false,
 		"in_group":                        false,

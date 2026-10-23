@@ -1628,7 +1628,6 @@ func (w *worker) settings(m receivedMessage) {
 		"show_images":                     user.ShowImages,
 		"offline_notifications_supported": w.cfg.OfflineNotifications,
 		"offline_notifications":           user.OfflineNotifications,
-		"subject_supported":               w.checker.Capabilities().SupportsSubject,
 		"show_subject":                    user.ShowSubject,
 		"silent_messages":                 user.SilentMessages,
 		"in_group":                        isGroup(user),
@@ -3330,9 +3329,10 @@ func (w *worker) commandEnabled(command string) bool {
 	return ok && (spec.enabled == nil || spec.enabled(w))
 }
 
-func (w *worker) buySubsEnabled() bool { return w.cfg.BuySubsEnabled() }
-func (w *worker) weekEnabled() bool    { return w.cfg.EnableWeek }
-func (w *worker) monthEnabled() bool   { return w.cfg.EnableMonth }
+func (w *worker) buySubsEnabled() bool   { return w.cfg.BuySubsEnabled() }
+func (w *worker) weekEnabled() bool      { return w.cfg.EnableWeek }
+func (w *worker) monthEnabled() bool     { return w.cfg.EnableMonth }
+func (w *worker) subjectSupported() bool { return w.checker.Capabilities().SupportsSubject }
 
 var knownCommands = map[string]commandSpec{
 	"ad":                            {},
@@ -3343,12 +3343,12 @@ var knownCommands = map[string]commandSpec{
 	"disable_member_subscriptions":  {groupAdminOnly: true},
 	"disable_offline_notifications": {groupAdminOnly: true},
 	"disable_silent_messages":       {groupAdminOnly: true},
-	"disable_subject":               {groupAdminOnly: true},
+	"disable_subject":               {groupAdminOnly: true, enabled: (*worker).subjectSupported},
 	"enable_images":                 {groupAdminOnly: true},
 	"enable_member_subscriptions":   {groupAdminOnly: true},
 	"enable_offline_notifications":  {groupAdminOnly: true},
 	"enable_silent_messages":        {groupAdminOnly: true},
-	"enable_subject":                {groupAdminOnly: true},
+	"enable_subject":                {groupAdminOnly: true, enabled: (*worker).subjectSupported},
 	"faq":                           {},
 	"feedback":                      {},
 	"help":                          {},

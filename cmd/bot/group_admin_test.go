@@ -143,6 +143,8 @@ func TestDisabledCommandAnswersUnknown(t *testing.T) {
 		{name: "buy_subs", chatID: 10, command: "buy_subs"},
 		{name: "affiliate from a group member", chatID: -10, command: "affiliate"},
 		{name: "reset_affiliate from a group member", chatID: -10, command: "reset_affiliate"},
+		{name: "subject in a private chat", chatID: 10, command: "enable_subject"},
+		{name: "subject from a group member", chatID: -10, command: "enable_subject"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

@@ -267,7 +267,7 @@ settings:
       {{- end -}}
     {{- end -}}
 
-    {{- if .subject_supported -}}
+    {{- if command_enabled "enable_subject" -}}
       {{- print "\n" -}}
       {{- print "\n" -}}
       Показывать тему комнаты: <b>{{ template "yes_no" .show_subject }}</b>
