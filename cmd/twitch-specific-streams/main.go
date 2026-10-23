@@ -15,6 +15,11 @@ var verbose = flag.Bool("v", false, "verbose output")
 var checkerCfgPath = flag.String("checker-config", "", "path to twitch-checker.json (overrides default search)")
 
 func main() {
+	os.Exit(run())
+}
+
+// run prints the online channels among the arguments and returns the exit status
+func run() int {
 	flag.Usage = func() {
 		fmt.Fprintf(
 			os.Stderr,
@@ -32,33 +37,34 @@ func main() {
 	cmdlib.SetVerbosity(*verbose)
 	if flag.NArg() == 0 {
 		flag.Usage()
-		os.Exit(2)
+		return 2
 	}
 
 	checker, err := checkers.New("twitch")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	caps := checker.Capabilities()
 	if !caps.SupportsCLI {
 		fmt.Fprintln(os.Stderr, "twitch is not supported in CLI tools")
-		os.Exit(1)
+		return 1
 	}
 	if !caps.SupportsQueryFixedListOnlineStreamers {
 		fmt.Fprintln(os.Stderr, "fixed-list online query is not supported for twitch")
-		os.Exit(1)
+		return 1
 	}
 	if err := checker.Init(*checkerCfgPath); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	channels, err := checker.QueryFixedListOnlineStreamers(flag.Args(), cmdlib.CheckStatuses)
 	if err != nil {
 		fmt.Printf("error occurred: %v\n", err)
-		return
+		return 0
 	}
 	for channel, info := range channels {
 		fmt.Printf("%s %s\n", channel, info.ImageURL)
 	}
+	return 0
 }

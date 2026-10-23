@@ -15,6 +15,11 @@ var verbose = flag.Bool("v", false, "verbose output")
 var checkerCfgPath = flag.String("checker-config", "", "path to <site>-checker.json (overrides default search)")
 
 func main() {
+	os.Exit(run())
+}
+
+// run checks one streamer and returns the exit status
+func run() int {
 	flag.Usage = func() {
 		fmt.Fprintf(
 			os.Stderr,
@@ -34,7 +39,7 @@ func main() {
 	cmdlib.SetVerbosity(*verbose)
 	if flag.NArg() != 2 {
 		flag.Usage()
-		os.Exit(2)
+		return 2
 	}
 	site := flag.Arg(0)
 	modelID := flag.Arg(1)
@@ -42,31 +47,31 @@ func main() {
 	checker, err := checkers.New(site)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	caps := checker.Capabilities()
 	if !caps.SupportsCLI {
 		fmt.Fprintf(os.Stderr, "%s is not supported in CLI tools\n", site)
-		os.Exit(1)
+		return 1
 	}
 	if !caps.SupportsQueryStreamer {
 		fmt.Fprintf(os.Stderr, "single check is not supported for %s\n", site)
-		os.Exit(1)
+		return 1
 	}
 	if err := checker.Init(*checkerCfgPath); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	modelID = checker.NicknamePreprocessing(modelID)
 	if !checker.NicknameRegexp().MatchString(modelID) {
 		fmt.Fprintln(os.Stderr, "invalid model ID")
-		os.Exit(1)
+		return 1
 	}
 	info, err := checker.QueryStreamer(modelID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	fmt.Println(info.Status)
 	if info.ImageURL != "" {
@@ -81,4 +86,5 @@ func main() {
 	if info.Subject != "" {
 		fmt.Printf("subject: %s\n", info.Subject)
 	}
+	return 0
 }

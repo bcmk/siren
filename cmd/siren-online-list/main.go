@@ -15,6 +15,11 @@ var verbose = flag.Bool("v", false, "verbose output")
 var checkerCfgPath = flag.String("checker-config", "", "path to <site>-checker.json (overrides default search)")
 
 func main() {
+	os.Exit(run())
+}
+
+// run prints the online streamers and returns the exit status
+func run() int {
 	flag.Usage = func() {
 		fmt.Fprintf(
 			os.Stderr,
@@ -34,34 +39,35 @@ func main() {
 	cmdlib.SetVerbosity(*verbose)
 	if flag.NArg() != 1 {
 		flag.Usage()
-		os.Exit(2)
+		return 2
 	}
 	site := flag.Arg(0)
 
 	checker, err := checkers.New(site)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	caps := checker.Capabilities()
 	if !caps.SupportsCLI {
 		fmt.Fprintf(os.Stderr, "%s is not supported in CLI tools\n", site)
-		os.Exit(1)
+		return 1
 	}
 	if !caps.SupportsQueryOnlineStreamers {
 		fmt.Fprintf(os.Stderr, "online list is not supported for %s\n", site)
-		os.Exit(1)
+		return 1
 	}
 	if err := checker.Init(*checkerCfgPath); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	streamers, err := checker.QueryOnlineStreamers()
 	if err != nil {
 		fmt.Printf("error occurred: %v\n", err)
-		return
+		return 0
 	}
 	for model, info := range streamers {
 		fmt.Printf("%s %s\n", model, info.ImageURL)
 	}
+	return 0
 }

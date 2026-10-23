@@ -73,6 +73,11 @@ const (
 )
 
 func main() {
+	os.Exit(run())
+}
+
+// run serves or prints the MFC online list and returns the exit status
+func run() int {
 	cfg := readConfig()
 	switch {
 	case cfg.Trace:
@@ -88,21 +93,25 @@ func main() {
 
 	client := cmdlib.HTTPClientWithTimeout(time.Duration(cfg.TimeoutSeconds) * time.Second)
 
-	if !*daemonMode {
-		runOnceMode(rootCtx, cfg, client)
-		return
+	var err error
+	if *daemonMode {
+		err = runDaemonMode(rootCtx, cfg, client)
+	} else {
+		err = runOnceMode(rootCtx, cfg, client)
 	}
-	if err := runDaemonMode(rootCtx, cfg, client); err != nil {
+	if err != nil {
 		cmdlib.Lerr("%v", err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
-// runOnceMode fetches the bulk online list once, prints it to stdout in the
-// "<nickname> <image_url>" format used by siren-online-list, and exits.
+// runOnceMode fetches the bulk online list once and prints it to stdout in the
+// "<nickname> <image_url>" format used by siren-online-list.
+// It returns nil on success or on a SIGINT/SIGTERM cancel.
 // An overall deadline (from --once-timeout) caps dial-through-bulk so a
 // dead upstream can't hang the process indefinitely.
-func runOnceMode(ctx context.Context, cfg *config, client *http.Client) {
+func runOnceMode(ctx context.Context, cfg *config, client *http.Client) error {
 	if *onceTimeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, *onceTimeout)
@@ -131,22 +140,21 @@ func runOnceMode(ctx context.Context, cfg *config, client *http.Client) {
 		// deadline-exceeded ctx is the --once-timeout firing — that's a
 		// real failure, fall through and report it.
 		if errors.Is(ctx.Err(), context.Canceled) {
-			return
+			return nil
 		}
-		cmdlib.Lerr("%v", err)
-		os.Exit(1)
+		return err
 	}
 	streamers, ok := snap.collectIfReady()
 	if !ok {
 		panic("unreachable: stop implies bulkApplied")
 	}
 	if len(streamers) == 0 {
-		cmdlib.Lerr("bulk produced no streamers with resolved names")
-		os.Exit(1)
+		return errors.New("bulk produced no streamers with resolved names")
 	}
 	for _, nickname := range slices.Sorted(maps.Keys(streamers)) {
 		fmt.Printf("%s %s\n", nickname, streamers[nickname].ImageURL)
 	}
+	return nil
 }
 
 // runDaemonMode runs the long-lived websocket reader and HTTP server. It
