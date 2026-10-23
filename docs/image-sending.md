@@ -22,10 +22,7 @@ A photo is `photoParams` in `cmd/bot/base_chattable.go`.
   | Ads, mostly text                      | 0.01%        |
 
   The photo rows carry 80% of the sends and 96% of the timeouts.
-  On the `sc` bot, over the 40 days to 2026-10-17,
-  calls to Telegram timed out every night at about 01:11–01:19 UTC.
-  Between 01:00 and 01:30 UTC, one `/pics` photo in six timed out while text still got through,
-  so large uploads stall when small requests do not.
+  Uploads time out most often in the nightly window described in `docs/telegram-send-stalls.md`.
 
 - A request to the Telegram Bot API times out after `telegram_timeout_seconds`, set to 5 s.
   Over the week to 2026-10-20, with the limit at 10 s,
