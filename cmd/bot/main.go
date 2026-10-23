@@ -1623,19 +1623,18 @@ func (w *worker) settings(m receivedMessage) {
 	user := w.mustUserByID(m.userID)
 	_, zone := w.chatLocation(user)
 	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Settings, tplData{
-		"subscriptions_used":              subscriptionsNumber,
-		"total_subscriptions":             user.MaxSubs,
-		"show_images":                     user.ShowImages,
-		"offline_notifications_supported": w.cfg.OfflineNotifications,
-		"offline_notifications":           user.OfflineNotifications,
-		"show_subject":                    user.ShowSubject,
-		"silent_messages":                 user.SilentMessages,
-		"in_group":                        isGroup(user),
-		"member_subscriptions":            user.MemberSubscriptions,
-		"timezone":                        zone,
-		"timezone_set":                    user.Timezone != nil,
-		"can_manage_affiliate":            w.commandEnabled("affiliate") && isGroupOrChannel(user.ChatID),
-		"affiliate_params":                w.gatedAffiliate(user.AffiliateParams),
+		"subscriptions_used":    subscriptionsNumber,
+		"total_subscriptions":   user.MaxSubs,
+		"show_images":           user.ShowImages,
+		"offline_notifications": user.OfflineNotifications,
+		"show_subject":          user.ShowSubject,
+		"silent_messages":       user.SilentMessages,
+		"in_group":              isGroup(user),
+		"member_subscriptions":  user.MemberSubscriptions,
+		"timezone":              zone,
+		"timezone_set":          user.Timezone != nil,
+		"can_manage_affiliate":  w.commandEnabled("affiliate") && isGroupOrChannel(user.ChatID),
+		"affiliate_params":      w.gatedAffiliate(user.AffiliateParams),
 	})
 }
 
@@ -3329,10 +3328,11 @@ func (w *worker) commandEnabled(command string) bool {
 	return ok && (spec.enabled == nil || spec.enabled(w))
 }
 
-func (w *worker) buySubsEnabled() bool   { return w.cfg.BuySubsEnabled() }
-func (w *worker) weekEnabled() bool      { return w.cfg.EnableWeek }
-func (w *worker) monthEnabled() bool     { return w.cfg.EnableMonth }
-func (w *worker) subjectSupported() bool { return w.checker.Capabilities().SupportsSubject }
+func (w *worker) buySubsEnabled() bool              { return w.cfg.BuySubsEnabled() }
+func (w *worker) weekEnabled() bool                 { return w.cfg.EnableWeek }
+func (w *worker) monthEnabled() bool                { return w.cfg.EnableMonth }
+func (w *worker) subjectSupported() bool            { return w.checker.Capabilities().SupportsSubject }
+func (w *worker) offlineNotificationsEnabled() bool { return w.cfg.OfflineNotifications }
 
 var knownCommands = map[string]commandSpec{
 	"ad":                            {},
@@ -3341,12 +3341,12 @@ var knownCommands = map[string]commandSpec{
 	"buy_subs":                      {enabled: (*worker).buySubsEnabled},
 	"disable_images":                {groupAdminOnly: true},
 	"disable_member_subscriptions":  {groupAdminOnly: true},
-	"disable_offline_notifications": {groupAdminOnly: true},
+	"disable_offline_notifications": {groupAdminOnly: true, enabled: (*worker).offlineNotificationsEnabled},
 	"disable_silent_messages":       {groupAdminOnly: true},
 	"disable_subject":               {groupAdminOnly: true, enabled: (*worker).subjectSupported},
 	"enable_images":                 {groupAdminOnly: true},
 	"enable_member_subscriptions":   {groupAdminOnly: true},
-	"enable_offline_notifications":  {groupAdminOnly: true},
+	"enable_offline_notifications":  {groupAdminOnly: true, enabled: (*worker).offlineNotificationsEnabled},
 	"enable_silent_messages":        {groupAdminOnly: true},
 	"enable_subject":                {groupAdminOnly: true, enabled: (*worker).subjectSupported},
 	"faq":                           {},

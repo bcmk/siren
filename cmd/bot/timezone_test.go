@@ -454,19 +454,18 @@ func TestSettingsReportsTheZone(t *testing.T) {
 // settingsData is what worker.settings hands the template.
 func settingsData(timezoneSet bool) tplData {
 	return tplData{
-		"subscriptions_used":              1,
-		"total_subscriptions":             3,
-		"show_images":                     true,
-		"offline_notifications_supported": true,
-		"offline_notifications":           true,
-		"show_subject":                    true,
-		"silent_messages":                 false,
-		"in_group":                        false,
-		"member_subscriptions":            false,
-		"timezone":                        "Europe/Berlin",
-		"timezone_set":                    timezoneSet,
-		"can_manage_affiliate":            false,
-		"affiliate_params":                nil,
+		"subscriptions_used":    1,
+		"total_subscriptions":   3,
+		"show_images":           true,
+		"offline_notifications": true,
+		"show_subject":          true,
+		"silent_messages":       false,
+		"in_group":              false,
+		"member_subscriptions":  false,
+		"timezone":              "Europe/Berlin",
+		"timezone_set":          timezoneSet,
+		"can_manage_affiliate":  false,
+		"affiliate_params":      nil,
 	}
 }
 

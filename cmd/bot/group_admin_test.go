@@ -145,6 +145,12 @@ func TestDisabledCommandAnswersUnknown(t *testing.T) {
 		{name: "reset_affiliate from a group member", chatID: -10, command: "reset_affiliate"},
 		{name: "subject in a private chat", chatID: 10, command: "enable_subject"},
 		{name: "subject from a group member", chatID: -10, command: "enable_subject"},
+		{
+			name:      "offline notifications turned off",
+			chatID:    10,
+			command:   "enable_offline_notifications",
+			configure: func(c *botconfig.Config) { c.OfflineNotifications = false },
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -209,6 +215,9 @@ func TestRepliesNameNoDisabledCommand(t *testing.T) {
 				w.createDatabase()
 				w.initCache()
 				w.initTimezones()
+				cfg := *w.cfg
+				cfg.OfflineNotifications = false
+				w.cfg = &cfg
 				w.loadTranslations(siteTranslations(set.site, set.lang))
 				w.chatMember = func(string, int64, int64) (*models.ChatMember, error) {
 					return &models.ChatMember{Type: models.ChatMemberTypeAdministrator}, nil

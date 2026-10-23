@@ -255,7 +255,7 @@ settings:
       Включить: {{ command "enable_images" }}
     {{- end -}}
 
-    {{- if .offline_notifications_supported -}}
+    {{- if command_enabled "enable_offline_notifications" -}}
       {{- print "\n" -}}
       {{- print "\n" -}}
       Оповещения о выходе из сети: <b>{{ template "yes_no" .offline_notifications }}</b>
