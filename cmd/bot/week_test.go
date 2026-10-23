@@ -16,15 +16,26 @@ import (
 // each carrying its own template bodies that only a render can vet.
 var realLangs = []string{"en", "ru"}
 
+// realTranslations names the translation files a chaturbate endpoint serves in one language.
+func realTranslations(lang string) map[string][]string {
+	return siteTranslations("chaturbate", lang)
+}
+
+// siteTranslations names the translation files a site's endpoint serves in one language.
+func siteTranslations(site, lang string) map[string][]string {
+	base := filepath.Join("..", "..", "res", "translations")
+	return map[string][]string{"test": {
+		filepath.Join(base, "common."+lang+".yaml"),
+		filepath.Join(base, site+"."+lang+".yaml"),
+	}}
+}
+
 // realTemplates loads the translation set a chaturbate endpoint serves in one language.
 func realTemplates(t *testing.T, lang string) *texttemplate.Template {
 	t.Helper()
-	base := filepath.Join("..", "..", "res", "translations")
-	_, tpl := cmdlib.LoadAllTranslations(map[string][]string{"cb": {
-		filepath.Join(base, "common."+lang+".yaml"),
-		filepath.Join(base, "chaturbate."+lang+".yaml"),
-	}})
-	return tpl["cb"]
+	_, tpl := cmdlib.LoadAllTranslations(realTranslations(lang))
+	// The bot binds command_enabled at startup, and every command is enabled here.
+	return tpl["test"].Funcs(texttemplate.FuncMap{"command_enabled": func(string) bool { return true }})
 }
 
 // TestWeekChunkSeparatesRows pins the fragment that replaced a Go-side join:

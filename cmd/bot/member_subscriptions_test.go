@@ -1,13 +1,10 @@
 package main
 
 import (
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/go-telegram/bot/models"
-
-	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
 
 // TestMemberSubscriptionsGate pins what the setting opens and what it leaves shut:
@@ -42,6 +39,8 @@ func TestMemberSubscriptionsGate(t *testing.T) {
 		{name: "a wipe stays admin only", command: "remove_all", setting: true, wantGated: true},
 		{name: "stop stays admin only", command: "stop", setting: true, wantGated: true},
 		{name: "settings stays admin only", command: "settings", setting: true, wantGated: true},
+		{name: "affiliate stays admin only", command: "affiliate", setting: true, wantGated: true},
+		{name: "reset_affiliate stays admin only", command: "reset_affiliate", setting: true, wantGated: true},
 		{
 			name:    "the setting cannot open itself",
 			command: "enable_member_subscriptions", setting: true, wantGated: true,
@@ -154,7 +153,6 @@ func setChatType(w *testWorker, chatID int64, chatType string) {
 // where the toggle belongs to a chat with members and the data keys must match the template.
 func TestSettingsShowsMemberSubscriptions(t *testing.T) {
 	t.Parallel()
-	base := filepath.Join("..", "..", "res", "translations")
 	tests := []struct {
 		name     string
 		lang     string
@@ -174,10 +172,7 @@ func TestSettingsShowsMemberSubscriptions(t *testing.T) {
 			w := newTestWorker()
 			defer w.terminate()
 			w.createDatabase()
-			w.tr, w.tpl = cmdlib.LoadAllTranslations(map[string][]string{"test": {
-				filepath.Join(base, "common."+tc.lang+".yaml"),
-				filepath.Join(base, "chaturbate."+tc.lang+".yaml"),
-			}})
+			w.loadTranslations(realTranslations(tc.lang))
 			m := testMessage(w, tc.chatID, "settings", 0)
 			setChatType(w, tc.chatID, tc.chatType)
 			w.settings(m)

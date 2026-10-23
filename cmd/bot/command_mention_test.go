@@ -152,10 +152,11 @@ func TestTranslationsMarkEveryCommand(t *testing.T) {
 	}
 }
 
-// commandCalls returns every command name a template's parse tree calls for,
-// however the action is spelled: quoting, spacing, folded lines, nesting and define blocks
-// are the engine's business, not a regexp's. Each call it cannot vouch for,
-// and a text that does not parse, comes back as a problem for the caller to report.
+// commandCalls returns every command name passed to command, short_command or command_enabled,
+// however the action is spelled.
+// Quoting, spacing, folded lines, nesting and defines are the engine's business, not a regexp's.
+// Each call it cannot vouch for, and a text that does not parse,
+// comes back as a problem for the caller to report.
 func commandCalls(text string) (names, problems []string) {
 	tpl, err := texttemplate.New("t").Funcs(cmdlib.TemplateFuncs()).Parse(text)
 	if err != nil {
@@ -169,7 +170,7 @@ func commandCalls(text string) (names, problems []string) {
 		}
 		for _, cmd := range p.Cmds {
 			if id, ok := cmd.Args[0].(*parse.IdentifierNode); ok &&
-				(id.Ident == "command" || id.Ident == "short_command") {
+				(id.Ident == "command" || id.Ident == "short_command" || id.Ident == "command_enabled") {
 				if len(cmd.Args) == 2 {
 					if lit, ok := cmd.Args[1].(*parse.StringNode); ok {
 						names = append(names, lit.Text)
@@ -245,6 +246,7 @@ func TestCommandWalkSeesEveryForm(t *testing.T) {
 		{"inside a branch", `{{ if . }}{{ command "add" }}{{ end }}`, []string{"add"}, false},
 		{"inside a define", `{{ define "d" }}{{ command "add" }}{{ end }}{{ template "d" }}`, []string{"add"}, false},
 		{"short form", `{{ short_command "list" }}`, []string{"list"}, false},
+		{"command_enabled check", `{{ if command_enabled "week" }}week{{ end }}`, []string{"week"}, false},
 		{"no call", `plain text with {{ .field }}`, nil, false},
 		{"no argument", `{{ command }}`, nil, true},
 		{"piped argument", `{{ "add" | command }}`, nil, true},

@@ -354,8 +354,9 @@
 
 - When adding a command to the bot, add it to the `knownCommands` table
   so the switch dispatches it and its usage gets logged,
-  and decide there whether only group admins may run it —
-  the zero value lets any group member.
+  and decide there whether the bot offers it (`enabled`)
+  and whether only group admins may run it —
+  the zero value always offers it and lets any group member.
   An owner-only command goes to `ownerCommands` instead;
   `TestOwnerCommandsStayOffKnownCommands` holds the two sets disjoint.
   An exception gated out of band gets a note on its row, as `start` has.

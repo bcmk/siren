@@ -220,12 +220,16 @@ func (x *Translations) ToMap() map[string]*Translation {
 // short_command writes the shortest form that still reaches the bot.
 // Both refuse here: the names must resolve at parse time, but only the send path knows the chat,
 // so executing this set without CommandFuncs fails instead of writing a command bare.
+// command_enabled reports whether the bot offers a command, and refuses until the bot binds it.
 func TemplateFuncs() template.FuncMap {
 	return template.FuncMap{
 		"mod":           func(i, j int) int { return i % j },
 		"add":           func(i, j int) int { return i + j },
 		"command":       unboundCommand("command"),
 		"short_command": unboundCommand("short_command"),
+		"command_enabled": func(name string) (bool, error) {
+			return false, fmt.Errorf("command_enabled %q rendered with no bot bound", name)
+		},
 	}
 }
 

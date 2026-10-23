@@ -9,7 +9,6 @@ import (
 
 	"github.com/bcmk/siren/v6/internal/botconfig"
 	"github.com/bcmk/siren/v6/internal/checkers"
-	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
 
 func TestStreamerLink(t *testing.T) {
@@ -165,7 +164,7 @@ func TestStripchatAffiliate(t *testing.T) {
 			w := newTestWorker()
 			defer w.terminate()
 			w.createDatabase()
-			w.tr, w.tpl = cmdlib.LoadAllTranslations(map[string][]string{"test": {
+			w.loadTranslations(map[string][]string{"test": {
 				filepath.Join(base, "common.en.yaml"),
 				filepath.Join(base, "stripchat.en.yaml"),
 			}})

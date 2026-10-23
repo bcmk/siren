@@ -299,7 +299,6 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 		checkErr(err)
 		bots[n] = b
 	}
-	tr, tpl := cmdlib.LoadAllTranslations(trsByEndpoint(cfg))
 	trAds, tplAds := cmdlib.LoadAllAds(trsAdsByEndpoint(cfg))
 	// A standalone template: affiliate_link gets no translation func or named template.
 	var legacyAffiliateTpl *texttemplate.Template
@@ -313,8 +312,6 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 		fuzzySearchDB:              db.NewDatabase(string(cfg.DBConnectionString), false, cfg.MaxSubs),
 		cfg:                        cfg,
 		client:                     client,
-		tr:                         tr,
-		tpl:                        tpl,
 		legacyAffiliateTpl:         legacyAffiliateTpl,
 		trAds:                      trAds,
 		tplAds:                     tplAds,
@@ -338,7 +335,8 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 	w.imageDownloader = newImageDownloader[*queuedMessage](w.downloadImage)
 	// The bot starts in maintenance: the database is not created yet.
 	w.maintenance.Store(true)
-	for endpoint, a := range tr {
+	w.loadTranslations(trsByEndpoint(cfg))
+	for endpoint, a := range w.tr {
 		for _, b := range a.ToMap() {
 			w.loadImageForTranslation(endpoint, b)
 		}
@@ -461,18 +459,6 @@ func (w *worker) initBotNames() {
 	}
 }
 
-func (w *worker) menuCommandEnabled(command string) bool {
-	switch command {
-	case "buy_subs":
-		return w.cfg.BuySubsEnabled()
-	case "week":
-		return w.cfg.EnableWeek
-	case "month":
-		return w.cfg.EnableMonth
-	}
-	return true
-}
-
 func (w *worker) setCommands() {
 	ctx := context.Background()
 	for n := range w.cfg.Endpoints {
@@ -485,7 +471,7 @@ func (w *worker) setCommands() {
 				checkErr(fmt.Errorf("unexpected command pair %q", l))
 			}
 			pair[0], pair[1] = strings.TrimSpace(pair[0]), strings.TrimSpace(pair[1])
-			if !w.menuCommandEnabled(pair[0]) {
+			if !w.commandEnabled(pair[0]) {
 				continue
 			}
 			commands = append(commands, models.BotCommand{Command: pair[0], Description: pair[1]})
@@ -494,7 +480,7 @@ func (w *worker) setCommands() {
 		linf("setting commands for endpoint %s...", n)
 		_, err := w.bots[n].SetMyCommands(ctx, &bot.SetMyCommandsParams{Commands: commands})
 		checkErr(err)
-		if w.customAffiliateLinkEnabled() {
+		if w.commandEnabled("affiliate") {
 			// Scopes do not merge, so admins get the defaults plus /affiliate.
 			adminCommands := append(commands[:len(commands):len(commands)],
 				models.BotCommand{Command: "affiliate", Description: w.tr[n].AffiliateCommand.Str})
@@ -1649,7 +1635,7 @@ func (w *worker) settings(m receivedMessage) {
 		"member_subscriptions":            user.MemberSubscriptions,
 		"timezone":                        zone,
 		"timezone_set":                    user.Timezone != nil,
-		"can_manage_affiliate":            w.customAffiliateLinkEnabled() && isGroupOrChannel(user.ChatID),
+		"can_manage_affiliate":            w.commandEnabled("affiliate") && isGroupOrChannel(user.ChatID),
 		"affiliate_params":                w.gatedAffiliate(user.AffiliateParams),
 	})
 }
@@ -3266,7 +3252,6 @@ func (w *worker) referralData(endpoint string, userID db.UserID) tplData {
 		"follower_bonus":      w.cfg.FollowerBonus,
 		"subscriptions_used":  subscriptionsNumber,
 		"total_subscriptions": user.MaxSubs,
-		"buy_subs_enabled":    w.cfg.BuySubsEnabled(),
 	}
 }
 
@@ -3318,7 +3303,7 @@ func (w *worker) help(m receivedMessage) {
 }
 
 // commandSpec declares what a command needs.
-// Membership means the switch dispatches it and its use is logged,
+// Only a table member reaches the switch, and every member's use is logged,
 // so a case the table omits answers "unknown command".
 type commandSpec struct {
 	// groupAdminOnly commands read or change the chat's own setup, which in a group is everyone's.
@@ -3326,13 +3311,34 @@ type commandSpec struct {
 
 	// memberSubscriptions commands lose the admin gate where the chat has turned the setting on.
 	memberSubscriptions bool
+
+	// enabled reports whether the bot offers the command; nil means always.
+	enabled func(*worker) bool
 }
+
+// loadTranslations loads the translation entries, binding command_enabled to the command table
+func (w *worker) loadTranslations(files map[string][]string) {
+	w.tr, w.tpl = cmdlib.LoadAllTranslations(files)
+	for _, t := range w.tpl {
+		t.Funcs(texttemplate.FuncMap{"command_enabled": w.commandEnabled})
+	}
+}
+
+// commandEnabled reports whether the command is in the table and the bot offers it.
+func (w *worker) commandEnabled(command string) bool {
+	spec, ok := knownCommands[command]
+	return ok && (spec.enabled == nil || spec.enabled(w))
+}
+
+func (w *worker) buySubsEnabled() bool { return w.cfg.BuySubsEnabled() }
+func (w *worker) weekEnabled() bool    { return w.cfg.EnableWeek }
+func (w *worker) monthEnabled() bool   { return w.cfg.EnableMonth }
 
 var knownCommands = map[string]commandSpec{
 	"ad":                            {},
 	"add":                           {groupAdminOnly: true, memberSubscriptions: true},
-	"affiliate":                     {}, // admin-gated in commandGate while enabled
-	"buy_subs":                      {},
+	"affiliate":                     {groupAdminOnly: true, enabled: (*worker).customAffiliateLinkEnabled},
+	"buy_subs":                      {enabled: (*worker).buySubsEnabled},
 	"disable_images":                {groupAdminOnly: true},
 	"disable_member_subscriptions":  {groupAdminOnly: true},
 	"disable_offline_notifications": {groupAdminOnly: true},
@@ -3347,13 +3353,13 @@ var knownCommands = map[string]commandSpec{
 	"feedback":                      {},
 	"help":                          {},
 	"list":                          {},
-	"month":                         {},
+	"month":                         {enabled: (*worker).monthEnabled},
 	"online":                        {},
 	"pics":                          {},
 	"referral":                      {},
 	"remove":                        {groupAdminOnly: true, memberSubscriptions: true},
 	"remove_all":                    {groupAdminOnly: true},
-	"reset_affiliate":               {}, // admin-gated in commandGate while enabled
+	"reset_affiliate":               {groupAdminOnly: true, enabled: (*worker).customAffiliateLinkEnabled},
 	"reset_timezone":                {groupAdminOnly: true},
 	"settings":                      {groupAdminOnly: true},
 	"social":                        {},
@@ -3363,41 +3369,30 @@ var knownCommands = map[string]commandSpec{
 	"timezone":                      {groupAdminOnly: true},
 	"version":                       {},
 	"want_more":                     {},
-	"week":                          {},
+	"week":                          {enabled: (*worker).weekEnabled},
 }
 
-// affiliateCommandAllowed answers the caller when the command does not apply,
-// and reports whether to go on.
-// A disabled feature stays hidden; a private chat gets told where it works.
+// affiliateCommandAllowed refuses a private chat, telling it where the command works
 func (w *worker) affiliateCommandAllowed(m receivedMessage) bool {
-	switch {
-	case !w.customAffiliateLinkEnabled():
-		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].UnknownCommand, nil)
-	case !isGroupOrChannel(m.chatID):
-		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].AffiliateGroupsOnly, nil)
-	default:
+	if isGroupOrChannel(m.chatID) {
 		return true
 	}
+	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].AffiliateGroupsOnly, nil)
 	return false
 }
 
 // commandGate resolves what a command asks of the chat it came from.
-// A command the switch refuses is left ungated, so it answers the same to everyone.
 func (w *worker) commandGate(command, arguments string) commandSpec {
-	spec := knownCommands[command]
-	switch command {
-	case "start":
-		// The deep link adds a subscription, so it is gated as /add is,
-		// and a payload naming no model is left ungated, since start answers it with nothing.
-		name, ok := strings.CutPrefix(arguments, modelPayloadPrefix)
-		if !ok || w.checker.NicknamePreprocessing(name) == "" {
-			return commandSpec{}
-		}
-		return knownCommands["add"]
-	case "affiliate", "reset_affiliate":
-		spec.groupAdminOnly = w.customAffiliateLinkEnabled()
+	if command != "start" {
+		return knownCommands[command]
 	}
-	return spec
+	// The deep link adds a subscription, so it is gated as /add is,
+	// and a payload naming no streamer is left ungated, since start answers it with nothing.
+	name, ok := strings.CutPrefix(arguments, modelPayloadPrefix)
+	if !ok || w.checker.NicknamePreprocessing(name) == "" {
+		return commandSpec{}
+	}
+	return knownCommands["add"]
 }
 
 // groupAdminOnly reports whether a command needs group-admin rights in the chat it came from.
@@ -3433,9 +3428,9 @@ func (w *worker) processIncomingCommand(
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].UnknownCommand, nil)
 	}
 
-	// The unknown-command answer for anything off the table;
+	// The unknown-command answer for anything off the table or not offered here;
 	// the switch's default answers only table-switch drift.
-	if _, known := knownCommands[command]; !known {
+	if !w.commandEnabled(command) {
 		unknown()
 		return
 	}
@@ -3467,10 +3462,7 @@ func (w *worker) processIncomingCommand(
 	case "ad":
 		w.ad(db.PriorityHigh, m.endpoint, m.userID, m.command)
 	case "faq":
-		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].FAQ, tplData{
-			"max_subs":         w.cfg.MaxSubs,
-			"buy_subs_enabled": w.cfg.BuySubsEnabled(),
-		})
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].FAQ, tplData{"max_subs": w.cfg.MaxSubs})
 	case "feedback":
 		w.feedback(m, arguments)
 	case "social":
@@ -3485,10 +3477,6 @@ func (w *worker) processIncomingCommand(
 	case "want_more":
 		w.wantMore(m)
 	case "buy_subs":
-		if !w.cfg.BuySubsEnabled() {
-			unknown()
-			return
-		}
 		w.buySubs(m)
 	case "settings":
 		w.settings(m)
@@ -3515,16 +3503,8 @@ func (w *worker) processIncomingCommand(
 	case "referral":
 		w.showReferral(m)
 	case "week":
-		if !w.cfg.EnableWeek {
-			unknown()
-			return
-		}
 		w.showWeek(m, arguments)
 	case "month":
-		if !w.cfg.EnableMonth {
-			unknown()
-			return
-		}
 		w.showMonth(m, arguments)
 	case "timezone":
 		w.setTimezone(m, arguments)

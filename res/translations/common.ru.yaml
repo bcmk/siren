@@ -212,7 +212,7 @@ want_more:
   parse: raw
   str: |-
     {{ template "referral_link" . }}
-    {{- if .buy_subs_enabled }}
+    {{- if command_enabled "buy_subs" }}
 
     Или купите подписки за звёзды Telegram: {{ command "buy_subs" }}
     {{- end }}
@@ -620,7 +620,7 @@ faq_pricing:
     Если вы хотите подписаться на более чем {{ .max_subs }} моделей, вы
     можете зарабатывать дополнительные подписки, делясь реферальными
     ссылками на этот сервис
-    {{- if .buy_subs_enabled }}, или купить их за звёзды Telegram командой {{ command "buy_subs" }}{{ end }}.
+    {{- if command_enabled "buy_subs" }}, или купить их за звёзды Telegram командой {{ command "buy_subs" }}{{ end }}.
 buy_subs:
   parse: html
   disable_preview: true

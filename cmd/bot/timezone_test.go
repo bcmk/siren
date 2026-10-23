@@ -8,7 +8,6 @@ import (
 	"github.com/go-telegram/bot/models"
 
 	"github.com/bcmk/siren/v6/internal/db"
-	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
 
 // TestParseTimezone pins the grammar /timezone accepts.
@@ -429,12 +428,8 @@ func TestSettingsReportsTheZone(t *testing.T) {
 			w.createDatabase()
 			w.initCache()
 			w.initTimezones()
-			// The real templates and a Settings translation naming the real key,
-			// so the render is the one a chat receives.
-			w.tpl["test"] = realTemplates(t, "en")
-			tr := testTranslations
-			tr.Settings = &cmdlib.Translation{Key: "settings", Parse: cmdlib.ParseHTML}
-			w.tr["test"] = &tr
+			// The real translations, so the render is the one a chat receives.
+			w.loadTranslations(realTranslations("en"))
 
 			m := testMessage(w, 10, "settings", 100)
 			if tc.zone != "" {

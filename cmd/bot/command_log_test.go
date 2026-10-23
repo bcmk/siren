@@ -938,6 +938,15 @@ func TestBuySubsCommandNamesItself(t *testing.T) {
 		}},
 	})
 
+	q := w.sendQueue.pop()
+	if q == nil {
+		t.Fatal("no reply queued")
+	}
+	q.message.render("")
+	if got := q.message.(*messageParams).Text; got != "BuySubs" {
+		t.Errorf("reply = %q, want BuySubs", got)
+	}
+	w.sendQueue.push(q)
 	commands := drainSendQueueToLog(t, w)
 	t.Logf("buy_subs menu logged: %q", commands)
 	if !slices.Equal(commands, []string{"buy_subs"}) {
