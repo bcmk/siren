@@ -60,8 +60,8 @@ func run() int {
 	}
 	channels, err := checker.QueryFixedListOnlineStreamers(flag.Args(), cmdlib.CheckStatuses)
 	if err != nil {
-		fmt.Printf("error occurred: %v\n", err)
-		return 0
+		fmt.Fprintf(os.Stderr, "error occurred: %v\n", err)
+		return 1
 	}
 	for channel, info := range channels {
 		fmt.Printf("%s %s\n", channel, info.ImageURL)

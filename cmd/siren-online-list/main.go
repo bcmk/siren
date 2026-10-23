@@ -63,8 +63,8 @@ func run() int {
 	}
 	streamers, err := checker.QueryOnlineStreamers()
 	if err != nil {
-		fmt.Printf("error occurred: %v\n", err)
-		return 0
+		fmt.Fprintf(os.Stderr, "error occurred: %v\n", err)
+		return 1
 	}
 	for model, info := range streamers {
 		fmt.Printf("%s %s\n", model, info.ImageURL)
