@@ -1,5 +1,8 @@
 # Testing Database Environment
 
+The testing database is for performance tests and migration timings;
+it may hold any bot's data from any date.
+
 ## Access
 
 - Access testing DB environment via `psql` without parameters
