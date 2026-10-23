@@ -107,10 +107,20 @@ type stripchatUserResponse struct {
 	} `json:"item"`
 }
 
+type stripchatCamResponse struct {
+	User struct {
+		User struct {
+			Status     string     `json:"status"`
+			WentIdleAt *time.Time `json:"wentIdleAt"`
+		} `json:"user"`
+	} `json:"user"`
+}
+
 type stripchatStatusesResponse struct {
 	Statuses []struct {
-		ID     int64  `json:"id"`
-		Status string `json:"status"`
+		ID              int64  `json:"id"`
+		Status          string `json:"status"`
+		StatusChangedAt string `json:"statusChangedAt"`
 	} `json:"statuses"`
 }
 
@@ -132,7 +142,7 @@ func stripchatImageURL(id int64) string {
 }
 
 // QueryStreamer checks Stripchat model status
-func (c *StripchatChecker) QueryStreamer(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
+func (c *StripchatChecker) QueryStreamer(modelID string, extras Extras) (cmdlib.StreamerInfoWithStatus, error) {
 	// Look up the model's ID, then its status among live models
 	unknown := cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}
 	notFound := cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusNotFound}
@@ -190,13 +200,25 @@ func (c *StripchatChecker) QueryStreamer(modelID string) (cmdlib.StreamerInfoWit
 	}
 	for _, s := range statuses.Statuses {
 		if s.ID == user.ID {
-			return cmdlib.StreamerInfoWithStatus{
+			online := cmdlib.StreamerInfoWithStatus{
 				StreamerInfo: cmdlib.StreamerInfo{
 					ImageURL: stripchatImageURL(user.ID),
 					ShowKind: stripchatShowKind(s.Status),
 				},
 				Status: cmdlib.StatusOnline,
-			}, nil
+			}
+			if extras&ExtraTimes != 0 && s.StatusChangedAt != "" {
+				since, err := time.Parse(time.RFC3339, s.StatusChangedAt)
+				if err != nil {
+					return online, fmt.Errorf(
+						"cannot parse the show kind's start: statusChangedAt = %q, %v",
+						s.StatusChangedAt,
+						err)
+				}
+				// A public-private switch resets statusChangedAt, so it is not when the model went online
+				online.ShowKindSince = &since
+			}
+			return online, nil
 		}
 	}
 	// Offline and idle models are missing from the statuses, as are deleted ones
@@ -225,7 +247,46 @@ func (c *StripchatChecker) QueryStreamer(modelID string) (cmdlib.StreamerInfoWit
 	if !profile.Item.IsModel || profile.Item.IsDeleted || profile.Item.IsBlocked {
 		return notFound, nil
 	}
-	return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOffline}, nil
+	offline := cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOffline}
+	if extras&ExtraTimes != 0 {
+		end, err := c.queryWentOfflineAt(user.ID)
+		if err != nil {
+			return offline, err
+		}
+		offline.WentOfflineAt = end
+	}
+	return offline, nil
+}
+
+// queryWentOfflineAt queries the model's cam for when its last stream ended
+func (c *StripchatChecker) queryWentOfflineAt(id int64) (*time.Time, error) {
+	time.Sleep(c.Cfg.MinRequestInterval())
+	endpoint := fmt.Sprintf("https://stripchat.com/api/front/v2/models/%d/cam", id)
+	resp, buf, err := cmdlib.OnlineQuery(endpoint, c.Client, c.Cfg.Headers)
+	if err != nil {
+		return nil, fmt.Errorf("cannot query the cam: url = %s, %v", endpoint, err)
+	}
+	cmdlib.Ldbg("query status: url = %s, status = %d", endpoint, resp.StatusCode)
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("unexpected cam status: url = %s, status = %d", endpoint, resp.StatusCode)
+	}
+	cam := &stripchatCamResponse{}
+	if err := json.Unmarshal(buf.Bytes(), cam); err != nil {
+		cmdlib.Ldbg("response: %s", buf.String())
+		return nil, fmt.Errorf("cannot parse the cam: url = %s, %v", endpoint, err)
+	}
+	return stripchatWentOfflineAt(cam), nil
+}
+
+// stripchatWentOfflineAt reads when an offline model's last stream ended.
+// It skips a cam gone live since get-statuses, which lags the cam by seconds.
+func stripchatWentOfflineAt(cam *stripchatCamResponse) *time.Time {
+	u := cam.User.User
+	if u.Status != "off" && u.Status != "idle" {
+		return nil
+	}
+	// statusChangedAt moves on every switch between idle and off
+	return u.WentIdleAt
 }
 
 func (c *StripchatChecker) checkOnlyOnline() (map[string]cmdlib.StreamerInfo, error) {
@@ -347,6 +408,7 @@ func (*StripchatChecker) Capabilities() Capabilities {
 		SupportsQueryFixedListOnlineStreamers: false,
 		SupportsQueryFixedListStatuses:        false,
 		SupportsQueryStreamer:                 true,
+		SupportsQueryStreamerTimes:            true,
 		SupportsCLI:                           true,
 		SupportsCustomAffiliateLink:           true,
 	}

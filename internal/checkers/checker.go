@@ -73,6 +73,7 @@ type Capabilities struct {
 	SupportsQueryFixedListOnlineStreamers bool
 	SupportsQueryFixedListStatuses        bool
 	SupportsQueryStreamer                 bool
+	SupportsQueryStreamerTimes            bool
 	SupportsCLI                           bool // true when the checker fits standalone CLI tools.
 	SupportsSubject                       bool // true when room subjects are surfaced.
 	SupportsCustomAffiliateLink           bool // true when a chat can set its own affiliate link.
@@ -90,11 +91,21 @@ func (c Capabilities) UsesFixedListOnline() bool {
 	panic("checker capabilities: at least one of QueryOnlineStreamers / QueryFixedListOnlineStreamers must be true")
 }
 
+// Extras selects the optional fields QueryStreamer fills, some at the cost of an extra request.
+type Extras uint
+
+// Extras values
+const (
+	NoExtras   Extras = 0
+	ExtraTimes Extras = 1
+)
+
 // Checker is the interface for a per-site checker.
 // Init must be called before any Query* method;
 // Site() and Capabilities() work on an uninitialised checker.
 type Checker interface {
-	QueryStreamer(nickname string) (cmdlib.StreamerInfoWithStatus, error)
+	// An error means only an extra failed: the status is still valid
+	QueryStreamer(nickname string, extras Extras) (cmdlib.StreamerInfoWithStatus, error)
 	QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error)
 	QueryFixedListOnlineStreamers(streamers []string, checkMode cmdlib.CheckMode) (map[string]cmdlib.StreamerInfo, error)
 	QueryFixedListStatuses(streamers []string, checkMode cmdlib.CheckMode) (map[string]cmdlib.StreamerInfoWithStatus, error)
@@ -236,11 +247,11 @@ func StartCheckerDaemon(ctx context.Context, checker Checker) {
 					if !sleepCtx(ctx, interval) {
 						return
 					}
-					info, err := checker.QueryStreamer(nickname)
+					info, err := checker.QueryStreamer(nickname, NoExtras)
 					if err != nil {
 						cmdlib.Lerr("%v", err)
 					}
-					if err != nil || info.Status == cmdlib.StatusUnknown {
+					if info.Status == cmdlib.StatusUnknown {
 						pollErrors = append(pollErrors, nickname)
 						continue
 					}
@@ -289,10 +300,9 @@ func StartCheckerDaemon(ctx context.Context, checker Checker) {
 				cmdlib.Ldbg("got statuses: upstream = %d, returned = %d", len(streamers), len(filtered))
 				req.ResultsCh <- cmdlib.NewExistenceListResults(filtered, elapsed)
 			case *cmdlib.SingleStatusRequest:
-				info, err := checker.QueryStreamer(req.Streamer)
+				info, err := checker.QueryStreamer(req.Streamer, NoExtras)
 				if err != nil {
 					cmdlib.Lerr("%v", err)
-					info = cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}
 				}
 				elapsed := time.Since(start)
 				cmdlib.Ldbg("got status: %s = %s", req.Streamer, info.Status)

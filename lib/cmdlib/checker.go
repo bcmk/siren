@@ -228,10 +228,15 @@ type StreamerInfo struct {
 	Subject  string   `json:"subject,omitempty"`
 }
 
-// StreamerInfoWithStatus is StreamerInfo plus a StatusKind verdict.
+// StreamerInfoWithStatus is StreamerInfo plus a StatusKind verdict
+// and the times that only QueryStreamer with ExtraTimes fills.
 type StreamerInfoWithStatus struct {
 	StreamerInfo
 	Status StatusKind `json:"status"`
+	// ShowKindSince is when the current show kind, such as private, began.
+	WentOnlineAt  *time.Time `json:"went_online_at,omitempty"`
+	WentOfflineAt *time.Time `json:"went_offline_at,omitempty"`
+	ShowKindSince *time.Time `json:"show_kind_since,omitempty"`
 }
 
 // StatusUpdate represents an update of streamer status

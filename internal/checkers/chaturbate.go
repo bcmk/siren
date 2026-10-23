@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
@@ -95,9 +96,10 @@ type chaturbateModel struct {
 }
 
 type chaturbateResponse struct {
-	RoomStatus string `json:"room_status"`
-	Status     *int   `json:"status"`
-	Code       string `json:"code"`
+	RoomStatus    string `json:"room_status"`
+	Status        *int   `json:"status"`
+	Code          string `json:"code"`
+	LastBroadcast string `json:"last_broadcast"`
 }
 
 func (c *ChaturbateChecker) pickProxyClient() *http.Client {
@@ -106,7 +108,7 @@ func (c *ChaturbateChecker) pickProxyClient() *http.Client {
 }
 
 // QueryStreamer checks Chaturbate model status
-func (c *ChaturbateChecker) QueryStreamer(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
+func (c *ChaturbateChecker) QueryStreamer(modelID string, extras Extras) (cmdlib.StreamerInfoWithStatus, error) {
 	client := c.pickProxyClient()
 	req, err := http.NewRequest("GET", fmt.Sprintf("https://chaturbate.com/api/biocontext/%s/?", modelID), nil)
 	cmdlib.CheckErr(err)
@@ -137,10 +139,18 @@ func (c *ChaturbateChecker) QueryStreamer(modelID string) (cmdlib.StreamerInfoWi
 	if parsed.Status != nil {
 		return cmdlib.StreamerInfoWithStatus{Status: chaturbateStatus(parsed.Code)}, nil
 	}
-	return cmdlib.StreamerInfoWithStatus{
+	info := cmdlib.StreamerInfoWithStatus{
 		StreamerInfo: cmdlib.StreamerInfo{ShowKind: chaturbateShowKind(parsed.RoomStatus)},
 		Status:       chaturbateRoomStatus(parsed.RoomStatus),
-	}, nil
+	}
+	if extras&ExtraTimes != 0 {
+		end, err := chaturbateWentOfflineAt(parsed)
+		if err != nil {
+			return info, err
+		}
+		info.WentOfflineAt = end
+	}
+	return info, nil
 }
 
 func chaturbateStatus(status string) cmdlib.StatusKind {
@@ -194,6 +204,25 @@ func chaturbateShowKind(currentShow string) cmdlib.ShowKind {
 	return cmdlib.ShowUnknown
 }
 
+// chaturbateTimeZone is the zone of last_broadcast, which stays UTC-7 all year
+var chaturbateTimeZone = time.FixedZone("UTC-7", -7*60*60)
+
+// chaturbateWentOfflineAt reads when an offline room's last broadcast ended
+func chaturbateWentOfflineAt(parsed *chaturbateResponse) (*time.Time, error) {
+	// A live or away room's last_broadcast can belong to an earlier broadcast
+	if parsed.RoomStatus != "offline" || parsed.LastBroadcast == "" {
+		return nil, nil
+	}
+	end, err := time.ParseInLocation("2006-01-02T15:04:05", parsed.LastBroadcast, chaturbateTimeZone)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"cannot parse the last broadcast's end: last_broadcast = %q, %v",
+			parsed.LastBroadcast,
+			err)
+	}
+	return &end, nil
+}
+
 // QueryOnlineStreamers returns Chaturbate online models
 func (c *ChaturbateChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
 	streamers := map[string]cmdlib.StreamerInfo{}
@@ -238,6 +267,7 @@ func (*ChaturbateChecker) Capabilities() Capabilities {
 		SupportsQueryFixedListOnlineStreamers: false,
 		SupportsQueryFixedListStatuses:        false,
 		SupportsQueryStreamer:                 true,
+		SupportsQueryStreamerTimes:            true,
 		SupportsCLI:                           true,
 		SupportsSubject:                       true,
 		SupportsCustomAffiliateLink:           true,

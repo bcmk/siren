@@ -67,7 +67,7 @@ func (c *TwitchChecker) NicknameRegexp() *regexp.Regexp {
 }
 
 // QueryStreamer checks Twitch channel status
-func (c *TwitchChecker) QueryStreamer(channelID string) (cmdlib.StreamerInfoWithStatus, error) {
+func (c *TwitchChecker) QueryStreamer(channelID string, _ Extras) (cmdlib.StreamerInfoWithStatus, error) {
 	helixClient, err := helix.NewClient(&helix.Options{
 		ClientID:     string(c.Cfg.ClientID),
 		ClientSecret: string(c.Cfg.ClientSecret),
@@ -288,6 +288,7 @@ func (*TwitchChecker) Capabilities() Capabilities {
 		SupportsQueryFixedListOnlineStreamers: true,
 		SupportsQueryFixedListStatuses:        true,
 		SupportsQueryStreamer:                 true,
+		SupportsQueryStreamerTimes:            false,
 		SupportsCLI:                           true,
 		SupportsSubject:                       true,
 	}

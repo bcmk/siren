@@ -1,6 +1,10 @@
 package checkers
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+	"time"
+)
 
 func TestStripchatNicknamePreprocessing(t *testing.T) {
 	cases := []struct {
@@ -29,6 +33,36 @@ func TestStripchatNicknamePreprocessing(t *testing.T) {
 			}
 			if again := c.NicknamePreprocessing(got); again != got {
 				t.Errorf("a second pass changed %q to %q", got, again)
+			}
+		})
+	}
+}
+
+// TestStripchatWentOfflineAt reads wentIdleAt as the end of an offline model's last stream.
+func TestStripchatWentOfflineAt(t *testing.T) {
+	end := time.Date(2026, 10, 24, 18, 33, 16, 0, time.UTC)
+	cam := func(status, wentIdleAt string) string {
+		return `{"user": {"user": {"status": "` + status + `", "statusChangedAt": "2026-10-24T18:37:57Z", ` +
+			`"wentIdleAt": ` + wentIdleAt + `}}}`
+	}
+	cases := []struct {
+		name string
+		body string
+		want *time.Time
+	}{
+		{"off", cam("off", `"2026-10-24T18:33:16Z"`), &end},
+		{"idle", cam("idle", `"2026-10-24T18:33:16Z"`), &end},
+		{"never approved", cam("off", "null"), nil},
+		{"went live in between", cam("public", `"2026-10-24T18:33:16Z"`), nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			parsed := &stripchatCamResponse{}
+			if err := json.Unmarshal([]byte(tc.body), parsed); err != nil {
+				t.Fatal(err)
+			}
+			if got := stripchatWentOfflineAt(parsed); !sameTime(got, tc.want) {
+				t.Errorf("end = %v, want %v", got, tc.want)
 			}
 		})
 	}

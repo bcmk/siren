@@ -413,6 +413,8 @@ Call one stretch online, from going online to going offline, a stream.
   which runs a bot with no endpoints and no deliveries
 - Read `docs/online-streamer-list-coverage.md` before changing a checker's online list query,
   and measure how the change moves coverage
+- Read `docs/streamer-times.md` before changing how a checker reads streamer times
+  (`WentOnlineAt`, `WentOfflineAt`, `ShowKindSince`)
 
 ## Skills
 

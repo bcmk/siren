@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
@@ -61,11 +62,12 @@ type cam4Model struct {
 }
 
 type cam4Response struct {
-	Online bool `json:"online"`
+	Online        bool  `json:"online"`
+	LastBroadcast int64 `json:"lastBroadcast"` // when the model last went online, Unix ms
 }
 
 // QueryStreamer checks CAM4 model status
-func (c *Cam4Checker) QueryStreamer(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
+func (c *Cam4Checker) QueryStreamer(modelID string, extras Extras) (cmdlib.StreamerInfoWithStatus, error) {
 	url := fmt.Sprintf("https://www.cam4.com/rest/v1.0/profile/%s/info", modelID)
 	resp := c.DoGetRequest(url, c.Cfg.Headers)
 	if resp == nil {
@@ -88,10 +90,23 @@ func (c *Cam4Checker) QueryStreamer(modelID string) (cmdlib.StreamerInfoWithStat
 		cmdlib.Ldbg("response: %s", buf.String())
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
+	info := cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOffline}
 	if parsed.Online {
-		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOnline}, nil
+		info.Status = cmdlib.StatusOnline
 	}
-	return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOffline}, nil
+	if extras&ExtraTimes != 0 {
+		info.WentOnlineAt = cam4WentOnlineAt(parsed)
+	}
+	return info, nil
+}
+
+// cam4WentOnlineAt reads lastBroadcast; CAM4 never tells when the model went offline
+func cam4WentOnlineAt(parsed *cam4Response) *time.Time {
+	if parsed.LastBroadcast <= 0 {
+		return nil
+	}
+	start := time.UnixMilli(parsed.LastBroadcast)
+	return &start
 }
 
 func cam4ShowKind(showType string) cmdlib.ShowKind {
@@ -149,6 +164,7 @@ func (*Cam4Checker) Capabilities() Capabilities {
 		SupportsQueryFixedListOnlineStreamers: false,
 		SupportsQueryFixedListStatuses:        false,
 		SupportsQueryStreamer:                 true,
+		SupportsQueryStreamerTimes:            true,
 		SupportsCLI:                           true,
 	}
 }

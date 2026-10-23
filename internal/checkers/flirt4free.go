@@ -55,7 +55,7 @@ type flirt4FreeOnlineResponse struct {
 }
 
 // QueryStreamer checks Flirt4Free model status
-func (c *Flirt4FreeChecker) QueryStreamer(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
+func (c *Flirt4FreeChecker) QueryStreamer(modelID string, _ Extras) (cmdlib.StreamerInfoWithStatus, error) {
 	resp := c.DoGetRequest(fmt.Sprintf("https://ws.vs3.com/rooms/check-model-status.php?model_name=%s", modelID), c.Cfg.Headers)
 	if resp == nil {
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
@@ -178,6 +178,7 @@ func (*Flirt4FreeChecker) Capabilities() Capabilities {
 		SupportsQueryFixedListOnlineStreamers: false,
 		SupportsQueryFixedListStatuses:        false,
 		SupportsQueryStreamer:                 true,
+		SupportsQueryStreamerTimes:            false,
 		SupportsCLI:                           true,
 	}
 }

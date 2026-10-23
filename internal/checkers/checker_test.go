@@ -27,7 +27,7 @@ type stubConfig struct {
 	BaseCheckerConfig
 }
 
-func (c *testChecker) QueryStreamer(string) (cmdlib.StreamerInfoWithStatus, error) {
+func (c *testChecker) QueryStreamer(string, Extras) (cmdlib.StreamerInfoWithStatus, error) {
 	return cmdlib.StreamerInfoWithStatus{StreamerInfo: c.info, Status: c.status}, nil
 }
 
@@ -167,7 +167,7 @@ func (*testPolledChecker) Site() string { return "test" }
 // directly via NewBaseChecker, bypassing the production Init path.
 func (*testPolledChecker) Init(_ string) error { return nil }
 
-func (c *testPolledChecker) QueryStreamer(nickname string) (cmdlib.StreamerInfoWithStatus, error) {
+func (c *testPolledChecker) QueryStreamer(nickname string, _ Extras) (cmdlib.StreamerInfoWithStatus, error) {
 	c.queryCalls = append(c.queryCalls, nickname)
 	status, ok := c.individual[nickname]
 	if !ok {
