@@ -35,7 +35,8 @@ and for a translation entry with no markup.
 - `markdown` — rarely used.
 
 Optional fields: `disable_preview: true` suppresses link previews;
-`image:` attaches an image; `weight:` biases random selection (ads).
+`image:` attaches an image; `weight:` biases random selection (ads);
+`needs_command:` drops an ad where the bot does not offer that command.
 
 ## Punctuation
 

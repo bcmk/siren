@@ -45,8 +45,8 @@ type Translation struct {
 	Image          string    `yaml:"image"`
 	ImageBytes     []byte    `yaml:"-"`
 	Weight         int       `yaml:"weight"`
-	// NeedsCustomAffiliateLink drops an ad that pitches a feature the deployment disabled.
-	NeedsCustomAffiliateLink bool `yaml:"needs_custom_affiliate_link"`
+	// NeedsCommand drops an ad that pitches a command the bot does not offer.
+	NeedsCommand string `yaml:"needs_command"`
 }
 
 // AllTranslations represents a collection of translated texts in all supported languages

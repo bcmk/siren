@@ -10,6 +10,7 @@ other:
 buy_subs:
   str: 'Покупайте дополнительные подписки за звёзды Telegram: {{ command "buy_subs" }}'
   weight: 10
+  needs_command: buy_subs
 ukraine:
   str: >-
     Наша команда против ничем не спровоцированной российской агрессии в Украине.

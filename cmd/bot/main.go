@@ -925,7 +925,7 @@ func (w *worker) statusTranslation(endpoint string, status cmdlib.StatusKind) *c
 func (w *worker) trAdsSlice(endpoint string) []*cmdlib.Translation {
 	var res []*cmdlib.Translation
 	for _, v := range w.trAds[endpoint] {
-		if v.NeedsCustomAffiliateLink && !w.customAffiliateLinkEnabled() {
+		if v.NeedsCommand != "" && !w.commandEnabled(v.NeedsCommand) {
 			continue
 		}
 		res = append(res, v)

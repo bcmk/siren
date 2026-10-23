@@ -113,6 +113,9 @@ func TestTranslationsMarkEveryCommand(t *testing.T) {
 		path := filepath.Join(dir, e.Name())
 		// LoadAds is the one loader that takes a lone file without demanding completeness.
 		for key, tr := range cmdlib.LoadAds([]string{path}) {
+			if _, ok := knownCommands[tr.NeedsCommand]; tr.NeedsCommand != "" && !ok {
+				t.Errorf("%s: %s needs unknown command %q", e.Name(), key, tr.NeedsCommand)
+			}
 			names, problems := commandCalls(tr.Str)
 			for _, problem := range problems {
 				t.Errorf("%s: %s: %s", e.Name(), key, problem)

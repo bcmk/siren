@@ -2,10 +2,12 @@ package main
 
 import (
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/bcmk/siren/v6/internal/botconfig"
+	"github.com/bcmk/siren/v6/lib/cmdlib"
 	"github.com/go-telegram/bot/models"
 )
 
@@ -232,6 +234,34 @@ func TestRepliesNameNoDisabledCommand(t *testing.T) {
 					assertNoDisabledCommand(t, w, q.message.(*messageParams).Text)
 				}
 			})
+		}
+	}
+}
+
+// TestAdsNameNoDisabledCommand renders every ad the bot may send
+// on a bot that offers no command the table may disable.
+func TestAdsNameNoDisabledCommand(t *testing.T) {
+	t.Parallel()
+	w := newTestWorker()
+	defer w.terminate()
+	cfg := *w.cfg
+	cfg.OfflineNotifications = false
+	w.cfg = &cfg
+	base := filepath.Join("..", "..", "res", "translations")
+	files := map[string][]string{}
+	for _, site := range []string{"chaturbate", "stripchat"} {
+		for _, lang := range realLangs {
+			files[site+" "+lang] = []string{
+				filepath.Join(base, "ads."+lang+".yaml"),
+				filepath.Join(base, site+"-ads."+lang+".yaml"),
+			}
+		}
+	}
+	w.trAds, w.tplAds = cmdlib.LoadAllAds(files)
+	for endpoint := range files {
+		for _, ad := range w.trAdsSlice(endpoint) {
+			params := &renderParams{templates: w.tplAds[endpoint], key: ad.Key}
+			assertNoDisabledCommand(t, w, params.render("@bot"))
 		}
 	}
 }
