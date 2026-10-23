@@ -143,8 +143,8 @@ func (c *KickChecker) queryChannels(
 	return channelsResp.Data, nil
 }
 
-// QueryStatus checks Kick channel status
-func (c *KickChecker) QueryStatus(channelID string) (cmdlib.StreamerInfoWithStatus, error) {
+// QueryStreamer checks Kick channel status
+func (c *KickChecker) QueryStreamer(channelID string) (cmdlib.StreamerInfoWithStatus, error) {
 	token, err := c.requestAccessToken(c.Client)
 	if err != nil {
 		cmdlib.Lerr("%v", err)
@@ -245,7 +245,7 @@ func (*KickChecker) Capabilities() Capabilities {
 		SupportsQueryOnlineStreamers:          false,
 		SupportsQueryFixedListOnlineStreamers: true,
 		SupportsQueryFixedListStatuses:        true,
-		SupportsQueryStatus:                   true,
+		SupportsQueryStreamer:                 true,
 		SupportsCLI:                           true,
 		SupportsSubject:                       true,
 	}

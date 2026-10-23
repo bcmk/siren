@@ -44,8 +44,8 @@ type bongacamsModel struct {
 	} `json:"profile_images"`
 }
 
-// QueryStatus checks BongaCams model status
-func (c *BongaCamsChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
+// QueryStreamer checks BongaCams model status
+func (c *BongaCamsChecker) QueryStreamer(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
 	code := c.QueryStatusCode(fmt.Sprintf("https://en.bongacams.com/%s", modelID), c.Cfg.Headers)
 	switch code {
 	case 200:
@@ -103,7 +103,7 @@ func (*BongaCamsChecker) Capabilities() Capabilities {
 		SupportsQueryOnlineStreamers:          true,
 		SupportsQueryFixedListOnlineStreamers: false,
 		SupportsQueryFixedListStatuses:        false,
-		SupportsQueryStatus:                   true,
+		SupportsQueryStreamer:                 true,
 		SupportsCLI:                           true,
 		SupportsSubject:                       true,
 		SupportsCustomAffiliateLink:           true,

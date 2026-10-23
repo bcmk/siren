@@ -1355,7 +1355,7 @@ func (w *worker) addStreamer(m receivedMessage, nickname string, referral bool) 
 	streamer := w.db.MaybeStreamer(nickname)
 	if streamer == nil {
 		caps := w.checker.Capabilities()
-		if !caps.SupportsQueryStatus && !caps.SupportsQueryFixedListStatuses {
+		if !caps.SupportsQueryStreamer && !caps.SupportsQueryFixedListStatuses {
 			w.replyTrMarkup(m, db.PriorityHigh, false, w.tr[m.endpoint].AddError,
 				tplData{"streamer": nickname}, w.searchKeyboard(m.endpoint, m.chatID, nickname))
 			return nil
@@ -2453,7 +2453,7 @@ func (w *worker) sendPolledList(endpoint string, now int, seq int) {
 
 func (w *worker) poll(endpoint string, arguments string) {
 	caps := w.checker.Capabilities()
-	if caps.UsesFixedListOnline() || !caps.SupportsQueryStatus {
+	if caps.UsesFixedListOnline() || !caps.SupportsQueryStreamer {
 		w.replyToOwner(endpoint, "checker does not support per-streamer polling")
 		return
 	}
@@ -3561,7 +3561,7 @@ func (w *worker) pushOnlineRequest() {
 		}
 	} else {
 		var poll []string
-		if caps.SupportsQueryStatus {
+		if caps.SupportsQueryStreamer {
 			poll = w.db.StreamersToPoll()
 		}
 		request = &cmdlib.OnlineListRequest{
@@ -3586,7 +3586,7 @@ func (w *worker) pushExistenceRequest(streamers map[string]bool) error {
 			lerr("%v", err)
 		}
 		return err
-	case caps.SupportsQueryStatus:
+	case caps.SupportsQueryStreamer:
 		for name := range streamers {
 			err := w.checker.PushStatusRequest(&cmdlib.SingleStatusRequest{
 				ResultsCh: w.existenceListResults,
@@ -4478,7 +4478,7 @@ func (w *worker) handleSearchRequest(req searchRequest) {
 
 func (w *worker) queryUnconfirmedSubs() {
 	caps := w.checker.Capabilities()
-	if !caps.SupportsQueryStatus && !caps.SupportsQueryFixedListStatuses {
+	if !caps.SupportsQueryStreamer && !caps.SupportsQueryFixedListStatuses {
 		return
 	}
 	unconfirmed := w.db.UnconfirmedSubs()

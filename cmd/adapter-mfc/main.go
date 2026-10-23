@@ -11,7 +11,7 @@
 //   - GET /online   — current snapshot as OnlineListResults JSON. Always 200;
 //     when no bulk has been applied yet, the body has failed=true so the
 //     caller distinguishes daemon-level failure from transport failure (5xx).
-//   - GET /status?name=<name> — backs the bot's QueryStatus for MFC.
+//   - GET /status?name=<name> — backs the bot's QueryStreamer for MFC.
 //     Returns a cmdlib.StreamerInfoWithStatus JSON document; only the
 //     status field is populated for MFC. See handleStatus.
 //   - GET /healthz  — liveness probe; always 200 "ok" while the process is

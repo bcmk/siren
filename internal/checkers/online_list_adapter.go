@@ -103,7 +103,7 @@ func (c *OnlineListAdapter) Capabilities() Capabilities {
 		SupportsQueryOnlineStreamers:          true,
 		SupportsQueryFixedListOnlineStreamers: false,
 		SupportsQueryFixedListStatuses:        false,
-		SupportsQueryStatus:                   true,
+		SupportsQueryStreamer:                 true,
 		SupportsCLI:                           false,
 		SupportsSubject:                       c.SupportsSubject,
 	}
@@ -141,11 +141,11 @@ func (c *OnlineListAdapter) QueryOnlineStreamers() (
 	return result.Streamers, nil
 }
 
-// QueryStatus queries the daemon's /status?name=<nickname> route and
+// QueryStreamer queries the daemon's /status?name=<nickname> route and
 // returns the StreamerInfoWithStatus it reports. Per checker convention
 // any transport or parse failure is logged and surfaced as StatusUnknown
 // rather than an error so the bot's status loop keeps running.
-func (c *OnlineListAdapter) QueryStatus(nickname string) (cmdlib.StreamerInfoWithStatus, error) {
+func (c *OnlineListAdapter) QueryStreamer(nickname string) (cmdlib.StreamerInfoWithStatus, error) {
 	endpoint := c.Cfg.BaseURL + "/status?name=" + url.QueryEscape(nickname)
 	resp, buf, err := cmdlib.OnlineQuery(endpoint, c.Client, nil)
 	if err != nil {

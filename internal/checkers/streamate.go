@@ -143,8 +143,8 @@ func streamateShowKind(m performerResponse) cmdlib.ShowKind {
 	return cmdlib.ShowUnknown
 }
 
-// QueryStatus checks Streamate model status
-func (c *StreamateChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
+// QueryStreamer checks Streamate model status
+func (c *StreamateChecker) QueryStreamer(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
 	reqData := streamateRequest{
 		Options: optionsRequest{MaxResults: 1},
 		AvailablePerformers: availablePerformersRequest{
@@ -281,7 +281,7 @@ func (*StreamateChecker) Capabilities() Capabilities {
 		SupportsQueryOnlineStreamers:          true,
 		SupportsQueryFixedListOnlineStreamers: false,
 		SupportsQueryFixedListStatuses:        false,
-		SupportsQueryStatus:                   true,
+		SupportsQueryStreamer:                 true,
 		SupportsCLI:                           true,
 	}
 }

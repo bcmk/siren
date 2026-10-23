@@ -81,8 +81,8 @@ type liveJasminResponse struct {
 	} `json:"data"`
 }
 
-// QueryStatus checks LiveJasmin model status
-func (c *LiveJasminChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
+// QueryStreamer checks LiveJasmin model status
+func (c *LiveJasminChecker) QueryStreamer(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
 	psID := string(c.Cfg.PsID)
 	accessKey := string(c.Cfg.AccessKey)
 	url := fmt.Sprintf("https://pt.potawe.com/api/model/status?performerId=%s&psId=%s&accessKey=%s&legacyRedirect=1", modelID, psID, accessKey)
@@ -194,7 +194,7 @@ func (*LiveJasminChecker) Capabilities() Capabilities {
 		SupportsQueryOnlineStreamers:          true,
 		SupportsQueryFixedListOnlineStreamers: false,
 		SupportsQueryFixedListStatuses:        false,
-		SupportsQueryStatus:                   true,
+		SupportsQueryStreamer:                 true,
 		SupportsCLI:                           true,
 		SupportsSubject:                       true,
 	}

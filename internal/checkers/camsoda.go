@@ -56,8 +56,8 @@ func camSodaShowKind(status string) cmdlib.ShowKind {
 	return cmdlib.ShowUnknown
 }
 
-// QueryStatus checks CamSoda model status
-func (c *CamSodaChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
+// QueryStreamer checks CamSoda model status
+func (c *CamSodaChecker) QueryStreamer(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
 	code := c.QueryStatusCode(fmt.Sprintf("https://www.camsoda.com/%s", modelID), c.Cfg.Headers)
 	switch code {
 	case 200:
@@ -114,7 +114,7 @@ func (*CamSodaChecker) Capabilities() Capabilities {
 		SupportsQueryOnlineStreamers:          true,
 		SupportsQueryFixedListOnlineStreamers: false,
 		SupportsQueryFixedListStatuses:        false,
-		SupportsQueryStatus:                   true,
+		SupportsQueryStreamer:                 true,
 		SupportsCLI:                           true,
 		SupportsSubject:                       true,
 	}

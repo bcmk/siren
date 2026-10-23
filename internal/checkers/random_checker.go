@@ -38,8 +38,8 @@ func (c *RandomChecker) Init(checkerCfgPath string) error {
 
 var _ Checker = &RandomChecker{}
 
-// QueryStatus mimics checker
-func (c *RandomChecker) QueryStatus(_ string) (cmdlib.StreamerInfoWithStatus, error) {
+// QueryStreamer mimics checker
+func (c *RandomChecker) QueryStreamer(_ string) (cmdlib.StreamerInfoWithStatus, error) {
 	return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOnline}, nil
 }
 
@@ -80,6 +80,6 @@ func (*RandomChecker) Capabilities() Capabilities {
 		SupportsQueryOnlineStreamers:          true,
 		SupportsQueryFixedListOnlineStreamers: false,
 		SupportsQueryFixedListStatuses:        false,
-		SupportsQueryStatus:                   true,
+		SupportsQueryStreamer:                 true,
 	}
 }

@@ -49,7 +49,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%s is not supported in CLI tools\n", site)
 		os.Exit(1)
 	}
-	if !caps.SupportsQueryStatus {
+	if !caps.SupportsQueryStreamer {
 		fmt.Fprintf(os.Stderr, "single check is not supported for %s\n", site)
 		os.Exit(1)
 	}
@@ -63,7 +63,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "invalid model ID")
 		os.Exit(1)
 	}
-	info, err := checker.QueryStatus(modelID)
+	info, err := checker.QueryStreamer(modelID)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)

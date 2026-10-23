@@ -105,8 +105,8 @@ func (c *ChaturbateChecker) pickProxyClient() *http.Client {
 	return c.proxyClients[idx%uint64(len(c.proxyClients))]
 }
 
-// QueryStatus checks Chaturbate model status
-func (c *ChaturbateChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
+// QueryStreamer checks Chaturbate model status
+func (c *ChaturbateChecker) QueryStreamer(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
 	client := c.pickProxyClient()
 	req, err := http.NewRequest("GET", fmt.Sprintf("https://chaturbate.com/api/biocontext/%s/?", modelID), nil)
 	cmdlib.CheckErr(err)
@@ -234,7 +234,7 @@ func (*ChaturbateChecker) Capabilities() Capabilities {
 		SupportsQueryOnlineStreamers:          true,
 		SupportsQueryFixedListOnlineStreamers: false,
 		SupportsQueryFixedListStatuses:        false,
-		SupportsQueryStatus:                   true,
+		SupportsQueryStreamer:                 true,
 		SupportsCLI:                           true,
 		SupportsSubject:                       true,
 		SupportsCustomAffiliateLink:           true,

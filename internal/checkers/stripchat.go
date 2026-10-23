@@ -131,8 +131,8 @@ func stripchatImageURL(id int64) string {
 	return fmt.Sprintf("https://img.doppiocdn.com/thumbs/%d/%d", time.Now().Unix(), id)
 }
 
-// QueryStatus checks Stripchat model status
-func (c *StripchatChecker) QueryStatus(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
+// QueryStreamer checks Stripchat model status
+func (c *StripchatChecker) QueryStreamer(modelID string) (cmdlib.StreamerInfoWithStatus, error) {
 	// Look up the model's ID, then its status among live models
 	unknown := cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}
 	notFound := cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusNotFound}
@@ -346,7 +346,7 @@ func (*StripchatChecker) Capabilities() Capabilities {
 		SupportsQueryOnlineStreamers:          true,
 		SupportsQueryFixedListOnlineStreamers: false,
 		SupportsQueryFixedListStatuses:        false,
-		SupportsQueryStatus:                   true,
+		SupportsQueryStreamer:                 true,
 		SupportsCLI:                           true,
 		SupportsCustomAffiliateLink:           true,
 	}

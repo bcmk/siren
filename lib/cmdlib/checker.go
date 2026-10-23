@@ -21,7 +21,7 @@ type CheckerResults interface {
 }
 
 // OnlineListRequest requests statuses for all online streamers.
-// Names in Poll fall back to QueryStatus when not in the bulk result.
+// Names in Poll fall back to QueryStreamer when not in the bulk result.
 type OnlineListRequest struct {
 	Poll      []string
 	ResultsCh chan<- CheckerResults
@@ -135,7 +135,7 @@ type FixedListStatusRequest struct {
 
 func (r *FixedListStatusRequest) isStatusRequest() {}
 
-// SingleStatusRequest is FixedListStatusRequest dispatched via QueryStatus
+// SingleStatusRequest is FixedListStatusRequest dispatched via QueryStreamer
 // for one streamer; used when the checker has no batched surface.
 type SingleStatusRequest struct {
 	Streamer  string

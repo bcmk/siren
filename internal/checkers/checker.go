@@ -72,7 +72,7 @@ type Capabilities struct {
 	SupportsQueryOnlineStreamers          bool
 	SupportsQueryFixedListOnlineStreamers bool
 	SupportsQueryFixedListStatuses        bool
-	SupportsQueryStatus                   bool
+	SupportsQueryStreamer                 bool
 	SupportsCLI                           bool // true when the checker fits standalone CLI tools.
 	SupportsSubject                       bool // true when room subjects are surfaced.
 	SupportsCustomAffiliateLink           bool // true when a chat can set its own affiliate link.
@@ -94,7 +94,7 @@ func (c Capabilities) UsesFixedListOnline() bool {
 // Init must be called before any Query* method;
 // Site() and Capabilities() work on an uninitialised checker.
 type Checker interface {
-	QueryStatus(nickname string) (cmdlib.StreamerInfoWithStatus, error)
+	QueryStreamer(nickname string) (cmdlib.StreamerInfoWithStatus, error)
 	QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error)
 	QueryFixedListOnlineStreamers(streamers []string, checkMode cmdlib.CheckMode) (map[string]cmdlib.StreamerInfo, error)
 	QueryFixedListStatuses(streamers []string, checkMode cmdlib.CheckMode) (map[string]cmdlib.StreamerInfoWithStatus, error)
@@ -236,7 +236,7 @@ func StartCheckerDaemon(ctx context.Context, checker Checker) {
 					if !sleepCtx(ctx, interval) {
 						return
 					}
-					info, err := checker.QueryStatus(nickname)
+					info, err := checker.QueryStreamer(nickname)
 					if err != nil {
 						cmdlib.Lerr("%v", err)
 					}
@@ -289,7 +289,7 @@ func StartCheckerDaemon(ctx context.Context, checker Checker) {
 				cmdlib.Ldbg("got statuses: upstream = %d, returned = %d", len(streamers), len(filtered))
 				req.ResultsCh <- cmdlib.NewExistenceListResults(filtered, elapsed)
 			case *cmdlib.SingleStatusRequest:
-				info, err := checker.QueryStatus(req.Streamer)
+				info, err := checker.QueryStreamer(req.Streamer)
 				if err != nil {
 					cmdlib.Lerr("%v", err)
 					info = cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}

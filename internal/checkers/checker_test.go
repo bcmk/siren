@@ -27,7 +27,7 @@ type stubConfig struct {
 	BaseCheckerConfig
 }
 
-func (c *testChecker) QueryStatus(string) (cmdlib.StreamerInfoWithStatus, error) {
+func (c *testChecker) QueryStreamer(string) (cmdlib.StreamerInfoWithStatus, error) {
 	return cmdlib.StreamerInfoWithStatus{StreamerInfo: c.info, Status: c.status}, nil
 }
 
@@ -37,11 +37,11 @@ func (*testChecker) Site() string { return "test" }
 // directly via NewBaseChecker, bypassing the production Init path.
 func (*testChecker) Init(_ string) error { return nil }
 
-// Capabilities reports only QueryStatus: testChecker itself has no
+// Capabilities reports only QueryStreamer: testChecker itself has no
 // QueryOnlineStreamers method. testOnlineListChecker overrides this.
 func (*testChecker) Capabilities() Capabilities {
 	return Capabilities{
-		SupportsQueryStatus: true,
+		SupportsQueryStreamer: true,
 	}
 }
 
@@ -74,7 +74,7 @@ func (*testOnlineListChecker) Capabilities() Capabilities {
 		SupportsQueryOnlineStreamers:          true,
 		SupportsQueryFixedListOnlineStreamers: true,
 		SupportsQueryFixedListStatuses:        false,
-		SupportsQueryStatus:                   true,
+		SupportsQueryStreamer:                 true,
 	}
 }
 
@@ -167,7 +167,7 @@ func (*testPolledChecker) Site() string { return "test" }
 // directly via NewBaseChecker, bypassing the production Init path.
 func (*testPolledChecker) Init(_ string) error { return nil }
 
-func (c *testPolledChecker) QueryStatus(nickname string) (cmdlib.StreamerInfoWithStatus, error) {
+func (c *testPolledChecker) QueryStreamer(nickname string) (cmdlib.StreamerInfoWithStatus, error) {
 	c.queryCalls = append(c.queryCalls, nickname)
 	status, ok := c.individual[nickname]
 	if !ok {
@@ -189,7 +189,7 @@ func (*testPolledChecker) QueryFixedListOnlineStreamers([]string, cmdlib.CheckMo
 }
 
 func (*testPolledChecker) Capabilities() Capabilities {
-	return Capabilities{SupportsQueryOnlineStreamers: true, SupportsQueryStatus: true}
+	return Capabilities{SupportsQueryOnlineStreamers: true, SupportsQueryStreamer: true}
 }
 
 func TestOnlineListCheckerPollsAdditionalStreamers(t *testing.T) {
