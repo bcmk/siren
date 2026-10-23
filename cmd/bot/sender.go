@@ -25,7 +25,7 @@ const (
 	// otherwise retry_after wins, capped at tooManyRequestsMaxBackoff.
 	tooManyRequestsBackoff    = 8 * time.Second
 	tooManyRequestsMaxBackoff = 20 * time.Minute
-	// transientErrorPostpone delays a timed-out or network-failed message
+	// transientErrorPostpone delays a timed-out, network-failed or 5xx-answered message
 	// before its redelivery.
 	transientErrorPostpone = 10 * time.Second
 	// timedOutUploadPostpone delays the retry of a timed-out upload, which goes without the image.
@@ -602,14 +602,14 @@ func tooManyRequestsDelay(retryAfterSeconds int) time.Duration {
 
 // transientDelay maps a transient send failure to the pause
 // before its next attempt: Telegram's retry_after for a 429,
-// transientErrorPostpone for a timeout or network error.
+// transientErrorPostpone for a timeout, a network error or a 5xx answer.
 // Any other result is not transient and gets no pause.
-// stalled marks a transport failure, as against a 429 Telegram answered.
+// stalled marks a timeout, a network error or a 5xx, as against a 429 that only asks to wait.
 func transientDelay(result int, retryAfterSeconds int) (pause time.Duration, transient, stalled bool) {
 	switch result {
 	case messageTooManyRequests:
 		return tooManyRequestsDelay(retryAfterSeconds), true, false
-	case messageTimeout, messageUnknownNetworkError:
+	case messageTimeout, messageUnknownNetworkError, messageServerError:
 		return transientErrorPostpone, true, true
 	}
 	return 0, false, false
@@ -660,7 +660,7 @@ func (w *worker) deliver(q *queuedMessage, msg sendable) {
 	now := time.Now()
 	result, migrateTo, retryAfter, photo := w.attempt(q.endpoint, msg)
 	latency := int(time.Since(q.enqueuedAt).Milliseconds())
-	// A 429, timeout, or network blip postpones the message:
+	// A 429, a timeout, a network blip or a 5xx answer postpones the message:
 	// the main loop re-queues it,
 	// and the cooldown tail below keeps its user cooling for the whole postpone,
 	// so other sends keep flowing meanwhile.

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"net"
 	"os"
@@ -444,6 +445,7 @@ func TestTransientDelay(t *testing.T) {
 		{"429 waits out retry_after", messageTooManyRequests, 30, 30 * time.Second, true, false},
 		{"timeout postpones and stalls", messageTimeout, 0, transientErrorPostpone, true, true},
 		{"network error postpones and stalls", messageUnknownNetworkError, 0, transientErrorPostpone, true, true},
+		{"5xx postpones and stalls", messageServerError, 0, transientErrorPostpone, true, true},
 		{"sent is not transient", messageSent, 30, 0, false, false},
 		{"migrate is not transient", messageMigrate, 30, 0, false, false},
 	}
@@ -661,6 +663,16 @@ func (m *networkErrorMessage) send(context.Context, *bot.Bot) (*models.Message, 
 	return nil, &net.OpError{Op: "dial", Err: errors.New("connection refused")}
 }
 
+// serverErrorMessage always meets a 5xx answer.
+type serverErrorMessage struct{ id int64 }
+
+func (m *serverErrorMessage) chatID() int64      { return m.id }
+func (m *serverErrorMessage) setChatID(id int64) { m.id = id }
+func (m *serverErrorMessage) render(string)      {}
+func (m *serverErrorMessage) send(context.Context, *bot.Bot) (*models.Message, error) {
+	return nil, fmt.Errorf("%w for method sendMessage, 502 Bad Gateway", bot.ErrorServer)
+}
+
 // TestDeliverCountsStalls checks
 // that a stall raises the re-queued message's count,
 // that repeats accumulate, and that a prompt 429 leaves it alone.
@@ -675,6 +687,7 @@ func TestDeliverCountsStalls(t *testing.T) {
 	}{
 		{"a timeout counts", &timeoutMessage{id: 1}, 0, messageTimeout, 1},
 		{"a network error counts", &networkErrorMessage{id: 1}, 0, messageUnknownNetworkError, 1},
+		{"a 5xx counts", &serverErrorMessage{id: 1}, 0, messageServerError, 1},
 		{"stalls accumulate", &timeoutMessage{id: 1}, 2, messageTimeout, 3},
 		{"a 429 leaves the count alone", &tooManyRequests{id: 1, retryAfter: 30}, 1, messageTooManyRequests, 1},
 	}

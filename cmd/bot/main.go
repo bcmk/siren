@@ -221,6 +221,7 @@ const (
 	messageDiceSkipped         = -10
 	messageFileIDRejected      = -11
 	messageAdDropped           = -12
+	messageServerError         = -13
 )
 
 type msgSendResult struct {
@@ -628,6 +629,10 @@ func (w *worker) sendMessageInternal(
 			}
 			lerr("cannot send a message, bad request, error: %v", err)
 			return nil, messageBadRequest, 0, 0
+		}
+		if errors.Is(err, bot.ErrorServer) {
+			linf("cannot send a message, %v", err)
+			return nil, messageServerError, 0, 0
 		}
 		var netErr net.Error
 		if errors.As(err, &netErr) {

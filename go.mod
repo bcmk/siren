@@ -84,4 +84,4 @@ require (
 
 go 1.26
 
-replace github.com/go-telegram/bot => github.com/bcmk/go-telegram-bot v0.0.0-20260702185757-2a128bfec889
+replace github.com/go-telegram/bot => github.com/bcmk/go-telegram-bot v0.0.0-20261023185748-0c9077c3f8bd
