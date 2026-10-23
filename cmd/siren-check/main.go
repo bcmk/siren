@@ -34,7 +34,7 @@ func main() {
 	cmdlib.SetVerbosity(*verbose)
 	if flag.NArg() != 2 {
 		flag.Usage()
-		return
+		os.Exit(2)
 	}
 	site := flag.Arg(0)
 	modelID := flag.Arg(1)
@@ -60,8 +60,8 @@ func main() {
 
 	modelID = checker.NicknamePreprocessing(modelID)
 	if !checker.NicknameRegexp().MatchString(modelID) {
-		fmt.Println("invalid model ID")
-		return
+		fmt.Fprintln(os.Stderr, "invalid model ID")
+		os.Exit(1)
 	}
 	info, err := checker.QueryStatus(modelID)
 	if err != nil {

@@ -34,7 +34,7 @@ func main() {
 	cmdlib.SetVerbosity(*verbose)
 	if flag.NArg() != 1 {
 		flag.Usage()
-		return
+		os.Exit(2)
 	}
 	site := flag.Arg(0)
 
