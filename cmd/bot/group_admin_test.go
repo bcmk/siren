@@ -200,6 +200,7 @@ func TestRepliesNameNoDisabledCommand(t *testing.T) {
 		{"settings", -10},
 		{"want_more", 10},
 		{"faq", 10},
+		{"help", 10},
 	}
 	// Kick and Twitch override guarded entries with their own
 	sets := []struct{ site, lang string }{

@@ -74,6 +74,11 @@ it writes the least a reader must type, a bare `add` in a private chat
 and `/add@SirenBot` in a group or channel.
 Bolding the name instead, as `<b>add</b>`, gives a channel reader nothing that works.
 
+Wrap a line naming a command the bot may not offer
+in `{{- if command_enabled "name" }}` and `{{- end }}`,
+as the `commands` translation entry does for /week and /month, and `want_more` for /buy_subs.
+An ad cannot call `command_enabled`; `needs_command` drops the whole ad instead.
+
 A channel drops a bare command, and in a group every bot present answers one,
 so a command the bot prints must name the bot.
 Translation entries are parsed once at startup and rendered at dispatch,

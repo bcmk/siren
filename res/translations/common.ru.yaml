@@ -71,8 +71,12 @@ commands:
     <b>{{ short_command "remove_all" }}</b> — Удалить всех моделей
     <b>{{ short_command "list" }}</b> — Ваши модели
     <b>{{ short_command "pics" }}</b> — Кадры трансляций в этот момент
+    {{- if command_enabled "week" }}
     <b>{{ short_command "week" }}</b> <code>МОДЕЛЬ</code> — График модели в предыдущие 7 дней
+    {{- end }}
+    {{- if command_enabled "month" }}
     <b>{{ short_command "month" }}</b> <code>МОДЕЛЬ</code> — Дни трансляций в предыдущие 5 недель
+    {{- end }}
     <b>{{ short_command "help" }}</b> — Список команд
     <b>{{ short_command "settings" }}</b> — Настройки
     <b>{{ short_command "feedback" }}</b> <code>ВАШЕ_СООБЩЕНИЕ</code> — Обратная связь
