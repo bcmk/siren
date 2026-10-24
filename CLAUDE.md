@@ -259,6 +259,7 @@
   A line that is vague, ambiguous, hard to parse, or reads as machine-written is a finding,
   and so is one that could say the same in fewer words.
   A doc must hold for every case its scope claims, not only the one it was written from.
+  A gap the code already answers, such as a nil pointer meaning absent, is not a finding.
 - Always look for simplifications, in fix checks and new code as much as in the reviewed diff
 - A hunk the feature does not need is a finding, even when it is harmless
 
