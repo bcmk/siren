@@ -1,12 +1,12 @@
 # Writing translations
 
 All user-facing strings live in `res/translations/`, never in Go source.
-Read this before adding or editing a message.
+Read this before adding or editing a translation entry.
 
 ## Files and structure
 
-- `common.{en,ru}.yaml` — messages shared by every site.
-- `<site>.{en,ru}.yaml` — per-site messages and overrides (e.g. `chaturbate.en.yaml`).
+- `common.{en,ru}.yaml` — translation entries shared by every site.
+- `<site>.{en,ru}.yaml` — per-site translation entries and overrides (e.g. `chaturbate.en.yaml`).
 
 Per endpoint the loader merges `common` with the site file,
 then `noNils` asserts that every field of the `Translations` struct resolves.
@@ -19,16 +19,16 @@ Always add a key to **both** `en` and `ru`.
 models on the adult sites, channels on Twitch and Kick.
 The key names the grammatical case, since Russian inflects the noun and English does not:
 `streamers_accusative` is `моделей`, not the nominative `модели`.
-Write `{{ template "streamers_accusative" }}` wherever a shared message needs that case,
-and add a key of its own for any other case a message needs.
+Write `{{ template "streamers_accusative" }}` wherever a shared translation entry needs that case,
+and add a key of its own for any other case a translation entry needs.
 `TestEveryEndpointNamesItsStreamers` fails on a site file that leaves the word to `common`.
 
 ## Parse modes
 
 An entry sets `parse:` where it needs markup; omitting it parses as `raw`.
 That is right for an ad, for a sub-template such as `show_kind`,
-which takes the parse mode of the message that includes it,
-and for a message with no markup.
+which takes the parse mode of the translation entry that includes it,
+and for a translation entry with no markup.
 
 - `html` — Telegram HTML. Use only `<b>`, `<i>`, `<code>`, `<a>`, `<blockquote>`.
 - `raw` — plain text, no markup.
@@ -75,12 +75,12 @@ Bolding the name instead, as `<b>add</b>`, gives a channel reader nothing that w
 
 A channel drops a bare command, and in a group every bot present answers one,
 so a command the bot prints must name the bot.
-Translations are parsed once at startup and rendered at dispatch,
+Translation entries are parsed once at startup and rendered at dispatch,
 where the chat is known: the send path clones the templates,
 binds `command` to write `/add` or `/add@botname`, and renders once.
 The clone keeps the binding to that one send.
 
-Nothing rewrites rendered text, and a translation says nothing about chats.
+Nothing rewrites rendered text, and a translation entry says nothing about chats.
 A misspelled `command` is a parse error at startup,
 where a misspelled field would render `<no value>` to a user,
 and a sub-template needs no dot, since a function does not read the data.
@@ -99,5 +99,5 @@ on a name no command has, and on a mention in any key that never reaches a chat.
 
 ## Whitespace and templates
 
-Messages are Go `text/template`.
-A blank line needs an explicit `{{ print "\n" }}`, as the `settings` message does.
+Translation entries are Go `text/template`.
+A blank line needs an explicit `{{ print "\n" }}`, as the `settings` translation entry does.

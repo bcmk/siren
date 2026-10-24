@@ -386,6 +386,8 @@ Call the broadcaster a streamer and their name a nickname.
 Call what a message shows an image, and the Telegram message carrying one a photo.
 "Picture" is user-facing wording alone, as in `/pics`.
 
+Call each entry in `res/translations/` a translation entry.
+
 Call public, private and the like a show kind,
 shortened to "show" only after the kind word, as in "a private show".
 Call one stretch online, from going online to going offline, a stream.
@@ -405,7 +407,7 @@ Call one stretch online, from going online to going offline, a stream.
 - Read `docs/image-sending.md` before changing how photos are sent:
   file ids, image downloads, the image-unavailable placeholder
 - Read `docs/telegram-send-stalls.md` before investigating send timeouts or latency
-- Read `docs/writing-translations.md` every time you add or edit a message
+- Read `docs/writing-translations.md` every time you add or edit a translation entry
   in `res/translations/` (punctuation, commands, parse modes, en/ru sync).
 - Read `docs/load-testing.md` before changing the checker-only mode (`checker_only`),
   which runs a bot with no endpoints and no deliveries
