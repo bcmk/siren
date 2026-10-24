@@ -220,8 +220,8 @@
 - When doing a code review, only report findings;
   never fix anything or offer to.
   When a question settles something, update its finding.
-  A request to update something means its finding.
-  Fix only when explicitly asked.
+  A request to update, change or fix anything means editing the findings.
+  Apply fixes only when explicitly asked to apply them.
 - When reporting on findings you were asked to fix,
   list the fixed and the declined ones separately
 - When a comment at or near the code documents a choice as deliberate,
