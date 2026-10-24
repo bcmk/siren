@@ -183,6 +183,8 @@ func chaturbateShowKind(currentShow string) cmdlib.ShowKind {
 		return cmdlib.ShowHidden
 	case "private":
 		return cmdlib.ShowPrivate
+	case "group":
+		return cmdlib.ShowGroup
 	case "away":
 		return cmdlib.ShowAway
 	}

@@ -26,3 +26,25 @@ func TestChaturbateStatus(t *testing.T) {
 		})
 	}
 }
+
+// TestChaturbateShowKind maps Chaturbate's show names to show kinds
+func TestChaturbateShowKind(t *testing.T) {
+	cases := []struct {
+		show string
+		want cmdlib.ShowKind
+	}{
+		{"public", cmdlib.ShowPublic},
+		{"private", cmdlib.ShowPrivate},
+		{"group", cmdlib.ShowGroup},
+		{"hidden", cmdlib.ShowHidden},
+		{"away", cmdlib.ShowAway},
+		{"offline", cmdlib.ShowUnknown},
+	}
+	for _, tc := range cases {
+		t.Run(tc.show, func(t *testing.T) {
+			if got := chaturbateShowKind(tc.show); got != tc.want {
+				t.Errorf("show = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
