@@ -137,7 +137,10 @@ func (c *ChaturbateChecker) QueryStreamer(modelID string) (cmdlib.StreamerInfoWi
 	if parsed.Status != nil {
 		return cmdlib.StreamerInfoWithStatus{Status: chaturbateStatus(parsed.Code)}, nil
 	}
-	return cmdlib.StreamerInfoWithStatus{Status: chaturbateRoomStatus(parsed.RoomStatus)}, nil
+	return cmdlib.StreamerInfoWithStatus{
+		StreamerInfo: cmdlib.StreamerInfo{ShowKind: chaturbateShowKind(parsed.RoomStatus)},
+		Status:       chaturbateRoomStatus(parsed.RoomStatus),
+	}, nil
 }
 
 func chaturbateStatus(status string) cmdlib.StatusKind {
