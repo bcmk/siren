@@ -222,7 +222,8 @@
   When a question settles something, update its finding.
   A request to update, change or fix anything means editing the findings.
   Apply fixes only when explicitly asked to apply them.
-- When reporting on findings you were asked to fix,
+- When you have developed something
+  and you report on findings you were asked to fix,
   list the fixed and the declined ones separately
 - When a comment at or near the code documents a choice as deliberate,
   that is the answer, not context.
