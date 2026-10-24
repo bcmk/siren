@@ -374,14 +374,20 @@ never compare one to 0 to mean absent, invalid, or "nothing to handle".
 
 ## Terminology
 
+This is our internal terminology,
+for code, test names, comments, docs, commit messages and conversation.
+Code and translations belonging to one site say that site's own words,
+e.g. "model" on the adult sites, "channel" on Twitch and Kick.
+
 Call the broadcaster a streamer and their name a nickname.
-Use those words everywhere — code, comments, test names, commit messages, conversation —
-except in code and translations belonging to one site,
-which say that site's own word: "model" on the adult sites, "channel" on Twitch and Kick.
 "camname" is user-facing wording alone: it belongs in `res/translations/` and docs quoting them.
 
 Call what a message shows an image, and the Telegram message carrying one a photo.
 "Picture" is user-facing wording alone, as in `/pics`.
+
+Call public, private and the like a show kind,
+shortened to "show" only after the kind word, as in "a private show".
+Call one stretch online, from going online to going offline, a stream.
 
 ## Documentation
 
