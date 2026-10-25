@@ -3,6 +3,25 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v6.5.0 — 2026-10-25
+
+### Added
+
+- A Chaturbate room polled on its own gets its show kind
+- `siren-check` prints when a streamer went online or offline, and when the current show kind began
+
+### Fixed
+
+- A message Telegram answers with a 5xx is sent again
+- Chaturbate streamers in group shows get their show kind
+- A password-protected Chaturbate room counts as existing
+- The subject commands are answered as unknown on sites without subjects
+- The offline notification commands are answered as unknown where offline notifications are off
+- The help lists /week and /month only where the bot offers them
+- The buy_subs ad shows only where the bot offers /buy_subs
+- `siren-check` and `siren-online-list` exit nonzero on bad arguments
+- `siren-online-list` and `twitch-specific-streams` exit nonzero on a failed query
+
 ## v6.4.2 — 2026-10-22
 
 ### Fixed
