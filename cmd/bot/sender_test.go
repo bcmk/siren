@@ -466,7 +466,7 @@ func TestDeliverTiming(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		w := &worker{
-			cfg:         &botconfig.Config{},
+			cfg:         &botconfig.Config{UserCooldownMs: 1000},
 			bots:        map[string]*bot.Bot{"ep": nil},
 			sendResults: make(chan msgSendResult, 16),
 			cooledUsers: make(chan cooledUser, 16),
@@ -489,8 +489,8 @@ func TestDeliverTiming(t *testing.T) {
 		}
 
 		<-w.cooledUsers
-		if d := time.Since(start); d != userCooldown {
-			t.Errorf("user freed after %v, want the %v cooldown", d, userCooldown)
+		if d := time.Since(start); d != time.Second {
+			t.Errorf("user freed after %v, want the 1s cooldown", d)
 		}
 	})
 }

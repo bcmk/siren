@@ -92,8 +92,9 @@ A bot keeps an id for `imageIDTTL`, an hour.
   uploads the bytes downloaded for it, or else goes with the placeholder
 - **The upload times out:** the bot stops uploading the image for an `imageTTL`.
   Photos of it meanwhile go by a file id, with the placeholder by its id, or else as text.
-  The timed-out photo goes the same way after `timedOutUploadPostpone`,
-  or `groupCooldown` in a group or channel.
+  The timed-out photo goes the same way
+  after the longer of `timed_out_upload_postpone_ms` and the chat's send gap:
+  `user_cooldown_ms`, or `group_cooldown_ms` in a group or channel.
 
 ## Logs
 

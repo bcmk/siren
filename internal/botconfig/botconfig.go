@@ -14,6 +14,16 @@ import (
 
 var checkErr = cmdlib.CheckErr
 
+// ImageTTL is how long an image from one URL is not downloaded or uploaded again.
+// A send waiting this long after a timed-out upload would upload it again.
+const ImageTTL = time.Minute
+
+// minUserCooldownMs keeps a private chat under Telegram's one message a second
+const minUserCooldownMs = 1000
+
+// minGroupCooldownMs keeps a group under Telegram's 20 messages a minute
+const minGroupCooldownMs = 3000
+
 type endpoint struct {
 	WebhookDomain       string        `mapstructure:"webhook_domain"`       // the domain listening to the webhook
 	BotToken            cmdlib.Secret `mapstructure:"bot_token"`            // your Telegram bot token
@@ -63,6 +73,9 @@ type Config struct {
 	TelegramTimeoutSeconds          int                       `mapstructure:"telegram_timeout_seconds"`           // the timeout for Telegram queries
 	TelegramKeepAlivePeriodSeconds  int                       `mapstructure:"telegram_keep_alive_period_seconds"` // the period of the keep-alive getMe calls, below 90, 0 disables, defaults to 30
 	ImageDownloadTimeoutSeconds     int                       `mapstructure:"image_download_timeout_seconds"`     // the timeout for image downloads, defaults to 5
+	UserCooldownMs                  int                       `mapstructure:"user_cooldown_ms"`                   // the minimum gap between an endpoint's sends to one private chat, 1000 (Telegram's chat limit) to 59999, defaults to 1000
+	GroupCooldownMs                 int                       `mapstructure:"group_cooldown_ms"`                  // the minimum gap between an endpoint's sends to one group or channel, 3000 (Telegram's group limit) to 59999, defaults to 3000
+	TimedOutUploadPostponeMs        int                       `mapstructure:"timed_out_upload_postpone_ms"`       // the least wait before resending a photo whose upload timed out, below 60000, defaults to 2000
 	MaxSubscriptionsForPics         int                       `mapstructure:"max_subscriptions_for_pics"`         // the maximum amount of subscriptions for pics in a group chat
 	SubsConfirmationPeriodSeconds   int                       `mapstructure:"subs_confirmation_period_seconds"`   // subscriptions confirmation period
 	NotificationsReadyPeriodSeconds int                       `mapstructure:"notifications_ready_period_seconds"` // notifications ready check period
@@ -96,6 +109,9 @@ func ReadConfig(cfgPath string) *Config {
 		BotLinkPeriod:                  12,
 		BlockedSendThreshold:           100,
 		TelegramKeepAlivePeriodSeconds: 30,
+		UserCooldownMs:                 1000,
+		GroupCooldownMs:                3000,
+		TimedOutUploadPostponeMs:       2000,
 	}
 	cmdlib.BindEnvForConfig(v, cfg)
 	checkErr(v.Unmarshal(&cfg, cmdlib.StrictConfigDecoder))
@@ -177,6 +193,16 @@ func checkConfig(cfg *Config) error {
 	if cfg.ImageDownloadTimeoutSeconds == 0 {
 		cfg.ImageDownloadTimeoutSeconds = 5
 	}
+	maxWaitMs := int(ImageTTL.Milliseconds())
+	if cfg.UserCooldownMs < minUserCooldownMs || cfg.UserCooldownMs >= maxWaitMs {
+		return fmt.Errorf("configure user_cooldown_ms from %d to %d", minUserCooldownMs, maxWaitMs-1)
+	}
+	if cfg.GroupCooldownMs < minGroupCooldownMs || cfg.GroupCooldownMs >= maxWaitMs {
+		return fmt.Errorf("configure group_cooldown_ms from %d to %d", minGroupCooldownMs, maxWaitMs-1)
+	}
+	if cfg.TimedOutUploadPostponeMs <= 0 || cfg.TimedOutUploadPostponeMs >= maxWaitMs {
+		return fmt.Errorf("configure timed_out_upload_postpone_ms from 1 to %d", maxWaitMs-1)
+	}
 	if cfg.MaxSubscriptionsForPics <= 0 {
 		return errors.New("configure a positive max_subscriptions_for_pics")
 	}
@@ -244,6 +270,21 @@ func (c *Config) TelegramKeepAlivePeriod() time.Duration {
 // ImageDownloadTimeout returns the configured image download HTTP timeout.
 func (c *Config) ImageDownloadTimeout() time.Duration {
 	return time.Duration(c.ImageDownloadTimeoutSeconds) * time.Second
+}
+
+// UserCooldown returns the minimum gap between an endpoint's sends to one private chat.
+func (c *Config) UserCooldown() time.Duration {
+	return time.Duration(c.UserCooldownMs) * time.Millisecond
+}
+
+// GroupCooldown returns the minimum gap between an endpoint's sends to one group or channel.
+func (c *Config) GroupCooldown() time.Duration {
+	return time.Duration(c.GroupCooldownMs) * time.Millisecond
+}
+
+// TimedOutUploadPostpone returns the least wait before resending a photo whose upload timed out.
+func (c *Config) TimedOutUploadPostpone() time.Duration {
+	return time.Duration(c.TimedOutUploadPostponeMs) * time.Millisecond
 }
 
 // ChatWhitelisted returns true if the chat is whitelisted or if no whitelist

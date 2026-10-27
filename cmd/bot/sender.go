@@ -12,14 +12,13 @@ import (
 
 	"github.com/go-telegram/bot/models"
 
+	"github.com/bcmk/siren/v6/internal/botconfig"
 	"github.com/bcmk/siren/v6/internal/db"
 	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
 
 const (
 	endpointCooldown = 60 * time.Millisecond // minimum gap between an endpoint's sends
-	userCooldown     = time.Second           // minimum gap between an endpoint's sends to one user
-	groupCooldown    = 3 * time.Second       // minimum gap to one group (Telegram's 20 msg/min cap)
 	// tooManyRequestsBackoff paces a 429 redelivery
 	// when Telegram sends no retry_after;
 	// otherwise retry_after wins, capped at tooManyRequestsMaxBackoff.
@@ -28,8 +27,6 @@ const (
 	// transientErrorPostpone delays a timed-out, network-failed or 5xx-answered message
 	// before its redelivery.
 	transientErrorPostpone = 10 * time.Second
-	// timedOutUploadPostpone delays the retry of a timed-out upload, which goes without the image.
-	timedOutUploadPostpone = 2 * time.Second
 	// tooManyRequestsEndpointPause is the gap an endpoint holds after any 429,
 	// so a rate limit backs off that whole endpoint, not just the failing user.
 	tooManyRequestsEndpointPause = time.Second
@@ -45,9 +42,8 @@ const (
 	// until trySend drains cooledUsers — no deadlock, self-healing —
 	// so 64 sizes the common near-empty case, not the burst.
 	sendChanCap = 64
-	// imageTTL is how long a downloaded image lasts, since sites reuse URLs,
-	// and how long a timeout pauses uploads.
-	imageTTL = time.Minute
+	// imageTTL is how long a downloaded image lasts and a timeout pauses uploads
+	imageTTL = botconfig.ImageTTL
 	// imageIDTTL is how long a bot keeps the id of an image it uploaded.
 	imageIDTTL = time.Hour
 )
@@ -678,7 +674,7 @@ func (w *worker) deliver(q *queuedMessage, msg sendable) {
 	// and a group migrating mid-notice is not worth a special path.
 	pause, transient, stalled := transientDelay(result, retryAfter)
 	if photo.timedOut {
-		pause = timedOutUploadPostpone
+		pause = w.cfg.TimedOutUploadPostpone()
 	}
 	// A migrate to the same chat id is degenerate (Telegram breaking its
 	// one-way migration contract): re-queuing it would loop forever
@@ -744,11 +740,11 @@ func (w *worker) deliver(q *queuedMessage, msg sendable) {
 	// not a pacing sleep.
 	// The timer spawns the release goroutine only when it fires,
 	// so a long postpone parks a timer entry, not a goroutine stack.
-	// A group or channel caps tighter than the 1s per-user gap, at 20 messages/min,
+	// A group or channel caps tighter than a private chat, at 20 messages/min,
 	// so pace it slower to avoid self-triggering a 429.
-	cooldown := userCooldown
+	cooldown := w.cfg.UserCooldown()
 	if isGroup {
-		cooldown = groupCooldown
+		cooldown = w.cfg.GroupCooldown()
 	}
 	// A postponed message's user stays cooling for the whole postpone,
 	// so its re-queued send dispatches no sooner than that.

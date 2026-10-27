@@ -62,7 +62,8 @@ Feature: Image sending
       When an upload of an image to chat A times out
       Then the bot stops uploading that image for a minute
       And A keeps its place in the send queue
-      And A's photo goes again after 2 s, or 3 s in a group or channel
+      And A's photo goes again after the longer of timed_out_upload_postpone_ms and A's send gap
+      And A's send gap is user_cooldown_ms, or group_cooldown_ms in a group or channel
 
     Scenario Outline: What a photo goes as while its image's uploads are paused
       Given an upload of the photo's image timed out within the last minute

@@ -101,7 +101,7 @@ func TestDeliverReportsMigrateForRequeue(t *testing.T) {
 			t.Fatalf("result = {result %d, migrateTo %d, resend set %t}, want a re-queueing migrate to %d",
 				r.result, r.migrateToChatID, r.resend != nil, newID)
 		}
-		// The chat is a group, released after groupCooldown — exactly once.
+		// Exactly one release.
 		if c := <-w.cooledUsers; c.userID != userID || c.endpoint != "ep" {
 			t.Errorf("released (endpoint, id) = (%s, %d), want (ep, %d)", c.endpoint, c.userID, userID)
 		}

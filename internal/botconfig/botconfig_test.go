@@ -98,6 +98,9 @@ func validConfig(e endpoint) *Config {
 		TelegramTimeoutSeconds:          10,
 		MaxSubscriptionsForPics:         10,
 		BlockedSendThreshold:            15,
+		UserCooldownMs:                  1000,
+		GroupCooldownMs:                 3000,
+		TimedOutUploadPostponeMs:        2000,
 		SubsConfirmationPeriodSeconds:   1,
 		NotificationsReadyPeriodSeconds: 1,
 	}
@@ -209,10 +212,11 @@ func TestCheckConfigCheckerOnly(t *testing.T) {
 	}
 }
 
-// TestCheckConfigBoundsThePeriods pins the three tick periods as positive,
+// TestCheckConfigBounds pins the three tick periods as positive,
 // since the bot's ticker panics on a non-positive one.
 // It holds the keep-alive period non-negative and below the idle timeout.
-func TestCheckConfigBoundsThePeriods(t *testing.T) {
+// It holds the send cooldowns at or above Telegram's limits, and every send wait below ImageTTL.
+func TestCheckConfigBounds(t *testing.T) {
 	tests := []struct {
 		name   string
 		mangle func(*Config)
@@ -234,13 +238,31 @@ func TestCheckConfigBoundsThePeriods(t *testing.T) {
 			name:   "telegram_keep_alive_period_seconds at the idle timeout",
 			mangle: func(c *Config) { c.TelegramKeepAlivePeriodSeconds = int(cmdlib.IdleConnTimeout.Seconds()) },
 		},
+		{name: "user_cooldown_ms below Telegram's chat limit", mangle: func(c *Config) { c.UserCooldownMs = 999 }},
+		{
+			name:   "user_cooldown_ms at the upload pause",
+			mangle: func(c *Config) { c.UserCooldownMs = int(ImageTTL.Milliseconds()) },
+		},
+		{name: "group_cooldown_ms below Telegram's group limit", mangle: func(c *Config) { c.GroupCooldownMs = 2999 }},
+		{
+			name:   "group_cooldown_ms at the upload pause",
+			mangle: func(c *Config) { c.GroupCooldownMs = int(ImageTTL.Milliseconds()) },
+		},
+		{
+			name:   "zero timed_out_upload_postpone_ms",
+			mangle: func(c *Config) { c.TimedOutUploadPostponeMs = 0 },
+		},
+		{
+			name:   "timed_out_upload_postpone_ms at the upload pause",
+			mangle: func(c *Config) { c.TimedOutUploadPostponeMs = int(ImageTTL.Milliseconds()) },
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := validConfig(validEndpoint())
 			tt.mangle(cfg)
 			if err := checkConfig(cfg); err == nil {
-				t.Error("an out-of-bounds period was accepted")
+				t.Error("an out-of-bounds value was accepted")
 			}
 		})
 	}

@@ -677,9 +677,11 @@ func TestFanOutUploadsOnce(t *testing.T) {
 	}
 }
 
-// A timed-out upload retries the photo after timedOutUploadPostpone, unranked by a stall.
+// A timed-out upload retries the photo after the upload postpone, unranked by a stall.
 func TestTimedOutUploadPostponesBriefly(t *testing.T) {
 	t.Parallel()
+	// The production defaults: the private chat's postpone must outlast user_cooldown_ms.
+	cfg := searchConfig(t, "123:test-token", nil)
 	tests := []struct {
 		name       string
 		chatID     int64
@@ -687,8 +689,8 @@ func TestTimedOutUploadPostponesBriefly(t *testing.T) {
 		want       time.Duration
 		wantStalls int
 	}{
-		{"a private chat waits timedOutUploadPostpone", 1, "", timedOutUploadPostpone, 0},
-		{"a group still waits its cooldown", -100, "", groupCooldown, 0},
+		{"a private chat waits the upload postpone", 1, "", 2 * time.Second, 0},
+		{"a group still waits its cooldown", -100, "", 3 * time.Second, 0},
 		{"a timed-out send by id keeps the transport postpone", 1, "known", transientErrorPostpone, 1},
 	}
 	for _, tc := range tests {
@@ -697,7 +699,7 @@ func TestTimedOutUploadPostponesBriefly(t *testing.T) {
 			b := newFakeBot(t, &fakeTelegram{replies: []fakeReply{{err: os.ErrDeadlineExceeded}}})
 			synctest.Test(t, func(t *testing.T) {
 				w := &worker{
-					cfg:         &botconfig.Config{},
+					cfg:         cfg,
 					bots:        map[string]*bot.Bot{"ep": b},
 					sendResults: make(chan msgSendResult, 16),
 					cooledUsers: make(chan cooledUser, 16),
