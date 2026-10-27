@@ -1163,6 +1163,7 @@ func TestRunLogsAHeldChunksWait(t *testing.T) {
 	}
 	// Fails rather than hangs should the lock timeout go
 	tdb.MustExec("set statement_timeout = '10s'")
+	tdb.VacuumLockTimeout = 200 * time.Millisecond
 	if _, err := run(ctx, tdb.Database, 400*day, testRules, 0, now); err != nil {
 		t.Fatal(err)
 	}
@@ -1175,7 +1176,7 @@ func TestRunLogsAHeldChunksWait(t *testing.T) {
 		nil,
 		db.ScanTo{&durationMs, &vacuumed, &vacuumMs},
 		func() {})
-	if durationMs < 4000 || vacuumed != 0 || vacuumMs != nil {
+	if durationMs < int(tdb.VacuumLockTimeout.Milliseconds()) || vacuumed != 0 || vacuumMs != nil {
 		t.Errorf("logged duration_ms = %d, vacuumed_chunks = %d, vacuum_ms = %v, want the lock timeout's wait, 0 and none",
 			durationMs, vacuumed, vacuumMs)
 	}

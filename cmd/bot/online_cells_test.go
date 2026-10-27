@@ -144,7 +144,6 @@ func TestOnlineCells(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			defer w.terminate()
-			w.createDatabase()
 
 			for _, ins := range tc.inserts {
 				w.db.UpsertUnconfirmedStatusChanges(
@@ -186,7 +185,6 @@ func TestOnlineCellsEmpty(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 
 	changes := w.db.ChangesFromToForStreamers([]int{}, 100, 200)
 	result := onlineCells(changes, 100, 200, 10)

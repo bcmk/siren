@@ -300,7 +300,6 @@ func TestDispatchRendersForTheDestinationChat(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			defer w.terminate()
-			w.createDatabase()
 			w.sender("test").cooling = false
 			userID, _ := w.db.AddUser(tc.chatID, 3, 0, "")
 

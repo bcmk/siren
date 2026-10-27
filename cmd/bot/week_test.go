@@ -118,7 +118,6 @@ func TestShowWeekNeverOnline(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 	w.tpl["test"] = realTemplates(t, "en")
 	m := testMessage(w, 10, "week", 100)

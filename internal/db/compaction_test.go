@@ -325,6 +325,7 @@ func TestVacuumNextStatusChangesChunkSendsAHeldVacuumBack(t *testing.T) {
 	queueChunk(t, db.Database, 171*day, false)
 	other := NewDatabase(db.connStr, false, 5)
 	defer func() { _ = other.Close() }()
+	other.VacuumLockTimeout = 200 * time.Millisecond
 	ctx := context.Background()
 
 	holder, err := db.Begin()

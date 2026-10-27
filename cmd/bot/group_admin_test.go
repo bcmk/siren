@@ -84,7 +84,6 @@ func TestGroupAdminGate(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			defer w.terminate()
-			w.createDatabase()
 			w.shuttingDown.Store(tc.shuttingDown)
 			looked := false
 			w.chatMember = func(string, int64, int64) (*models.ChatMember, error) {
@@ -159,7 +158,6 @@ func TestDisabledCommandAnswersUnknown(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			defer w.terminate()
-			w.createDatabase()
 			if tc.configure != nil {
 				// Every worker shares &testConfig, so copy before changing it.
 				cfg := *w.cfg
@@ -215,7 +213,6 @@ func TestRepliesNameNoDisabledCommand(t *testing.T) {
 				t.Parallel()
 				w := newTestWorker()
 				defer w.terminate()
-				w.createDatabase()
 				w.initCache()
 				w.initTimezones()
 				cfg := *w.cfg

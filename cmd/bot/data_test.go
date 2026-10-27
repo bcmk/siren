@@ -188,7 +188,7 @@ func testMessage(w *testWorker, chatID int64, command string, now int) receivedM
 
 // newTestWorker gives the test a worker on a database of its own
 func newTestWorker() *testWorker {
-	connStr, err := clones.Clone()
+	connStr, drop, err := clones.Clone()
 	checkErr(err)
 
 	tpl := template.New("")
@@ -249,8 +249,10 @@ func newTestWorker() *testWorker {
 	s := w.sender("test")
 	s.cooling = true
 	w.sendQueue = &s.queue
-	// No drop database: the container's teardown takes every clone with it.
-	w.terminate = func() { checkErr(w.db.Close()) }
+	w.terminate = func() {
+		checkErr(w.db.Close())
+		checkErr(drop())
+	}
 	return w
 }
 
@@ -259,7 +261,6 @@ func newTestWorker() *testWorker {
 // and a nil one yields the empty-domain URL the button assertions exist to catch.
 func webAppTestWorker(t *testing.T) *testWorker {
 	w := newTestWorker()
-	w.createDatabase()
 	w.initCache()
 	w.cfg = searchConfig(t, "123:test-token", nil)
 	return w

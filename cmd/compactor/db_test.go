@@ -31,15 +31,20 @@ type testDB struct {
 // newTestDB gives the test a database of its own
 func newTestDB(t *testing.T) *testDB {
 	t.Helper()
-	connStr, err := clones.Clone()
+	connStr, drop, err := clones.Clone()
 	if err != nil {
 		t.Fatal(err)
 	}
 	d := db.NewDatabase(connStr, false, 5)
 	return &testDB{
-		Database:  &d,
-		connStr:   connStr,
-		terminate: func() { _ = d.Close() },
+		Database: &d,
+		connStr:  connStr,
+		terminate: func() {
+			_ = d.Close()
+			if err := drop(); err != nil {
+				t.Error(err)
+			}
+		},
 	}
 }
 

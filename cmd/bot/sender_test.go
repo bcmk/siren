@@ -79,7 +79,6 @@ func TestSenderScheduling(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			defer w.terminate()
-			w.createDatabase()
 			w.sender("test").cooling = false
 
 			userIDs := make([]db.UserID, tt.users)
@@ -149,7 +148,6 @@ func TestEndpointsDeliverConcurrently(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 
 	userID, _ := w.db.AddUser(100, 3, 0, "private")
 	var arrived atomic.Int32
@@ -767,7 +765,6 @@ func TestDrainKeepsPostponedNotificationArmed(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.shuttingDown.Store(true) // the drain runs only during shutdown
 
 	userID, _ := w.db.AddUser(100, 3, 0, "private")

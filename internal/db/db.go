@@ -34,6 +34,8 @@ type Database struct {
 	shouldCheckGID    bool
 	gidCheckSuspended bool
 	defaultMaxSubs    int
+	// VacuumLockTimeout bounds a chunk vacuum's wait for its lock
+	VacuumLockTimeout time.Duration
 }
 
 // NewDatabase creates a new database object.
@@ -57,6 +59,9 @@ func NewDatabase(connString string, shouldCheckGID bool, defaultMaxSubs int) Dat
 		shouldCheckGID: shouldCheckGID,
 		mainGID:        gid(),
 		defaultMaxSubs: defaultMaxSubs,
+		// Past deadlock_timeout, so an autovacuum on the chunk yields to the plain vacuum,
+		// and bounded, as a migration may wait on the vacuum meanwhile
+		VacuumLockTimeout: 5 * time.Second,
 	}
 }
 

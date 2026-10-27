@@ -128,7 +128,6 @@ func TestMigrateAppliesBeforeResendDispatch(t *testing.T) {
 	const oldID, newID = int64(-100), int64(-1001234)
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.sender("test").cooling = false
 
 	userID, _ := w.db.AddUser(oldID, 3, 0, "group")
@@ -164,7 +163,6 @@ func TestSenderRedeliversAcrossMigrate(t *testing.T) {
 	const oldID, newID = int64(-100), int64(-1001234)
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.sender("test").cooling = false
 	// Skip the member-count network lookup in the sent bookkeeping.
 	w.shuttingDown.Store(true)

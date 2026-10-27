@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1952,9 +1953,9 @@ func (d *Database) vacuumStatusChangesChunk(ctx context.Context, id int64, name 
 		migrationLock).Scan(&locked); err != nil || !locked {
 		return false, err
 	}
-	// Past deadlock_timeout, so an autovacuum on the chunk yields to the plain vacuum,
-	// and bounded, as a migration may wait on this meanwhile
-	_, err := d.db.PgConn().Exec(ctx, `set lock_timeout = '5s'`).ReadAll()
+	_, err := d.db.PgConn().Exec(
+		ctx,
+		"set lock_timeout = "+strconv.FormatInt(d.VacuumLockTimeout.Milliseconds(), 10)).ReadAll()
 	if err == nil && rewrite {
 		err = d.rewriteStatusChangesChunk(ctx, id, name)
 	}

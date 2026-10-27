@@ -47,7 +47,6 @@ func TestSql(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 	for _, n := range []string{"a", "b", "c", "c2", "c3", "d", "e", "f", "g"} {
 		insertTestStreamer(&w.db, db.Streamer{Nickname: n})
@@ -150,7 +149,6 @@ func TestUpdateNotifications(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 
 	for _, n := range []string{"a", "b", "c", "d"} {
@@ -210,7 +208,6 @@ func TestNotificationsStorage(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 
 	w.db.AddUser(1, 3, 0, "private")
 	w.db.AddUser(2, 3, 0, "private")
@@ -295,7 +292,6 @@ func TestCompleteSendResultMigrateReArms(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 
 	w.db.AddUser(1, 3, 0, "private")
 	streamerID := insertTestStreamer(&w.db, db.Streamer{Nickname: "a"})
@@ -328,7 +324,6 @@ func TestStreamers(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	insertTestStreamer(&w.db, db.Streamer{Nickname: "a", ConfirmedStatus: cmdlib.StatusOffline})
 	if w.db.MaybeStreamer("a") == nil {
 		t.Error("unexpected result")
@@ -342,7 +337,6 @@ func TestCopyFromAndBatchInTransaction(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 
 	// Test that CopyFrom and SendBatch are in the same transaction
 	// by making SendBatch fail and verifying CopyFrom data is rolled back
@@ -514,7 +508,6 @@ func TestUnconfirmedStatusConsistency(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 
 	// Insert first status change for streamer "a"
@@ -720,7 +713,6 @@ func TestAddStreamer(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.db.AddUser(1, 3, 0, "private")
 
 	// Add streamer that doesn't exist — should insert into pending_subscriptions and return nil
@@ -766,7 +758,6 @@ func TestConfirmSub(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 
 	// Insert pending subscription
 	w.db.AddUser(1, 0, 0, "")
@@ -804,7 +795,6 @@ func TestDenySub(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 
 	// Insert pending subscription
 	w.db.AddUser(1, 0, 0, "")
@@ -823,7 +813,6 @@ func TestProcessSubsConfirmations(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 
 	// Insert pending subscriptions in checking state
 	for chatID := int64(1); chatID <= 9; chatID++ {
@@ -951,7 +940,6 @@ func TestProcessSubsConfirmationsPartialList(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 
 	for chatID := int64(1); chatID <= 3; chatID++ {
 		w.db.AddUser(chatID, 0, 0, "")
@@ -1007,7 +995,6 @@ func TestUserReferral(t *testing.T) {
 		t.Parallel()
 		w := newTestWorker()
 		defer w.terminate()
-		w.createDatabase()
 
 		// Create referrer and their referral link
 		w.db.AddUser(20, w.cfg.MaxSubs, 0, "private")
@@ -1065,7 +1052,6 @@ func TestUserReferral(t *testing.T) {
 		t.Parallel()
 		w := newTestWorker()
 		defer w.terminate()
-		w.createDatabase()
 
 		_, created := w.db.AddUser(30, w.cfg.MaxSubs, 100, "private")
 		w.start(testMessage(w, 30, "start", 100), "nonexistent-ref", created)
@@ -1087,7 +1073,6 @@ func TestUserReferral(t *testing.T) {
 		t.Parallel()
 		w := newTestWorker()
 		defer w.terminate()
-		w.createDatabase()
 
 		// Create referrer with referral link
 		w.db.AddUser(40, w.cfg.MaxSubs, 0, "private")
@@ -1123,7 +1108,6 @@ func TestUserReferral(t *testing.T) {
 		t.Parallel()
 		w := newTestWorker()
 		defer w.terminate()
-		w.createDatabase()
 
 		// Create user with referral link
 		w.db.AddUser(50, w.cfg.MaxSubs, 0, "private")
@@ -1152,7 +1136,6 @@ func TestStreamerReferral(t *testing.T) {
 		t.Parallel()
 		w := newTestWorker()
 		defer w.terminate()
-		w.createDatabase()
 
 		// Pre-create a known streamer
 		insertTestStreamer(&w.db, db.Streamer{Nickname: "known_model", ConfirmedStatus: cmdlib.StatusOnline})
@@ -1192,7 +1175,6 @@ func TestStreamerReferral(t *testing.T) {
 		t.Parallel()
 		w := newTestWorker()
 		defer w.terminate()
-		w.createDatabase()
 
 		_, created := w.db.AddUser(11, w.cfg.MaxSubs, 100, "private")
 		w.start(testMessage(w, 11, "start", 100), "m-unknown_model", created)
@@ -1299,7 +1281,6 @@ func TestStatusConfirmations(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			defer w.terminate()
-			w.createDatabase()
 
 			// Set up background streamers that should remain unchanged
 			insertTestStreamer(&w.db, db.Streamer{
@@ -1361,7 +1342,6 @@ func TestSubscribedStreamerStatuses(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 
 	// Insert streamers and confirmed subscriptions
 	insertTestStreamer(&w.db, db.Streamer{
@@ -1404,7 +1384,6 @@ func TestHandleStatusUpdates(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 
 	// Insert a subscription
@@ -1495,7 +1474,6 @@ func TestUnsubscribeBeforeRestart(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 
 	// Subscribe to "a" and "b"
@@ -1554,7 +1532,6 @@ func TestUnknownStreamerFirstOfflineSaved(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 
 	// Add a user
@@ -1749,7 +1726,6 @@ func TestStatusTransitions(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			defer w.terminate()
-			w.createDatabase()
 			// Set up background streamers that should remain unchanged
 			insertTestStreamer(&w.db, db.Streamer{
 				Nickname:             "always_online",
@@ -1884,7 +1860,6 @@ func TestNotifyOfStatuses(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 
 	w.db.AddUser(100, 3, 0, "private")
 	w.db.AddUser(101, 3, 0, "private")
@@ -1925,7 +1900,6 @@ func TestDeliverOffMainGoroutine(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 
 	w.db.AddUser(100, 3, 0, "private")
 	userID := w.db.EnsureUser(100)
@@ -1996,7 +1970,6 @@ func TestBuildNotificationsDiceGate(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 
 	streamerID := insertTestStreamer(&w.db, db.Streamer{Nickname: "s1"})
 	insertSubscription(&w.db, "test", 100, "s1")
@@ -2053,7 +2026,6 @@ func TestBroadcastDiceGate(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 
 	insertTestStreamer(&w.db, db.Streamer{Nickname: "s1"})
 	insertSubscription(&w.db, "test", 100, "s1")

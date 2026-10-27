@@ -92,7 +92,6 @@ func TestQueuingAnAlertCountsIt(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 
 	userID, _ := w.db.AddUser(-1001234567890, 3, 0, "channel")
 	storeStatusNotifications(w, userID, "a")
@@ -119,7 +118,6 @@ func TestBatchNumbersEveryNotification(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 
 	userID, _ := w.db.AddUser(-1001234567890, 3, 0, "channel")
 	otherID, _ := w.db.AddUser(-1001234567891, 3, 0, "channel")
@@ -152,7 +150,6 @@ func TestChannelNotificationReachesTheChatWithTheLink(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	cfg := testConfig
 	cfg.BotLinkPeriod = testBotLinkPeriod
 	w.cfg = &cfg
@@ -203,7 +200,6 @@ func TestOnlyAlertsTakeATurn(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			defer w.terminate()
-			w.createDatabase()
 
 			userID, _ := w.db.AddUser(-1001234567890, 3, 0, "channel")
 			storeNotification(w, userID, tc.kind, tc.status, "a")
@@ -272,7 +268,6 @@ func TestNewNotificationsCarriesTheChatType(t *testing.T) {
 	}
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 
 	// One fetch for all three chats, as a real one carries every recipient of a status change.
 	fetched := map[db.UserID]db.Notification{}

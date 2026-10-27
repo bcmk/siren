@@ -23,6 +23,7 @@ const Image = "timescale/timescaledb:2.22.1-pg17-oss"
 // it sits on every database holding the extension and blocks create database ... template.
 // NO_TS_TUNE keeps the image from sizing the server to the developer's VM:
 // a small one gets max_connections = 25, fewer than the bot tests open.
+// The data lives on tmpfs, where clones run faster than on the container's disk.
 func Run(ctx context.Context, dbName string) (*postgres.PostgresContainer, error) {
 	return postgres.Run(
 		ctx,
@@ -33,6 +34,7 @@ func Run(ctx context.Context, dbName string) (*postgres.PostgresContainer, error
 		postgres.BasicWaitStrategies(),
 		testcontainers.WithCmdArgs("-c", "timescaledb.max_background_workers=0"),
 		testcontainers.WithEnv(map[string]string{"NO_TS_TUNE": "true"}),
+		testcontainers.WithTmpfs(map[string]string{"/var/lib/postgresql/data": "rw"}),
 	)
 }
 
@@ -50,7 +52,7 @@ type Clones struct {
 	container *postgres.PostgresContainer
 	// baseConnStr points at the template; connStrFor rewrites its path to reach the other databases
 	baseConnStr string
-	// admin issues create database against the maintenance database.
+	// admin issues create and drop database against the maintenance database.
 	// pgx connections are not goroutine safe, so adminMu guards it,
 	// which also keeps concurrent clones off the same template.
 	admin   *pgx.Conn
@@ -83,18 +85,26 @@ func (c *Clones) start() error {
 	return err
 }
 
-// Clone creates a database from the migrated template and returns its connection string
-func (c *Clones) Clone() (string, error) {
-	if err := c.ready(); err != nil {
-		return "", err
+// Clone creates a database from the migrated template; drop removes it to free its tmpfs space.
+func (c *Clones) Clone() (connStr string, drop func() error, err error) {
+	if err = c.ready(); err != nil {
+		return "", nil, err
 	}
 	// Generated, so it needs no quoting: identifiers cannot be query args
 	name := fmt.Sprintf("test_%d", c.counter.Add(1))
+	drop = func() error {
+		return c.adminExec(fmt.Sprintf("drop database %s", name))
+	}
+	// file_copy clones faster than the default wal_log under the suites' parallel load
+	err = c.adminExec(fmt.Sprintf("create database %s template %s strategy = file_copy", name, templateName))
+	return c.connStrFor(name), drop, err
+}
+
+func (c *Clones) adminExec(sql string) error {
 	c.adminMu.Lock()
 	defer c.adminMu.Unlock()
-	// No drop database: the container's teardown takes every clone with it
-	_, err := c.admin.Exec(context.Background(), fmt.Sprintf("create database %s template %s", name, templateName))
-	return c.connStrFor(name), err
+	_, err := c.admin.Exec(context.Background(), sql)
+	return err
 }
 
 // connStrFor returns the connection string of another database on the container

@@ -56,7 +56,6 @@ func TestMemberSubscriptionsGate(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			defer w.terminate()
-			w.createDatabase()
 			m := testMessage(w, -10, tc.command, 0)
 			w.db.SetMemberSubscriptions(m.userID, tc.setting)
 			if got := w.groupAdminOnly(m, tc.command, tc.arguments); got != tc.wantGated {
@@ -116,7 +115,6 @@ func TestMemberSubscriptionsToggle(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			defer w.terminate()
-			w.createDatabase()
 			w.chatMember = func(string, int64, int64) (*models.ChatMember, error) {
 				return tc.member, nil
 			}
@@ -171,7 +169,6 @@ func TestSettingsShowsMemberSubscriptions(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			defer w.terminate()
-			w.createDatabase()
 			w.loadTranslations(realTranslations(tc.lang))
 			m := testMessage(w, tc.chatID, "settings", 0)
 			setChatType(w, tc.chatID, tc.chatType)

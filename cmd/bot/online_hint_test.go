@@ -118,7 +118,6 @@ func TestOnlinePicsClipALongSubject(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 	cfg := testConfig
 	cfg.ShowImages = true

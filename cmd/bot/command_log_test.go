@@ -134,7 +134,6 @@ func TestDeferredAddResultLogsItsCommand(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 
 	// The streamer is unknown, so this parks a pending subscription.
@@ -171,7 +170,6 @@ func TestDeferredAddedStreamerStatusLogsItsCommand(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 
 	insertTestStreamer(&w.db, db.Streamer{
@@ -208,7 +206,6 @@ func TestDeferredOnlinePicsLogItsCommand(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 
 	insertTestStreamer(&w.db, db.Streamer{
@@ -248,7 +245,6 @@ func TestReceivedCommandIsNullWhenUntracked(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 	w.botNames = map[string]string{"test": "bot"}
 
@@ -275,7 +271,6 @@ func TestCapitalizedCommandIsTracked(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 	w.botNames = map[string]string{"test": "bot"}
 
@@ -304,7 +299,6 @@ func TestFeedbackCopyToOwnerLogsNoCommand(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 
 	w.ownerUserID = w.db.EnsureUser(99)
@@ -330,7 +324,6 @@ func TestOwnerReplyLogsNoCommand(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 
 	w.botNames = map[string]string{"test": "bot"}
@@ -366,7 +359,6 @@ func TestOwnerGateRefusesStrangers(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 	w.botNames = map[string]string{"test": "bot"}
 	w.ownerUserID = w.db.EnsureUser(w.cfg.OwnerID)
@@ -393,7 +385,6 @@ func TestOwnerCommandsDispatch(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 	w.ownerUserID = w.db.EnsureUser(99)
 	for name := range ownerCommands {
@@ -421,7 +412,6 @@ func TestProcessTGUpdateWhitelistGate(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 	w.botNames = map[string]string{"test": "bot"}
 	cfg := testConfig
@@ -500,7 +490,6 @@ func TestProcessTGUpdateAppliesMigrations(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			defer w.terminate()
-			w.createDatabase()
 			w.initCache()
 			w.db.AddUser(fromID, 3, 0, "group")
 			w.processTGUpdate(incomingPacket{
@@ -534,7 +523,6 @@ func TestChatterSkipsTheWhitelistLog(t *testing.T) {
 	t.Cleanup(func() { cmdlib.Verbosity = was })
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 	w.botNames = map[string]string{"test": "bot"}
 	cfg := testConfig
@@ -593,7 +581,6 @@ func TestWebAppAddIsWhitelistGated(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			defer w.terminate()
-			w.createDatabase()
 			w.initCache()
 			// Every worker shares &testConfig, so copy before changing it.
 			cfg := testConfig
@@ -636,7 +623,6 @@ func TestDuplicatePaymentReplyLogsNoCommand(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 
 	payment := &models.SuccessfulPayment{
@@ -666,7 +652,6 @@ func TestAddResultForUnknownEndpointIsDropped(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 
 	userID := w.db.EnsureUser(1)
@@ -692,7 +677,6 @@ func TestBroadcastAckQueuesBehindTheBroadcast(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 
 	w.ownerUserID = w.db.EnsureUser(99)
@@ -734,7 +718,6 @@ func TestWebAppAddAdmitsARefusedAdd(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 
 	insertTestStreamer(&w.db, db.Streamer{Nickname: "known_model"})
@@ -769,7 +752,6 @@ func TestAdCommandNamesItsCommand(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 	w.botNames = map[string]string{"test": "bot"}
 
@@ -801,7 +783,6 @@ func TestBuyCallbackIsLoggedAsReceived(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 
 	// Every worker shares &testConfig, so copy before enabling the tiers.
@@ -876,7 +857,6 @@ func TestWebAppSearchWritesOnlyForAVettedChat(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 	w.fuzzySearchDB = w.db
 	// Every worker shares &testConfig, so copy before narrowing the whitelist.
@@ -921,7 +901,6 @@ func TestBuySubsCommandNamesItself(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 	w.botNames = map[string]string{"test": "bot"}
 
@@ -1011,7 +990,6 @@ func TestChunkedListNumbersItsReplies(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 
 	// Chunks are 50 streamers, so 120 fills three of them.
@@ -1065,7 +1043,6 @@ func TestOnlinePicsCarryTheHintInTheLastMessage(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			defer w.terminate()
-			w.createDatabase()
 			w.initCache()
 			// Above the three images, so the group cap is not what suppresses the hint.
 			cfg := testConfig
@@ -1142,7 +1119,6 @@ func TestPicsHintRollsTheDice(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			defer w.terminate()
-			w.createDatabase()
 			w.initCache()
 			cfg := testConfig
 			cfg.FieldsHintChancePercent = tc.chance
@@ -1173,7 +1149,6 @@ func TestPendingAddNumbersItsWholeAnswer(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 
 	// The streamer is unknown, so this parks a pending subscription.
@@ -1208,7 +1183,6 @@ func TestPolledListNumbersItsChunks(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 	w.ownerUserID = w.db.EnsureUser(99)
 
@@ -1239,7 +1213,6 @@ func TestAddedStreamerNumbersItsWholeAnswer(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 
 	insertTestStreamer(&w.db, db.Streamer{
@@ -1276,7 +1249,6 @@ func TestEmptyPolledListKeepsItsNumber(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 	w.ownerUserID = w.db.EnsureUser(99)
 
@@ -1291,7 +1263,6 @@ func TestUnpromptedSendLogsNoCommand(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 
 	userID := w.db.EnsureUser(1)
@@ -1310,7 +1281,6 @@ func TestUnknownCommandLogsNoCommand(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 
 	w.botNames = map[string]string{"test": "bot"}

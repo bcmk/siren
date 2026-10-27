@@ -13,7 +13,6 @@ func TestCheckerOnlyStoresAndSendsNothing(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	// Its own copy: newTestWorker hands every worker the one shared testConfig.
 	cfg := testConfig
 	cfg.CheckerOnly = true

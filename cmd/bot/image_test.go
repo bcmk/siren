@@ -417,7 +417,6 @@ func TestNotificationQueuesImageURL(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			defer w.terminate()
-			w.createDatabase()
 			w.initCache()
 			cfg := testConfig
 			cfg.ShowImages = tc.showImages
@@ -467,7 +466,6 @@ func TestBuildNotificationsMarksMissingImage(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			defer w.terminate()
-			w.createDatabase()
 			w.initCache()
 			cfg := testConfig
 			cfg.OfflineNotifications = true
@@ -495,7 +493,6 @@ func TestBatchSharesImage(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	defer w.terminate()
-	w.createDatabase()
 	w.initCache()
 	cfg := testConfig
 	cfg.ShowImages = true
@@ -567,7 +564,6 @@ func TestUnavailableTextRendersAfresh(t *testing.T) {
 func photoSendWorker(t *testing.T, f *fakeTelegram, client *http.Client, chatIDs ...int64) (*testWorker, []db.UserID) {
 	w := newTestWorker()
 	t.Cleanup(w.terminate)
-	w.createDatabase()
 	w.bots = map[string]*bot.Bot{"test": newFakeBot(t, f)}
 	w.client = client
 	w.tpl["test"] = realTemplates(t, "en")

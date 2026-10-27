@@ -228,7 +228,6 @@ func TestPerformWebAppTimezoneIsWhitelistGated(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			defer w.terminate()
-			w.createDatabase()
 			w.initCache()
 			// Every worker shares &testConfig, so copy before changing it.
 			cfg := testConfig
