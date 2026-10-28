@@ -252,6 +252,7 @@
   in a temporary worktree or copy created at the commit they need.
   A subagent names the worktree in every command (`go -C <dir> test ./...`, `git -C <dir> log`):
   its `cd` lasts one Bash call, and the next command runs in the main checkout.
+  A subagent stops every background command it started before it reports.
 - Write each finding to stand alone,
   so one can be handed to another agent without the rest of the list or the conversation.
   Avoid pointing to other findings by number; restate what the reader needs.
