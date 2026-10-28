@@ -225,6 +225,7 @@
 - When you have developed something
   and you report on findings you were asked to fix,
   list the fixed and the declined ones separately
+- Treat a finding pasted again as a paste mistake, not insistence
 - When a comment at or near the code documents a choice as deliberate,
   that is the answer, not context.
   Do not report a finding against it unless you can show
