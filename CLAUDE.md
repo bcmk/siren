@@ -216,6 +216,7 @@
   unless specifically asked for memory files
 - When doing a code review, only report findings;
   never fix anything or offer to.
+  Discussing a finding's fix and checking the fixes are part of the review.
   When a question settles something, update its finding.
   A request to update, change or fix anything means editing the findings.
   Apply fixes only when explicitly asked to apply them.
