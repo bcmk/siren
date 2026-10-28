@@ -2,9 +2,6 @@
 
 ## Git
 
-- Never use `git -C` — the working directory is already the repo root,
-  and `-C` triggers an extra permission prompt.
-  If the wrong cwd is in effect, run a bare `cd /path` first (no `&&`, no chain)
 - Prefer modern git commands, e.g. `switch` over `checkout` for branches
 - Commit directly on `master` unless asked to use a branch
 - Don't use slashes in branch names
@@ -252,7 +249,7 @@
 - During a code review, never touch the working tree or move HEAD.
   Run mutation tests and other experiments
   in a temporary worktree or copy created at the commit they need.
-  A subagent names the worktree in every command (`go -C <dir> test ./...`):
+  A subagent names the worktree in every command (`go -C <dir> test ./...`, `git -C <dir> log`):
   its `cd` lasts one Bash call, and the next command runs in the main checkout.
 - Write each finding to stand alone,
   so one can be handed to another agent without the rest of the list or the conversation.
