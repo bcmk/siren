@@ -83,7 +83,7 @@ func TestSenderScheduling(t *testing.T) {
 			userIDs := make([]db.UserID, tt.users)
 			idxOf := map[db.UserID]int{}
 			for i := range userIDs {
-				userIDs[i], _ = w.db.AddUser(int64(100+i), 3, 0, "private")
+				userIDs[i], _ = w.addUserAndChat(int64(100+i), 0, "private")
 				idxOf[userIDs[i]] = i
 			}
 
@@ -147,7 +147,7 @@ func TestEndpointsDeliverConcurrently(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 
-	userID, _ := w.db.AddUser(100, 3, 0, "private")
+	userID, _ := w.addUserAndChat(100, 0, "private")
 	var arrived atomic.Int32
 	gate := make(chan struct{})
 	for _, endpoint := range []string{"e1", "e2"} {
@@ -764,7 +764,7 @@ func TestDrainKeepsPostponedNotificationArmed(t *testing.T) {
 	w := newTestWorker()
 	w.shuttingDown.Store(true) // the drain runs only during shutdown
 
-	userID, _ := w.db.AddUser(100, 3, 0, "private")
+	userID, _ := w.addUserAndChat(100, 0, "private")
 	streamerID := w.mockDB.insertStreamer(db.Streamer{Nickname: "s1"}).ID
 	w.db.StoreNotifications([]db.Notification{
 		{Endpoint: "test", UserID: userID, StreamerID: &streamerID},

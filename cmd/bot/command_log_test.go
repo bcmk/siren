@@ -48,7 +48,7 @@ func completeQueuedSends(t *testing.T, w *testWorker) {
 		// trySend resolves the chat id at dispatch, which popping bypasses.
 		chatID, ok := w.db.ChatIDForUser(q.userID)
 		if !ok {
-			t.Fatalf("no chat for user %d", q.userID)
+			t.Fatalf("no user %d", q.userID)
 		}
 		// completeSendResult refreshes the member count of a group or channel,
 		// which calls the endpoint's bot, nil in the test worker.
@@ -209,7 +209,7 @@ func TestUntrackedCommandLogsNoName(t *testing.T) {
 		})
 	}
 
-	commands := w.mockDB.receivedMessageCommands
+	commands := w.mockDB.receivedMessageCommands()
 	t.Logf("received_message_log commands: %q", commands)
 	if !slices.Equal(commands, []string{"start", ""}) {
 		t.Errorf("untracked command was logged with a name, got %q", commands)
@@ -232,7 +232,7 @@ func TestCapitalizedCommandIsTracked(t *testing.T) {
 		}},
 	})
 
-	received := w.mockDB.receivedMessageCommands
+	received := w.mockDB.receivedMessageCommands()
 	sent := drainSendQueueToLog(t, w)
 	t.Logf("received %q, sent %q", received, sent)
 	if !slices.Equal(received, []string{"start"}) {
@@ -250,7 +250,7 @@ func TestFeedbackCopyToOwnerLogsNoCommand(t *testing.T) {
 	w := newTestWorker()
 	w.initCache()
 
-	w.ownerUserID = w.db.EnsureUser(99)
+	w.ownerUserID = w.db.EnsureUserAndChat("test", 99)
 	userID := w.db.EnsureUser(1)
 	w.feedback(testMessage(w, 1, "feedback", 100), "something is broken")
 
@@ -289,7 +289,7 @@ func TestOwnerReplyLogsNoCommand(t *testing.T) {
 		}},
 	})
 
-	received := w.mockDB.receivedMessageCommands
+	received := w.mockDB.receivedMessageCommands()
 	sent := drainSendQueueToLog(t, w)
 	t.Logf("received %q, sent %q", received, sent)
 	if !slices.Equal(received, []string{""}) {
@@ -441,7 +441,7 @@ func TestProcessTGUpdateWhitelistGate(t *testing.T) {
 	if users := len(w.mockDB.users); users != 0 {
 		t.Errorf("a non-whitelisted chat reached the database: %d users", users)
 	}
-	if got := w.mockDB.receivedMessageCommands; len(got) != 0 {
+	if got := w.mockDB.receivedMessageCommands(); len(got) != 0 {
 		t.Errorf("a non-whitelisted chat was logged: %q", got)
 	}
 	w.processTGUpdate(incomingPacket{endpoint: "test", message: message(5)})
@@ -450,7 +450,7 @@ func TestProcessTGUpdateWhitelistGate(t *testing.T) {
 	}
 }
 
-// A migration update must move the chat's rows whichever wire shape carries it,
+// A migration update must move the user's rows whichever wire shape carries it,
 // and with both fields set the chat id, which can name at most one end, is ignored.
 func TestProcessTGUpdateAppliesMigrations(t *testing.T) {
 	t.Parallel()
@@ -470,7 +470,7 @@ func TestProcessTGUpdateAppliesMigrations(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			w.initCache()
-			w.db.AddUser(fromID, 3, 0, "group")
+			w.addUserAndChat(fromID, 0, "group")
 			w.processTGUpdate(incomingPacket{
 				endpoint: "test",
 				message: &models.Update{Message: &models.Message{
@@ -480,10 +480,42 @@ func TestProcessTGUpdateAppliesMigrations(t *testing.T) {
 				}},
 			})
 			if _, found := w.db.UserByChatID(toID); !found {
-				t.Errorf("the chat's rows did not move to %d", toID)
+				t.Errorf("the user's rows did not move to %d", toID)
 			}
 			if _, found := w.db.UserByChatID(-999); found && tc.chat == -999 {
 				t.Error("the untrusted chat id gained a row")
+			}
+		})
+	}
+}
+
+// A migrate event goes on the handling bot's chat, created if missing
+func TestMigrateEventGoesOnTheHandlingBotsChat(t *testing.T) {
+	t.Parallel()
+	const fromID, toID = int64(-123), int64(-1999)
+	tests := []struct {
+		name string
+		// chatOn is the endpoint the group has a chat on, empty for none.
+		chatOn string
+	}{
+		{name: "the handling bot's chat", chatOn: "test"},
+		{name: "another bot's chat", chatOn: "other"},
+		{name: "no chat"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := newTestWorker()
+			w.db.EnsureUser(fromID)
+			if tc.chatOn != "" {
+				w.db.EnsureUserAndChat(tc.chatOn, fromID)
+			}
+
+			w.migrateChatAndLog(1000, "test", fromID, toID)
+
+			logged := w.mockDB.receivedMessageChats(migrateCommand)
+			if want := []string{fmt.Sprintf("test %d", toID)}; !slices.Equal(logged, want) {
+				t.Errorf("logged on %q, want %q", logged, want)
 			}
 		})
 	}
@@ -575,7 +607,7 @@ func TestWebAppAddIsWhitelistGated(t *testing.T) {
 				t.Errorf("admitted = %v, want %v", got, c.admitted)
 			}
 
-			received := w.mockDB.receivedMessageCommands
+			received := w.mockDB.receivedMessageCommands()
 			users := len(w.mockDB.users)
 			t.Logf("received %q, users %d", received, users)
 			if c.admitted {
@@ -749,6 +781,56 @@ func TestAdCommandNamesItsCommand(t *testing.T) {
 	}
 }
 
+// Only a private chat's status alert carries an ad
+func TestStatusAlertAdReachesPrivateChatsAlone(t *testing.T) {
+	t.Parallel()
+	w := newTestWorker()
+	w.initCache()
+	cfg := *w.cfg
+	cfg.AdChancePercent = 100
+	cfg.ShowImages = false
+	w.cfg = &cfg
+
+	adTpl := texttemplate.New("")
+	texttemplate.Must(adTpl.New("some_ad").Parse("SomeAd"))
+	w.tplAds = map[string]*texttemplate.Template{"test": adTpl}
+	w.trAds = map[string]map[string]*cmdlib.Translation{
+		"test": {"some_ad": {Key: "some_ad", Str: "SomeAd", Parse: cmdlib.ParseRaw}},
+	}
+	id := w.mockDB.insertStreamer(db.Streamer{Nickname: "s1"}).ID
+	tests := []struct {
+		name   string
+		chatID int64
+		// sends are the alert, and an ad in a private chat
+		sends int
+	}{
+		{"a private chat gets the alert and an ad", 1, 2},
+		{"a group gets the alert alone", -2, 1},
+		{"a supergroup gets the alert alone", -1001234, 1},
+	}
+	for _, tc := range tests {
+		insertSubscription(w.mockDB, "test", tc.chatID, "s1")
+	}
+
+	w.storeNotifications(w.buildNotifications([]db.ConfirmedStatusChange{
+		{StreamerID: id, Nickname: "s1", Status: cmdlib.StatusOnline, PrevStatus: cmdlib.StatusOffline},
+	}, 1000))
+	w.enqueueNotifications(w.db.NewNotifications())
+
+	sends := map[int64]int{}
+	for q := w.sendQueue.pop(); q != nil; q = w.sendQueue.pop() {
+		chatID, _ := w.db.ChatIDForUser(q.userID)
+		sends[chatID]++
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sends[tc.chatID]; got != tc.sends {
+				t.Errorf("sends = %d, want %d", got, tc.sends)
+			}
+		})
+	}
+}
+
 // A buy menu tap is a command-like event,
 // so both logs name it and the tap, invoice and payment steps join up.
 func TestBuyCallbackIsLoggedAsReceived(t *testing.T) {
@@ -766,7 +848,7 @@ func TestBuyCallbackIsLoggedAsReceived(t *testing.T) {
 	// The tap still counts: the user meant to buy and could not.
 	w.handleBuyCallback("test", 1, "buy:stars:999")
 
-	received := w.mockDB.receivedMessageCommands
+	received := w.mockDB.receivedMessageCommands()
 	sent := drainSendQueueToLog(t, w)
 	t.Logf("stale tier: received %q, sent %q", received, sent)
 	if !slices.Equal(received, []string{buyCallbackCommand}) {
@@ -778,7 +860,7 @@ func TestBuyCallbackIsLoggedAsReceived(t *testing.T) {
 
 	// A payload we cannot read is no funnel entry, so neither log names it.
 	w.handleBuyCallback("test", 1, "buy:")
-	received = w.mockDB.receivedMessageCommands
+	received = w.mockDB.receivedMessageCommands()
 	sent = drainSendQueueToLog(t, w)
 	t.Logf("unreadable: received %q, sent %q", received, sent)
 	if !slices.Equal(received, []string{buyCallbackCommand}) {
@@ -847,7 +929,7 @@ func TestWebAppSearchWritesOnlyForAVettedChat(t *testing.T) {
 
 	for _, chatID := range []int64{999, 0} {
 		res := search(chatID)
-		received := w.mockDB.receivedMessageCommands
+		received := w.mockDB.receivedMessageCommands()
 		users := len(w.mockDB.users)
 		t.Logf("chat %d: allowed %v, received %q, users %d",
 			chatID, res.allowed, received, users)
@@ -858,7 +940,7 @@ func TestWebAppSearchWritesOnlyForAVettedChat(t *testing.T) {
 	}
 
 	search(1)
-	received := w.mockDB.receivedMessageCommands
+	received := w.mockDB.receivedMessageCommands()
 	t.Logf("vetted: received %q", received)
 	if !slices.Equal(received, []string{searchCommand}) {
 		t.Errorf("the search was not recorded, got %q", received)
@@ -1148,7 +1230,7 @@ func TestPolledListNumbersItsChunks(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	w.initCache()
-	w.ownerUserID = w.db.EnsureUser(99)
+	w.ownerUserID = w.db.EnsureUserAndChat("test", 99)
 
 	// Chunks are 50 streamers, so 60 fills two of them.
 	for i := range 60 {
@@ -1186,7 +1268,7 @@ func TestAddedStreamerNumbersItsWholeAnswer(t *testing.T) {
 		w.mockDB.insertStreamer(db.Streamer{Nickname: nickname})
 		insertSubscription(w.mockDB, "test", 1, nickname)
 	}
-	w.db.SetLimit(w.db.EnsureUser(1), 3)
+	w.db.SetLimit("test", w.db.EnsureUserAndChat("test", 1), 3)
 	w.addStreamer(testMessage(w, 1, "add", 100), "known_model", false)
 
 	// The confirmation is the zero, the usage warning the two.
@@ -1210,7 +1292,7 @@ func TestEmptyPolledListKeepsItsNumber(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	w.initCache()
-	w.ownerUserID = w.db.EnsureUser(99)
+	w.ownerUserID = w.db.EnsureUserAndChat("test", 99)
 
 	w.sendPolledList("test", 100, 1)
 	if got := drainSeqsToLog(t, w); !slices.Equal(got, []int{1}) {

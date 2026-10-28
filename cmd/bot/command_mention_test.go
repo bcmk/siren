@@ -300,7 +300,7 @@ func TestDispatchRendersForTheDestinationChat(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			w.sender("test").cooling = false
-			userID, _ := w.db.AddUser(tc.chatID, 3, 0, "")
+			userID, _ := w.addUserAndChat(tc.chatID, 0, "")
 
 			tpl := texttemplate.New("t").Funcs(cmdlib.TemplateFuncs())
 			texttemplate.Must(tpl.Parse(`{{ command "add" }}`))

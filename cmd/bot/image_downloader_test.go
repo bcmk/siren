@@ -155,6 +155,7 @@ func TestHeldMessageHoldsBackItsEndpointAlone(t *testing.T) {
 	w, users := photoSendWorker(t, telegram, srv.Client(), 101)
 	w.bots["other"] = newBotOn(t, other)
 	w.tpl["other"], w.tr["other"] = w.tpl["test"], w.tr["test"]
+	w.db.EnsureUserAndChat("other", 101)
 	tr := &cmdlib.Translation{Key: "online", Parse: cmdlib.ParseHTML}
 	w.enqueueTr(db.PriorityLow, "test", users[0], true, tr, tplData{}, &image{key: srv.URL + "/a.jpg"}, nil,
 		unprompted(db.MessagePacket), testNotificationID)
@@ -485,6 +486,7 @@ func TestBotsShareADownload(t *testing.T) {
 	w, users := photoSendWorker(t, telegram, client, 101, 102)
 	w.bots["other"] = newBotOn(t, other)
 	w.tpl["other"], w.tr["other"] = w.tpl["test"], w.tr["test"]
+	w.db.EnsureUserAndChat("other", 102)
 	tr := &cmdlib.Translation{Key: "online", Parse: cmdlib.ParseHTML}
 	img := &image{key: srv.URL + "/a.jpg"}
 	for i, endpoint := range []string{"test", "other"} {

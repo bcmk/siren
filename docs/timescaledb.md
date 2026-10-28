@@ -39,14 +39,14 @@ so drop the chunks one by one, committing every few, and then the hypertable.
 
 TimescaleDB copies a hypertable's foreign key onto every chunk,
 and each copy adds its own triggers to the referenced table.
-`sent_message_log` and `received_message_log` reference `users`, so with a chunk a week:
+`sent_message_log` and `received_message_log` reference `chats`, so with a chunk a week:
 
-- Every update of `users` runs a check per chunk, which makes bulk updates several times slower
-- The first insert of a week creates a chunk and takes `share row exclusive` on `users`,
-  so it waits behind any open writer of `users`
-- `drop_chunks` takes `access exclusive` on `users`
+- Every update of `chats` runs a check per chunk, which makes bulk updates several times slower
+- The first insert of a week creates a chunk and takes `share row exclusive` on `chats`,
+  so it waits behind any open writer of `chats`
+- `drop_chunks` takes `access exclusive` on `chats`
 
-We keep them so a delete from `users` fails instead of orphaning log rows.
+We keep them so a delete from `chats` fails instead of orphaning log rows.
 `status_changes` has none, for the per-row cost (`docs/status-changes.md`).
 
 ## Background workers

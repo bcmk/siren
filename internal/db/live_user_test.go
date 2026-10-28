@@ -11,9 +11,9 @@ func TestLiveUserID(t *testing.T) {
 
 	const src, dst = int64(-100), int64(-100500)
 	// First, so a chain not seeded by the given id returns this user
-	otherID, _ := d.AddUser(-200, 5, 1000, "group")
-	srcID, _ := d.AddUser(src, 5, 1000, "group")
-	dstID, _ := d.AddUser(dst, 5, 1000, "supergroup")
+	otherID, _ := d.insertUser(d.db, -200, 1000, "group")
+	srcID, _ := d.insertUser(d.db, src, 1000, "group")
+	dstID, _ := d.insertUser(d.db, dst, 1000, "supergroup")
 	d.MigrateChat(src, dst) // tombstones srcID, migrated_to = dstID
 
 	if got := d.LiveUserID(srcID); got != dstID {

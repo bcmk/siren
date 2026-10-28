@@ -22,17 +22,35 @@ CREATE FUNCTION public.max_repeated_alnum_run(text) RETURNS integer
     from regexp_matches($1, '(([a-z0-9])\2*)', 'g') as m
 $_$;
 
-CREATE TABLE public.block (
+CREATE TABLE public.chats (
+    id integer NOT NULL,
+    max_subs integer NOT NULL,
     user_id bigint NOT NULL,
+    reports integer DEFAULT 0 NOT NULL,
+    block integer DEFAULT 0 NOT NULL,
+    show_images boolean DEFAULT true NOT NULL,
+    offline_notifications boolean DEFAULT true NOT NULL,
+    show_subject boolean DEFAULT true NOT NULL,
+    silent_messages boolean DEFAULT false NOT NULL,
+    member_subscriptions boolean DEFAULT false NOT NULL,
     endpoint text NOT NULL,
-    block integer NOT NULL
+    affiliate_params jsonb,
+    referral_id text
+);
+
+ALTER TABLE public.chats ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME public.chats_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
 );
 
 CREATE TABLE public.feedback (
-    user_id bigint,
     text text,
-    endpoint text DEFAULT ''::text NOT NULL,
-    "timestamp" integer NOT NULL
+    "timestamp" integer NOT NULL,
+    chat_id integer NOT NULL
 );
 
 CREATE TABLE public.nicknames (
@@ -41,8 +59,6 @@ CREATE TABLE public.nicknames (
 
 CREATE TABLE public.notification_queue (
     id integer NOT NULL,
-    endpoint text NOT NULL,
-    user_id bigint NOT NULL,
     status integer NOT NULL,
     time_diff integer,
     image_url text,
@@ -60,6 +76,7 @@ CREATE TABLE public.notification_queue (
     fields_hint boolean DEFAULT false NOT NULL,
     missing_image boolean DEFAULT false NOT NULL,
     profile_image_url text DEFAULT ''::text NOT NULL,
+    chat_id integer NOT NULL,
     CONSTRAINT chk_notification_queue_priority CHECK ((priority = ANY (ARRAY[0, 1])))
 );
 
@@ -74,13 +91,12 @@ CREATE SEQUENCE public.notification_queue_id_seq
 ALTER SEQUENCE public.notification_queue_id_seq OWNED BY public.notification_queue.id;
 
 CREATE TABLE public.pending_subscriptions (
-    user_id bigint NOT NULL,
     nickname text NOT NULL COLLATE pg_catalog."C",
-    endpoint text NOT NULL,
     checking boolean DEFAULT false NOT NULL,
     referral boolean DEFAULT false NOT NULL,
     command text,
-    reply_seq integer DEFAULT 0 NOT NULL
+    reply_seq integer DEFAULT 0 NOT NULL,
+    chat_id integer NOT NULL
 );
 
 CREATE TABLE public.performance_log (
@@ -97,8 +113,7 @@ CREATE TABLE public.profile_photos (
 
 CREATE TABLE public.received_message_log (
     "timestamp" integer NOT NULL,
-    endpoint text NOT NULL,
-    user_id bigint NOT NULL,
+    chat_id integer NOT NULL,
     command text
 );
 
@@ -109,12 +124,6 @@ CREATE TABLE public.referral_events (
     streamer_id integer
 );
 
-CREATE TABLE public.referrals (
-    user_id bigint NOT NULL,
-    referral_id text DEFAULT ''::text NOT NULL,
-    referred_users integer DEFAULT 0 NOT NULL
-);
-
 CREATE TABLE public.schema_migrations (
     name text NOT NULL,
     applied_at bigint NOT NULL
@@ -123,8 +132,7 @@ CREATE TABLE public.schema_migrations (
 CREATE TABLE public.sent_message_log (
     priority integer NOT NULL,
     "timestamp" integer NOT NULL,
-    endpoint text NOT NULL,
-    user_id bigint NOT NULL,
+    chat_id integer NOT NULL,
     result integer NOT NULL,
     latency integer NOT NULL,
     kind integer DEFAULT 0 NOT NULL,
@@ -136,14 +144,13 @@ CREATE TABLE public.sent_message_log (
 
 CREATE TABLE public.star_payments (
     id bigint NOT NULL,
-    user_id bigint NOT NULL,
-    endpoint text NOT NULL,
     telegram_payment_charge_id text NOT NULL,
     stars_amount integer NOT NULL,
     product text NOT NULL,
     quantity integer NOT NULL,
     payload text NOT NULL,
-    "timestamp" integer NOT NULL
+    "timestamp" integer NOT NULL,
+    chat_id integer NOT NULL
 );
 
 CREATE SEQUENCE public.star_payments_id_seq
@@ -216,27 +223,18 @@ ALTER TABLE public.streamers ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY (
 );
 
 CREATE TABLE public.subscriptions (
-    user_id bigint NOT NULL,
-    endpoint text DEFAULT ''::text NOT NULL,
-    streamer_id integer NOT NULL
+    streamer_id integer NOT NULL,
+    chat_id integer NOT NULL
 );
 
 CREATE TABLE public.users (
-    chat_id bigint NOT NULL,
-    max_subs integer DEFAULT 0 NOT NULL,
-    reports integer DEFAULT 0 NOT NULL,
+    tg_chat_id bigint NOT NULL,
     blacklist boolean DEFAULT false NOT NULL,
-    show_images boolean DEFAULT true NOT NULL,
-    offline_notifications boolean DEFAULT true NOT NULL,
     created_at bigint DEFAULT (EXTRACT(epoch FROM now()))::bigint NOT NULL,
-    show_subject boolean DEFAULT true NOT NULL,
     chat_type text,
     member_count integer,
-    silent_messages boolean DEFAULT false NOT NULL,
     id bigint NOT NULL,
     migrated_to bigint,
-    affiliate_params jsonb,
-    member_subscriptions boolean DEFAULT false NOT NULL,
     timezone text
 );
 
@@ -255,20 +253,17 @@ ALTER TABLE ONLY public.star_payments ALTER COLUMN id SET DEFAULT nextval('publi
 
 ALTER TABLE ONLY public.users ALTER COLUMN id SET DEFAULT nextval('public.users_id_seq'::regclass);
 
-ALTER TABLE ONLY public.block
-    ADD CONSTRAINT block_pkey PRIMARY KEY (user_id, endpoint);
+ALTER TABLE ONLY public.chats
+    ADD CONSTRAINT chats_pkey PRIMARY KEY (id);
 
 ALTER TABLE ONLY public.notification_queue
     ADD CONSTRAINT notification_queue_pkey PRIMARY KEY (id);
 
 ALTER TABLE ONLY public.pending_subscriptions
-    ADD CONSTRAINT pending_subscriptions_pkey PRIMARY KEY (user_id, nickname, endpoint);
+    ADD CONSTRAINT pending_subscriptions_pkey PRIMARY KEY (chat_id, nickname);
 
 ALTER TABLE ONLY public.profile_photos
     ADD CONSTRAINT profile_photos_pkey PRIMARY KEY (endpoint);
-
-ALTER TABLE ONLY public.referrals
-    ADD CONSTRAINT referrals_pkey PRIMARY KEY (user_id);
 
 ALTER TABLE ONLY public.schema_migrations
     ADD CONSTRAINT schema_migrations_pkey PRIMARY KEY (name);
@@ -289,12 +284,16 @@ ALTER TABLE ONLY public.streamers
     ADD CONSTRAINT streamers_pkey PRIMARY KEY (id);
 
 ALTER TABLE ONLY public.subscriptions
-    ADD CONSTRAINT subscriptions_pkey PRIMARY KEY (user_id, streamer_id, endpoint);
+    ADD CONSTRAINT subscriptions_pkey PRIMARY KEY (chat_id, streamer_id);
 
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_pkey PRIMARY KEY (id);
 
-CREATE INDEX ix_feedback_user_id ON public.feedback USING btree (user_id);
+CREATE UNIQUE INDEX ix_chats_endpoint_referral_id ON public.chats USING btree (endpoint, referral_id) WHERE (referral_id IS NOT NULL);
+
+CREATE UNIQUE INDEX ix_chats_user_id_endpoint ON public.chats USING btree (user_id, endpoint);
+
+CREATE INDEX ix_feedback_chat_id ON public.feedback USING btree (chat_id);
 
 CREATE INDEX ix_nicknames_nickname_max_nonalnum_run ON public.nicknames USING btree (public.max_nonalnum_run(nickname)) INCLUDE (nickname) WHERE (public.max_nonalnum_run(nickname) >= 3);
 
@@ -302,15 +301,15 @@ CREATE INDEX ix_nicknames_nickname_max_repeated_alnum_run ON public.nicknames US
 
 CREATE INDEX ix_nicknames_nickname_trgm_gin ON public.nicknames USING gin (nickname public.gin_trgm_ops);
 
-CREATE INDEX ix_notification_queue_streamer_id ON public.notification_queue USING btree (streamer_id);
+CREATE INDEX ix_notification_queue_chat_id ON public.notification_queue USING btree (chat_id);
 
-CREATE INDEX ix_notification_queue_user_id ON public.notification_queue USING btree (user_id);
+CREATE INDEX ix_notification_queue_streamer_id ON public.notification_queue USING btree (streamer_id);
 
 CREATE INDEX ix_performance_log_timestamp ON public.performance_log USING btree ("timestamp");
 
-CREATE INDEX ix_received_message_log_timestamp ON public.received_message_log USING btree ("timestamp");
+CREATE INDEX ix_received_message_log_chat_id_timestamp ON public.received_message_log USING btree (chat_id, "timestamp");
 
-CREATE INDEX ix_received_message_log_user_id_timestamp ON public.received_message_log USING btree (user_id, "timestamp");
+CREATE INDEX ix_received_message_log_timestamp ON public.received_message_log USING btree ("timestamp");
 
 CREATE INDEX ix_referral_events_follower_user_id ON public.referral_events USING btree (follower_user_id);
 
@@ -320,11 +319,11 @@ CREATE INDEX ix_referral_events_streamer_id ON public.referral_events USING btre
 
 CREATE INDEX ix_referral_events_timestamp ON public.referral_events USING btree ("timestamp");
 
+CREATE INDEX ix_sent_message_log_chat_id_timestamp ON public.sent_message_log USING btree (chat_id, "timestamp");
+
 CREATE INDEX ix_sent_message_log_timestamp ON public.sent_message_log USING btree ("timestamp");
 
-CREATE INDEX ix_sent_message_log_user_id_timestamp ON public.sent_message_log USING btree (user_id, "timestamp");
-
-CREATE INDEX ix_star_payments_user_id ON public.star_payments USING btree (user_id);
+CREATE INDEX ix_star_payments_chat_id ON public.star_payments USING btree (chat_id);
 
 CREATE UNIQUE INDEX ix_status_changes_streamer_id_timestamp ON public.status_changes USING btree (streamer_id, "timestamp") INCLUDE (status, prev_status);
 
@@ -342,29 +341,29 @@ CREATE INDEX ix_streamers_status_mismatch ON public.streamers USING btree (id) I
 
 CREATE INDEX ix_subscriptions_streamer_id ON public.subscriptions USING btree (streamer_id);
 
-CREATE UNIQUE INDEX ix_users_chat_id ON public.users USING btree (chat_id);
-
 CREATE INDEX ix_users_created_at ON public.users USING btree (created_at);
 
 CREATE INDEX ix_users_migrated_to ON public.users USING btree (migrated_to) WHERE (migrated_to IS NOT NULL);
 
-ALTER TABLE ONLY public.block
-    ADD CONSTRAINT fk_block_user_id FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+CREATE UNIQUE INDEX ix_users_tg_chat_id ON public.users USING btree (tg_chat_id);
+
+ALTER TABLE ONLY public.chats
+    ADD CONSTRAINT fk_chats_user_id FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 ALTER TABLE ONLY public.feedback
-    ADD CONSTRAINT fk_feedback_user_id FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+    ADD CONSTRAINT fk_feedback_chat_id FOREIGN KEY (chat_id) REFERENCES public.chats(id) ON DELETE RESTRICT;
+
+ALTER TABLE ONLY public.notification_queue
+    ADD CONSTRAINT fk_notification_queue_chat_id FOREIGN KEY (chat_id) REFERENCES public.chats(id) ON DELETE CASCADE;
 
 ALTER TABLE ONLY public.notification_queue
     ADD CONSTRAINT fk_notification_queue_streamer_id FOREIGN KEY (streamer_id) REFERENCES public.streamers(id);
 
-ALTER TABLE ONLY public.notification_queue
-    ADD CONSTRAINT fk_notification_queue_user_id FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-
 ALTER TABLE ONLY public.pending_subscriptions
-    ADD CONSTRAINT fk_pending_subscriptions_user_id FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+    ADD CONSTRAINT fk_pending_subscriptions_chat_id FOREIGN KEY (chat_id) REFERENCES public.chats(id) ON DELETE CASCADE;
 
 ALTER TABLE ONLY public.received_message_log
-    ADD CONSTRAINT fk_received_message_log_user_id FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+    ADD CONSTRAINT fk_received_message_log_chat_id FOREIGN KEY (chat_id) REFERENCES public.chats(id) ON DELETE RESTRICT;
 
 ALTER TABLE ONLY public.referral_events
     ADD CONSTRAINT fk_referral_events_follower_user_id FOREIGN KEY (follower_user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
@@ -375,20 +374,17 @@ ALTER TABLE ONLY public.referral_events
 ALTER TABLE ONLY public.referral_events
     ADD CONSTRAINT fk_referral_events_streamer_id FOREIGN KEY (streamer_id) REFERENCES public.streamers(id);
 
-ALTER TABLE ONLY public.referrals
-    ADD CONSTRAINT fk_referrals_user_id FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-
 ALTER TABLE ONLY public.sent_message_log
-    ADD CONSTRAINT fk_sent_message_log_user_id FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+    ADD CONSTRAINT fk_sent_message_log_chat_id FOREIGN KEY (chat_id) REFERENCES public.chats(id) ON DELETE RESTRICT;
 
 ALTER TABLE ONLY public.star_payments
-    ADD CONSTRAINT fk_star_payments_user_id FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+    ADD CONSTRAINT fk_star_payments_chat_id FOREIGN KEY (chat_id) REFERENCES public.chats(id) ON DELETE RESTRICT;
+
+ALTER TABLE ONLY public.subscriptions
+    ADD CONSTRAINT fk_subscriptions_chat_id FOREIGN KEY (chat_id) REFERENCES public.chats(id) ON DELETE CASCADE;
 
 ALTER TABLE ONLY public.subscriptions
     ADD CONSTRAINT fk_subscriptions_streamer_id FOREIGN KEY (streamer_id) REFERENCES public.streamers(id);
-
-ALTER TABLE ONLY public.subscriptions
-    ADD CONSTRAINT fk_subscriptions_user_id FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT fk_users_migrated_to FOREIGN KEY (migrated_to) REFERENCES public.users(id) ON DELETE SET NULL;
@@ -493,6 +489,15 @@ INSERT INTO public.schema_migrations VALUES ('sent_message_log_file_upload', 0);
 INSERT INTO public.schema_migrations VALUES ('notification_queue_missing_image', 0);
 INSERT INTO public.schema_migrations VALUES ('notification_queue_profile_image_url', 0);
 INSERT INTO public.schema_migrations VALUES ('sent_message_log_image_mode', 0);
+INSERT INTO public.schema_migrations VALUES ('chats_1', 0);
+INSERT INTO public.schema_migrations VALUES ('chats_2', 0);
+INSERT INTO public.schema_migrations VALUES ('chats_3', 0);
+INSERT INTO public.schema_migrations VALUES ('chats_4', 0);
+INSERT INTO public.schema_migrations VALUES ('chats_5', 0);
+INSERT INTO public.schema_migrations VALUES ('chats_6', 0);
+INSERT INTO public.schema_migrations VALUES ('chats_7', 0);
+
+SELECT pg_catalog.setval('public.chats_id_seq', 1, false);
 
 SELECT pg_catalog.setval('public.notification_queue_id_seq', 1, false);
 

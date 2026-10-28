@@ -416,6 +416,11 @@ Call a Telegram profile photo a profile photo.
 
 Call each entry in `res/translations/` a translation entry.
 
+Call a person, group or channel our bots serve a user, and a user on one endpoint a chat.
+A user's `tg_chat_id` is its Telegram chat id, the same on every endpoint,
+and a `chat_id` column references `chats`;
+`chatID` in Go and a bare "chat id" in prose are the Telegram chat id.
+
 Call public, private and the like a show kind,
 shortened to "show" only after the kind word, as in "a private show".
 Call one stretch online, from going online to going offline, a stream.

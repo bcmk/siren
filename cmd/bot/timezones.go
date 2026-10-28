@@ -117,7 +117,7 @@ func mergeTzdata() map[string]time.Weekday {
 	return table
 }
 
-// weekStart is the day the chat's week opens on,
+// weekStart is the day the user's week opens on,
 // Monday for a zone off the table, as a stored spelling the table no longer offers can be.
 func weekStart(loc *time.Location) time.Weekday {
 	if day, ok := weekStarts()[loc.String()]; ok {

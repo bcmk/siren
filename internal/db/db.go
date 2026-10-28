@@ -39,7 +39,7 @@ type Database struct {
 }
 
 // NewDatabase creates a new database object.
-// defaultMaxSubs is the limit for a user row auto-created by EnsureUser.
+// defaultMaxSubs is the subscription limit a new chat starts with.
 func NewDatabase(connString string, shouldCheckGID bool, defaultMaxSubs int) Database {
 	config, err := pgx.ParseConfig(connString)
 	checkErr(err)

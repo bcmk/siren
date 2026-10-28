@@ -35,7 +35,7 @@ func TestParseTimezone(t *testing.T) {
 		{"lowercase particle", "europe/isle_of_man", "Europe/Isle_of_Man"},
 		{"inner capital", "antarctica/mcmurdo", "Antarctica/McMurdo"},
 		{"hyphenated word", "america/port-au-prince", "America/Port-au-Prince"},
-		// Neither names a chat's zone: Local is the host's, Factory a placeholder.
+		// Neither names a user's zone: Local is the host's, Factory a placeholder.
 		{"local", "Local", ""},
 		{"factory", "Factory", ""},
 		{"empty", "", ""},
@@ -84,7 +84,7 @@ func TestParseTimezoneAgreesWithTheTable(t *testing.T) {
 	}
 }
 
-// TestWeekWindow pins the grid to the chat's own midnight, not UTC's:
+// TestWeekWindow pins the grid to the user's own midnight, not UTC's:
 // the same instant starts a different day either side of the date line.
 // The DST cases are the ones a zone can break:
 // a midnight the shift skips, and a fall-back week that holds more hours than the grid has cells.
@@ -269,7 +269,7 @@ func TestMonthWindowStaysWithinBotReach(t *testing.T) {
 
 // TestTimezoneCommandGates drives /timezone through the dispatch rather than the handler,
 // so the gate it carries is the one under test: a group asks its admins.
-// A chat's zone is its own, not the grid's, so nothing here turns on enable_week.
+// A user's zone is its own, not the grid's, so nothing here turns on enable_week.
 func TestTimezoneCommandGates(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -340,17 +340,17 @@ func TestTimezoneCommandGates(t *testing.T) {
 			// The reset passes an empty zone, which SetTimezone stores as null.
 			if tc.command == "reset_timezone" && !tc.wantStored {
 				if u == nil || u.Timezone != nil {
-					t.Error("the reset left the chat's zone set")
+					t.Error("the reset left the user's zone set")
 				}
 			}
 		})
 	}
 }
 
-// TestChatLocationKeepsAZoneTheTableDropped: the table says what a chat may pick,
+// TestUserLocationKeepsAZoneTheTableDropped: the table says what a user may pick,
 // not what it may keep. A refresh can withdraw a name the binary still holds,
-// and a chat that named it meant it, so the row survives and is honoured.
-func TestChatLocationKeepsAZoneTheTableDropped(t *testing.T) {
+// and a user that named it meant it, so the row survives and is honoured.
+func TestUserLocationKeepsAZoneTheTableDropped(t *testing.T) {
 	t.Parallel()
 	w := &worker{zoneNames: maps.Clone(loadedZoneNames())}
 	// Loadable here, and withdrawn from the offered list as a refreshed table would withdraw it.
@@ -358,23 +358,22 @@ func TestChatLocationKeepsAZoneTheTableDropped(t *testing.T) {
 	delete(w.zoneNames, "europe/berlin")
 
 	// A repair write would panic on the nil w.db.
-	loc, zone := w.chatLocation(db.User{Timezone: new(dropped)})
+	loc, zone := w.userLocation(db.User{Timezone: new(dropped)})
 	if zone != dropped || loc.String() != dropped {
 		t.Errorf("read as %q / %q, want %q", zone, loc, dropped)
 	}
 }
 
-// TestChatLocationKeepsADeadZone: a name neither the table nor this binary can resolve
-// is reported and fallen back from, and left in the column.
-// What resolves turns on the tzdata the binary carries,
-// so a listing must not destroy a choice a rollback would make good again.
-func TestChatLocationKeepsADeadZone(t *testing.T) {
+// TestUserLocationKeepsADeadZone:
+// a name neither the table nor this binary can resolve is reported and fallen back from,
+// and left in the column, as a rollback to older tzdata makes a valid zone read as dead.
+func TestUserLocationKeepsADeadZone(t *testing.T) {
 	t.Parallel()
 	w := &worker{zoneNames: loadedZoneNames()}
 	const dead = "Europe/Atlantis"
 
 	// A repair write would panic on the nil w.db.
-	if _, zone := w.chatLocation(db.User{Timezone: new(dead)}); zone != utcZone {
+	if _, zone := w.userLocation(db.User{Timezone: new(dead)}); zone != utcZone {
 		t.Errorf("a dead zone read as %q, want %q", zone, utcZone)
 	}
 }
@@ -391,8 +390,8 @@ func TestSettingsReportsTheZone(t *testing.T) {
 		wantZone  string
 		wantReset bool
 	}{
-		{"a chat that set one", "Europe/Berlin", "Europe/Berlin", true},
-		{"a chat that set none", "", utcZone, false},
+		{"a user that set one", "Europe/Berlin", "Europe/Berlin", true},
+		{"a user that set none", "", utcZone, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -500,7 +499,7 @@ func TestTimezoneTemplatesRender(t *testing.T) {
 	}
 }
 
-// TestSetTimezone walks the command: a chat starts on UTC, keeps what it sets,
+// TestSetTimezone walks the command: a user starts on UTC, keeps what it sets,
 // and keeps it through a rejected one.
 func TestSetTimezone(t *testing.T) {
 	t.Parallel()
@@ -515,15 +514,15 @@ func TestSetTimezone(t *testing.T) {
 		return queued.message.(*messageParams).Text
 	}
 
-	if _, zone := w.chatLocation(w.mustUserByID(m.userID)); zone != utcZone {
-		t.Errorf("a chat that set nothing reads as %q, want %q", zone, utcZone)
+	if _, zone := w.userLocation(w.mustUserByID(m.userID)); zone != utcZone {
+		t.Errorf("a user that set nothing reads as %q, want %q", zone, utcZone)
 	}
 
 	w.setTimezone(m, "europe/berlin")
 	if got := reply(); !strings.Contains(got, "Europe/Berlin") {
 		t.Errorf("the set reply misses the zone: %q", got)
 	}
-	if _, zone := w.chatLocation(w.mustUserByID(m.userID)); zone != "Europe/Berlin" {
+	if _, zone := w.userLocation(w.mustUserByID(m.userID)); zone != "Europe/Berlin" {
 		t.Errorf("stored zone = %q, want Europe/Berlin", zone)
 	}
 
@@ -531,7 +530,7 @@ func TestSetTimezone(t *testing.T) {
 	if got := reply(); got != "TimezoneInvalid" {
 		t.Errorf("an unknown zone answered %q, want TimezoneInvalid", got)
 	}
-	if _, zone := w.chatLocation(w.mustUserByID(m.userID)); zone != "Europe/Berlin" {
+	if _, zone := w.userLocation(w.mustUserByID(m.userID)); zone != "Europe/Berlin" {
 		t.Errorf("a rejected zone overwrote the stored one: %q", zone)
 	}
 

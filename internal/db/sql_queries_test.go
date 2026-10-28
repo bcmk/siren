@@ -39,11 +39,11 @@ func insertStreamerRow(d *Database, s Streamer) int {
 		s.PrevUnconfirmedTimestamp)
 }
 
-func TestBroadcastUsers(t *testing.T) {
+func TestBroadcastChats(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
 	for chatID := int64(1); chatID <= 8; chatID++ {
-		db.AddUser(chatID, 0, 0, "")
+		db.EnsureUser(chatID)
 	}
 	db.addSub(1, "a", "ep1")
 	db.addSub(2, "b", "ep1")
@@ -57,20 +57,19 @@ func TestBroadcastUsers(t *testing.T) {
 	db.addSub(6, "e", "ep2")
 	db.addSub(7, "f", "ep2")
 	db.addSub(8, "g", "ep2")
-	db.addBlock(2, "ep1", 0)
-	db.addBlock(3, "ep1", 5)
+	db.setBlock(3, "ep1", 5)
 	// A count on another endpoint, and a group, which a broadcast skips
-	db.addBlock(1, "ep2", 7)
-	db.AddUser(-9, 0, 0, "group")
+	db.setBlock(1, "ep2", 7)
+	db.EnsureUser(-9)
 	db.addSub(-9, "h", "ep1")
 
 	tests := []struct {
 		endpoint string
-		want     []User
+		want     []Chat
 	}{
 		{
 			endpoint: "ep1",
-			want: []User{
+			want: []Chat{
 				{UserID: 1},
 				{UserID: 2},
 				{UserID: 3, Blocked: 5},
@@ -80,12 +79,12 @@ func TestBroadcastUsers(t *testing.T) {
 				{UserID: 7},
 			},
 		},
-		{endpoint: "ep2", want: []User{{UserID: 6}, {UserID: 7}, {UserID: 8}}},
+		{endpoint: "ep2", want: []Chat{{UserID: 6}, {UserID: 7}, {UserID: 8}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.endpoint, func(t *testing.T) {
-			if got := db.BroadcastUsers(tt.endpoint); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("BroadcastUsers = %s, want %s", asJSON(got), asJSON(tt.want))
+			if got := db.BroadcastChats(tt.endpoint); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("BroadcastChats = %s, want %s", asJSON(got), asJSON(tt.want))
 			}
 		})
 	}
@@ -96,8 +95,9 @@ func TestBlockCounts(t *testing.T) {
 	db := newTestDB(t)
 	increment := db.IncrementBlock
 	reset := db.ResetBlock
-	alice, _ := db.AddUser(1, 0, 0, "")
-	bob, _ := db.AddUser(2, 0, 0, "")
+	alice := db.EnsureUserAndChat("ep1", 1)
+	bob := db.EnsureUserAndChat("ep1", 2)
+	db.EnsureUserAndChat("ep2", 2)
 
 	type key struct {
 		endpoint string
@@ -111,14 +111,14 @@ func TestBlockCounts(t *testing.T) {
 		user     UserID
 		want     map[key]int
 	}{
-		{"first block", increment, "ep1", bob, map[key]int{{"ep1", bob}: 1}},
-		{"second block", increment, "ep1", bob, map[key]int{{"ep1", bob}: 2}},
+		{"first block", increment, "ep1", bob, map[key]int{{"ep1", alice}: 0, {"ep1", bob}: 1, {"ep2", bob}: 0}},
+		{"second block", increment, "ep1", bob, map[key]int{{"ep1", alice}: 0, {"ep1", bob}: 2, {"ep2", bob}: 0}},
 		{
 			"another endpoint counts apart",
 			increment,
 			"ep2",
 			bob,
-			map[key]int{{"ep1", bob}: 2, {"ep2", bob}: 1},
+			map[key]int{{"ep1", alice}: 0, {"ep1", bob}: 2, {"ep2", bob}: 1},
 		},
 		{
 			"another user counts apart",
@@ -142,7 +142,7 @@ func TestBlockCounts(t *testing.T) {
 			var k key
 			var block int
 			db.MustQuery(
-				"select endpoint, user_id, block from block",
+				"select endpoint, user_id, block from chats",
 				nil,
 				ScanTo{&k.endpoint, &k.user, &block},
 				func() { got[k] = block })
@@ -157,17 +157,21 @@ func TestNotificationsStorage(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
 
-	db.AddUser(1, 3, 0, "private")
-	db.AddUser(2, 3, 0, "group")
-	db.AddUser(3, 3, 0, "supergroup")
-	db.AddUser(4, 3, 0, "")
-	db.setReports(1, 7)
-	db.setReports(2, 8)
-	db.setReports(3, 9)
-	db.SetSilentMessages(1, true)
-	db.SetAffiliateParams(1, map[string]string{"campaign": "a"})
-	db.SetAffiliateParams(2, map[string]string{"campaign": "b"})
-	db.SetAffiliateParams(3, map[string]string{"campaign": "c"})
+	// User 1's first chat, so a store ignoring the endpoint shows
+	db.AddUserAndChat("endpoint_b", 1, 0, "private")
+	db.setReports(1, "endpoint_b", 70)
+	db.SetAffiliateParams("endpoint_b", 1, map[string]string{"campaign": "z"})
+	db.AddUserAndChat("endpoint_a", 1, 0, "private")
+	db.AddUserAndChat("endpoint_b", 2, 0, "group")
+	db.AddUserAndChat("endpoint_c", 3, 0, "supergroup")
+	db.AddUserAndChat("endpoint_d", 4, 0, "")
+	db.setReports(1, "endpoint_a", 7)
+	db.setReports(2, "endpoint_b", 8)
+	db.setReports(3, "endpoint_c", 9)
+	db.SetSilentMessages("endpoint_a", 1, true)
+	db.SetAffiliateParams("endpoint_a", 1, map[string]string{"campaign": "a"})
+	db.SetAffiliateParams("endpoint_b", 2, map[string]string{"campaign": "b"})
+	db.SetAffiliateParams("endpoint_c", 3, map[string]string{"campaign": "c"})
 
 	idA := insertStreamerRow(db.Database, Streamer{Nickname: "a"})
 	idB := insertStreamerRow(db.Database, Streamer{Nickname: "b"})
@@ -418,8 +422,8 @@ func TestConfirmAndDenySub(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			db := newTestDB(t)
-			userID, _ := db.AddUser(1, 0, 0, "")
-			db.AddUser(2, 0, 0, "")
+			userID := db.EnsureUser(1)
+			db.EnsureUser(2)
 			db.addPending(1, "a", "test")
 			// Each differs from the one acted on in a single column
 			db.addPending(2, "a", "test")
@@ -434,9 +438,10 @@ func TestConfirmAndDenySub(t *testing.T) {
 			id := tt.act(db.Database, PendingSubscription{Endpoint: "test", UserID: userID, Nickname: "a"})
 
 			pending := db.MustStrings(`
-				select u.chat_id || ' ' || ps.endpoint || ' ' || ps.nickname
+				select u.tg_chat_id || ' ' || c.endpoint || ' ' || ps.nickname
 				from pending_subscriptions ps
-				join users u on u.id = ps.user_id
+				join chats c on c.id = ps.chat_id
+				join users u on u.id = c.user_id
 				order by 1`)
 			if want := []string{"1 other a", "1 test b", "2 test a"}; !slices.Equal(pending, want) {
 				t.Errorf("pending subscriptions = %q, want %q", pending, want)
@@ -530,45 +535,52 @@ func TestStatusConfirmations(t *testing.T) {
 	}
 }
 
-// TestAddUserReportsCreation pins the created flag the referral bonus gates on:
-// a new chat gets what it was given, and a known one keeps its row
-func TestAddUserReportsCreation(t *testing.T) {
+// TestAddUserAndChatReportsCreation pins the user-created flag the referral bonus gates on:
+// a new user or chat gets what it was given, and a known one keeps its row
+func TestAddUserAndChatReportsCreation(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
 
 	// Each step acts on what the steps before it left
 	steps := []struct {
-		name          string
-		chatID        int64
-		maxSubs       int
-		now           int
-		chatType      string
-		wantCreated   bool
-		wantMaxSubs   int
-		wantCreatedAt int
-		wantChatType  string
+		name            string
+		endpoint        string
+		chatID          int64
+		maxSubs         int
+		now             int
+		chatType        string
+		wantUserCreated bool
+		wantMaxSubs     int
+		wantCreatedAt   int
+		wantChatType    string
 	}{
-		{"new chat", 1, 5, 1000, "private", true, 5, 1000, "private"},
-		{"known chat keeps its row", 1, 9, 2000, "group", false, 5, 1000, "private"},
-		{"another new chat", 2, 7, 3000, "group", true, 7, 3000, "group"},
+		{"new user", "ep1", 1, 5, 1000, "private", true, 5, 1000, "private"},
+		{"known user keeps its rows", "ep1", 1, 9, 2000, "group", false, 5, 1000, "private"},
+		{"known user's new chat", "ep2", 1, 11, 2000, "group", false, 11, 1000, "private"},
+		{"another new user", "ep1", 2, 7, 3000, "group", true, 7, 3000, "group"},
 	}
 	ids := map[int64]UserID{}
 	for _, tt := range steps {
-		id, created := db.AddUser(tt.chatID, tt.maxSubs, tt.now, tt.chatType)
+		// A new chat takes the default limit
+		db.defaultMaxSubs = tt.maxSubs
+		id, userCreated := db.AddUserAndChat(tt.endpoint, tt.chatID, tt.now, tt.chatType)
 		known, wasKnown := ids[tt.chatID]
 		ids[tt.chatID] = id
 		t.Run(tt.name, func(t *testing.T) {
-			if created != tt.wantCreated {
-				t.Errorf("created = %v, want %v", created, tt.wantCreated)
+			if userCreated != tt.wantUserCreated {
+				t.Errorf("user created = %v, want %v", userCreated, tt.wantUserCreated)
 			}
 			if wasKnown && id != known {
 				t.Errorf("id = %d, want the known %d", id, known)
 			}
 			var maxSubs, createdAt int
 			var chatType string
-			db.MaybeRecord(
-				"select max_subs, created_at, chat_type from users where id = $1 and chat_id = $2",
-				QueryParams{int64(id), tt.chatID},
+			db.MaybeRecord(`
+				select c.max_subs, u.created_at, u.chat_type
+				from users u
+				join chats c on c.user_id = u.id
+				where u.id = $1 and u.tg_chat_id = $2 and c.endpoint = $3`,
+				QueryParams{int64(id), tt.chatID, tt.endpoint},
 				ScanTo{&maxSubs, &createdAt, &chatType})
 			if maxSubs != tt.wantMaxSubs || createdAt != tt.wantCreatedAt || chatType != tt.wantChatType {
 				t.Errorf(
@@ -589,24 +601,30 @@ func TestEnsureUser(t *testing.T) {
 	db := newTestDB(t)
 
 	before := time.Now().Unix()
-	known, _ := db.AddUser(2, 9, 1000, "group")
+	known, _ := db.AddUserAndChat("ep", 2, 1000, "group")
+	db.SetLimit("ep", known, 9)
+	ensureUserAndChat := func(chatID int64) UserID { return db.EnsureUserAndChat("ep", chatID) }
 
 	// Each step acts on what the steps before it left
 	steps := []struct {
-		name         string
-		chatID       int64
-		wantMaxSubs  int
+		name   string
+		ensure func(chatID int64) UserID
+		chatID int64
+		// wantMaxSubs is the limit of the user's chat on ep, nil for no chat
+		wantMaxSubs  *int
 		wantChatType *string
 		minCreatedAt int64
 		maxCreatedAt int64
 	}{
-		{"a new chat gets the default limit, no type and the time", 1, 5, nil, before, math.MaxInt64},
-		{"the chat it created keeps its row", 1, 5, nil, before, math.MaxInt64},
-		{"a known chat keeps its row", 2, 9, new("group"), 1000, 1000},
+		{"a new user gets no type, the time and no chat", db.EnsureUser, 1, nil, nil, before, math.MaxInt64},
+		{"the user it created keeps its row", db.EnsureUser, 1, nil, nil, before, math.MaxInt64},
+		{"a known user keeps its row", db.EnsureUser, 2, new(9), new("group"), 1000, 1000},
+		{"a new chat gets the default limit", ensureUserAndChat, 1, new(5), nil, before, math.MaxInt64},
+		{"a known chat keeps its row", ensureUserAndChat, 2, new(9), new("group"), 1000, 1000},
 	}
 	ids := map[int64]UserID{2: known}
 	for _, tt := range steps {
-		id := db.EnsureUser(tt.chatID)
+		id := tt.ensure(tt.chatID)
 		known, wasKnown := ids[tt.chatID]
 		ids[tt.chatID] = id
 		t.Run(tt.name, func(t *testing.T) {
@@ -615,10 +633,14 @@ func TestEnsureUser(t *testing.T) {
 			}
 			user, found := db.UserByID(id)
 			createdAt := int64(userRow(db.Database, id)["created_at"].(float64))
-			if !found || user.ChatID != tt.chatID || user.MaxSubs != tt.wantMaxSubs ||
+			if !found || user.ChatID != tt.chatID ||
 				!reflect.DeepEqual(user.ChatType, tt.wantChatType) ||
 				createdAt < tt.minCreatedAt || createdAt > tt.maxCreatedAt {
 				t.Errorf("user = %s, created_at = %d, found: %v", asJSON(user), createdAt, found)
+			}
+			chat, found := db.Chat("ep", id)
+			if found != (tt.wantMaxSubs != nil) || found && chat.MaxSubs != *tt.wantMaxSubs {
+				t.Errorf("chat = %s, found: %v, want max_subs %s", asJSON(chat), found, asJSON(tt.wantMaxSubs))
 			}
 			if n := db.MustInt("select count(*) from users"); n != 2 {
 				t.Errorf("%d users, want 2", n)
@@ -634,169 +656,246 @@ func userRow(d *Database, id UserID) map[string]any {
 	return row
 }
 
-// TestUserSettersWriteTheirColumn pins each setter to its column on its user alone
-func TestUserSettersWriteTheirColumn(t *testing.T) {
+// chatRow reads a chat's whole row past the readers under test; numbers come as float64
+func chatRow(d *Database, endpoint string, id UserID) map[string]any {
+	var row map[string]any
+	d.MaybeRecord(
+		"select to_jsonb(c) from chats c where user_id = $1 and endpoint = $2",
+		QueryParams{int64(id), endpoint},
+		ScanTo{&row})
+	return row
+}
+
+// TestSettersWriteTheirColumn pins each setter to its column on its row alone
+func TestSettersWriteTheirColumn(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	target, _ := db.AddUser(1, 5, 1000, "private")
-	bystander, _ := db.AddUser(2, 5, 1000, "private")
-	// So a step clearing these on every user shows
+	target, _ := db.AddUserAndChat("ep1", 1, 1000, "private")
+	db.AddUserAndChat("ep2", 1, 1000, "private")
+	bystander, _ := db.AddUserAndChat("ep1", 2, 1000, "private")
+	// So a step clearing these on every user or chat shows
 	db.SetTimezone(bystander, "Asia/Tokyo")
-	db.SetAffiliateParams(bystander, map[string]string{"campaign": "b"})
+	db.SetAffiliateParams("ep1", bystander, map[string]string{"campaign": "b"})
+	db.SetAffiliateParams("ep2", target, map[string]string{"campaign": "c"})
+
+	const targetUser, targetChat = "target", "target on ep1"
+	rows := []struct {
+		name string
+		read func() map[string]any
+	}{
+		{targetUser, func() map[string]any { return userRow(db.Database, target) }},
+		{targetChat, func() map[string]any { return chatRow(db.Database, "ep1", target) }},
+		{"target on ep2", func() map[string]any { return chatRow(db.Database, "ep2", target) }},
+		{"bystander", func() map[string]any { return userRow(db.Database, bystander) }},
+		{"bystander on ep1", func() map[string]any { return chatRow(db.Database, "ep1", bystander) }},
+	}
 
 	// Each step acts on what the steps before it left
 	steps := []struct {
 		name   string
 		set    func()
+		row    string
 		column string
 		want   any
 	}{
-		{"SetLimit", func() { db.SetLimit(target, 42) }, "max_subs", 42.0},
-		{"AddReferrerBonus", func() { db.AddReferrerBonus(target, 3) }, "max_subs", 45.0},
-		{"SetShowImages off", func() { db.SetShowImages(target, false) }, "show_images", false},
-		{"SetShowImages on", func() { db.SetShowImages(target, true) }, "show_images", true},
+		{"SetLimit", func() { db.SetLimit("ep1", target, 42) }, targetChat, "max_subs", 42.0},
+		{"SetReferralID", func() { db.SetReferralID("ep1", target, "abcde") }, targetChat, "referral_id", "abcde"},
+		{"SetShowImages off", func() { db.SetShowImages("ep1", target, false) }, targetChat, "show_images", false},
+		{"SetShowImages on", func() { db.SetShowImages("ep1", target, true) }, targetChat, "show_images", true},
 		{
 			"SetOfflineNotifications off",
-			func() { db.SetOfflineNotifications(target, false) },
+			func() { db.SetOfflineNotifications("ep1", target, false) },
+			targetChat,
 			"offline_notifications",
 			false,
 		},
 		{
 			"SetOfflineNotifications on",
-			func() { db.SetOfflineNotifications(target, true) },
+			func() { db.SetOfflineNotifications("ep1", target, true) },
+			targetChat,
 			"offline_notifications",
 			true,
 		},
-		{"SetShowSubject off", func() { db.SetShowSubject(target, false) }, "show_subject", false},
-		{"SetShowSubject on", func() { db.SetShowSubject(target, true) }, "show_subject", true},
-		{"SetSilentMessages on", func() { db.SetSilentMessages(target, true) }, "silent_messages", true},
-		{"SetSilentMessages off", func() { db.SetSilentMessages(target, false) }, "silent_messages", false},
+		{"SetShowSubject off", func() { db.SetShowSubject("ep1", target, false) }, targetChat, "show_subject", false},
+		{"SetShowSubject on", func() { db.SetShowSubject("ep1", target, true) }, targetChat, "show_subject", true},
+		{
+			"SetSilentMessages on",
+			func() { db.SetSilentMessages("ep1", target, true) },
+			targetChat,
+			"silent_messages",
+			true,
+		},
+		{
+			"SetSilentMessages off",
+			func() { db.SetSilentMessages("ep1", target, false) },
+			targetChat,
+			"silent_messages",
+			false,
+		},
 		{
 			"SetMemberSubscriptions on",
-			func() { db.SetMemberSubscriptions(target, true) },
+			func() { db.SetMemberSubscriptions("ep1", target, true) },
+			targetChat,
 			"member_subscriptions",
 			true,
 		},
 		{
 			"SetMemberSubscriptions off",
-			func() { db.SetMemberSubscriptions(target, false) },
+			func() { db.SetMemberSubscriptions("ep1", target, false) },
+			targetChat,
 			"member_subscriptions",
 			false,
 		},
-		{"BlacklistUser", func() { db.BlacklistUser(target) }, "blacklist", true},
-		{"SetTimezone", func() { db.SetTimezone(target, "Europe/Berlin") }, "timezone", "Europe/Berlin"},
-		{"SetTimezone clears on empty", func() { db.SetTimezone(target, "") }, "timezone", nil},
+		{"BlacklistUser", func() { db.BlacklistUser(target) }, targetUser, "blacklist", true},
+		{
+			"SetTimezone",
+			func() { db.SetTimezone(target, "Europe/Berlin") },
+			targetUser,
+			"timezone",
+			"Europe/Berlin",
+		},
+		{"SetTimezone clears on empty", func() { db.SetTimezone(target, "") }, targetUser, "timezone", nil},
 		{
 			"SetAffiliateParams",
-			func() { db.SetAffiliateParams(target, map[string]string{"campaign": "a"}) },
+			func() { db.SetAffiliateParams("ep1", target, map[string]string{"campaign": "a"}) },
+			targetChat,
 			"affiliate_params",
 			map[string]any{"campaign": "a"},
 		},
-		{"SetAffiliateParams clears on empty", func() { db.SetAffiliateParams(target, nil) }, "affiliate_params", nil},
-		{"UpdateMemberCount", func() { db.UpdateMemberCount(target, 7) }, "member_count", 7.0},
+		{
+			"SetAffiliateParams clears on empty",
+			func() { db.SetAffiliateParams("ep1", target, nil) },
+			targetChat,
+			"affiliate_params",
+			nil,
+		},
+		{"UpdateMemberCount", func() { db.UpdateMemberCount(target, 7) }, targetUser, "member_count", 7.0},
 	}
 	for _, tt := range steps {
-		wantTarget, wantBystander := userRow(db.Database, target), userRow(db.Database, bystander)
-		wantTarget[tt.column] = tt.want
+		want := map[string]map[string]any{}
+		for _, r := range rows {
+			want[r.name] = r.read()
+		}
+		want[tt.row][tt.column] = tt.want
 		tt.set()
 		t.Run(tt.name, func(t *testing.T) {
-			if got := userRow(db.Database, target); !reflect.DeepEqual(got, wantTarget) {
-				t.Errorf("target = %v, want %v", got, wantTarget)
-			}
-			if got := userRow(db.Database, bystander); !reflect.DeepEqual(got, wantBystander) {
-				t.Errorf("bystander = %v, want %v", got, wantBystander)
+			for _, r := range rows {
+				if got := r.read(); !reflect.DeepEqual(got, want[r.name]) {
+					t.Errorf("%s = %v, want %v", r.name, got, want[r.name])
+				}
 			}
 		})
 	}
 }
 
-func TestIncrementReportsPerUser(t *testing.T) {
+func TestIncrementReportsPerChat(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	a, _ := db.AddUser(1, 5, 0, "")
-	b, _ := db.AddUser(2, 5, 0, "")
-	c, _ := db.AddUser(3, 5, 0, "")
+	a := db.EnsureUserAndChat("ep1", 1)
+	b := db.EnsureUserAndChat("ep1", 2)
+	c := db.EnsureUserAndChat("ep1", 3)
+	db.EnsureUserAndChat("ep2", 1)
+	onEP1 := func(id UserID) Notification { return Notification{UserID: id, Endpoint: "ep1"} }
 
-	db.IncrementReports([]UserID{a, b, a})
-	db.IncrementReports([]UserID{a})
+	db.IncrementReports([]Notification{onEP1(a), onEP1(b), onEP1(a)})
+	db.IncrementReports([]Notification{onEP1(a)})
 
-	got := map[UserID]int{}
-	var id UserID
+	type key struct {
+		endpoint string
+		user     UserID
+	}
+	got := map[key]int{}
+	var k key
 	var reports int
-	db.MustQuery("select id, reports from users", nil, ScanTo{&id, &reports}, func() { got[id] = reports })
-	if want := (map[UserID]int{a: 3, b: 1, c: 0}); !reflect.DeepEqual(got, want) {
+	db.MustQuery(
+		"select endpoint, user_id, reports from chats",
+		nil,
+		ScanTo{&k.endpoint, &k.user, &reports},
+		func() { got[k] = reports })
+	want := map[key]int{{"ep1", a}: 3, {"ep1", b}: 1, {"ep1", c}: 0, {"ep2", a}: 0}
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("reports = %v, want %v", got, want)
 	}
 }
 
-// TestUserReadersReadEveryColumn holds both user readers to the row stored
-func TestUserReadersReadEveryColumn(t *testing.T) {
+// TestUserAndChatReadersReadEveryColumn holds the user and chat readers to the rows stored
+func TestUserAndChatReadersReadEveryColumn(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
 
-	// Each flag has its own pattern across the rows, so swapping any two shows
 	users := []User{
-		{
-			ChatID:               1,
-			MaxSubs:              11,
-			Reports:              21,
-			Blacklist:            true,
-			OfflineNotifications: true,
-			SilentMessages:       true,
-			ChatType:             new("private"),
-			AffiliateParams:      map[string]string{"campaign": "a"},
-			Timezone:             new("Europe/Berlin"),
-		},
-		{
-			ChatID:               2,
-			MaxSubs:              12,
-			Reports:              22,
-			ShowImages:           true,
-			OfflineNotifications: true,
-			ChatType:             new("group"),
-			AffiliateParams:      map[string]string{"campaign": "b"},
-			MemberSubscriptions:  true,
-			Timezone:             new("Asia/Tokyo"),
-		},
+		{ChatID: 1, Blacklist: true, ChatType: new("private"), Timezone: new("Europe/Berlin")},
+		{ChatID: 2, ChatType: new("group"), Timezone: new("Asia/Tokyo")},
 		// No nullable column set
-		{
-			ChatID:              3,
-			MaxSubs:             13,
-			Reports:             23,
-			ShowSubject:         true,
-			SilentMessages:      true,
-			MemberSubscriptions: true,
-		},
+		{ChatID: 3},
 	}
 	for i, u := range users {
 		users[i].UserID = UserID(db.MustInt(`
-			insert into users (
-				chat_id,
+			insert into users (tg_chat_id, blacklist, chat_type, timezone)
+			values ($1, $2, $3, $4)
+			returning id`,
+			u.ChatID,
+			u.Blacklist,
+			u.ChatType,
+			u.Timezone))
+	}
+	// Each flag has its own pattern across the rows, so swapping any two shows.
+	// The first user has a chat on each endpoint, so a read must pick by both.
+	chats := []Chat{
+		{
+			UserID:               users[0].UserID,
+			Endpoint:             "ep1",
+			MaxSubs:              11,
+			OfflineNotifications: true,
+			SilentMessages:       true,
+			AffiliateParams:      map[string]string{"campaign": "a"},
+			Blocked:              31,
+		},
+		{
+			UserID:               users[0].UserID,
+			Endpoint:             "ep2",
+			MaxSubs:              12,
+			ShowImages:           true,
+			OfflineNotifications: true,
+			AffiliateParams:      map[string]string{"campaign": "b"},
+			MemberSubscriptions:  true,
+			Blocked:              32,
+		},
+		// No nullable column set
+		{
+			UserID:              users[1].UserID,
+			Endpoint:            "ep1",
+			MaxSubs:             13,
+			ShowSubject:         true,
+			SilentMessages:      true,
+			MemberSubscriptions: true,
+			Blocked:             33,
+		},
+	}
+	for _, c := range chats {
+		db.MustExec(`
+			insert into chats (
+				user_id,
+				endpoint,
 				max_subs,
-				reports,
-				blacklist,
 				show_images,
 				offline_notifications,
 				show_subject,
 				silent_messages,
-				chat_type,
 				affiliate_params,
 				member_subscriptions,
-				timezone)
-			values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-			returning id`,
-			u.ChatID,
-			u.MaxSubs,
-			u.Reports,
-			u.Blacklist,
-			u.ShowImages,
-			u.OfflineNotifications,
-			u.ShowSubject,
-			u.SilentMessages,
-			u.ChatType,
-			u.AffiliateParams,
-			u.MemberSubscriptions,
-			u.Timezone))
+				block)
+			values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+			int64(c.UserID),
+			c.Endpoint,
+			c.MaxSubs,
+			c.ShowImages,
+			c.OfflineNotifications,
+			c.ShowSubject,
+			c.SilentMessages,
+			c.AffiliateParams,
+			c.MemberSubscriptions,
+			c.Blocked)
 	}
 
 	readers := []struct {
@@ -818,13 +917,27 @@ func TestUserReadersReadEveryColumn(t *testing.T) {
 			}
 		})
 	}
+	t.Run("Chat", func(t *testing.T) {
+		for _, want := range chats {
+			if got, found := db.Chat(want.Endpoint, want.UserID); !found || !reflect.DeepEqual(got, want) {
+				t.Errorf("read %s, found: %v, want %s", asJSON(got), found, asJSON(want))
+			}
+		}
+		for _, absent := range []Chat{{UserID: 999, Endpoint: "ep1"}, {UserID: users[1].UserID, Endpoint: "ep2"}} {
+			if got, found := db.Chat(absent.Endpoint, absent.UserID); found {
+				t.Errorf("read %s of an absent chat", asJSON(got))
+			}
+		}
+	})
 }
 
 func TestSubscriptionReads(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	alice, _ := db.AddUser(1, 5, 0, "private")
-	bob, _ := db.AddUser(2, 5, 0, "private")
+	alice := db.EnsureUserAndChat("ep1", 1)
+	bob := db.EnsureUserAndChat("ep1", 2)
+	db.EnsureUserAndChat("ep2", 1)
+	db.EnsureUserAndChat("ep2", 2)
 	a := Streamer{
 		Nickname:                 "a",
 		UnconfirmedStatus:        cmdlib.StatusOnline,
@@ -929,8 +1042,8 @@ func TestSubscriptionReads(t *testing.T) {
 func TestRemoveSubscriptions(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	alice, _ := db.AddUser(1, 5, 0, "private")
-	db.AddUser(2, 5, 0, "private")
+	alice := db.EnsureUser(1)
+	db.EnsureUser(2)
 	db.addSub(1, "a", "ep1")
 	db.addSub(1, "b", "ep1")
 	db.addSub(1, "a", "ep2")
@@ -944,17 +1057,19 @@ func TestRemoveSubscriptions(t *testing.T) {
 
 	subs := func() []string {
 		return db.MustStrings(`
-			select u.chat_id || ' ' || sub.endpoint || ' ' || s.nickname
+			select u.tg_chat_id || ' ' || c.endpoint || ' ' || s.nickname
 			from subscriptions sub
-			join users u on u.id = sub.user_id
+			join chats c on c.id = sub.chat_id
+			join users u on u.id = c.user_id
 			join streamers s on s.id = sub.streamer_id
 			order by 1`)
 	}
 	pending := func() []string {
 		return db.MustStrings(`
-			select u.chat_id || ' ' || ps.endpoint || ' ' || ps.nickname
+			select u.tg_chat_id || ' ' || c.endpoint || ' ' || ps.nickname
 			from pending_subscriptions ps
-			join users u on u.id = ps.user_id
+			join chats c on c.id = ps.chat_id
+			join users u on u.id = c.user_id
 			order by 1`)
 	}
 
@@ -1001,8 +1116,8 @@ func TestRemoveSubscriptions(t *testing.T) {
 func TestPendingSubscriptionChecks(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	alice, _ := db.AddUser(1, 5, 0, "private")
-	bob, _ := db.AddUser(-2, 5, 0, "group")
+	alice, _ := db.AddUserAndChat("ep1", 1, 0, "private")
+	bob, _ := db.AddUserAndChat("ep2", -2, 0, "group")
 	aliceOnA := PendingSubscription{
 		UserID:   alice,
 		Nickname: "a",
@@ -1168,52 +1283,48 @@ func TestIncrementPollErrors(t *testing.T) {
 	}
 }
 
-func TestUsersForStreamers(t *testing.T) {
+func TestChatsForStreamers(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
 
-	// Each flag has its own pattern across the users, so swapping any two shows
-	users := []User{
-		{ChatID: 1, OfflineNotifications: true, ShowImages: true},
-		{ChatID: 2, OfflineNotifications: true, ShowSubject: true},
-		{ChatID: 3, ShowImages: true, ShowSubject: true},
+	// Each flag has its own pattern across the chats, so swapping any two shows
+	chats := []struct {
+		chatID int64
+		chat   Chat
+	}{
+		{1, Chat{Endpoint: "ep1", OfflineNotifications: true, ShowImages: true}},
+		{1, Chat{Endpoint: "ep2", ShowSubject: true}},
+		{2, Chat{Endpoint: "ep1", OfflineNotifications: true, ShowSubject: true}},
+		{3, Chat{Endpoint: "ep1", ShowImages: true, ShowSubject: true}},
 	}
-	for i, u := range users {
-		users[i].UserID, _ = db.AddUser(u.ChatID, 5, 0, "private")
-		db.SetOfflineNotifications(users[i].UserID, u.OfflineNotifications)
-		db.SetShowImages(users[i].UserID, u.ShowImages)
-		db.SetShowSubject(users[i].UserID, u.ShowSubject)
+	for i := range chats {
+		c := &chats[i].chat
+		c.UserID = db.EnsureUserAndChat(c.Endpoint, chats[i].chatID)
+		db.SetOfflineNotifications(c.Endpoint, c.UserID, c.OfflineNotifications)
+		db.SetShowImages(c.Endpoint, c.UserID, c.ShowImages)
+		db.SetShowSubject(c.Endpoint, c.UserID, c.ShowSubject)
 	}
 	db.addSub(1, "a", "ep1")
 	db.addSub(1, "a", "ep2")
 	db.addSub(1, "b", "ep1")
 	db.addSub(2, "a", "ep1")
 	db.addSub(3, "c", "ep1")
-	db.addBlock(1, "ep1", 3)
+	db.setBlock(1, "ep1", 3)
 	// On an endpoint this user has no subscription on
-	db.addBlock(2, "ep2", 9)
+	db.setBlock(2, "ep2", 9)
 	a, b := db.MaybeStreamer("a").ID, db.MaybeStreamer("b").ID
 
-	type recipient struct {
-		User
-		Endpoint string
-	}
-	blockedOnEP1 := users[0]
+	blockedOnEP1 := chats[0].chat
 	blockedOnEP1.Blocked = 3
-	want := map[int][]recipient{
-		a: {{blockedOnEP1, "ep1"}, {users[0], "ep2"}, {users[1], "ep1"}},
-		b: {{blockedOnEP1, "ep1"}},
+	want := map[int][]Chat{
+		a: {blockedOnEP1, chats[1].chat, chats[2].chat},
+		b: {blockedOnEP1},
 	}
 
-	gotUsers, gotEndpoints := db.UsersForStreamers([]int{a, b})
-
-	got := map[int][]recipient{}
-	for id := range gotUsers {
-		for i, u := range gotUsers[id] {
-			got[id] = append(got[id], recipient{u, gotEndpoints[id][i]})
-		}
-		slices.SortFunc(got[id], func(x, y recipient) int {
-			return cmp.Or(cmp.Compare(x.ChatID, y.ChatID), cmp.Compare(x.Endpoint, y.Endpoint))
+	got := db.ChatsForStreamers([]int{a, b})
+	for _, recipients := range got {
+		slices.SortFunc(recipients, func(x, y Chat) int {
+			return cmp.Or(cmp.Compare(x.UserID, y.UserID), cmp.Compare(x.Endpoint, y.Endpoint))
 		})
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -1225,7 +1336,7 @@ func TestUsersForStreamers(t *testing.T) {
 func TestNotificationQueueStates(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	userID, _ := db.AddUser(1, 5, 0, "private")
+	userID := db.EnsureUserAndChat("ep", 1)
 	streamerID := insertStreamerRow(db.Database, Streamer{Nickname: "a"})
 	db.StoreNotifications([]Notification{
 		{Endpoint: "ep", UserID: userID, StreamerID: &streamerID},
@@ -1280,8 +1391,8 @@ func TestNotificationQueueStates(t *testing.T) {
 func TestSentMessageLog(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	a, _ := db.AddUser(1, 5, 0, "")
-	b, _ := db.AddUser(2, 5, 0, "")
+	a := db.EnsureUserAndChat("ep", 1)
+	b := db.EnsureUserAndChat("ep2", 2)
 
 	type row struct {
 		Timestamp int
@@ -1332,10 +1443,13 @@ func TestSentMessageLog(t *testing.T) {
 			var got []row
 			var r row
 			db.MustQuery(`
-				select timestamp, user_id, result, endpoint, priority, latency, kind, command, reply_seq, image_mode
-				from sent_message_log
-				where timestamp = $1
-				order by user_id`,
+				select
+					l.timestamp, c.user_id, l.result, c.endpoint, l.priority,
+					l.latency, l.kind, l.command, l.reply_seq, l.image_mode
+				from sent_message_log l
+				join chats c on c.id = l.chat_id
+				where l.timestamp = $1
+				order by c.user_id`,
 				QueryParams{tt.timestamp},
 				ScanTo{
 					&r.Timestamp,
@@ -1360,7 +1474,7 @@ func TestSentMessageLog(t *testing.T) {
 func TestReceivedMessageLog(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	user, _ := db.AddUser(1, 5, 0, "")
+	user := db.EnsureUserAndChat("ep", 1)
 
 	tests := []struct {
 		name      string
@@ -1377,8 +1491,11 @@ func TestReceivedMessageLog(t *testing.T) {
 			var endpoint string
 			var userID UserID
 			var command *string
-			found := db.MaybeRecord(
-				"select endpoint, user_id, command from received_message_log where timestamp = $1",
+			found := db.MaybeRecord(`
+				select c.endpoint, c.user_id, l.command
+				from received_message_log l
+				join chats c on c.id = l.chat_id
+				where l.timestamp = $1`,
 				QueryParams{tt.timestamp},
 				ScanTo{&endpoint, &userID, &command})
 			if !found || endpoint != "ep" || userID != user || !reflect.DeepEqual(command, tt.want) {
@@ -1397,49 +1514,65 @@ func TestReceivedMessageLog(t *testing.T) {
 func TestReferrals(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	alice, _ := db.AddUser(1, 5, 0, "private")
-	bob, _ := db.AddUser(2, 5, 0, "private")
+	alice := db.EnsureUserAndChat("ep1", 1)
+	db.EnsureUserAndChat("ep2", 1)
+	bob := db.EnsureUserAndChat("ep1", 2)
 
-	if db.ReferralIDExists("alices") {
+	if db.ReferralIDExists("ep1", "alices") {
 		t.Error("a referral id nobody took exists")
 	}
-	db.AddReferral(alice, "alices")
-	db.AddReferral(bob, "bobs")
-	if !db.ReferralIDExists("alices") {
+	db.SetReferralID("ep1", alice, "alices")
+	db.SetReferralID("ep1", bob, "bobs")
+	if !db.ReferralIDExists("ep1", "alices") {
 		t.Error("a taken referral id does not exist")
 	}
-	if db.ReferralIDExists("nobodys") {
+	if db.ReferralIDExists("ep1", "nobodys") {
 		t.Error("a referral id nobody took exists after others were taken")
 	}
-	if id := db.ReferralID(alice); id == nil || *id != "alices" {
-		t.Errorf("ReferralID = %s, want alices", asJSON(id))
+	if db.ReferralIDExists("ep2", "alices") {
+		t.Error("a referral id taken on ep1 exists on ep2")
 	}
-	if owner := db.UserByReferralID("alices"); owner == nil || *owner != alice {
+	if chat, _ := db.Chat("ep1", alice); chat.ReferralID == nil || *chat.ReferralID != "alices" {
+		t.Errorf("alice's referral id on ep1 = %s, want alices", asJSON(chat.ReferralID))
+	}
+	if chat, _ := db.Chat("ep2", alice); chat.ReferralID != nil {
+		t.Errorf("alice's referral id on ep2 = %s, want none", *chat.ReferralID)
+	}
+	if owner := db.UserByReferralID("ep1", "alices"); owner == nil || *owner != alice {
 		t.Errorf("UserByReferralID = %s, want %d", asJSON(owner), alice)
 	}
-	if n, found := db.referredUsers(1); !found || n != 0 {
-		t.Errorf("a new referral id's referred users = (%d, %v), want 0", n, found)
+	if owner := db.UserByReferralID("ep2", "alices"); owner != nil {
+		t.Errorf("UserByReferralID on ep2 = %d, want none", *owner)
 	}
 
 	// Each step acts on what the steps before it left
 	steps := []struct {
-		name      string
-		user      UserID
-		wantAlice int
-		wantBob   int
+		name         string
+		user         UserID
+		aliceCredits int
+		bobCredits   int
 	}{
 		{"alice refers one", alice, 1, 0},
 		{"alice refers another", alice, 2, 0},
 		{"bob counts apart", bob, 2, 1},
 	}
+	const bonus = 3
 	for _, tt := range steps {
-		db.IncrementReferredUsers(tt.user)
+		db.CreditReferrer("ep1", tt.user, bonus)
 		t.Run(tt.name, func(t *testing.T) {
-			if n, found := db.referredUsers(1); !found || n != tt.wantAlice {
-				t.Errorf("alice's referred users = (%d, %v), want %d", n, found, tt.wantAlice)
-			}
-			if n, found := db.referredUsers(2); !found || n != tt.wantBob {
-				t.Errorf("bob's referred users = (%d, %v), want %d", n, found, tt.wantBob)
+			for _, c := range []struct {
+				name     string
+				chatID   int64
+				endpoint string
+				credits  int
+			}{
+				{"alice's on ep1", 1, "ep1", tt.aliceCredits},
+				{"alice's on ep2", 1, "ep2", 0},
+				{"bob's on ep1", 2, "ep1", tt.bobCredits},
+			} {
+				if chat, _ := db.chatOf(c.chatID, c.endpoint); chat.MaxSubs != db.defaultMaxSubs+bonus*c.credits {
+					t.Errorf("%s limit = %d, want %d", c.name, chat.MaxSubs, db.defaultMaxSubs+bonus*c.credits)
+				}
 			}
 		})
 	}
@@ -1448,8 +1581,8 @@ func TestReferrals(t *testing.T) {
 func TestAddReferralEvent(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	referrer, _ := db.AddUser(1, 5, 0, "private")
-	follower, _ := db.AddUser(2, 5, 0, "private")
+	referrer := db.EnsureUser(1)
+	follower := db.EnsureUser(2)
 	// Past the users' ids, so the columns can't pass for one another
 	streamerID := db.MustInt(
 		"insert into streamers (id, nickname) overriding system value values (77, 'a') returning id")
@@ -1492,15 +1625,17 @@ func TestAddReferralEvent(t *testing.T) {
 func TestAddFeedback(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	user, _ := db.AddUser(1, 5, 0, "private")
+	user := db.EnsureUserAndChat("ep", 1)
 
 	db.AddFeedback("ep", user, "hello", 1000)
 
 	var endpoint, text string
 	var userID UserID
 	var timestamp int
-	found := db.MaybeRecord(
-		"select endpoint, user_id, text, timestamp from feedback",
+	found := db.MaybeRecord(`
+		select c.endpoint, c.user_id, f.text, f.timestamp
+		from feedback f
+		join chats c on c.id = f.chat_id`,
 		nil,
 		ScanTo{&endpoint, &userID, &text, &timestamp})
 	if !found || endpoint != "ep" || userID != user || text != "hello" || timestamp != 1000 {

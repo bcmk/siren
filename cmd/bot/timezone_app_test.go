@@ -252,7 +252,7 @@ func TestPerformWebAppTimezoneIsWhitelistGated(t *testing.T) {
 				t.Errorf("admitted = %v, want %v", got, c.admitted)
 			}
 
-			received := w.mockDB.receivedMessageCommands
+			received := w.mockDB.receivedMessageCommands()
 			users := len(w.mockDB.users)
 			if !c.admitted {
 				sent := drainSendQueueToLog(t, w)

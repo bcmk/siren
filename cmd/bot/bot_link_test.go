@@ -61,6 +61,7 @@ func TestChannelBotLinkGates(t *testing.T) {
 // storeNotification queues one notification of a kind and status, as its producer leaves it.
 func storeNotification(
 	w *testWorker,
+	endpoint string,
 	userID db.UserID,
 	kind db.PacketKind,
 	status cmdlib.StatusKind,
@@ -68,7 +69,7 @@ func storeNotification(
 ) {
 	streamerID := w.mockDB.insertStreamer(db.Streamer{Nickname: nickname}).ID
 	w.storeNotifications([]db.Notification{{
-		Endpoint:   "test",
+		Endpoint:   endpoint,
 		UserID:     userID,
 		StreamerID: &streamerID,
 		Nickname:   nickname,
@@ -82,7 +83,7 @@ func storeNotification(
 // The caller fetches, so several chats can share one batch, as a status change gives them.
 func storeStatusNotifications(w *testWorker, userID db.UserID, nicknames ...string) {
 	for _, nickname := range nicknames {
-		storeNotification(w, userID, db.NotificationPacket, cmdlib.StatusOnline, nickname)
+		storeNotification(w, "test", userID, db.NotificationPacket, cmdlib.StatusOnline, nickname)
 	}
 }
 
@@ -92,21 +93,19 @@ func TestQueuingAnAlertCountsIt(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 
-	userID, _ := w.db.AddUser(-1001234567890, 3, 0, "channel")
+	userID, _ := w.addUserAndChat(-1001234567890, 0, "channel")
 	storeStatusNotifications(w, userID, "a")
 
-	user, _ := w.db.UserByID(userID)
-	if user.Reports != 1 {
-		t.Errorf("the chat counts %d queued alerts, want 1", user.Reports)
+	if n := w.mockDB.chat("test", userID).reports; n != 1 {
+		t.Errorf("the chat counts %d queued alerts, want 1", n)
 	}
 	// Composed twice over, as a requeue makes the fetch do.
 	w.enqueueNotifications(w.db.NewNotifications())
 	w.db.RequeueNotification(1)
 	w.enqueueNotifications(w.db.NewNotifications())
 
-	user, _ = w.db.UserByID(userID)
-	if user.Reports != 1 {
-		t.Errorf("composing twice left the chat counting %d, want 1", user.Reports)
+	if n := w.mockDB.chat("test", userID).reports; n != 1 {
+		t.Errorf("composing twice left the chat counting %d, want 1", n)
 	}
 }
 
@@ -117,8 +116,8 @@ func TestBatchNumbersEveryNotification(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 
-	userID, _ := w.db.AddUser(-1001234567890, 3, 0, "channel")
-	otherID, _ := w.db.AddUser(-1001234567891, 3, 0, "channel")
+	userID, _ := w.addUserAndChat(-1001234567890, 0, "channel")
+	otherID, _ := w.addUserAndChat(-1001234567891, 0, "channel")
 	storeStatusNotifications(w, userID, "a", "b", "c")
 	storeStatusNotifications(w, otherID, "d")
 	nots := w.db.NewNotifications()
@@ -135,9 +134,32 @@ func TestBatchNumbersEveryNotification(t *testing.T) {
 	if got := plans[3].reports; got != 1 {
 		t.Errorf("a chat of its own took number %d, want 1", got)
 	}
-	user, _ := w.db.UserByID(userID)
-	if user.Reports != 3 {
-		t.Errorf("the chat counts %d notifications, want 3", user.Reports)
+	if n := w.mockDB.chat("test", userID).reports; n != 3 {
+		t.Errorf("the chat counts %d notifications, want 3", n)
+	}
+}
+
+// TestBatchNumbersEachChatApart covers one user's chats on two endpoints in one fetch:
+// each chat's alert is numbered off that chat's own count.
+func TestBatchNumbersEachChatApart(t *testing.T) {
+	t.Parallel()
+	w := newTestWorker()
+	w.tr["other"] = w.tr["test"]
+
+	userID, _ := w.addUserAndChat(-1001234567890, 0, "channel")
+	w.db.EnsureUserAndChat("other", -1001234567890)
+	w.mockDB.chat("test", userID).reports = 2
+	storeNotification(w, "test", userID, db.NotificationPacket, cmdlib.StatusOnline, "a")
+	storeNotification(w, "other", userID, db.NotificationPacket, cmdlib.StatusOnline, "b")
+
+	plans := w.planNotifications(w.db.NewNotifications())
+	w.numberNotifications(plans)
+	var numbers []int
+	for _, p := range plans {
+		numbers = append(numbers, p.reports)
+	}
+	if want := []int{3, 1}; !slices.Equal(numbers, want) {
+		t.Errorf("the alerts on test and other took numbers %v, want %v", numbers, want)
 	}
 }
 
@@ -152,7 +174,7 @@ func TestChannelNotificationReachesTheChatWithTheLink(t *testing.T) {
 	w.cfg = &cfg
 	w.tpl["test"] = realTemplates("en")
 
-	userID, _ := w.db.AddUser(-1001234567890, testBotLinkPeriod, 0, "channel")
+	userID, _ := w.addUserAndChat(-1001234567890, 0, "channel")
 	nicknames := make([]string, testBotLinkPeriod)
 	for i := range nicknames {
 		nicknames[i] = fmt.Sprintf("streamer%d", i)
@@ -197,21 +219,20 @@ func TestOnlyAlertsTakeATurn(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 
-			userID, _ := w.db.AddUser(-1001234567890, 3, 0, "channel")
-			storeNotification(w, userID, tc.kind, tc.status, "a")
+			userID, _ := w.addUserAndChat(-1001234567890, 0, "channel")
+			storeNotification(w, "test", userID, tc.kind, tc.status, "a")
 			plans := w.planNotifications(w.db.NewNotifications())
 			w.numberNotifications(plans)
 
 			if got := plans[0].reports == 1; got != tc.wantTurn {
 				t.Errorf("the notification took a number: %v, want %v", got, tc.wantTurn)
 			}
-			user, _ := w.db.UserByID(userID)
 			want := 0
 			if tc.wantTurn {
 				want = 1
 			}
-			if user.Reports != want {
-				t.Errorf("the chat counts %d notifications, want %d", user.Reports, want)
+			if n := w.mockDB.chat("test", userID).reports; n != want {
+				t.Errorf("the chat counts %d notifications, want %d", n, want)
 			}
 		})
 	}

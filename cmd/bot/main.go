@@ -869,14 +869,14 @@ func (w *worker) storeNotifications(nots []db.Notification) {
 		return
 	}
 	w.db.StoreNotifications(nots)
-	var userIDs []db.UserID
+	var counted []db.Notification
 	for _, n := range nots {
 		if w.takesLinkTurn(n) {
-			userIDs = append(userIDs, n.UserID)
+			counted = append(counted, n)
 		}
 	}
-	if len(userIDs) > 0 {
-		w.db.IncrementReports(userIDs)
+	if len(counted) > 0 {
+		w.db.IncrementReports(counted)
 	}
 }
 
@@ -896,24 +896,17 @@ func (w *worker) takesLinkTurn(n db.Notification) bool {
 
 // numberNotifications gives every alert taking a turn its chat's number.
 // The chat's count came with the fetch and covers every alert queued for it,
-// so its pending run ends on that count and the run's first is that many back.
+// so the chat's last alert takes that count, and each earlier one the number before.
 func (w *worker) numberNotifications(plans []plannedNotification) {
-	pending := map[db.UserID]int{}
-	for _, p := range plans {
-		if w.takesLinkTurn(p.Notification) {
-			pending[p.UserID]++
-		}
-	}
-	next := map[db.UserID]int{}
-	for i, p := range plans {
+	later := map[endpointUser]int{}
+	for i := len(plans) - 1; i >= 0; i-- {
+		p := plans[i]
 		if !w.takesLinkTurn(p.Notification) {
 			continue
 		}
-		if _, numbered := next[p.UserID]; !numbered {
-			next[p.UserID] = p.Reports - pending[p.UserID] + 1
-		}
-		plans[i].reports = next[p.UserID]
-		next[p.UserID]++
+		u := endpointUser{p.Endpoint, p.UserID}
+		plans[i].reports = p.Reports - later[u]
+		later[u]++
 	}
 }
 
@@ -1044,14 +1037,13 @@ func (w *worker) notifyOfStatus(p plannedNotification, img *image) {
 			"subject":         html.EscapeString(subject),
 			"subject_clipped": subjectClipped,
 			// A group or channel gets no hint: settings are admin-only there, so it is noise.
-			// The chat is read here rather than stored, so a queued row holds no chat identity.
 			"fields_hint": p.FieldsHint && !isGroupOrChannel(p.ChatID),
 			"bot_link":    w.channelBotLink(p.Notification, p.reports),
 		}
 		w.enqueueTr(p.Priority, p.Endpoint, p.UserID, notify, p.translation, data, img, nil,
 			notificationTag(p.Notification), p.ID)
 	}
-	if p.Social && w.cfg.AdChancePercent > 0 && rand.Intn(100) < w.cfg.AdChancePercent {
+	if p.Social && !isGroupOrChannel(p.ChatID) && w.cfg.AdChancePercent > 0 && rand.Intn(100) < w.cfg.AdChancePercent {
 		// Empty today: only a status notification is ever social,
 		// and no command asks for one.
 		// Carried rather than hardcoded, so an ad and the reply beside it
@@ -1064,6 +1056,15 @@ func (w *worker) mustUserByID(userID db.UserID) (user db.User) {
 	user, found := w.db.UserByID(userID)
 	if !found {
 		checkErr(fmt.Errorf("user not found: id %d", userID))
+	}
+	return
+}
+
+// mustChat loads the chat m came from
+func (w *worker) mustChat(m receivedMessage) (chat db.Chat) {
+	chat, found := w.db.Chat(m.endpoint, m.userID)
+	if !found {
+		checkErr(fmt.Errorf("chat not found: @uid = %d, endpoint = %s", m.userID, m.endpoint))
 	}
 	return
 }
@@ -1133,21 +1134,13 @@ func (w *worker) gatedAffiliate(custom map[string]string) map[string]string {
 	return custom
 }
 
-// gatedAffiliateForUser loads a recipient chat's affiliate params.
+// gatedAffiliateForChat loads a recipient chat's affiliate params.
 // Only a group or channel can hold them, so a private chat skips the lookup.
-func (w *worker) gatedAffiliateForUser(m receivedMessage) map[string]string {
+func (w *worker) gatedAffiliateForChat(m receivedMessage) map[string]string {
 	if !isGroupOrChannel(m.chatID) || !w.customAffiliateLinkEnabled() {
 		return nil
 	}
-	return w.mustUserByID(m.userID).AffiliateParams
-}
-
-// gatedAffiliateForChat is gatedAffiliateForUser for a caller that already holds the user.
-func (w *worker) gatedAffiliateForChat(chatID int64, user db.User) map[string]string {
-	if !isGroupOrChannel(chatID) || !w.customAffiliateLinkEnabled() {
-		return nil
-	}
-	return user.AffiliateParams
+	return w.mustChat(m).AffiliateParams
 }
 
 func (w *worker) showWeek(m receivedMessage, nickname string) {
@@ -1157,9 +1150,8 @@ func (w *worker) showWeek(m receivedMessage, nickname string) {
 			w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].InvalidSymbols, tplData{"streamer": nickname})
 			return
 		}
-		user := w.mustUserByID(m.userID)
-		affiliate := w.gatedAffiliateForChat(m.chatID, user)
-		loc, zone := w.chatLocation(user)
+		affiliate := w.gatedAffiliateForChat(m)
+		loc, zone := w.userLocation(w.mustUserByID(m.userID))
 		hours, weekday := w.week(nickname, loc)
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Week, tplData{
 			"hours":         hours,
@@ -1174,14 +1166,13 @@ func (w *worker) showWeek(m receivedMessage, nickname string) {
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].ZeroSubscriptions, nil)
 		return
 	}
-	user := w.mustUserByID(m.userID)
-	link := w.streamerLinker(w.gatedAffiliateForChat(m.chatID, user))
+	link := w.streamerLinker(w.gatedAffiliateForChat(m))
 	ids := make([]int, len(streamers))
 	for i, s := range streamers {
 		ids[i] = s.ID
 	}
 	now := time.Now()
-	loc, zone := w.chatLocation(user)
+	loc, zone := w.userLocation(w.mustUserByID(m.userID))
 	hoursMap, weekday := w.weekForStreamers(ids, now, loc)
 	statuses := w.db.UnconfirmedStatusesForUser(m.endpoint, m.userID)
 	statusMap := make(map[string]db.Streamer, len(statuses))
@@ -1228,9 +1219,8 @@ func (w *worker) showMonth(m receivedMessage, nickname string) {
 			w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].InvalidSymbols, tplData{"streamer": nickname})
 			return
 		}
-		user := w.mustUserByID(m.userID)
-		affiliate := w.gatedAffiliateForChat(m.chatID, user)
-		loc, zone := w.chatLocation(user)
+		affiliate := w.gatedAffiliateForChat(m)
+		loc, zone := w.userLocation(w.mustUserByID(m.userID))
 		days, first := w.month(nickname, loc)
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Month, tplData{
 			"rows":          monthRows(days, first),
@@ -1245,14 +1235,13 @@ func (w *worker) showMonth(m receivedMessage, nickname string) {
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].ZeroSubscriptions, nil)
 		return
 	}
-	user := w.mustUserByID(m.userID)
-	link := w.streamerLinker(w.gatedAffiliateForChat(m.chatID, user))
+	link := w.streamerLinker(w.gatedAffiliateForChat(m))
 	ids := make([]int, len(streamers))
 	for i, s := range streamers {
 		ids[i] = s.ID
 	}
 	now := time.Now()
-	loc, zone := w.chatLocation(user)
+	loc, zone := w.userLocation(w.mustUserByID(m.userID))
 	daysMap, first := w.monthForStreamers(ids, now, loc)
 	statuses := w.db.UnconfirmedStatusesForUser(m.endpoint, m.userID)
 	statusMap := make(map[string]db.Streamer, len(statuses))
@@ -1344,8 +1333,8 @@ func (w *worker) addStreamer(m receivedMessage, nickname string, referral bool) 
 		return nil
 	}
 	subscriptionsNumber := w.db.SubscribedOrPendingCount(m.endpoint, m.userID)
-	user := w.mustUserByID(m.userID)
-	if subscriptionsNumber >= user.MaxSubs {
+	chat := w.mustChat(m)
+	if subscriptionsNumber >= chat.MaxSubs {
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].NotEnoughSubscriptions, nil)
 		w.subscriptionUsage(m.next(), true)
 		return nil
@@ -1383,7 +1372,7 @@ func (w *worker) addStreamer(m receivedMessage, nickname string, referral bool) 
 		Kind:       db.ReplyPacket,
 		Command:    m.command,
 		ReplySeq:   m.replySeq}}
-	if subscriptionsNumber >= user.MaxSubs-w.cfg.HeavyUserRemainder {
+	if subscriptionsNumber >= chat.MaxSubs-w.cfg.HeavyUserRemainder {
 		w.subscriptionUsage(m.next(), true)
 	}
 	w.storeNotifications(nots)
@@ -1392,20 +1381,19 @@ func (w *worker) addStreamer(m receivedMessage, nickname string, referral bool) 
 
 func (w *worker) subscriptionUsage(m receivedMessage, ad bool) {
 	subscriptionsNumber := w.db.SubscribedOrPendingCount(m.endpoint, m.userID)
-	user := w.mustUserByID(m.userID)
 	tr := w.tr[m.endpoint].SubscriptionUsage
 	if ad {
 		tr = w.tr[m.endpoint].SubscriptionUsageAd
 	}
 	w.replyTr(m, db.PriorityHigh, false, tr, tplData{
 		"subscriptions_used":  subscriptionsNumber,
-		"total_subscriptions": user.MaxSubs,
+		"total_subscriptions": w.mustChat(m).MaxSubs,
 	})
 }
 
 func (w *worker) wantMore(m receivedMessage) {
 	w.replyTr(m, db.PriorityHigh, false,
-		w.tr[m.endpoint].WantMore, w.referralData(m.endpoint, m.userID))
+		w.tr[m.endpoint].WantMore, w.referralData(m))
 }
 
 // preCheckoutCommand names an admitted pre-checkout query.
@@ -1465,7 +1453,7 @@ func (w *worker) sendSubsInvoice(m receivedMessage, tier botconfig.SubsTier) {
 	// the invoice to one user and attribute its payload and rows to another.
 	chatID, ok := w.db.ChatIDForUser(m.userID)
 	if !ok {
-		lerr("cannot send invoice: no chat for user %d", m.userID)
+		lerr("cannot send invoice, no such user: @uid = %d", m.userID)
 		return
 	}
 	stars := tier.Cost
@@ -1500,7 +1488,7 @@ func (w *worker) sendSubsInvoice(m receivedMessage, tier botconfig.SubsTier) {
 	w.db.LogReceivedMessage(int(time.Now().Unix()), m.endpoint, m.userID, invoiceCommand)
 }
 
-// parseStarsPayload parses a "stars:<product>:<chat_id>:<count>" payload.
+// parseStarsPayload parses a "stars:<product>:<tg_chat_id>:<count>" payload.
 func parseStarsPayload(payload string) (product string, chatID int64, count int, ok bool) {
 	parts := strings.Split(payload, ":")
 	if len(parts) != 4 || parts[0] != "stars" || parts[1] == "" {
@@ -1557,7 +1545,7 @@ func (w *worker) handlePreCheckoutQuery(endpoint string, q *models.PreCheckoutQu
 	allowed := valid && w.cfg.BuySubsEnabled() && w.cfg.ChatWhitelisted(chatID)
 	if allowed {
 		now := int(time.Now().Unix())
-		w.db.LogReceivedMessage(now, endpoint, w.db.EnsureUser(chatID), preCheckoutCommand)
+		w.db.LogReceivedMessage(now, endpoint, w.db.EnsureUserAndChat(endpoint, chatID), preCheckoutCommand)
 	}
 	ok := allowed &&
 		q.Currency == "XTR" &&
@@ -1597,9 +1585,9 @@ func (w *worker) handleSuccessfulPayment(endpoint string, chatID int64, p *model
 	linf(
 		"crediting successful_payment: chat = %d, charge = %s, product = %s, count = %d, stars = %d",
 		chatID, p.TelegramPaymentChargeID, product, count, p.TotalAmount)
-	// GrantStarPaymentSubs resolves the user inside the charge tx
-	// and returns the id, so a rejected payload above or a duplicate charge
-	// leaves no stray user.
+	// GrantStarPaymentSubs resolves the user inside the charge tx,
+	// so a rejected payload above or a duplicate charge leaves no stray user.
+	// It returns the user to answer, on a duplicate the first charge's payer.
 	added, maxSubs, userID := w.db.GrantStarPaymentSubs(
 		chatID,
 		endpoint,
@@ -1633,40 +1621,41 @@ func (w *worker) handleSuccessfulPayment(endpoint string, chatID int64, p *model
 func (w *worker) settings(m receivedMessage) {
 	subscriptionsNumber := w.db.SubscribedOrPendingCount(m.endpoint, m.userID)
 	user := w.mustUserByID(m.userID)
-	_, zone := w.chatLocation(user)
+	chat := w.mustChat(m)
+	_, zone := w.userLocation(user)
 	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Settings, tplData{
 		"subscriptions_used":    subscriptionsNumber,
-		"total_subscriptions":   user.MaxSubs,
-		"show_images":           user.ShowImages,
-		"offline_notifications": user.OfflineNotifications,
-		"show_subject":          user.ShowSubject,
-		"silent_messages":       user.SilentMessages,
+		"total_subscriptions":   chat.MaxSubs,
+		"show_images":           chat.ShowImages,
+		"offline_notifications": chat.OfflineNotifications,
+		"show_subject":          chat.ShowSubject,
+		"silent_messages":       chat.SilentMessages,
 		"in_group":              isGroup(user),
-		"member_subscriptions":  user.MemberSubscriptions,
+		"member_subscriptions":  chat.MemberSubscriptions,
 		"timezone":              zone,
 		"timezone_set":          user.Timezone != nil,
 		"can_manage_affiliate":  w.commandEnabled("affiliate") && isGroupOrChannel(user.ChatID),
-		"affiliate_params":      w.gatedAffiliate(user.AffiliateParams),
+		"affiliate_params":      w.gatedAffiliate(chat.AffiliateParams),
 	})
 }
 
 func (w *worker) enableImages(m receivedMessage, showImages bool) {
-	w.db.SetShowImages(m.userID, showImages)
+	w.db.SetShowImages(m.endpoint, m.userID, showImages)
 	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].OK, nil)
 }
 
 func (w *worker) enableOfflineNotifications(m receivedMessage, offlineNotifications bool) {
-	w.db.SetOfflineNotifications(m.userID, offlineNotifications)
+	w.db.SetOfflineNotifications(m.endpoint, m.userID, offlineNotifications)
 	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].OK, nil)
 }
 
 func (w *worker) enableSubject(m receivedMessage, showSubject bool) {
-	w.db.SetShowSubject(m.userID, showSubject)
+	w.db.SetShowSubject(m.endpoint, m.userID, showSubject)
 	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].OK, nil)
 }
 
 func (w *worker) enableSilentMessages(m receivedMessage, silentMessages bool) {
-	w.db.SetSilentMessages(m.userID, silentMessages)
+	w.db.SetSilentMessages(m.endpoint, m.userID, silentMessages)
 	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].OK, nil)
 }
 
@@ -1677,11 +1666,11 @@ func (w *worker) enableMemberSubscriptions(m receivedMessage, memberSubscription
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].GroupsOnly, nil)
 		return
 	}
-	w.db.SetMemberSubscriptions(m.userID, memberSubscriptions)
+	w.db.SetMemberSubscriptions(m.endpoint, m.userID, memberSubscriptions)
 	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].OK, nil)
 }
 
-// utcZone is what a chat that set no timezone reads and prints as.
+// utcZone is the zone of a user that set none.
 const utcZone = "UTC"
 
 // parseTimezone resolves a typed IANA zone name and returns the spelling to store.
@@ -1695,7 +1684,7 @@ func (w *worker) parseTimezone(name string) (*time.Location, string, bool) {
 	return loc, loc.String(), true
 }
 
-// zoneOrDefault resolves a name the way a chat's own zone is resolved:
+// zoneOrDefault resolves a name the way a user's own zone is resolved:
 // the offered list first, then the database this binary carries,
 // which may still hold a name the table has stopped offering.
 // known is false when neither holds it and the default answers.
@@ -1704,7 +1693,7 @@ func (w *worker) zoneOrDefault(name string) (*time.Location, string, bool) {
 		return loc, zone, true
 	}
 	// LoadLocation answers an empty name with UTC and Local with the host's own,
-	// neither of which is a chat's zone.
+	// neither of which is a user's zone.
 	if name != "" && !strings.EqualFold(name, "local") {
 		if loc, err := time.LoadLocation(name); err == nil {
 			return loc, name, true
@@ -1713,24 +1702,23 @@ func (w *worker) zoneOrDefault(name string) (*time.Location, string, bool) {
 	return time.UTC, utcZone, false
 }
 
-// chatLocation resolves a chat's timezone, UTC when it set none.
+// userLocation resolves a user's timezone, UTC when it set none.
 // A name it cannot resolve is reported and fallen back from, and left in the column.
 // Main goroutine only, as every caller is a command handler.
-func (w *worker) chatLocation(user db.User) (*time.Location, string) {
+func (w *worker) userLocation(user db.User) (*time.Location, string) {
 	if user.Timezone == nil {
 		return time.UTC, utcZone
 	}
 	loc, zone, known := w.zoneOrDefault(*user.Timezone)
 	if !known {
-		// Reported, never repaired: which names resolve turns on the tzdata this binary carries,
-		// so a rollback to one that predates a zone would have a listing destroy a chat's own choice.
+		// Reported, not repaired, so a rollback to older tzdata erases no valid zone
 		lerr("stored timezone will not load, falling back: @uid = %d, timezone = %s",
 			user.UserID, *user.Timezone)
 	}
 	return loc, zone
 }
 
-// replyTimezone answers with the chat's zone.
+// replyTimezone answers with the user's zone.
 // help carries the ways to change it, the instructions and the picker alike,
 // and belongs to the bare command, which asks what the zone is:
 // one that has just set or cleared it is answered with the zone alone.
@@ -1744,11 +1732,11 @@ func (w *worker) replyTimezone(m receivedMessage, zone string, help bool) {
 		tplData{"timezone": zone, "help": help}, keyboard)
 }
 
-// setTimezone shows the chat's zone or sets it from a typed IANA name.
+// setTimezone shows the user's zone or sets it from a typed IANA name.
 func (w *worker) setTimezone(m receivedMessage, arg string) {
 	arg = strings.TrimSpace(arg)
 	if arg == "" {
-		_, zone := w.chatLocation(w.mustUserByID(m.userID))
+		_, zone := w.userLocation(w.mustUserByID(m.userID))
 		w.replyTimezone(m, zone, true)
 		return
 	}
@@ -1761,7 +1749,7 @@ func (w *worker) setTimezone(m receivedMessage, arg string) {
 	w.replyTimezone(m, zone, false)
 }
 
-// resetTimezone clears the chat's zone, leaving the grid on the default.
+// resetTimezone clears the user's zone, leaving the grid on the default.
 // Typing the default's name does the same, but nothing in the chat says so,
 // where a command sits in the settings listing beside the one that set it.
 func (w *worker) resetTimezone(m receivedMessage) {
@@ -1777,13 +1765,13 @@ const modelPayloadPrefix = "m-"
 func (w *worker) setAffiliate(m receivedMessage, arg string) {
 	arg = strings.TrimSpace(arg)
 	if arg == "" {
-		user := w.mustUserByID(m.userID)
-		if len(user.AffiliateParams) == 0 {
+		chat := w.mustChat(m)
+		if len(chat.AffiliateParams) == 0 {
 			w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].AffiliateInstructions, nil)
 			return
 		}
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].AffiliateStatus,
-			w.affiliateStatusData(user.AffiliateParams))
+			w.affiliateStatusData(chat.AffiliateParams))
 		return
 	}
 	params, ok := w.checker.ParseAffiliateParams(arg)
@@ -1791,18 +1779,18 @@ func (w *worker) setAffiliate(m receivedMessage, arg string) {
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].AffiliateInvalid, nil)
 		return
 	}
-	w.db.SetAffiliateParams(m.userID, params)
+	w.db.SetAffiliateParams(m.endpoint, m.userID, params)
 	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].AffiliateStatus,
 		w.affiliateStatusData(params))
 }
 
 // resetAffiliate drops a chat's custom affiliate link.
 func (w *worker) resetAffiliate(m receivedMessage) {
-	if len(w.mustUserByID(m.userID).AffiliateParams) == 0 {
+	if len(w.mustChat(m).AffiliateParams) == 0 {
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].AffiliateNothingToReset, nil)
 		return
 	}
-	w.db.SetAffiliateParams(m.userID, nil)
+	w.db.SetAffiliateParams(m.endpoint, m.userID, nil)
 	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].OK, nil)
 }
 
@@ -1997,7 +1985,7 @@ func (w *worker) listStreamers(m receivedMessage) {
 	sort.SliceStable(statuses, func(i, j int) bool {
 		return listStreamersSortWeight(statuses[i].UnconfirmedStatus) < listStreamersSortWeight(statuses[j].UnconfirmedStatus)
 	})
-	link := w.streamerLinker(w.gatedAffiliateForUser(m))
+	link := w.streamerLinker(w.gatedAffiliateForChat(m))
 	chunks := chunkStreamers(statuses, 50)
 	for _, chunk := range chunks {
 		var online, offline []streamerListEntry
@@ -2123,7 +2111,7 @@ func (w *worker) listOnlineStreamers(m receivedMessage) {
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].TooManySubscriptionsForPics, data)
 		return
 	}
-	user := w.mustUserByID(m.userID)
+	chat := w.mustChat(m)
 	var nots []db.Notification
 	for _, s := range online {
 		info := w.unconfirmedOnlineStreamers[s.Nickname]
@@ -2146,7 +2134,7 @@ func (w *worker) listOnlineStreamers(m receivedMessage) {
 			Command:      m.command,
 			ReplySeq:     m.replySeq,
 		}
-		if user.ShowSubject {
+		if chat.ShowSubject {
 			not.Subject = info.Subject
 		}
 		nots = append(nots, not)
@@ -2261,7 +2249,7 @@ func weekWindow(now time.Time, loc *time.Location) (from, to int, weekday time.W
 }
 
 // monthWindow is gridWindow for the month grid of half-day cells:
-// four full weeks and the current one through today, opening on the chat's first day of the week.
+// four full weeks and the current one through today, opening on the user's first day of the week.
 func monthWindow(now time.Time, loc *time.Location) (from, to int, first time.Time) {
 	days := monthWeeks*7 + 1 + (int(now.In(loc).Weekday())-int(weekStart(loc))+7)%7
 	return gridWindow(now, loc, days)
@@ -2290,7 +2278,7 @@ func (w *worker) monthForStreamers(
 	return onlineCells(changesMap, from, to, monthCellSeconds), first
 }
 
-// monthHeader is the week's days from the chat's first one, in the order the header prints them.
+// monthHeader is the week's days from the user's first one, in the order the header prints them.
 func monthHeader(first time.Weekday) []int {
 	days := make([]int, 7)
 	for i := range days {
@@ -2390,22 +2378,19 @@ func (w *worker) performanceStat(endpoint string, arguments string) {
 // broadcast sends text to the endpoint's private subscribers,
 // rolling the dice against each one's blocked-send count;
 // a lost roll is logged as dice-skipped instead of sent.
-// BroadcastUsers returns users carrying their ids and blocked counts, no chat ids:
-// trySend resolves the chat id from the user at dispatch —
-// deliberate, single source of truth, migration-safe.
 func (w *worker) broadcast(endpoint string, text string) {
 	if text == "" {
 		return
 	}
 	ldbg("broadcasting")
-	users := w.db.BroadcastUsers(endpoint)
+	chats := w.db.BroadcastChats(endpoint)
 	var skips []db.SkippedSend
-	for _, user := range users {
-		if !attemptBlockedSend(user.Blocked, w.cfg.BlockedSendThreshold) {
-			skips = append(skips, db.SkippedSend{UserID: user.UserID, Endpoint: endpoint})
+	for _, chat := range chats {
+		if !attemptBlockedSend(chat.Blocked, w.cfg.BlockedSendThreshold) {
+			skips = append(skips, db.SkippedSend{UserID: chat.UserID, Endpoint: endpoint})
 			continue
 		}
-		w.sendText(db.PriorityLow, endpoint, user.UserID, true, false, cmdlib.ParseRaw, text, unprompted(db.MessagePacket))
+		w.sendText(db.PriorityLow, endpoint, chat.UserID, true, false, cmdlib.ParseRaw, text, unprompted(db.MessagePacket))
 	}
 	if len(skips) > 0 {
 		w.db.LogDiceSkippedSends(
@@ -2435,11 +2420,14 @@ func (w *worker) direct(endpoint string, arguments string) {
 		return
 	}
 	// UserByChatID, not EnsureUser: a bad owner arg must not materialize a stray row.
-	// A private chat that can be messaged has a row anyway (it started the bot);
-	// the only gap is a group the bot is in that has never sent a command.
 	user, found := w.db.UserByChatID(whom)
 	if !found {
 		w.replyToOwner(endpoint, "no such user")
+		return
+	}
+	// The send's log row needs the user's chat on endpoint.
+	if _, found := w.db.Chat(endpoint, user.UserID); !found {
+		w.replyToOwner(endpoint, "no such chat")
 		return
 	}
 	w.sendText(db.PriorityHigh, endpoint, user.UserID, true, false, cmdlib.ParseRaw, text, unprompted(db.MessagePacket))
@@ -2452,9 +2440,9 @@ func (w *worker) blacklist(endpoint string, arguments string) {
 		w.replyToOwner(endpoint, "first argument is invalid")
 		return
 	}
-	// EnsureUser creates the row when the chat is unknown,
-	// so blacklisting an unseen chat materializes a (blacklisted) row.
-	// Deliberate: pre-blacklisting before the chat ever starts the bot works.
+	// EnsureUser creates the user, and no chat, when the Telegram chat is unknown,
+	// so blacklisting one never seen materializes a blacklisted user.
+	// Deliberate: pre-blacklisting before the user ever starts the bot works.
 	w.db.BlacklistUser(w.db.EnsureUser(whom))
 	w.replyToOwner(endpoint, "OK")
 }
@@ -2546,8 +2534,8 @@ func (w *worker) webAppURL(endpoint, term string) string {
 	return page + "&term=" + url.QueryEscape(term)
 }
 
-// timezoneAppURL carries the chat's zone to the page, which has no way to ask for it.
-// It is a display hint: the submit decides what the chat stores.
+// timezoneAppURL carries the user's zone to the page, which has no way to ask for it.
+// It is a display hint: the submit decides what the user stores.
 func (w *worker) timezoneAppURL(endpoint, current string) string {
 	return w.webAppBase(endpoint) +
 		"/apps/timezone?endpoint=" + endpoint + "&current=" + url.QueryEscape(current)
@@ -2640,7 +2628,7 @@ func (w *worker) handleTimezoneApp(rw http.ResponseWriter, r *http.Request) {
 		http.Error(rw, "bad endpoint", http.StatusBadRequest)
 		return
 	}
-	// The page is served before any init data is read, so the query names the zone, not the chat.
+	// The page is served before any init data is read, so the query names the zone, not the user.
 	// A zone this binary cannot load reads as the default.
 	_, current, _ := w.zoneOrDefault(r.URL.Query().Get("current"))
 	// The page offers what the bot accepts, rather than what the browser happens to know:
@@ -2822,8 +2810,8 @@ const webAppAddCommand = "web_app_add"
 
 // performWebAppAdd carries out an add submitted from the search web app.
 // Main goroutine only.
-// It vets the chat on the whitelist, as every inbound path does,
-// before EnsureUser can materialize a row for it.
+// It vets the Telegram chat on the whitelist, as every inbound path does,
+// before newReceivedMessage can materialize its user and chat rows.
 // It has no maintenance divert, unlike a Telegram update:
 // registerWebApp runs only once the database and caches are ready.
 // The event is logged here, not in handleWebAppAdd,
@@ -3230,13 +3218,16 @@ func (w *worker) setMaxSubs(endpoint string, arguments string) {
 		w.replyToOwner(endpoint, "the limit must be non-negative")
 		return
 	}
-	// UserByChatID, not EnsureUser: a bad owner arg must not materialize a stray row (see direct).
+	// UserByChatID, not EnsureUser: a bad owner arg must not materialize a stray row.
 	user, found := w.db.UserByChatID(who)
 	if !found {
 		w.replyToOwner(endpoint, "no such user")
 		return
 	}
-	w.db.SetLimit(user.UserID, maxSubs)
+	if !w.db.SetLimit(endpoint, user.UserID, maxSubs) {
+		w.replyToOwner(endpoint, "no such chat")
+		return
+	}
 	w.replyToOwner(endpoint, "OK")
 }
 
@@ -3251,10 +3242,10 @@ func randString(n int) string {
 	return string(b)
 }
 
-func (w *worker) newRandReferralID() (id string) {
+func (w *worker) newRandReferralID(endpoint string) (id string) {
 	for {
 		id = randString(5)
-		if !w.db.ReferralIDExists(id) {
+		if !w.db.ReferralIDExists(endpoint, id) {
 			break
 		}
 	}
@@ -3286,46 +3277,45 @@ func (w *worker) refreshMemberCount(endpoint string, chatID int64, userID db.Use
 	}
 }
 
-func (w *worker) refer(followerUserID db.UserID, referrer string, now int, followerCreated bool) (applied appliedKind) {
-	referrerUserID := w.db.UserByReferralID(referrer)
+func (w *worker) refer(m receivedMessage, referrer string, followerCreated bool) (applied appliedKind) {
+	referrerUserID := w.db.UserByReferralID(m.endpoint, referrer)
 	if referrerUserID == nil {
 		return invalidReferral
 	}
 	if !followerCreated {
 		return followerExists
 	}
-	w.db.SetLimit(followerUserID, w.cfg.MaxSubs+w.cfg.FollowerBonus)
-	w.db.AddReferrerBonus(*referrerUserID, w.cfg.ReferralBonus)
-	w.db.IncrementReferredUsers(*referrerUserID)
-	w.db.AddReferralEvent(now, referrerUserID, followerUserID, nil)
+	w.db.SetLimit(m.endpoint, m.userID, w.cfg.MaxSubs+w.cfg.FollowerBonus)
+	w.db.CreditReferrer(m.endpoint, *referrerUserID, w.cfg.ReferralBonus)
+	w.db.AddReferralEvent(m.timestamp, referrerUserID, m.userID, nil)
 	return referralApplied
 }
 
-func (w *worker) referralData(endpoint string, userID db.UserID) tplData {
-	referralID := w.db.ReferralID(userID)
+func (w *worker) referralData(m receivedMessage) tplData {
+	chat := w.mustChat(m)
+	referralID := chat.ReferralID
 	if referralID == nil {
-		temp := w.newRandReferralID()
+		temp := w.newRandReferralID(m.endpoint)
 		referralID = &temp
-		w.db.AddReferral(userID, *referralID)
+		w.db.SetReferralID(m.endpoint, m.userID, *referralID)
 	}
-	referralLink := w.botLink(endpoint) + "?start=" + *referralID
-	subscriptionsNumber := w.db.SubscribedOrPendingCount(endpoint, userID)
-	user := w.mustUserByID(userID)
+	referralLink := w.botLink(m.endpoint) + "?start=" + *referralID
+	subscriptionsNumber := w.db.SubscribedOrPendingCount(m.endpoint, m.userID)
 	return tplData{
 		"link":                referralLink,
 		"referral_bonus":      w.cfg.ReferralBonus,
 		"follower_bonus":      w.cfg.FollowerBonus,
 		"subscriptions_used":  subscriptionsNumber,
-		"total_subscriptions": user.MaxSubs,
+		"total_subscriptions": chat.MaxSubs,
 	}
 }
 
 func (w *worker) showReferral(m receivedMessage) {
 	w.replyTr(m, db.PriorityHigh, false,
-		w.tr[m.endpoint].ReferralLink, w.referralData(m.endpoint, m.userID))
+		w.tr[m.endpoint].ReferralLink, w.referralData(m))
 }
 
-func (w *worker) start(m receivedMessage, referrer string, created bool) {
+func (w *worker) start(m receivedMessage, referrer string, userCreated bool) {
 	nickname := ""
 	switch {
 	case strings.HasPrefix(referrer, modelPayloadPrefix):
@@ -3333,8 +3323,7 @@ func (w *worker) start(m receivedMessage, referrer string, created bool) {
 		nickname = w.checker.NicknamePreprocessing(nickname)
 		referrer = ""
 	case referrer != "":
-		referralID := w.db.ReferralID(m.userID)
-		if referralID != nil && *referralID == referrer {
+		if referralID := w.mustChat(m).ReferralID; referralID != nil && *referralID == referrer {
 			w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].OwnReferralLinkHit, nil)
 			return
 		}
@@ -3344,7 +3333,7 @@ func (w *worker) start(m receivedMessage, referrer string, created bool) {
 	})
 	m = m.next()
 	if referrer != "" && !isGroupOrChannel(m.chatID) {
-		applied := w.refer(m.userID, referrer, m.timestamp, created)
+		applied := w.refer(m, referrer, userCreated)
 		switch applied {
 		case referralApplied:
 			w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].ReferralApplied, nil)
@@ -3470,7 +3459,7 @@ func (w *worker) groupAdminOnly(m receivedMessage, command, arguments string) bo
 		return false
 	}
 	// Only an admin can turn the setting on, so opening a command to members is an admin's choice.
-	return !spec.memberSubscriptions || !w.mustUserByID(m.userID).MemberSubscriptions
+	return !spec.memberSubscriptions || !w.mustChat(m).MemberSubscriptions
 }
 
 // processIncomingCommand dispatches on command, which the caller lowercases.
@@ -3480,7 +3469,7 @@ func (w *worker) processIncomingCommand(
 	m receivedMessage,
 	snd sender,
 	command, arguments string,
-	created bool,
+	userCreated bool,
 ) {
 	linf("command received: chat = %d, command = %s, arguments = %s", m.chatID, command, arguments)
 	w.db.ResetBlock(m.endpoint, m.userID)
@@ -3523,7 +3512,7 @@ func (w *worker) processIncomingCommand(
 	case "pics", "online":
 		w.listOnlineStreamers(m)
 	case "start":
-		w.start(m, arguments, created)
+		w.start(m, arguments, userCreated)
 	case "help":
 		w.help(m)
 	case "ad":
@@ -3821,41 +3810,39 @@ func (w *worker) buildNotifications(
 
 	var notifications []db.Notification
 	var skips []db.SkippedSend
-	usersForStreamers, endpointsForStreamers := w.db.UsersForStreamers(streamerIDs)
+	chatsForStreamers := w.db.ChatsForStreamers(streamerIDs)
 	for _, c := range confirmedStatusChanges {
 		// Skip unknown -> offline transitions
 		// They don't represent meaningful events to users
 		if c.PrevStatus == cmdlib.StatusUnknown && c.Status == cmdlib.StatusOffline {
 			continue
 		}
-		users := usersForStreamers[c.StreamerID]
-		endpoints := endpointsForStreamers[c.StreamerID]
 		info := w.unconfirmedOnlineStreamers[c.Nickname]
-		for i, user := range users {
-			if (w.cfg.OfflineNotifications && user.OfflineNotifications) || c.Status != cmdlib.StatusOffline {
+		for _, chat := range chatsForStreamers[c.StreamerID] {
+			if (w.cfg.OfflineNotifications && chat.OfflineNotifications) || c.Status != cmdlib.StatusOffline {
 				// notifyOfStatus drops a nil-translation plan unsent
 				// (an orphaned endpoint, an untranslated status),
 				// so it must not roll or log a skip.
-				if w.statusTranslation(endpoints[i], c.Status) != nil &&
-					!attemptBlockedSend(user.Blocked, w.cfg.BlockedSendThreshold) {
-					skips = append(skips, db.SkippedSend{UserID: user.UserID, Endpoint: endpoints[i]})
+				if w.statusTranslation(chat.Endpoint, c.Status) != nil &&
+					!attemptBlockedSend(chat.Blocked, w.cfg.BlockedSendThreshold) {
+					skips = append(skips, db.SkippedSend{UserID: chat.UserID, Endpoint: chat.Endpoint})
 					continue
 				}
 				n := db.Notification{
-					Endpoint:   endpoints[i],
-					UserID:     user.UserID,
+					Endpoint:   chat.Endpoint,
+					UserID:     chat.UserID,
 					StreamerID: &c.StreamerID,
 					Nickname:   c.Nickname,
 					Status:     c.Status,
-					Social:     !isGroupOrChannel(user.ChatID),
+					Social:     true,
 					Sound:      c.Status == cmdlib.StatusOnline,
 					Priority:   db.PriorityLow,
 					Kind:       db.NotificationPacket}
-				if user.ShowImages {
+				if chat.ShowImages {
 					n.ImageURL, n.ProfileImageURL = notificationImages(info)
 					n.MissingImage = c.Status == cmdlib.StatusOnline && n.ImageURL == ""
 				}
-				if user.ShowSubject {
+				if chat.ShowSubject {
 					n.Subject = info.Subject
 				}
 				notifications = append(notifications, n)
@@ -3943,12 +3930,12 @@ func getCommandAndArgs(update *models.Update, mention string, ourIDs []int64) (i
 // migrateCommand names a completed group-to-supergroup migration.
 const migrateCommand = "migrate"
 
-// migrateChatAndLog migrates the chat and, only when it actually migrated,
+// migrateChatAndLog migrates the user and, only when it actually migrated,
 // logs one migrate event attributed to the destination user,
 // so a redelivery or the pair's second message does not double-count.
 func (w *worker) migrateChatAndLog(timestamp int, endpoint string, fromID, toID int64) {
 	if w.migrateChat(fromID, toID) {
-		w.db.LogReceivedMessage(timestamp, endpoint, w.db.EnsureUser(toID), migrateCommand)
+		w.db.LogReceivedMessage(timestamp, endpoint, w.db.EnsureUserAndChat(endpoint, toID), migrateCommand)
 	}
 }
 
@@ -3972,7 +3959,7 @@ func migrationPair(m *models.Message) (fromID, toID int64, ok bool) {
 	return 0, 0, false
 }
 
-// handleChatMigration migrates a chat after a group-to-supergroup upgrade.
+// handleChatMigration migrates a user after a group-to-supergroup upgrade.
 // Both the migrate_to and migrate_from messages carry the same ID pair.
 func (w *worker) handleChatMigration(endpoint string, now int, fromID, toID int64) {
 	if !w.cfg.ChatWhitelisted(fromID) && !w.cfg.ChatWhitelisted(toID) {
@@ -3982,7 +3969,7 @@ func (w *worker) handleChatMigration(endpoint string, now int, fromID, toID int6
 	w.migrateChatAndLog(now, endpoint, fromID, toID)
 }
 
-// migrateChat moves a chat's data, logs the outcome,
+// migrateChat moves a user's data, logs the outcome,
 // and reports whether it migrated,
 // so the caller writes one received_message_log event per migration.
 // Only the main goroutine may touch the database, so it must run there.
@@ -4070,9 +4057,9 @@ func (w *worker) processTGUpdate(p incomingPacket) {
 	} else if u.ChannelPost != nil {
 		chatType = string(u.ChannelPost.Chat.Type)
 	}
-	m, created := w.newReceivedMessage(now, p.endpoint, chatID, chatType, loggedCommand)
+	m, userCreated := w.newReceivedMessage(now, p.endpoint, chatID, chatType, loggedCommand)
 	w.logReceived(m)
-	w.processIncomingCommand(m, senderOf(u), command, args, created)
+	w.processIncomingCommand(m, senderOf(u), command, args, userCreated)
 	w.refreshMemberCount(p.endpoint, chatID, m.userID)
 }
 
@@ -4219,8 +4206,8 @@ func (w *worker) maintenanceReply(u incomingPacket, waitingUsers map[waitingUser
 	mention := w.botMention(u.endpoint)
 	chatID, command, args := getCommandAndArgs(u.message, mention, w.ourIDs)
 	if command != "" {
-		// Gate like processTGUpdate: otherwise finishStartup's EnsureUser
-		// materializes a row for a non-whitelisted chat.
+		// Gate like processTGUpdate:
+		// otherwise finishStartup's EnsureUserAndChat materializes rows for a non-whitelisted chat.
 		if !w.admitChat("maintenance message", chatID) {
 			return
 		}
@@ -4295,7 +4282,7 @@ func (w *worker) waitForInflightSends(ctx context.Context) {
 }
 
 // handleSendResult runs the database bookkeeping for one send result:
-// block counters, chat-data migration, and the send log.
+// block counters, user migration, and the send log.
 // A maintenance send skips it all: it may run before the database exists.
 // The member-count lookup is a network call and deliberately not here —
 // completeSendResult runs it only after freeing the send slot.
@@ -4309,7 +4296,7 @@ func (w *worker) handleSendResult(r msgSendResult) {
 	case messageSent:
 		w.db.ResetBlock(r.endpoint, r.userID)
 	case messageMigrate:
-		// Move the chat's data so later sends go to the new id, not the old.
+		// Move the user's data so later sends go to the new id, not the old.
 		// A same-id migrate degenerates inside MigrateChat; nothing to guard here.
 		w.migrateChatAndLog(r.timestamp, r.endpoint, r.chatID, r.migrateToChatID)
 	}
@@ -4331,9 +4318,10 @@ func (w *worker) resolveResultUser(r *msgSendResult) {
 // finalizes the notification, frees the endpoint's send slot,
 // and only then refreshes the member count — in that order.
 // The whole bookkeeping (handleSendResult) runs before the slot frees.
-// Migrate requires it: a stalled main loop can let the user's cooling release
-// overtake this result and dispatch the resend the moment onSendDone frees
-// the slot, so the chat row must already point at the migrated chat's new id.
+// Migrate requires it:
+// a stalled main loop can let the user's cooling release overtake this result
+// and dispatch the resend the moment onSendDone frees the slot,
+// so the user row must already point at the new Telegram chat id.
 // The log and block-counter writes do not need that ordering,
 // but stay here deliberately rather than split off to overlap the next POST:
 // they are fast local writes that single-flight pacing (endpointCooldown) already dwarfs,
@@ -4515,7 +4503,7 @@ const searchCommand = "search"
 // handleSearchRequest serves one search from the web app.
 // It runs on the search daemon's goroutine, which owns fuzzySearchDB.
 // searchCaller vets the chat before the request is queued;
-// the guard repeats here because EnsureUser is the write it protects.
+// the guard repeats here because EnsureUserAndChat is the write it protects.
 func (w *worker) handleSearchRequest(req searchRequest) {
 	if !w.admitChat("search", req.chatID) {
 		// searchCaller vets before queueing, so a rejection here is a broken invariant.
@@ -4525,11 +4513,11 @@ func (w *worker) handleSearchRequest(req searchRequest) {
 	}
 	now := int(time.Now().Unix())
 	// A search means the user found the bot on their own,
-	// so create the row now;
+	// so create the user now;
 	// a later referral /start then correctly earns no follower bonus.
 	w.fuzzySearchDB.LogReceivedMessage(
 		now, req.endpoint,
-		w.fuzzySearchDB.EnsureUser(req.chatID), searchCommand)
+		w.fuzzySearchDB.EnsureUserAndChat(req.endpoint, req.chatID), searchCommand)
 	req.resultCh <- searchResult{streamers: w.fuzzySearchDB.SearchStreamers(req.term), allowed: true}
 }
 
@@ -4645,6 +4633,17 @@ func (w *worker) keepTelegramConnection(ctx context.Context, b *bot.Bot) {
 	}
 }
 
+// ensureOwner ensures the owner's user and its chat on every endpoint:
+// the "bot is up" notice and feedback copies are logged sends,
+// possibly on an endpoint the owner never wrote on.
+func (w *worker) ensureOwner() {
+	// Outside the loop, as checker_only has no endpoints
+	w.ownerUserID = w.db.EnsureUser(w.cfg.OwnerID)
+	for endpoint := range w.cfg.Endpoints {
+		w.db.EnsureUserAndChat(endpoint, w.cfg.OwnerID)
+	}
+}
+
 // finishStartup completes the loop-owned initialization
 // once the database is ready: the periodic timers, the checker daemon,
 // signal handling, the queued we-are-up replies, and the payment gate.
@@ -4667,7 +4666,7 @@ func (w *worker) finishStartup(
 	}()
 	for user := range waitingUsers {
 		w.sendTr(
-			db.PriorityHigh, user.endpoint, w.db.EnsureUser(user.chatID), false,
+			db.PriorityHigh, user.endpoint, w.db.EnsureUserAndChat(user.endpoint, user.chatID), false,
 			w.tr[user.endpoint].WeAreUp, nil, unprompted(db.MessagePacket))
 	}
 	w.sendText(
@@ -4746,7 +4745,7 @@ func main() {
 	databaseDone := make(chan bool)
 	go func() {
 		w.createDatabase()
-		w.ownerUserID = w.db.EnsureUser(w.cfg.OwnerID)
+		w.ensureOwner()
 		w.initCache()
 		w.db.ResetNotificationSending()
 		w.db.ResetCheckingToUnconfirmed()

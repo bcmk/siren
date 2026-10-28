@@ -56,7 +56,7 @@ func TestMemberSubscriptionsGate(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			m := testMessage(w, -10, tc.command, 0)
-			w.db.SetMemberSubscriptions(m.userID, tc.setting)
+			w.db.SetMemberSubscriptions(m.endpoint, m.userID, tc.setting)
 			if got := w.groupAdminOnly(m, tc.command, tc.arguments); got != tc.wantGated {
 				t.Errorf("gated = %v, want %v", got, tc.wantGated)
 			}
@@ -118,11 +118,10 @@ func TestMemberSubscriptionsToggle(t *testing.T) {
 			}
 			m := testMessage(w, tc.chatID, tc.command, 0)
 			setChatType(w, tc.chatID, tc.chatType)
-			w.db.SetMemberSubscriptions(m.userID, tc.before)
+			w.db.SetMemberSubscriptions(m.endpoint, m.userID, tc.before)
 			w.processIncomingCommand(m, sender{from: &models.User{ID: 99}}, tc.command, "", false)
 
-			got := w.mockDB.userByChat(tc.chatID).MemberSubscriptions
-			if got != tc.want {
+			if got := w.mustChat(m).MemberSubscriptions; got != tc.want {
 				t.Errorf("member_subscriptions = %v, want %v", got, tc.want)
 			}
 			if n := w.sendQueue.Len(); n != 1 {

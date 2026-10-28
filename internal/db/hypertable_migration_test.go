@@ -265,7 +265,7 @@ func TestPrebuiltMessageLogsHypertable(t *testing.T) {
 		before[table] = logShape(db, table)
 	}
 
-	db.MustExec(`insert into users (id, chat_id) values (1, 1), (2, 2)`)
+	db.MustExec(`insert into users (id, tg_chat_id) values (1, 1), (2, 2)`)
 
 	// Three rows of each log below the boundary, an hour behind now, and one above it
 	now := int(time.Now().Unix())

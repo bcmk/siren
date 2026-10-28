@@ -179,6 +179,11 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
+// addUserAndChat adds a user with its chat on the test endpoint
+func (w *testWorker) addUserAndChat(chatID int64, now int, chatType string) (db.UserID, bool) {
+	return w.db.AddUserAndChat("test", chatID, now, chatType)
+}
+
 // testMessage builds the inbound message a handler answers,
 // resolving the chat to its user as processTGUpdate does.
 func testMessage(w *testWorker, chatID int64, command string, now int) receivedMessage {
@@ -278,17 +283,17 @@ func webAppButtonURL(t *testing.T, w *testWorker) string {
 }
 
 func insertSubscription(mock *mockDB, endpoint string, chatID int64, nickname string) {
-	mock.AddUser(chatID, 0, 0, "")
-	mock.AddSubscription(mock.userByChat(chatID).UserID, mock.streamerByNickname(nickname).ID, endpoint)
+	userID, _ := mock.AddUserAndChat(endpoint, chatID, 0, "")
+	mock.AddSubscription(userID, mock.streamerByNickname(nickname).ID, endpoint)
 }
 
-func insertPendingSubscriptionForChat(mock *mockDB, chatID int64, nickname string, checking bool) {
-	mock.AddUser(chatID, 0, 0, "")
+func insertPendingSubscriptionForChat(mock *mockDB, endpoint string, chatID int64, nickname string, checking bool) {
+	userID, _ := mock.AddUserAndChat(endpoint, chatID, 0, "")
 	mock.insertPendingSubscription(mockPendingSubscription{
 		PendingSubscription: db.PendingSubscription{
-			UserID:   mock.userByChat(chatID).UserID,
+			UserID:   userID,
 			Nickname: nickname,
-			Endpoint: "test",
+			Endpoint: endpoint,
 		},
 		checking: checking,
 	})

@@ -581,9 +581,7 @@ func TestBuildNotificationsMarksMissingImage(t *testing.T) {
 			w.cfg = &cfg
 			id := w.mockDB.insertStreamer(db.Streamer{Nickname: "s1"}).ID
 			insertSubscription(w.mockDB, "test", 100, "s1")
-			u := w.mockDB.userByChat(100)
-			u.ShowImages = tc.showImages
-			u.OfflineNotifications = true
+			w.db.SetShowImages("test", w.db.EnsureUserAndChat("test", 100), tc.showImages)
 			w.unconfirmedOnlineStreamers["s1"] = cmdlib.StreamerInfo{ImageURL: tc.url, ProfileImageURL: tc.profile}
 			nots := w.buildNotifications([]db.ConfirmedStatusChange{
 				{StreamerID: id, Nickname: "s1", Status: tc.status, PrevStatus: cmdlib.StatusOnline},
@@ -613,7 +611,7 @@ func TestMissingImageForUnknownEndpointIsDropped(t *testing.T) {
 	id := w.mockDB.insertStreamer(db.Streamer{Nickname: "s1"}).ID
 	w.db.StoreNotifications([]db.Notification{{
 		Endpoint:     "removed_from_config",
-		UserID:       w.db.EnsureUser(1),
+		UserID:       w.db.EnsureUserAndChat("removed_from_config", 1),
 		StreamerID:   &id,
 		Nickname:     "s1",
 		Status:       cmdlib.StatusOnline,
@@ -737,7 +735,7 @@ func photoSendWorker(
 	w.sender("test").cooling = false
 	users := make([]db.UserID, len(chatIDs))
 	for i, chatID := range chatIDs {
-		users[i], _ = w.db.AddUser(chatID, 3, 0, "private")
+		users[i], _ = w.addUserAndChat(chatID, 0, "private")
 	}
 	return w, users
 }
@@ -1356,7 +1354,7 @@ func TestDroppedAdLogsLiveUserAndWait(t *testing.T) {
 	s.cooling = true
 	w.sendAdsTr(db.PriorityLow, "test", users[0], false, tr, "")
 	// The ad's user merges into another while the ad waits.
-	live, _ := w.db.AddUser(201, 3, 0, "private")
+	live := w.db.EnsureUserAndChat("other", 201)
 	w.db.MigrateChat(101, 201)
 	const wait = 50 * time.Millisecond
 	time.Sleep(wait)

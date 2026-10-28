@@ -171,8 +171,9 @@ type receivedMessage struct {
 	replySeq int
 }
 
-// newReceivedMessage pairs the chat with its user, so the two cannot disagree,
-// and reports whether the chat is new. chatType is empty where the update does not name one.
+// newReceivedMessage resolves the chat id to its user, so the two cannot disagree,
+// ensures the user's chat on endpoint, and reports whether the user is new.
+// chatType is empty where the update does not name one.
 func (w *worker) newReceivedMessage(
 	now int,
 	endpoint string,
@@ -180,14 +181,14 @@ func (w *worker) newReceivedMessage(
 	chatType string,
 	command string,
 ) (receivedMessage, bool) {
-	userID, created := w.db.AddUser(chatID, w.cfg.MaxSubs, now, chatType)
+	userID, userCreated := w.db.AddUserAndChat(endpoint, chatID, now, chatType)
 	return receivedMessage{
 		timestamp: now,
 		endpoint:  endpoint,
 		userID:    userID,
 		chatID:    chatID,
 		command:   command,
-	}, created
+	}, userCreated
 }
 
 // next returns the message tagged as the reply after this one.
@@ -639,10 +640,10 @@ func (w *worker) trySend(endpoint string) {
 		}
 		chatID, ok := w.db.ChatIDForUser(q.userID)
 		if !ok {
-			// The user has no chat row (no delete path today, so defensive).
+			// No users row has this id (no delete path today, so defensive).
 			// A missing row is recoverable state, not a broken invariant,
 			// and it lands before the slot is claimed, so drop this send and carry on.
-			lerr("dropping send: no chat for user %d", q.userID)
+			lerr("dropping send, no such user: @uid = %d", q.userID)
 			w.finalizeNotification(q.notificationID)
 			w.trySend(endpoint)
 			return

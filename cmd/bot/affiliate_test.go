@@ -174,7 +174,7 @@ func TestStripchatAffiliate(t *testing.T) {
 			m := testMessage(w, -10, "affiliate", 0)
 			w.setAffiliate(m, tc.arg)
 
-			if got := w.mustUserByID(m.userID).AffiliateParams; !maps.Equal(got, tc.want) {
+			if got := w.mustChat(m).AffiliateParams; !maps.Equal(got, tc.want) {
 				t.Errorf("affiliate params = %v, want %v", got, tc.want)
 			}
 			if n := w.sendQueue.Len(); n != 1 {

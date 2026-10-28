@@ -40,7 +40,7 @@ without format changes:
 
 - Inline-button callback data: `buy:<method>:<arg>` (e.g. `buy:stars:10`).
   `handleBuyCallback` dispatches on `<method>`.
-- Invoice payload: `<method>:<product>:<chat_id>:<count>`
+- Invoice payload: `<method>:<product>:<tg_chat_id>:<count>`
   (e.g. `stars:subs:123:10`), parsed by `parseStarsPayload`.
 
 The `star_payments` ledger is product-agnostic:

@@ -92,8 +92,7 @@ func TestGroupAdminGate(t *testing.T) {
 			m := testMessage(w, tc.chatID, "disable_images", 0)
 			snd := sender{from: tc.from, senderChat: tc.senderChat}
 			w.processIncomingCommand(m, snd, "disable_images", "", false)
-			showImages := w.mockDB.userByChat(tc.chatID).ShowImages
-			if applied := !showImages; applied != tc.wantApplied {
+			if applied := !w.mustChat(m).ShowImages; applied != tc.wantApplied {
 				t.Errorf("command applied = %v, want %v", applied, tc.wantApplied)
 			}
 			if looked != tc.wantLookup {

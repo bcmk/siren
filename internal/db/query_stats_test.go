@@ -9,7 +9,7 @@ func TestResetQueryStats(t *testing.T) {
 	target := newTestDB(t)
 	other := newTestDB(t)
 
-	const markedQuery = "select count(*) from referrals /*reset_query_stats_marker*/"
+	const markedQuery = "select count(*) from feedback /*reset_query_stats_marker*/"
 	markedQueryCount := func(d *testDB) int {
 		return d.MustInt(`
 			select count(*)

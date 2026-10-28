@@ -40,7 +40,7 @@ type Notification struct {
 	Subject    string
 
 	// These travel one way: out of the database, never into it.
-	// notification_queue has no such columns, so the fetch joins users to fill them.
+	// The fetch joins users and chats to fill them.
 	SilentMessages  bool
 	ChatID          int64
 	ChatType        *string
@@ -49,8 +49,8 @@ type Notification struct {
 	Reports int
 }
 
-// UserID is a user's stable surrogate id (users.id), distinct from the mutable
-// chat_id. Typed so the compiler keeps the two from being swapped.
+// UserID is a user's stable surrogate id (users.id), distinct from the mutable tg_chat_id.
+// Typed so the compiler keeps the two from being swapped.
 type UserID int64
 
 // Priority represents a message priority
@@ -120,29 +120,36 @@ const (
 	PerformanceLogCompaction PerformanceLogKind = 4
 )
 
-// User represents a chat
+// User is a person, group or channel our bots serve
 type User struct {
-	ChatID               int64
+	ChatID    int64
+	UserID    UserID
+	Blacklist bool
+	ChatType  *string
+
+	// Timezone is the user's IANA zone name, nil for UTC.
+	Timezone *string
+}
+
+// Chat is a user on one endpoint, with that bot's settings and block count
+type Chat struct {
 	UserID               UserID
+	Endpoint             string
 	MaxSubs              int
-	Reports              int
-	Blacklist            bool
 	ShowImages           bool
 	OfflineNotifications bool
 	ShowSubject          bool
 	SilentMessages       bool
-	ChatType             *string
 	AffiliateParams      map[string]string
 
 	// MemberSubscriptions lets any group member add and remove streamers.
 	MemberSubscriptions bool
 
-	// Timezone is the chat's IANA zone name, nil for UTC.
-	Timezone *string
-
-	// Blocked is the consecutive blocked-send count on the row's endpoint,
-	// populated only by the recipient-selection queries (UsersForStreamers, BroadcastUsers).
+	// Blocked is the consecutive blocked-send count.
 	Blocked int
+
+	// ReferralID is the id the chat's referral link carries.
+	ReferralID *string
 }
 
 // Streamer represents a streamer

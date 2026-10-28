@@ -85,7 +85,7 @@ func TestCompleteSendResultMigrateReArms(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 
-	w.db.AddUser(1, 3, 0, "private")
+	w.addUserAndChat(1, 0, "private")
 	streamerID := w.mockDB.insertStreamer(db.Streamer{Nickname: "a"}).ID
 	w.db.StoreNotifications([]db.Notification{{
 		Endpoint:   "test",
@@ -243,7 +243,7 @@ func TestCheckerResultsStampSkippedSends(t *testing.T) {
 func TestAddStreamer(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	w.db.AddUser(1, 3, 0, "private")
+	w.addUserAndChat(1, 0, "private")
 
 	// Add streamer that doesn't exist — should insert into pending_subscriptions and return nil
 	if w.addStreamer(testMessage(w, 1, "add", 100), "newmodel", false) != nil {
@@ -287,15 +287,15 @@ func TestProcessSubsConfirmations(t *testing.T) {
 
 	// Insert pending subscriptions in checking state
 	for chatID := int64(1); chatID <= 9; chatID++ {
-		w.db.AddUser(chatID, 0, 0, "")
+		w.addUserAndChat(chatID, 0, "")
 	}
-	insertPendingSubscriptionForChat(w.mockDB, 1, "online_model", true)
-	insertPendingSubscriptionForChat(w.mockDB, 2, "offline_model", true)
-	insertPendingSubscriptionForChat(w.mockDB, 3, "notfound_model", true)
-	insertPendingSubscriptionForChat(w.mockDB, 4, "denied_model", true)
-	insertPendingSubscriptionForChat(w.mockDB, 5, "notfound_denied_model", true)
-	insertPendingSubscriptionForChat(w.mockDB, 6, "online_offline_model", true)
-	insertPendingSubscriptionForChat(w.mockDB, 7, "unknown_model", true)
+	insertPendingSubscriptionForChat(w.mockDB, "test", 1, "online_model", true)
+	insertPendingSubscriptionForChat(w.mockDB, "test", 2, "offline_model", true)
+	insertPendingSubscriptionForChat(w.mockDB, "test", 3, "notfound_model", true)
+	insertPendingSubscriptionForChat(w.mockDB, "test", 4, "denied_model", true)
+	insertPendingSubscriptionForChat(w.mockDB, "test", 5, "notfound_denied_model", true)
+	insertPendingSubscriptionForChat(w.mockDB, "test", 6, "online_offline_model", true)
+	insertPendingSubscriptionForChat(w.mockDB, "test", 7, "unknown_model", true)
 	// Referral pending subscription — should create referral event on confirmation
 	w.mockDB.insertPendingSubscription(mockPendingSubscription{
 		PendingSubscription: db.PendingSubscription{
@@ -307,7 +307,7 @@ func TestProcessSubsConfirmations(t *testing.T) {
 		checking: true,
 	})
 	// Non-referral pending subscription — should NOT create referral event
-	insertPendingSubscriptionForChat(w.mockDB, 9, "nonreferral_model", true)
+	insertPendingSubscriptionForChat(w.mockDB, "test", 9, "nonreferral_model", true)
 
 	// Process confirmations with checker results
 	w.processSubsConfirmations(&cmdlib.ExistenceListResults{
@@ -399,11 +399,11 @@ func TestProcessSubsConfirmationsPartialList(t *testing.T) {
 	w := newTestWorker()
 
 	for chatID := int64(1); chatID <= 3; chatID++ {
-		w.db.AddUser(chatID, 0, 0, "")
+		w.addUserAndChat(chatID, 0, "")
 	}
-	insertPendingSubscriptionForChat(w.mockDB, 1, "answered_model", true)
-	insertPendingSubscriptionForChat(w.mockDB, 2, "still_pending_model", true)
-	insertPendingSubscriptionForChat(w.mockDB, 3, "also_still_pending_model", true)
+	insertPendingSubscriptionForChat(w.mockDB, "test", 1, "answered_model", true)
+	insertPendingSubscriptionForChat(w.mockDB, "test", 2, "still_pending_model", true)
+	insertPendingSubscriptionForChat(w.mockDB, "test", 3, "also_still_pending_model", true)
 
 	w.processSubsConfirmations(&cmdlib.ExistenceListResults{
 		Streamers: map[string]cmdlib.StreamerInfoWithStatus{
@@ -448,12 +448,12 @@ func TestUserReferral(t *testing.T) {
 		w := newTestWorker()
 
 		// Create referrer and their referral link
-		w.db.AddUser(20, w.cfg.MaxSubs, 0, "private")
-		w.db.AddReferral(w.db.EnsureUser(20), "ref-abc")
+		w.addUserAndChat(20, 0, "private")
+		w.db.SetReferralID("test", w.db.EnsureUser(20), "ref-abc")
 
 		// New user clicks referral link
-		_, created := w.db.AddUser(21, w.cfg.MaxSubs, 100, "private")
-		w.start(testMessage(w, 21, "start", 100), "ref-abc", created)
+		_, userCreated := w.addUserAndChat(21, 100, "private")
+		w.start(testMessage(w, 21, "start", 100), "ref-abc", userCreated)
 
 		// Drain outgoing messages
 		for w.sendQueue.Len() > 0 {
@@ -469,31 +469,61 @@ func TestUserReferral(t *testing.T) {
 		}
 
 		// Verify follower got bonus subs
-		follower, exists := w.db.UserByChatID(21)
+		followerUser, exists := w.db.UserByChatID(21)
 		if !exists {
 			t.Fatal("expected follower user to exist")
 		}
+		follower, _ := w.db.Chat("test", followerUser.UserID)
 		if follower.MaxSubs != w.cfg.MaxSubs+w.cfg.FollowerBonus {
 			t.Errorf("expected follower max_subs %d, got %d",
 				w.cfg.MaxSubs+w.cfg.FollowerBonus, follower.MaxSubs)
 		}
 
 		// Verify referrer got bonus subs
-		referrer, exists := w.db.UserByChatID(20)
+		referrerUser, exists := w.db.UserByChatID(20)
 		if !exists {
 			t.Fatal("expected referrer user to exist")
 		}
+		referrer, _ := w.db.Chat("test", referrerUser.UserID)
 		if referrer.MaxSubs != w.cfg.MaxSubs+w.cfg.ReferralBonus {
 			t.Errorf("expected referrer max_subs %d, got %d",
 				w.cfg.MaxSubs+w.cfg.ReferralBonus, referrer.MaxSubs)
 		}
+	})
 
-		// Verify referred_users counter incremented
-		referral := w.mockDB.referrals[slices.IndexFunc(w.mockDB.referrals, func(r *mockReferral) bool {
-			return w.mockDB.chatID(r.userID) == 20
-		})]
-		if referredUsers := referral.referredUsers; referredUsers != 1 {
-			t.Errorf("expected referred_users=1, got %d", referredUsers)
+	t.Run("a chat's referral link keeps its id", func(t *testing.T) {
+		t.Parallel()
+		w := newTestWorker()
+
+		userID, _ := w.addUserAndChat(70, 0, "private")
+		var links []any
+		for range 2 {
+			links = append(links, w.referralData(testMessage(w, 70, "referral", 100))["link"])
+		}
+		chat, _ := w.db.Chat("test", userID)
+		if chat.ReferralID == nil {
+			t.Fatal("referral id not stored")
+		}
+		want := w.botLink("test") + "?start=" + *chat.ReferralID
+		if links[0] != want || links[1] != want {
+			t.Errorf("links = %v, want %s twice", links, want)
+		}
+	})
+
+	t.Run("a referral id from another bot is invalid", func(t *testing.T) {
+		t.Parallel()
+		w := newTestWorker()
+
+		referrer := w.db.EnsureUserAndChat("other", 60)
+		w.db.SetReferralID("other", referrer, "ref-other")
+		_, userCreated := w.addUserAndChat(61, 100, "private")
+		w.start(testMessage(w, 61, "start", 100), "ref-other", userCreated)
+
+		if n := len(w.mockDB.referralEvents); n != 0 {
+			t.Errorf("referral events = %d, want 0", n)
+		}
+		if chat, _ := w.db.Chat("other", referrer); chat.MaxSubs != w.cfg.MaxSubs {
+			t.Errorf("referrer's limit on other = %d, want %d", chat.MaxSubs, w.cfg.MaxSubs)
 		}
 	})
 
@@ -501,8 +531,8 @@ func TestUserReferral(t *testing.T) {
 		t.Parallel()
 		w := newTestWorker()
 
-		_, created := w.db.AddUser(30, w.cfg.MaxSubs, 100, "private")
-		w.start(testMessage(w, 30, "start", 100), "nonexistent-ref", created)
+		_, userCreated := w.addUserAndChat(30, 100, "private")
+		w.start(testMessage(w, 30, "start", 100), "nonexistent-ref", userCreated)
 
 		// Drain outgoing messages
 		for w.sendQueue.Len() > 0 {
@@ -521,14 +551,14 @@ func TestUserReferral(t *testing.T) {
 		w := newTestWorker()
 
 		// Create referrer with referral link
-		w.db.AddUser(40, w.cfg.MaxSubs, 0, "private")
-		w.db.AddReferral(w.db.EnsureUser(40), "ref-xyz")
+		w.addUserAndChat(40, 0, "private")
+		w.db.SetReferralID("test", w.db.EnsureUser(40), "ref-xyz")
 
 		// Create follower who already exists
-		w.db.AddUser(41, w.cfg.MaxSubs, 0, "private")
+		w.addUserAndChat(41, 0, "private")
 
-		_, created := w.db.AddUser(41, w.cfg.MaxSubs, 100, "private")
-		w.start(testMessage(w, 41, "start", 100), "ref-xyz", created)
+		_, userCreated := w.addUserAndChat(41, 100, "private")
+		w.start(testMessage(w, 41, "start", 100), "ref-xyz", userCreated)
 
 		// Drain outgoing messages
 		for w.sendQueue.Len() > 0 {
@@ -542,7 +572,8 @@ func TestUserReferral(t *testing.T) {
 		}
 
 		// Verify referrer max_subs unchanged
-		referrer, _ := w.db.UserByChatID(40)
+		referrerUser, _ := w.db.UserByChatID(40)
+		referrer, _ := w.db.Chat("test", referrerUser.UserID)
 		if referrer.MaxSubs != w.cfg.MaxSubs {
 			t.Errorf("expected referrer max_subs unchanged at %d, got %d",
 				w.cfg.MaxSubs, referrer.MaxSubs)
@@ -554,15 +585,18 @@ func TestUserReferral(t *testing.T) {
 		w := newTestWorker()
 
 		// Create user with referral link
-		w.db.AddUser(50, w.cfg.MaxSubs, 0, "private")
-		w.db.AddReferral(w.db.EnsureUser(50), "ref-own")
+		w.addUserAndChat(50, 0, "private")
+		w.db.SetReferralID("test", w.db.EnsureUser(50), "ref-own")
 
-		_, created := w.db.AddUser(50, w.cfg.MaxSubs, 100, "private")
-		w.start(testMessage(w, 50, "start", 100), "ref-own", created)
+		_, userCreated := w.addUserAndChat(50, 100, "private")
+		w.start(testMessage(w, 50, "start", 100), "ref-own", userCreated)
 
-		// Drain outgoing messages
-		for w.sendQueue.Len() > 0 {
-			w.nextOutgoing()
+		var replies []string
+		for q := w.nextOutgoing(); q != nil; q = w.nextOutgoing() {
+			replies = append(replies, q.message.(*messageParams).renderParams.key)
+		}
+		if !slices.Equal(replies, []string{"own_referral_link_hit"}) {
+			t.Errorf("replies = %v, want own_referral_link_hit alone", replies)
 		}
 
 		// Verify no referral event
@@ -582,8 +616,8 @@ func TestStreamerReferral(t *testing.T) {
 		// Pre-create a known streamer
 		w.mockDB.insertStreamer(db.Streamer{Nickname: "known_model", ConfirmedStatus: cmdlib.StatusOnline})
 
-		_, created := w.db.AddUser(10, w.cfg.MaxSubs, 100, "private")
-		w.start(testMessage(w, 10, "start", 100), "m-known_model", created)
+		_, userCreated := w.addUserAndChat(10, 100, "private")
+		w.start(testMessage(w, 10, "start", 100), "m-known_model", userCreated)
 
 		// Drain outgoing messages
 		for w.sendQueue.Len() > 0 {
@@ -609,8 +643,8 @@ func TestStreamerReferral(t *testing.T) {
 		t.Parallel()
 		w := newTestWorker()
 
-		_, created := w.db.AddUser(11, w.cfg.MaxSubs, 100, "private")
-		w.start(testMessage(w, 11, "start", 100), "m-unknown_model", created)
+		_, userCreated := w.addUserAndChat(11, 100, "private")
+		w.start(testMessage(w, 11, "start", 100), "m-unknown_model", userCreated)
 
 		// Drain outgoing messages
 		for w.sendQueue.Len() > 0 {
@@ -632,6 +666,48 @@ func TestStreamerReferral(t *testing.T) {
 			t.Error("expected no referral event for unknown streamer")
 		}
 	})
+}
+
+// direct sends only to a chat on the endpoint the owner wrote to, as the send's log row needs one
+func TestDirect(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		chatOn   string
+		wantSent bool
+		reply    string
+	}{
+		{name: "a chat on the endpoint gets the text", chatOn: "test", wantSent: true, reply: "OK"},
+		{name: "a user with no chat there is refused", chatOn: "other", reply: "no such chat"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := newTestWorker()
+			w.ownerUserID = w.db.EnsureUserAndChat("test", 99)
+			userID := w.db.EnsureUserAndChat(tc.chatOn, 500)
+
+			w.direct("test", "500 hello")
+
+			var sent bool
+			var replies []string
+			for w.sendQueue.Len() > 0 {
+				q := w.nextOutgoing()
+				q.message.render("")
+				if q.userID == userID {
+					sent = true
+				} else {
+					replies = append(replies, q.message.(*messageParams).Text)
+				}
+			}
+			if sent != tc.wantSent {
+				t.Errorf("sent = %v, want %v", sent, tc.wantSent)
+			}
+			if !slices.Equal(replies, []string{tc.reply}) {
+				t.Errorf("owner replies = %q, want %q", replies, tc.reply)
+			}
+		})
+	}
 }
 
 func TestHandleStatusUpdates(t *testing.T) {
@@ -927,7 +1003,7 @@ func TestDeliverOffMainGoroutine(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 
-	w.db.AddUser(100, 3, 0, "private")
+	w.addUserAndChat(100, 0, "private")
 	userID := w.db.EnsureUser(100)
 
 	// deliver runs off the main goroutine and must not touch the database.

@@ -7,21 +7,21 @@ import (
 
 // A user row can have chat_type = null: pre-0032 rows,
 // old inserts of only chat_id and max_subs, and every 0060 tombstone.
-// addUser must read chat_type into a *string,
+// addUserAndChat must read chat_type into a *string,
 // so a null scans to nil instead of panicking.
-func TestAddUserNullChatType(t *testing.T) {
+func TestAddUserAndChatNullChatType(t *testing.T) {
 	t.Parallel()
 	tdb := newTestDB(t)
 	d := tdb.Database
 
-	// A tombstone-style row: id and chat_id only, chat_type left null.
-	d.MustExec("insert into users (id, chat_id) values (900, 900)")
-	d.MustExec("insert into users (id, chat_id) values (901, 901)")
+	// A tombstone-style row: id and tg_chat_id only, chat_type left null.
+	d.MustExec("insert into users (id, tg_chat_id) values (900, 900)")
+	d.MustExec("insert into users (id, tg_chat_id) values (901, 901)")
 
 	// Must not panic scanning the null chat_type.
-	id, created := d.AddUser(900, 7, 1000, "private")
-	if created {
-		t.Error("created = true for an existing user")
+	id, userCreated := d.AddUserAndChat("en", 900, 1000, "private")
+	if userCreated {
+		t.Error("user created = true for an existing user")
 	}
 	if id != 900 {
 		t.Errorf("id = %d, want 900", id)
@@ -39,12 +39,14 @@ func TestAddUserNullChatType(t *testing.T) {
 	}
 }
 
-// Two sessions can both find a new chat missing.
-// The second's insert waits for the first's, then takes the first's row as not created.
-func TestAddUserLostRace(t *testing.T) {
+// Two sessions can both find a new user missing.
+// The second's user insert waits for the first's commit,
+// then takes its user, as not created, and its chat.
+func TestAddUserAndChatLostRace(t *testing.T) {
 	t.Parallel()
 	tdb := newTestDB(t)
-	loser := NewDatabase(tdb.connStr, false, 5)
+	// Another default limit than the winner's, so a chat the loser overwrites shows
+	loser := NewDatabase(tdb.connStr, false, 9)
 	defer func() { _ = loser.Close() }()
 	ctx := context.Background()
 
@@ -64,21 +66,22 @@ func TestAddUserLostRace(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer func() { _ = tx.Rollback(ctx) }()
-			winnerID, created := tdb.AddUserInTx(tx, tt.chatID, 5, 1000, tt.winnerChatType)
+			winnerID, created := tdb.insertUser(tx, tt.chatID, 1000, tt.winnerChatType)
 			if !created {
 				t.Fatal("the winner's insert reported no creation")
 			}
+			tdb.addChat(tx, "en", winnerID)
 
 			type result struct {
-				id      UserID
-				created bool
+				id          UserID
+				userCreated bool
 			}
 			loserResult := make(chan result, 1)
 			done := make(chan struct{})
 			go func() {
 				defer close(done)
-				id, created := loser.AddUser(tt.chatID, 9, 2000, "private")
-				loserResult <- result{id, created}
+				id, userCreated := loser.AddUserAndChat("en", tt.chatID, 2000, "private")
+				loserResult <- result{id, userCreated}
 			}()
 			waitForLockWait(t, tdb.Database, done)
 			if err := tx.Commit(ctx); err != nil {
@@ -86,12 +89,15 @@ func TestAddUserLostRace(t *testing.T) {
 			}
 
 			got := <-loserResult
-			if got.id != winnerID || got.created {
-				t.Errorf("the loser got (%d, %v), want (%d, false)", got.id, got.created, winnerID)
+			if got.id != winnerID || got.userCreated {
+				t.Errorf("the loser got (%d, %v), want (%d, false)", got.id, got.userCreated, winnerID)
 			}
 			user, found := tdb.UserByID(winnerID)
-			if !found || user.MaxSubs != 5 || user.ChatType == nil || *user.ChatType != tt.wantChatType {
-				t.Errorf("stored %s, found: %v, want max_subs 5 and type %q", asJSON(user), found, tt.wantChatType)
+			if !found || user.ChatType == nil || *user.ChatType != tt.wantChatType {
+				t.Errorf("stored %s, found: %v, want type %q", asJSON(user), found, tt.wantChatType)
+			}
+			if chat, found := tdb.Chat("en", winnerID); !found || chat.MaxSubs != tdb.defaultMaxSubs {
+				t.Errorf("chat = (%+v, %v), want the winner's, with its limit of %d", chat, found, tdb.defaultMaxSubs)
 			}
 		})
 	}

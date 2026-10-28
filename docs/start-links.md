@@ -7,11 +7,12 @@ The bot treats the payload three ways.
 ## Payload kinds
 
 - **empty** — `/start` with no payload just sends the welcome message.
-- **referral code** — a payload that is not a model link
+- **referral id** — a payload that is not a model link
   is treated as a referrer.
-  When it is valid, is not the user's own code,
+  When it is another chat's id on the same bot
   and comes from a new user in a private chat,
   the referral is applied, so the referrer gets credit.
+  `docs/referrals.feature` specifies referrals as Gherkin scenarios.
 - **`m-<model>`** — a subscribe deep link.
   The bot strips the `m-` prefix, takes `<model>` as a nickname,
   and auto-subscribes the user to that streamer.

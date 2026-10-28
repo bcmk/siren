@@ -17,14 +17,13 @@ func TestCheckerOnlyStoresAndSendsNothing(t *testing.T) {
 	cfg.CheckerOnly = true
 	w.cfg = &cfg
 
-	userID, _ := w.db.AddUser(-1001234567890, 3, 0, "channel")
+	userID, _ := w.addUserAndChat(-1001234567890, 0, "channel")
 	storeStatusNotifications(w, userID, "a")
 	if nots := w.db.NewNotifications(); len(nots) != 0 {
 		t.Errorf("checker_only queued %d notifications, want none", len(nots))
 	}
-	user, _ := w.db.UserByID(userID)
-	if user.Reports != 0 {
-		t.Errorf("checker_only counted %d reports, want 0", user.Reports)
+	if n := w.mockDB.chat("test", userID).reports; n != 0 {
+		t.Errorf("checker_only counted %d reports, want 0", n)
 	}
 
 	w.sendMaintenance("test", -1001234567890, false, "bot started")

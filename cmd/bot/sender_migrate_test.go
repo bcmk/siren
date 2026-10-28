@@ -120,7 +120,7 @@ func TestDeliverReportsMigrateForRequeue(t *testing.T) {
 // in completeSendResult: a stalled main loop can release the user's cooling
 // before the migrate result is processed,
 // so the resend may dispatch the moment the slot frees,
-// and the chat row must already point at the new id by then.
+// and the user row must already point at the new id by then.
 // The test simulates the post-stall state — the user is not cooling —
 // so the resend dispatches synchronously inside completeSendResult.
 func TestMigrateAppliesBeforeResendDispatch(t *testing.T) {
@@ -129,7 +129,7 @@ func TestMigrateAppliesBeforeResendDispatch(t *testing.T) {
 	w := newTestWorker()
 	w.sender("test").cooling = false
 
-	userID, _ := w.db.AddUser(oldID, 3, 0, "group")
+	userID, _ := w.addUserAndChat(oldID, 0, "group")
 	msg := &okMessage{}
 	w.completeSendResult(msgSendResult{
 		result:          messageMigrate,
@@ -154,7 +154,7 @@ func TestMigrateAppliesBeforeResendDispatch(t *testing.T) {
 }
 
 // TestSenderRedeliversAcrossMigrate drives the real pipeline
-// through a migration: the bounced message is re-queued, the chat data moves,
+// through a migration: the bounced message is re-queued, the user's data moves,
 // and after the cooldown the re-dispatch resolves the new chat id
 // and delivers there.
 func TestSenderRedeliversAcrossMigrate(t *testing.T) {
@@ -165,7 +165,7 @@ func TestSenderRedeliversAcrossMigrate(t *testing.T) {
 	// Skip the member-count network lookup in the sent bookkeeping.
 	w.shuttingDown.Store(true)
 
-	userID, _ := w.db.AddUser(oldID, 3, 0, "group")
+	userID, _ := w.addUserAndChat(oldID, 0, "group")
 	msg := &migrateThenOK{target: int(newID)}
 	w.enqueueMessage(db.PriorityHigh, "test", msg, unprompted(db.MessagePacket), userID, 0)
 

@@ -55,12 +55,12 @@ type Config struct {
 	Website                         string                    `mapstructure:"website"`                            // a checker's Site name from the registry in internal/checkers/factory.go
 	WebsiteLink                     string                    `mapstructure:"website_link"`                       // legacy affiliate link to website, superseded by affiliate_base
 	PeriodSeconds                   int                       `mapstructure:"period_seconds"`                     // the period of querying streamer statuses
-	MaxSubs                         int                       `mapstructure:"max_subs"`                           // maximum subscriptions per user
+	MaxSubs                         int                       `mapstructure:"max_subs"`                           // the subscription limit a new chat starts with
 	OwnerID                         int64                     `mapstructure:"admin_id"`                           // the owner's Telegram ID (wire name kept for compatibility)
 	OwnerEndpoint                   string                    `mapstructure:"admin_endpoint"`                     // the endpoint serving the owner; wire name as above
 	DBConnectionString              cmdlib.Secret             `mapstructure:"db_connection_string"`               // database connection string
 	Endpoints                       map[string]endpoint       `mapstructure:"endpoints"`                          // the endpoints by simple name, used for the support of the bots in different languages accessing the same database
-	HeavyUserRemainder              int                       `mapstructure:"heavy_user_remainder"`               // the maximum remainder of subscriptions to treat a user as heavy
+	HeavyUserRemainder              int                       `mapstructure:"heavy_user_remainder"`               // the maximum remainder of subscriptions to treat a chat as heavy
 	ReferralBonus                   int                       `mapstructure:"referral_bonus"`                     // number of additional subscriptions for a referrer
 	FollowerBonus                   int                       `mapstructure:"follower_bonus"`                     // number of additional subscriptions for a new user registered by a referral link
 	StatusConfirmationSeconds       StatusConfirmationSeconds `mapstructure:"status_confirmation_seconds"`        // a status is confirmed only if it lasts for at least this number of seconds

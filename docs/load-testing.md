@@ -63,7 +63,7 @@ That covers the queue rows and the reports counting them, which wait on a sender
 No update ever arrives, so no command, subscription request or payment reaches the bot.
 
 Nothing queues a notification, claims a row or deletes one,
-and the reports count on `users` never rises.
+and the reports count on `chats` never rises.
 
 Nothing is delivered, so the send-time statements are all absent:
 the chat id lookup, the block increment and reset,

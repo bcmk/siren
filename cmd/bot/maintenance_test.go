@@ -7,8 +7,8 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
-// A non-whitelisted chat's command during the startup window must not register
-// a waitingUser, or finishStartup's EnsureUser would materialize a row for it.
+// A non-whitelisted chat's command during the startup window must not register a waitingUser,
+// or finishStartup's EnsureUserAndChat would materialize rows for it.
 func TestMaintenanceReplyWhitelistGate(t *testing.T) {
 	t.Parallel()
 	w := &worker{
