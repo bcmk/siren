@@ -5,7 +5,7 @@
 - Prefer modern git commands, e.g. `switch` over `checkout` for branches
 - Commit directly on `master` unless asked to use a branch
 - Don't use slashes in branch names
-- Use one-line commit messages only
+- Use short one-line commit messages
 - Never mention Claude in a commit: no attribution, no trailer, no session link
 - Don't use heredocs for commit messages, use `git commit -m "message"`
 - Use conventional commit style
