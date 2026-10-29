@@ -26,6 +26,15 @@ So adding one without downtime means a staged copy, as 0081–0085 did.
 The compactor stays stopped from a staged copy's prebuild through its cutover,
 as `docs/status-changes.md` says.
 
+## Locks
+
+Drop a hypertable with many chunks, or rename its indexes, outside a cutover's transaction.
+The drop locks every chunk with its indexes, types and constraints,
+the rename every chunk and its index,
+and the cutovers of bots sharing a server can fill its shared lock table.
+One `drop table` still holds all of those locks until it commits,
+so drop the chunks one by one, committing every few, and then the hypertable.
+
 ## Foreign keys
 
 TimescaleDB copies a hypertable's foreign key onto every chunk,
