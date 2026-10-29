@@ -45,6 +45,7 @@
   Always verify line/column points to the right identifier
   before running, and check at least one occurrence after.
   Run `go fmt` after `gopls rename`
+- After any rename, check naming consistency
 
 ## Code Style
 
@@ -264,6 +265,7 @@
   A gap the code already answers, such as a nil pointer meaning absent, is not a finding.
 - Always look for simplifications, in fix checks and new code as much as in the reviewed diff
 - A hunk the feature does not need is a finding, even when it is harmless
+- A review checks naming consistency
 
 ## Platform Notes
 
