@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v6.7.0 — 2026-10-29
+
+### Added
+
+- The bot serves `/readyz`: 503 until startup finishes and during shutdown, 200 otherwise
+
 ## v6.6.0 — 2026-10-29
 
 ### Added
