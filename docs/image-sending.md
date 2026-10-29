@@ -47,7 +47,7 @@ A photo is `photoParams` in `cmd/bot/base_chattable.go`.
    So does a `/pics` answer before the checker's first report after a start,
    as the bot starts with no image URLs.
 2. A notification enters the send queue only once its image downloads,
-   when its photo shows an image from a site that the bot holds no file id for.
+   when its photo shows an image from a site that the bot has cached no file id for.
    - Until then it holds back its user's notifications behind it on that bot, in order,
      and the ads too, so an alert's ad never arrives before the alert.
      Other messages are sent meanwhile.
@@ -62,7 +62,8 @@ A photo is `photoParams` in `cmd/bot/base_chattable.go`.
      so the downloads of a `/pics` answer start before those of waiting alerts.
      A user running `maxUserDownloads` downloads waits as a cooling user does,
      so a long `/pics` answer leaves the pool to others.
-3. When its turn comes, a photo the bot holds a file id for goes by that id and uploads nothing.
+3. When its turn comes, a photo the bot has cached a file id for goes by that id
+   and uploads nothing.
 4. Otherwise it uploads the image's bytes:
    a shipped image's, or those downloaded for the photo, however long ago.
 5. A photo with no id, and no bytes it may upload, goes with the image-unavailable placeholder,
@@ -74,14 +75,14 @@ A photo is `photoParams` in `cmd/bot/base_chattable.go`.
    A photo that cannot send the placeholder either
    goes as text opening with the image-unavailable line.
    An ad is dropped instead of either.
-6. Telegram answers an upload with the photo's sizes, and the bot keeps the largest one's file id.
+6. Telegram answers an upload with the photo's sizes, and the bot caches the largest one's file id.
 
 An image from a site shows only in messages queued within `imageTTL`, a minute, of its download,
 since the site may put a new image under the same URL.
 A message queued in time shows it however late it is sent.
 So a `/pics` answer sent minutes after its alerts uploads its images again.
 A shipped image never changes, so its id serves any message.
-A bot keeps an id for `imageIDTTL`, an hour.
+A bot caches an id for `imageIDTTL`, an hour.
 
 ## When it fails
 

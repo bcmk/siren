@@ -53,7 +53,7 @@ func (w *worker) hold(q *queuedMessage) {
 }
 
 // imageToDownload is the URL of the image a photo needs downloaded,
-// empty when the bot holds an id for it, or for any other message.
+// empty when the bot has cached an id for it, or for any other message.
 func (w *worker) imageToDownload(q *queuedMessage, now time.Time) string {
 	p, ok := q.message.(*photoParams)
 	if !ok || p.image.data != nil {

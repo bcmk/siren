@@ -12,17 +12,17 @@ Feature: Image sending
       And sends it to the other 199 chats by its file id
 
     Scenario Outline: How long a file id serves an image
-      Given the bot uploaded <image> and holds its file id
+      Given the bot uploaded <image> and has cached its file id
       When a message showing it is queued <when>
       Then the message goes by the file id
 
       Examples:
         | image                | when                                    |
         | an image from a site | within a minute of the image's download |
-        | a shipped image      | within the hour the bot keeps the id    |
+        | a shipped image      | within the hour the bot caches the id   |
 
     Scenario: An image from a site goes stale
-      Given the bot holds a file id for an image from a site
+      Given the bot has cached a file id for an image from a site
       When a message showing it is queued over a minute after its download
       Then the image downloads and uploads afresh
 
@@ -67,7 +67,7 @@ Feature: Image sending
 
     Scenario Outline: What a photo goes as while its image's uploads are paused
       Given an upload of the photo's image timed out within the last minute
-      And the bot holds <ids>
+      And the bot has cached <ids>
       When the photo reaches its turn
       Then it goes <as>
 
@@ -97,7 +97,7 @@ Feature: Image sending
 
     Scenario Outline: The placeholder stands in
       Given a photo <reason>
-      And the bot holds no file id for its image
+      And the bot has cached no file id for its image
       Then it goes with the placeholder, by its id or uploaded
 
       Examples:
@@ -128,12 +128,12 @@ Feature: Image sending
         | whose image's uploads are paused, with no id |
 
     Scenario: The Ukraine ad's upload times out
-      Given the bot holds no file id for the Ukraine ad's image
+      Given the bot has cached no file id for the Ukraine ad's image
       When the Ukraine ad's upload times out on that bot
       Then it and every Ukraine ad on that bot in the next minute are dropped
 
     Scenario: An ad sent by id that times out is retried
-      Given the bot holds a file id for the ad's image
+      Given the bot has cached a file id for the ad's image
       When the send times out
       Then the ad goes again after 10 s
 

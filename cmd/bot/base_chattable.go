@@ -149,9 +149,9 @@ type photoParams struct {
 	image *image
 	// sentImage is the image a dispatch sends the photo with: its own, or the placeholder.
 	sentImage *image
-	// fileID names the sent image on Telegram; dispatch sets it when the bot holds one.
+	// fileID names the sent image on Telegram; dispatch sets it when the bot has cached one.
 	fileID string
-	// upload holds the bytes a dispatch uploads when it holds no id.
+	// upload holds the bytes a dispatch uploads when the bot has cached no id.
 	upload []byte
 	// downloaded holds the bytes of an image from a site, downloaded at downloadedAt.
 	downloaded   []byte

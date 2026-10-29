@@ -205,7 +205,7 @@ func TestImageCache(t *testing.T) {
 		{"however late the upload",
 			[]cacheStep{sent(ttl/2, photoOutcome{key: site.key, uploadedID: "id", downloadedAt: cacheStart})},
 			site, ttl, ttl, upload},
-		{"the bot keeps an id an imageIDTTL",
+		{"the bot caches an id an imageIDTTL",
 			[]cacheStep{uploaded(0, site, "id")}, site, 0, imageIDTTL, upload},
 		{"a refused id is dropped",
 			[]cacheStep{uploaded(0, site, "id"), refused(time.Second, site)}, site, 0, 2 * time.Second, upload},

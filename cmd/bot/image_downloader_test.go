@@ -201,7 +201,7 @@ func TestUserDownloadsCap(t *testing.T) {
 	}
 }
 
-// A notification's photo starts its download, unless the bot holds an id for its image.
+// A notification's photo starts its download, unless the bot has cached an id for its image.
 func TestQueuedPhotoStartsDownload(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -210,7 +210,7 @@ func TestQueuedPhotoStartsDownload(t *testing.T) {
 		want  int
 	}{
 		{"a new image downloads", photoOutcome{}, 1},
-		{"an image the bot holds an id for does not", photoOutcome{uploadedID: "id"}, 0},
+		{"an image the bot has cached an id for does not", photoOutcome{uploadedID: "id"}, 0},
 		{"an image whose uploads are paused downloads too", photoOutcome{timedOut: true}, 1},
 	}
 	for _, tc := range tests {

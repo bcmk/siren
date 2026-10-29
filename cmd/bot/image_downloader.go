@@ -329,7 +329,7 @@ func (dl *imageDownloader[R]) download(key string) {
 
 // complete takes in a finished download, gives it to the requests awaiting it,
 // and returns the requests it releases, in each user's order.
-// It keeps the image for the requests made within an imageTTL, and starts the next downloads.
+// It caches the image for the requests made within an imageTTL, and starts the next downloads.
 func (dl *imageDownloader[R]) complete(r downloadResult, now time.Time) []R {
 	d := dl.images[r.key]
 	dl.queue.finish(d.userID)

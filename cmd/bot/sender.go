@@ -44,12 +44,12 @@ const (
 	sendChanCap = 64
 	// imageTTL is how long a downloaded image lasts and a timeout pauses uploads
 	imageTTL = botconfig.ImageTTL
-	// imageIDTTL is how long a bot keeps the id of an image it uploaded.
+	// imageIDTTL is how long a bot caches the id of an image it uploaded.
 	imageIDTTL = time.Hour
 )
 
 // imageCache is what one bot learned of the images it sends.
-// It keeps an id for imageIDTTL and any other fact for imageTTL.
+// It caches an id for imageIDTTL and any other fact for imageTTL.
 type imageCache struct {
 	images map[string]imageState
 	// sweepAt is when the expired entries are next dropped.
