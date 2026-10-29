@@ -2745,8 +2745,20 @@ func handleHealthz(rw http.ResponseWriter, _ *http.Request) {
 	_, _ = rw.Write([]byte("ok\n"))
 }
 
+// handleReadyz answers 503 until startup finishes and during shutdown.
+// Webhooks must still reach the bot meanwhile, so it must not gate the Service.
+func (w *worker) handleReadyz(rw http.ResponseWriter, _ *http.Request) {
+	if w.maintenance.Load() || w.shuttingDown.Load() {
+		http.Error(rw, "not ready", http.StatusServiceUnavailable)
+		return
+	}
+	rw.WriteHeader(http.StatusOK)
+	_, _ = rw.Write([]byte("ok\n"))
+}
+
 func (w *worker) serveEndpoints() {
 	http.HandleFunc("/healthz", handleHealthz)
+	http.HandleFunc("/readyz", w.handleReadyz)
 	go func() {
 		err := http.ListenAndServe(w.cfg.ListenAddress, nil)
 		checkErr(err)
