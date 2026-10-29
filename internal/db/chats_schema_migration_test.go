@@ -425,6 +425,13 @@ func TestPrebuiltChats(t *testing.T) {
 	if en.Blocked != 2 || ru.Blocked != 0 {
 		t.Errorf("block = %d on en and %d on ru, want 2 and 0", en.Blocked, ru.Blocked)
 	}
+	// Only a chat for an endpoint the user never used is not greeted
+	if !db.MustBool(`select greeted from chats where user_id = $1 and endpoint = 'ru'`, logged) {
+		t.Error("a chat the user had is not greeted")
+	}
+	if db.MustBool(`select greeted from chats where user_id = $1 and endpoint = 'alerts'`, logged) {
+		t.Error("a chat for an endpoint the user never used is greeted")
+	}
 	if db.MustBool(`select exists(select 1 from information_schema.tables where table_name = 'block')`) {
 		t.Error("the block table survived the cutover")
 	}

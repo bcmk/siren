@@ -54,6 +54,7 @@ type database interface {
 		replySeq int,
 		imageMode db.ImageMode,
 	)
+	MarkGreeted(endpoint string, userID db.UserID) (firstGreeting bool)
 	MarkUnconfirmedAsChecking()
 	MaybeStreamer(nickname string) *db.Streamer
 	MigrateChat(fromID, toID int64) *db.ChatMigration

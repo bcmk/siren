@@ -3328,11 +3328,15 @@ func (w *worker) start(m receivedMessage, referrer string, userCreated bool) {
 			return
 		}
 	}
-	w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Start, tplData{
-		"website_link": w.siteHomeLink(),
-	})
-	m = m.next()
-	if referrer != "" && !isGroupOrChannel(m.chatID) {
+	refers := referrer != "" && !isGroupOrChannel(m.chatID)
+	// Greet chats not greeted yet, and greeted ones if no deep link applies
+	if firstGreeting := w.db.MarkGreeted(m.endpoint, m.userID); firstGreeting || (nickname == "" && !refers) {
+		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].Start, tplData{
+			"website_link": w.siteHomeLink(),
+		})
+		m = m.next()
+	}
+	if refers {
 		applied := w.refer(m, referrer, userCreated)
 		switch applied {
 		case referralApplied:

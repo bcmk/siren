@@ -6,7 +6,7 @@ The bot treats the payload three ways.
 
 ## Payload kinds
 
-- **empty** — `/start` with no payload just sends the welcome message.
+- **empty** — `/start` with no payload just sends the start message.
 - **referral id** — a payload that is not a model link
   is treated as a referrer.
   When it is another chat's id on the same bot
@@ -23,6 +23,14 @@ The bot treats the payload three ways.
 
 So `start=m-<model>` is the "subscribe to this model" link shown on the site
 and in messages.
+
+A chat is greeted once the start message is queued for it.
+For simplicity,
+a chat counts as greeted if the bot held a record of it,
+such as a logged message or a subscription, before recording greetings.
+A greeted chat gets no start message when the payload has its own answer:
+an `m-<model>` link, or a referral id in a private chat.
+Deleting the conversation in Telegram does not reset this.
 
 ## Where it is recorded
 

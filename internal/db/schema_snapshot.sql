@@ -33,6 +33,7 @@ CREATE TABLE public.chats (
     show_subject boolean DEFAULT true NOT NULL,
     silent_messages boolean DEFAULT false NOT NULL,
     member_subscriptions boolean DEFAULT false NOT NULL,
+    greeted boolean DEFAULT false NOT NULL,
     endpoint text NOT NULL,
     affiliate_params jsonb,
     referral_id text

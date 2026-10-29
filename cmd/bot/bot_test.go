@@ -710,6 +710,130 @@ func TestDirect(t *testing.T) {
 	}
 }
 
+func TestStartGreeting(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		// chatOn is the endpoint the user already has a chat on, empty for none.
+		chatOn string
+		// greeted says the chat on chatOn got the start message before.
+		greeted bool
+		// group sends from a group instead of a private chat.
+		group   bool
+		text    string
+		replies []string
+	}{
+		{name: "new user is greeted", text: "/start m-known_model", replies: []string{"Start", "StreamerAdded"}},
+		{
+			name:    "greeted chat gets the subscription alone",
+			chatOn:  "test",
+			greeted: true,
+			text:    "/start m-known_model",
+			replies: []string{"StreamerAdded"},
+		},
+		{
+			name:    "chat never greeted is greeted",
+			chatOn:  "test",
+			text:    "/start m-known_model",
+			replies: []string{"Start", "StreamerAdded"},
+		},
+		{
+			name:    "user greeted by another bot is greeted",
+			chatOn:  "other",
+			greeted: true,
+			text:    "/start m-known_model",
+			replies: []string{"Start", "StreamerAdded"},
+		},
+		{
+			name:    "greeted chat is greeted on a bare start",
+			chatOn:  "test",
+			greeted: true,
+			text:    "/start",
+			replies: []string{"Start"},
+		},
+		{
+			name:    "new user is greeted on a referral link",
+			text:    "/start ref-abc",
+			replies: []string{"Start", "ReferralApplied"},
+		},
+		{
+			name:    "greeted chat gets the referral answer alone",
+			chatOn:  "test",
+			greeted: true,
+			text:    "/start ref-abc",
+			replies: []string{"FollowerExists"},
+		},
+		{
+			name:    "greeted group chat gets the subscription alone",
+			chatOn:  "test",
+			greeted: true,
+			group:   true,
+			text:    "/start m-known_model",
+			replies: []string{"StreamerAdded"},
+		},
+		{
+			name:    "greeted chat is greeted on a link naming no streamer",
+			chatOn:  "test",
+			greeted: true,
+			text:    "/start m-",
+			replies: []string{"Start"},
+		},
+		{
+			name:    "greeted group chat is greeted on a referral link",
+			chatOn:  "test",
+			greeted: true,
+			group:   true,
+			text:    "/start ref-abc",
+			replies: []string{"Start"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := newTestWorker()
+			w.mockDB.insertStreamer(db.Streamer{Nickname: "known_model"})
+			w.db.SetReferralID("test", w.db.EnsureUserAndChat("test", 20), "ref-abc")
+			chat := models.Chat{ID: 10, Type: "private"}
+			var senderChat *models.Chat
+			if tc.group {
+				chat = models.Chat{ID: -10, Type: "group"}
+				// Skip the member-count network lookup.
+				w.shuttingDown.Store(true)
+				// An anonymous admin, who passes the admin gate with no lookup
+				senderChat = &chat
+			}
+			if tc.chatOn != "" {
+				userID := w.db.EnsureUserAndChat(tc.chatOn, chat.ID)
+				if tc.greeted {
+					w.db.MarkGreeted(tc.chatOn, userID)
+				}
+			}
+
+			w.processTGUpdate(incomingPacket{
+				endpoint: "test",
+				message: &models.Update{Message: &models.Message{
+					Text:       tc.text,
+					Chat:       chat,
+					SenderChat: senderChat,
+				}},
+			})
+
+			var replies []string
+			for w.sendQueue.Len() > 0 {
+				q := w.nextOutgoing()
+				if q.tag.replySeq != len(replies) {
+					t.Errorf("reply %d has reply_seq %d", len(replies), q.tag.replySeq)
+				}
+				q.message.render("")
+				replies = append(replies, q.message.(*messageParams).Text)
+			}
+			if !slices.Equal(replies, tc.replies) {
+				t.Errorf("expected replies %q, got %q", tc.replies, replies)
+			}
+		})
+	}
+}
+
 func TestHandleStatusUpdates(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()

@@ -123,6 +123,14 @@ func (d *Database) chatOf(chatID int64, endpoint string) (Chat, bool) {
 	return d.Chat(endpoint, d.userID(chatID))
 }
 
+func (d *Database) greeted(chatID int64, endpoint string) bool {
+	return d.MustBool(`
+		select c.greeted from chats c
+		join users u on u.id = c.user_id
+		where u.tg_chat_id = $1 and c.endpoint = $2`,
+		chatID, endpoint)
+}
+
 // userID returns a Telegram chat's user id without creating the user.
 func (d *Database) userID(chatID int64) UserID {
 	var id int64
@@ -401,6 +409,8 @@ func TestMigrateChat(t *testing.T) {
 		d.SetMemberSubscriptions(ep, d.userID(oldID), true)
 		d.SetAffiliateParams(ep, d.userID(oldID), map[string]string{"campaign": "old"})
 		d.SetMemberSubscriptions("ep2", d.userID(oldID), true)
+		d.MarkGreeted(ep, d.userID(oldID))
+		d.MarkGreeted("ep2", d.userID(oldID))
 		d.SetTimezone(d.userID(oldID), "Europe/Berlin")
 		d.insertUser(d.db, newID, 2000, "supergroup")
 		d.addTestChat(newID, ep, 3)
@@ -419,6 +429,9 @@ func TestMigrateChat(t *testing.T) {
 			}
 			if !chat.MemberSubscriptions {
 				t.Errorf("member_subscriptions on %s = false, want true (the source's)", endpoint)
+			}
+			if !d.greeted(newID, endpoint) {
+				t.Errorf("greeted on %s = false, want true (the source's)", endpoint)
 			}
 		}
 		if chat, _ := d.chatOf(newID, ep); chat.AffiliateParams["campaign"] != "old" {
@@ -442,6 +455,7 @@ func TestMigrateChat(t *testing.T) {
 		dst := d.userID(newID)
 		d.SetMemberSubscriptions(ep, dst, true)
 		d.SetAffiliateParams(ep, dst, map[string]string{"campaign": "new"})
+		d.MarkGreeted(ep, dst)
 		d.SetTimezone(dst, "Asia/Tokyo")
 
 		d.MigrateChat(oldID, newID)
@@ -452,6 +466,9 @@ func TestMigrateChat(t *testing.T) {
 		}
 		if chat.AffiliateParams["campaign"] != "new" {
 			t.Errorf("affiliate campaign = %q, want new (the destination's)", chat.AffiliateParams["campaign"])
+		}
+		if !d.greeted(newID, ep) {
+			t.Error("greeted = false, want true (the destination's)")
 		}
 		if user, _ := d.UserByChatID(newID); user.Timezone == nil || *user.Timezone != "Asia/Tokyo" {
 			t.Errorf("timezone = %v, want Asia/Tokyo (the destination's)", user.Timezone)

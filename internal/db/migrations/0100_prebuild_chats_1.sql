@@ -21,6 +21,8 @@ create table chats (
     show_subject boolean not null default true,
     silent_messages boolean not null default false,
     member_subscriptions boolean not null default false,
+    -- Chats from before the cutover start greeted; the cutover makes the default false
+    greeted boolean not null default true,
     endpoint text not null,
     affiliate_params jsonb,
     referral_id text

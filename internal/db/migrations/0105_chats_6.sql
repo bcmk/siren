@@ -92,6 +92,10 @@ where b.user_id = c.user_id and b.endpoint = c.endpoint and b.block <> 0;
 
 drop table block;
 
+-- Chats so far stay greeted: each has used the bot, so a deep link is never its first contact,
+-- except one that only a /direct or a send to the owner tried to reach, greeted for simplicity.
+alter table chats alter column greeted set default false;
+
 -- Every user gets a chat on every endpoint some chat is on, one gone from the config included,
 -- so dropping the users columns loses no setting.
 -- After the settings and reports update, so a new chat starts with no reports.

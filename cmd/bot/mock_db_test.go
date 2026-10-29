@@ -47,6 +47,7 @@ type mockUser struct {
 type mockChat struct {
 	db.Chat
 	reports int
+	greeted bool
 }
 
 type mockStreamer struct {
@@ -674,6 +675,16 @@ func (m *mockDB) LogSentMessage(
 	})
 }
 
+func (m *mockDB) MarkGreeted(endpoint string, userID db.UserID) (firstGreeting bool) {
+	m.checkGID()
+	c := m.chat(endpoint, userID)
+	if c == nil || c.greeted {
+		return false
+	}
+	c.greeted = true
+	return true
+}
+
 func (m *mockDB) MarkUnconfirmedAsChecking() {
 	m.checkGID()
 	for _, p := range m.pendingSubscriptions {
@@ -712,7 +723,7 @@ func (m *mockDB) MigrateChat(fromID, toID int64) *db.ChatMigration {
 		}
 		c := chatCopy(&s.Chat)
 		c.UserID = dst.UserID
-		m.chats = append(m.chats, &mockChat{Chat: c, reports: s.reports})
+		m.chats = append(m.chats, &mockChat{Chat: c, reports: s.reports, greeted: s.greeted})
 		// A referral id is unique on its endpoint, so it moves
 		s.ReferralID = nil
 	}

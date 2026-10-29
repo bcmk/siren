@@ -502,6 +502,16 @@ func (d *Database) Chat(endpoint string, userID UserID) (chat Chat, found bool) 
 	return
 }
 
+// MarkGreeted marks the user's chat on endpoint greeted,
+// reporting whether this was its first greeting
+func (d *Database) MarkGreeted(endpoint string, userID UserID) (firstGreeting bool) {
+	return d.MustExec(`
+		update chats set greeted = true
+		where user_id = $1 and endpoint = $2 and not greeted
+		/*name='mark_chat_greeted'*/`,
+		int64(userID), endpoint) == 1
+}
+
 // ChatIDForUser returns the current tg_chat_id for a user's surrogate id,
 // and false if the user has no row.
 // It never panics on a missing user,
@@ -580,7 +590,7 @@ type ChatMigration struct {
 //
 // If the destination already exists (the same user recorded twice), the source merges into it:
 //   - Each source chat merges into the destination's chat on its endpoint, copied if there is none.
-//     A merge takes the larger limit, either side's member subscriptions,
+//     A merge takes the larger limit, either side's member subscriptions and greeting,
 //     and the source's affiliate params and referral id if the destination has none;
 //     the destination's other settings and counts stay.
 //   - Subscriptions, pending subscriptions and idle notifications are dropped
@@ -689,16 +699,17 @@ func (d *Database) MigrateChat(fromID, toID int64) *ChatMigration {
 	_, err = tx.Exec(ctx, `
 		insert into chats as d (
 			user_id, endpoint, max_subs, reports, show_images, offline_notifications,
-			show_subject, silent_messages, member_subscriptions, affiliate_params, block
+			show_subject, silent_messages, member_subscriptions, affiliate_params, block, greeted
 		)
 		select $1, endpoint, max_subs, reports, show_images, offline_notifications,
-		show_subject, silent_messages, member_subscriptions, affiliate_params, block
+		show_subject, silent_messages, member_subscriptions, affiliate_params, block, greeted
 		from chats
 		where user_id = $2
 		on conflict (user_id, endpoint) do update set
 		max_subs = greatest(d.max_subs, excluded.max_subs),
 		affiliate_params = coalesce(d.affiliate_params, excluded.affiliate_params),
-		member_subscriptions = d.member_subscriptions or excluded.member_subscriptions
+		member_subscriptions = d.member_subscriptions or excluded.member_subscriptions,
+		greeted = d.greeted or excluded.greeted
 		/*name='migrate_chat_merge_chats'*/`,
 		dstID, srcID)
 	checkErr(err)

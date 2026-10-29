@@ -101,6 +101,11 @@ func TestChatsHoldPerBotSettings(t *testing.T) {
 			write:      func(userID UserID) { d.IncrementBlock("en", userID) },
 			stateQuery: `select block from chats where id = $1`,
 		},
+		{
+			name:       "mark_chat_greeted",
+			write:      func(userID UserID) { d.MarkGreeted("en", userID) },
+			stateQuery: `select greeted::int from chats where id = $1`,
+		},
 	}
 	for i, w := range writes {
 		t.Run(w.name, func(t *testing.T) {
@@ -144,4 +149,31 @@ func TestLogDiceSkippedSendsNeedsTheChat(t *testing.T) {
 		}
 	}()
 	d.LogDiceSkippedSends(1000, 0, PriorityLow, NotificationPacket, []SkippedSend{{UserID: userID, Endpoint: "en"}})
+}
+
+// MarkGreeted reports a chat's first greeting alone
+func TestMarkGreeted(t *testing.T) {
+	t.Parallel()
+	d := newTestDB(t).Database
+
+	userID, _ := d.AddUserAndChat("en", 1, 1000, "private")
+	d.addChat(d.db, "ru", userID)
+	// The steps share the chats, so they run in order
+	for _, step := range []struct {
+		name     string
+		endpoint string
+		want     bool
+	}{
+		{"a first greeting", "en", true},
+		{"a second one", "en", false},
+		{"the first on another endpoint", "ru", true},
+		{"a missing chat", "xx", false},
+	} {
+		got := d.MarkGreeted(step.endpoint, userID)
+		t.Run(step.name, func(t *testing.T) {
+			if got != step.want {
+				t.Errorf("first greeting = %v, want %v", got, step.want)
+			}
+		})
+	}
 }
