@@ -416,6 +416,8 @@ Call one stretch online, from going online to going offline, a stream.
   and measure how the change moves coverage
 - Read `docs/streamer-times.md` before changing how a checker reads streamer times
   (`WentOnlineAt`, `WentOfflineAt`, `ShowKindSince`)
+- If `.claude/todo/` exists, its `TODO.md` holds the open work;
+  follow its `CLAUDE.md` when editing it.
 
 ## Skills
 
