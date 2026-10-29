@@ -382,6 +382,9 @@ for code, test names, comments, docs, commit messages and conversation.
 Code and translations belonging to one site say that site's own words,
 e.g. "model" on the adult sites, "channel" on Twitch and Kick.
 
+Name a widely known concept by its established term, not a synonym or a rarer word:
+a bot that caches file ids caches them, rather than keeping them.
+
 Call the broadcaster a streamer and their name a nickname.
 "camname" is user-facing wording alone: it belongs in `res/translations/` and docs quoting them.
 
