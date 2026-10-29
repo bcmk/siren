@@ -30,3 +30,24 @@ func TestCam4WentOnlineAt(t *testing.T) {
 		})
 	}
 }
+
+// A CAM4 model's own profile image passes, and CAM4's shared default cards are dropped.
+func TestCam4ProfileImage(t *testing.T) {
+	const own = "https://stackvaults-media.xcdnpro.com/a/quality:100/resize:fit:400:300:1/b"
+	cases := []struct {
+		name         string
+		profileThumb string
+		want         string
+	}{
+		{"a model's own image", own, own},
+		{"a default card", "https://static.cam4.com/web/images/defaults/default_Female.png", ""},
+		{"none", "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := cam4ProfileImage(tc.profileThumb); got != tc.want {
+				t.Errorf("profile image = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

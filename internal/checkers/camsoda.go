@@ -39,6 +39,7 @@ type camSodaOnlineResponse struct {
 		Username string
 		Status   string
 		Thumb    string
+		PgImage  []string `json:"pg_image"`
 		Viewers  int
 		Subject  string
 	}
@@ -54,6 +55,16 @@ func camSodaShowKind(status string) cmdlib.ShowKind {
 		return cmdlib.ShowPrivate
 	}
 	return cmdlib.ShowUnknown
+}
+
+// camSodaProfileImage returns the first offline picture, skipping CamSoda's shared stock images.
+func camSodaProfileImage(pgImage []string) string {
+	for _, u := range pgImage {
+		if strings.Contains(u, "/media/offline_picture/") {
+			return u
+		}
+	}
+	return ""
 }
 
 // QueryStreamer checks CamSoda model status
@@ -91,10 +102,11 @@ func (c *CamSodaChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo,
 		modelID := strings.ToLower(m.Username)
 		viewers := m.Viewers
 		streamers[modelID] = cmdlib.StreamerInfo{
-			ImageURL: m.Thumb,
-			Viewers:  &viewers,
-			ShowKind: camSodaShowKind(m.Status),
-			Subject:  m.Subject,
+			ImageURL:        m.Thumb,
+			ProfileImageURL: camSodaProfileImage(m.PgImage),
+			Viewers:         &viewers,
+			ShowKind:        camSodaShowKind(m.Status),
+			Subject:         m.Subject,
 		}
 	}
 	if len(streamers) == 0 {

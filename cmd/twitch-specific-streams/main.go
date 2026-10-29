@@ -64,7 +64,7 @@ func run() int {
 		return 1
 	}
 	for channel, info := range channels {
-		fmt.Printf("%s %s\n", channel, info.ImageURL)
+		fmt.Println(cmdlib.OnlineListLine(channel, info))
 	}
 	return 0
 }

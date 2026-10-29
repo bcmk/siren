@@ -41,7 +41,16 @@ type bongacamsModel struct {
 	// TODO: support chat_topic_ru for Russian users
 	ProfileImages struct {
 		ThumbnailImageMediumLive string `json:"thumbnail_image_medium_live"`
+		ThumbnailImageBig        string `json:"thumbnail_image_big"`
 	} `json:"profile_images"`
+}
+
+// bongacamsImageURL completes a scheme-relative image URL, leaving an empty one empty
+func bongacamsImageURL(u string) string {
+	if u == "" {
+		return ""
+	}
+	return "https:" + u
 }
 
 // QueryStreamer checks BongaCams model status
@@ -84,9 +93,10 @@ func (c *BongaCamsChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInf
 		modelID := strings.ToLower(m.Username)
 		viewers := m.MembersCount
 		streamers[modelID] = cmdlib.StreamerInfo{
-			ImageURL: "https:" + m.ProfileImages.ThumbnailImageMediumLive,
-			Viewers:  &viewers,
-			Subject:  m.ChatTopic,
+			ImageURL:        bongacamsImageURL(m.ProfileImages.ThumbnailImageMediumLive),
+			ProfileImageURL: bongacamsImageURL(m.ProfileImages.ThumbnailImageBig),
+			Viewers:         &viewers,
+			Subject:         m.ChatTopic,
 		}
 	}
 	return streamers, nil

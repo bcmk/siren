@@ -43,7 +43,8 @@ A photo is `photoParams` in `cmd/bot/base_chattable.go`.
 ## How a bot sends an image
 
 1. A photo shows an image from a site, downloaded by its URL, or one shipped with the bot.
-   An online alert or a `/pics` answer whose site reported no image shows the placeholder.
+   The streamer's profile image stands in for an image the site did not report.
+   An online alert or a `/pics` answer whose site reported neither shows the placeholder.
    So does a `/pics` answer before the checker's first report after a start,
    as the bot starts with no image URLs.
 2. A notification enters the send queue only once its image downloads,
@@ -68,10 +69,15 @@ A photo is `photoParams` in `cmd/bot/base_chattable.go`.
    a shipped image's, or those downloaded for the photo, however long ago.
 5. A photo with no id, and no bytes it may upload, goes with the image-unavailable placeholder,
    `res/images/image-unavailable.<lang>.png`, built by `scripts/build-image-unavailable`.
-   That happens when its download failed, when its id was refused or expired after it was queued,
+   That happens when its download failed and its profile image could not stand in,
+   when its id was refused or expired after it was queued,
    when the download step was full as it was queued,
-   or while the bot has stopped uploading its image.
+   or while the bot has stopped uploading the image it would send:
+   its profile image once its own image's download has failed, else its own.
    In that last case the placeholder goes by its id alone, as uploads are stalling.
+   The profile image stands in only for a failed download.
+   In the other cases its id would rarely serve,
+   as it serves only within an `imageTTL` of its download.
    A photo that cannot send the placeholder either
    goes as text opening with the image-unavailable line.
    An ad is dropped instead of either.
@@ -86,13 +92,20 @@ A bot caches an id for `imageIDTTL`, an hour.
 
 ## When it fails
 
-- **The download fails:** the photos waiting for it go with the placeholder.
+- **The download fails:** the photos fall back to the profile image,
+  each taking it as a new photo would: by its file id, its bytes, or a download.
+  The bot caches the profile image's file id under the profile image's URL.
+  When the streamer has no profile image, it fails too, or the download step is full,
+  they go with the placeholder.
+  The profile image's download starts only once the image's fails,
+  so two timeouts can hold back a photo and that user's later notifications and ads on that bot.
   A photo the bot gains a file id for meanwhile goes by it instead.
   The next alert of that URL tries again.
 - **Telegram refuses the id:** the photo goes by an id the bot gains meanwhile,
   uploads the bytes downloaded for it, or else goes with the placeholder
 - **The upload times out:** the bot stops uploading the image for an `imageTTL`.
-  Photos of it meanwhile go by a file id, with the placeholder by its id, or else as text.
+  Photos that would send it meanwhile go by a file id,
+  with the placeholder by its id, or else as text.
   The timed-out photo goes the same way
   after the longer of `timed_out_upload_postpone_ms` and the chat's send gap:
   `user_cooldown_ms`, or `group_cooldown_ms` in a group or channel.
@@ -103,4 +116,5 @@ A bot caches an id for `imageIDTTL`, an hour.
 - `sent_message_log.file_upload` marks the sends that carried an image's bytes
 - `sent_message_log.latency` counts from when a message enters the send queue,
   so it leaves out a held notification's wait for its image
-- `performance_log` times each download, kind 2, with `failed` in its data
+- `performance_log` times each download, kind 2, with `failed` in its data,
+  and `fallback_image` set for one first wanted in place of an image that failed

@@ -106,8 +106,7 @@ func run() int {
 	return 0
 }
 
-// runOnceMode fetches the bulk online list once and prints it to stdout in the
-// "<nickname> <image_url>" format used by siren-online-list.
+// runOnceMode fetches the bulk online list once and prints it to stdout as siren-online-list does.
 // It returns nil on success or on a SIGINT/SIGTERM cancel.
 // An overall deadline (from --once-timeout) caps dial-through-bulk so a
 // dead upstream can't hang the process indefinitely.
@@ -152,7 +151,7 @@ func runOnceMode(ctx context.Context, cfg *config, client *http.Client) error {
 		return errors.New("bulk produced no streamers with resolved names")
 	}
 	for _, nickname := range slices.Sorted(maps.Keys(streamers)) {
-		fmt.Printf("%s %s\n", nickname, streamers[nickname].ImageURL)
+		fmt.Println(cmdlib.OnlineListLine(nickname, streamers[nickname]))
 	}
 	return nil
 }
@@ -1212,8 +1211,9 @@ func fetchExtData(
 
 // mfcLiveSnapshotURL builds a 853x480 live snapshot URL, matching MFC's
 // player.livesnapUrl() in mfccore.js. videoHost is the per-camserv host
-// from serverconfig.js (e.g. "video1157"); when "" the caller should fall
-// back to the static avatar. Supports public (vs=0/90) and away (vs=2).
+// from serverconfig.js (e.g. "video1157").
+// Without a snapshot, the bot shows the avatar, sent as the profile image.
+// Supports public (vs=0/90) and away (vs=2).
 // Other states (private/group/club) aren't worked out yet, so we skip them.
 func mfcLiveSnapshotURL(uid, vs int, videoHost string) string {
 	if videoHost == "" {

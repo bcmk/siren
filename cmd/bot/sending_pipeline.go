@@ -49,33 +49,36 @@ func (w *worker) enqueueMessage(
 // Main goroutine only.
 func (w *worker) hold(q *queuedMessage) {
 	now := time.Now()
-	w.sendReady(w.imageDownloader.push(q.endpoint, q.userID, q.order, q, w.imageToDownload(q, now), now))
+	w.sendReady(w.imageDownloader.push(q.endpoint, q.userID, q.order, q, now))
 }
 
-// imageToDownload is the URL of the image a photo needs downloaded,
-// empty when the bot has cached an id for it, or for any other message.
+// imageToDownload is the URL of the image a photo needs downloaded: its own, or its fallback image.
+// It is empty when the bot has cached an id for either, or for any other message.
 func (w *worker) imageToDownload(q *queuedMessage, now time.Time) string {
 	p, ok := q.message.(*photoParams)
 	if !ok || p.image.data != nil {
 		return ""
 	}
-	if id, _ := w.sender(q.endpoint).images.lookup(p.image, now, q.requestedAt); id != "" {
-		return ""
+	if img, id, _ := p.imageToSend(&w.sender(q.endpoint).images, now, q.requestedAt); id == "" {
+		return img.key
 	}
-	return p.image.key
+	return ""
 }
 
 // completeDownload logs one image's finished download and sends the messages it releases.
 // Main goroutine only.
 func (w *worker) completeDownload(r downloadResult) {
 	now := time.Now()
-	w.db.LogPerformance(int(now.Unix()), db.PerformanceLogImageDownload, r.durationMs, map[string]any{
-		"failed": r.err != nil,
-	})
+	ready, fallback := w.imageDownloader.complete(r, now)
+	data := map[string]any{"failed": r.err != nil}
+	if fallback {
+		data["fallback_image"] = true
+	}
+	w.db.LogPerformance(int(now.Unix()), db.PerformanceLogImageDownload, r.durationMs, data)
 	if r.err != nil {
 		linf("cannot download image, %v", r.err)
 	}
-	w.sendReady(w.imageDownloader.complete(r, now))
+	w.sendReady(ready)
 }
 
 // sendReady puts the messages the download step releases into the send queue.
@@ -103,8 +106,19 @@ func orderLess(a, b queueOrder) bool {
 	return a.seq < b.seq
 }
 
-// setDownloadResult gives the photo its image's bytes, nil when the download failed.
+// setDownloadResult gives the photo its image's bytes.
 func (q *queuedMessage) setDownloadResult(data []byte, downloadedAt time.Time) {
 	p := q.message.(*photoParams)
 	p.downloaded, p.downloadedAt = data, downloadedAt
+}
+
+// takeFallbackImage gives the photo its fallback image
+// and reports whether it got one: false without one, or once that failed too.
+func (q *queuedMessage) takeFallbackImage() bool {
+	p := q.message.(*photoParams)
+	if p.fallbackImage != nil || p.image.fallbackURL == "" {
+		return false
+	}
+	p.fallbackImage = &image{key: p.image.fallbackURL}
+	return true
 }

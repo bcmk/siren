@@ -66,7 +66,8 @@ Feature: Image sending
       And A's send gap is user_cooldown_ms, or group_cooldown_ms in a group or channel
 
     Scenario Outline: What a photo goes as while its image's uploads are paused
-      Given an upload of the photo's image timed out within the last minute
+      Given an upload of the image the photo would send timed out within the last minute
+      And that image is its profile image once its own image's download has failed, else its own
       And the bot has cached <ids>
       When the photo reaches its turn
       Then it goes <as>
@@ -77,11 +78,35 @@ Feature: Image sending
         | the placeholder's id alone | with the placeholder by its id |
         | neither id                 | as the image-unavailable text  |
 
+  Rule: A profile image stands in for an image that fails to download or is not reported
+
+    Scenario: The image fails to download
+      Given the site reports a profile image of a streamer
+      When their image fails to download
+      Then the profile image downloads instead, and the alert goes with it
+      And the bot caches the file id under the profile image's URL
+
+    Scenario: The bot has cached an id for the profile image
+      Given the bot has cached a file id for a streamer's profile image
+      And the profile image downloaded within the last minute
+      When their image fails to download
+      Then the alert goes by the profile image's id, without downloading it
+
+    Scenario: Both downloads time out
+      When a streamer's image and profile image both time out
+      Then the alert goes with the placeholder after two timeouts
+      And its user's later notifications and ads on that bot wait behind it
+
+    Scenario: The site reports only a profile image
+      Given a chat with images on
+      When a streamer goes online and the site reports only a profile image of them
+      Then the alert goes with the profile image
+
   Rule: The placeholder stands in whenever a photo cannot send its image
 
     Scenario: The site reports no image
       Given a chat with images on
-      When a streamer goes online and the site reports no image of them
+      When a streamer goes online and the site reports no image of them, nor a profile image
       Then the alert goes with the placeholder
       And so does a /pics answer about them, whatever the chat's setting
 
@@ -90,7 +115,7 @@ Feature: Image sending
       When a user types /pics
       Then the answer goes with the placeholder, as no image is known yet
 
-    Scenario: A file id gained before the photo's turn beats the placeholder
+    Scenario: A file id gained before the photo's turn beats the profile image and the placeholder
       Given a photo's image failed to download
       When another chat downloads the image afresh and uploads it before the photo's turn
       Then the photo goes with the real image by that file id
@@ -102,7 +127,7 @@ Feature: Image sending
 
       Examples:
         | reason                                                               |
-        | whose download failed                                                |
+        | whose download failed, and whose profile image could not stand in    |
         | whose id was refused                                                 |
         | whose id expired after it was queued                                 |
         | that reached a full download step with no bytes from the last minute |

@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -396,21 +397,25 @@ func TestDeferredSendableTakesAnImage(t *testing.T) {
 	}
 }
 
-// An online notification queues a photo of its image's URL, once the image downloads,
-// or of the placeholder when its site reported none.
+// An online notification queues a photo of its image, with the profile image as its fallback,
+// of the profile image alone where its site reported no image, or else of the placeholder.
 func TestNotificationQueuesImageURL(t *testing.T) {
 	t.Parallel()
 	const nickname = "online_model"
 	const url = "http://" + nickname + ".jpg"
+	const profile = "http://" + nickname + "-profile.jpg"
 	tests := []struct {
-		name       string
-		showImages bool
-		url        string
-		wantImage  string
+		name        string
+		showImages  bool
+		url         string
+		profile     string
+		wantImage   string
+		wantProfile string
 	}{
-		{"with images on it is a photo", true, url, url},
-		{"with images off it is text", false, url, ""},
-		{"with no image reported it shows the placeholder", true, "", "image-unavailable.en.png"},
+		{"with images on it is a photo", true, url, profile, url, profile},
+		{"with images off it is text", false, url, profile, "", ""},
+		{"with only a profile image reported it shows that", true, "", profile, profile, ""},
+		{"with no image reported it shows the placeholder", true, "", "", "image-unavailable.en.png", ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -425,7 +430,7 @@ func TestNotificationQueuesImageURL(t *testing.T) {
 			tr.ImageUnavailable = &cmdlib.Translation{Image: "image-unavailable.en.png", ImageBytes: []byte("placeholder")}
 			w.tr["test"] = &tr
 			insertTestStreamer(&w.db, db.Streamer{Nickname: nickname, UnconfirmedStatus: cmdlib.StatusOnline})
-			w.unconfirmedOnlineStreamers[nickname] = cmdlib.StreamerInfo{ImageURL: tc.url}
+			w.unconfirmedOnlineStreamers[nickname] = cmdlib.StreamerInfo{ImageURL: tc.url, ProfileImageURL: tc.profile}
 			insertSubscription(&w.db, "test", 1, nickname)
 			w.listOnlineStreamers(testMessage(w, 1, "pics", 100))
 			w.enqueueNotifications(w.db.NewNotifications())
@@ -434,19 +439,24 @@ func TestNotificationQueuesImageURL(t *testing.T) {
 			if q == nil {
 				t.Fatal("nothing was queued")
 			}
-			var image string
+			var image, profile string
 			if p, ok := q.message.(*photoParams); ok {
-				image = p.image.key
+				image, profile = p.image.key, p.image.fallbackURL
 			}
 			if image != tc.wantImage {
 				t.Errorf("the photo's image = %q, want %q", image, tc.wantImage)
+			}
+			if profile != tc.wantProfile {
+				t.Errorf("the photo's profile image = %q, want %q", profile, tc.wantProfile)
 			}
 		})
 	}
 }
 
-// An online alert to a chat with images on is marked when its site reported no image,
-// so it shows the placeholder; an offline alert and a chat with images off are not.
+// An online alert to a chat with images on is marked
+// when its site reported neither an image nor a profile image, so it shows the placeholder;
+// an offline alert and a chat with images off are not.
+// A profile image is the image's fallback, or stands in for an image the site did not report.
 func TestBuildNotificationsMarksMissingImage(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -454,12 +464,19 @@ func TestBuildNotificationsMarksMissingImage(t *testing.T) {
 		status     cmdlib.StatusKind
 		showImages bool
 		url        string
+		profile    string
 		want       bool
+		// wantProfile is the profile image the alert falls back to.
+		wantProfile string
 	}{
-		{"an online alert with no image", cmdlib.StatusOnline, true, "", true},
-		{"one with its image", cmdlib.StatusOnline, true, "http://a.jpg", false},
-		{"one to a chat with images off", cmdlib.StatusOnline, false, "", false},
-		{"an offline alert", cmdlib.StatusOffline, true, "", false},
+		{"an online alert with no image", cmdlib.StatusOnline, true, "", "", true, ""},
+		{"one with its image", cmdlib.StatusOnline, true, "http://a.jpg", "", false, ""},
+		{"one with its image and a profile image", cmdlib.StatusOnline, true, "http://a.jpg", "http://p.jpg", false,
+			"http://p.jpg"},
+		{"one with only a profile image", cmdlib.StatusOnline, true, "", "http://p.jpg", false, ""},
+		{"one whose profile image is its image", cmdlib.StatusOnline, true, "http://a.jpg", "http://a.jpg", false, ""},
+		{"one to a chat with images off", cmdlib.StatusOnline, false, "", "", false, ""},
+		{"an offline alert", cmdlib.StatusOffline, true, "", "", false, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -474,7 +491,7 @@ func TestBuildNotificationsMarksMissingImage(t *testing.T) {
 			insertSubscription(&w.db, "test", 100, "s1")
 			w.db.MustExec("update users set show_images = $1, offline_notifications = true where chat_id = 100",
 				tc.showImages)
-			w.unconfirmedOnlineStreamers["s1"] = cmdlib.StreamerInfo{ImageURL: tc.url}
+			w.unconfirmedOnlineStreamers["s1"] = cmdlib.StreamerInfo{ImageURL: tc.url, ProfileImageURL: tc.profile}
 			nots := w.buildNotifications([]db.ConfirmedStatusChange{
 				{StreamerID: id, Nickname: "s1", Status: tc.status, PrevStatus: cmdlib.StatusOnline},
 			}, 1000)
@@ -484,40 +501,65 @@ func TestBuildNotificationsMarksMissingImage(t *testing.T) {
 			if nots[0].MissingImage != tc.want {
 				t.Errorf("missing image = %t, want %t", nots[0].MissingImage, tc.want)
 			}
+			if nots[0].ProfileImageURL != tc.wantProfile {
+				t.Errorf("profile image = %q, want %q", nots[0].ProfileImageURL, tc.wantProfile)
+			}
 		})
 	}
 }
 
-// A batch's notifications of one URL share an image, so the queue holds the URL once.
+// A batch's notifications of one URL and profile URL share an image,
+// so the queue holds the URL once.
+// Streamers that share an image URL keep their own profile images.
 func TestBatchSharesImage(t *testing.T) {
 	t.Parallel()
-	w := newTestWorker()
-	defer w.terminate()
-	w.initCache()
-	cfg := testConfig
-	cfg.ShowImages = true
-	w.cfg = &cfg
-	const nickname = "online_model"
-	const url = "http://" + nickname + ".jpg"
-	insertTestStreamer(&w.db, db.Streamer{Nickname: nickname, UnconfirmedStatus: cmdlib.StatusOnline})
-	w.unconfirmedOnlineStreamers[nickname] = cmdlib.StreamerInfo{ImageURL: url}
-	for chatID := int64(1); chatID <= 2; chatID++ {
-		insertSubscription(&w.db, "test", chatID, nickname)
-		w.listOnlineStreamers(testMessage(w, chatID, "pics", 100))
+	const url = "http://a.jpg"
+	tests := []struct {
+		name string
+		// profiles holds each streamer's profile image, each alerting a chat of its own.
+		profiles   []string
+		wantShared bool
+	}{
+		{"alerts of one image and profile image", []string{"http://p.jpg", "http://p.jpg"}, true},
+		{"alerts of one image with profile images of their own", []string{"http://p1.jpg", "http://p2.jpg"}, false},
 	}
-	w.enqueueNotifications(w.db.NewNotifications())
-	completeDownloads(w)
-	var imgs []*image
-	for w.sendQueue.Len() > 0 {
-		if p, ok := w.sendQueue.pop().message.(*photoParams); ok {
-			imgs = append(imgs, p.image)
-		}
-	}
-	if len(imgs) != 2 {
-		t.Fatalf("queued %d photos, want 2", len(imgs))
-	}
-	if imgs[0] != imgs[1] {
-		t.Error("the photos carry images of their own")
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := newTestWorker()
+			defer w.terminate()
+			w.initCache()
+			cfg := testConfig
+			cfg.ShowImages = true
+			w.cfg = &cfg
+			for i, profile := range tc.profiles {
+				nickname := "s" + strconv.Itoa(i)
+				insertTestStreamer(&w.db, db.Streamer{Nickname: nickname, UnconfirmedStatus: cmdlib.StatusOnline})
+				w.unconfirmedOnlineStreamers[nickname] = cmdlib.StreamerInfo{ImageURL: url, ProfileImageURL: profile}
+				chatID := int64(i + 1)
+				insertSubscription(&w.db, "test", chatID, nickname)
+				w.listOnlineStreamers(testMessage(w, chatID, "pics", 100))
+			}
+			w.enqueueNotifications(w.db.NewNotifications())
+			completeDownloads(w)
+			var imgs []*image
+			for w.sendQueue.Len() > 0 {
+				if p, ok := w.sendQueue.pop().message.(*photoParams); ok {
+					imgs = append(imgs, p.image)
+				}
+			}
+			if len(imgs) != 2 {
+				t.Fatalf("queued %d photos, want 2", len(imgs))
+			}
+			if shared := imgs[0] == imgs[1]; shared != tc.wantShared {
+				t.Errorf("shared = %t, want %t", shared, tc.wantShared)
+			}
+			profiles := []string{imgs[0].fallbackURL, imgs[1].fallbackURL}
+			slices.Sort(profiles)
+			if !slices.Equal(profiles, tc.profiles) {
+				t.Errorf("profile images = %v, want %v", profiles, tc.profiles)
+			}
+		})
 	}
 }
 
@@ -849,24 +891,61 @@ func TestPausedImageStillDownloads(t *testing.T) {
 	}
 }
 
-// A photo whose download failed still goes by an id serving it, with no placeholder logged.
+// A photo whose download failed still goes by an id serving it, with no placeholder logged,
+// whatever became of its profile image.
 func TestFailedDownloadGoesByID(t *testing.T) {
 	t.Parallel()
-	srv, client, _ := imageServer(t)
+	tests := []struct {
+		name    string
+		profile string
+	}{
+		{"with no profile image", ""},
+		{"with a profile image that fails", "/missing-p"},
+		{"with a profile image that downloads", "/p.jpg"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			srv, client, _ := imageServer(t)
+			f := &fakeTelegram{replies: []fakeReply{{body: photoSent}}}
+			w, users := photoSendWorker(t, f, client, 101)
+			s := w.sender("test")
+			s.cooling = true
+			img := &image{key: srv.URL + "/missing"}
+			if tc.profile != "" {
+				img.fallbackURL = srv.URL + tc.profile
+			}
+			queueImages(w, users, []*image{img})
+			completeDownloads(w)
+			// Another chat's upload of a later download gives the bot an id.
+			s.images.learn(photoOutcome{key: img.key, uploadedID: "id", downloadedAt: time.Now()}, time.Now())
+			s.cooling = false
+			w.trySend("test")
+			completeSends(w, 1)
+			if !slices.Equal(f.sent, []string{"id"}) {
+				t.Errorf("sent %v, want the photo by its id", f.sent)
+			}
+		})
+	}
+}
+
+// A failed image falls back to a profile image the bot has cached an id for,
+// without downloading it, within a minute of the profile image's download.
+func TestFailedImageTakesProfileImageID(t *testing.T) {
+	t.Parallel()
+	srv, client, hits := imageServer(t)
 	f := &fakeTelegram{replies: []fakeReply{{body: photoSent}}}
 	w, users := photoSendWorker(t, f, client, 101)
-	s := w.sender("test")
-	s.cooling = true
-	img := &image{key: srv.URL + "/missing"}
-	queueImages(w, users, []*image{img})
-	w.completeDownload(<-w.imageDownloader.results)
-	// Another chat's upload of a later download gives the bot an id.
-	s.images.learn(photoOutcome{key: img.key, uploadedID: "id", downloadedAt: time.Now()}, time.Now())
-	s.cooling = false
-	w.trySend("test")
-	completeSends(w, 1)
-	if !slices.Equal(f.sent, []string{"id"}) {
-		t.Errorf("sent %v, want the photo by its id", f.sent)
+	profile := srv.URL + "/p.jpg"
+	w.sender("test").images.learn(
+		photoOutcome{key: profile, uploadedID: "profile-id", downloadedAt: time.Now()},
+		time.Now())
+	sendImages(w, users, []*image{{key: srv.URL + "/missing", fallbackURL: profile}}, 1)
+	if got := hits.Load(); got != 1 {
+		t.Errorf("downloads = %d, want 1", got)
+	}
+	if !slices.Equal(f.sent, []string{"profile-id"}) {
+		t.Errorf("sent %v, want the photo by the profile image's id", f.sent)
 	}
 }
 
@@ -1057,6 +1136,55 @@ func TestUnreachableImageShowsPlaceholder(t *testing.T) {
 			}
 			if id, _ := s.images.lookup(shippedImage(w.tr["test"].ImageUnavailable), now, now); id != "large" {
 				t.Errorf("the placeholder's id = %q, want %q", id, "large")
+			}
+		})
+	}
+}
+
+// A failed image gives way to its profile image, which takes the file id, then to the placeholder.
+func TestFailedImageFallsBackToProfileImage(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		image   string
+		profile string
+		// want is the image the photo goes with, empty for the placeholder.
+		want          string
+		wantDownloads int32
+	}{
+		{"an image that downloads", "/a.jpg", "/p.jpg", "/a.jpg", 1},
+		{"a failed image takes its profile image", "/missing", "/p.jpg", "/p.jpg", 2},
+		{"a failed profile image gives way to the placeholder", "/missing", "/missing-p", "", 2},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			srv, client, hits := imageServer(t)
+			f := &fakeTelegram{replies: []fakeReply{{body: photoSent}}}
+			w, users := photoSendWorker(t, f, client, 101)
+			sendImages(w, users, []*image{{key: srv.URL + tc.image, fallbackURL: srv.URL + tc.profile}}, 1)
+			if got := hits.Load(); got != tc.wantDownloads {
+				t.Errorf("downloads = %d, want %d", got, tc.wantDownloads)
+			}
+			// Every download after the image's is its profile image's.
+			fallbacks := w.db.MustInt(
+				`select count(*) from performance_log where kind = $1 and data->>'fallback_image' = 'true'`,
+				db.PerformanceLogImageDownload)
+			if want := int(tc.wantDownloads) - 1; fallbacks != want {
+				t.Errorf("fallback image downloads logged = %d, want %d", fallbacks, want)
+			}
+			if placeholder := slices.Equal(f.uploads, []string{"placeholder"}); placeholder != (tc.want == "") {
+				t.Errorf("uploaded %q, want the placeholder: %t", f.uploads, tc.want == "")
+			}
+			now := time.Now()
+			for _, path := range []string{tc.image, tc.profile} {
+				var wantID string
+				if path == tc.want {
+					wantID = "large"
+				}
+				if id, _ := w.sender("test").images.lookup(&image{key: srv.URL + path}, now, now); id != wantID {
+					t.Errorf("the id of %s = %q, want %q", path, id, wantID)
+				}
 			}
 		})
 	}

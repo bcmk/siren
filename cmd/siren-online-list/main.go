@@ -67,7 +67,7 @@ func run() int {
 		return 1
 	}
 	for model, info := range streamers {
-		fmt.Printf("%s %s\n", model, info.ImageURL)
+		fmt.Println(cmdlib.OnlineListLine(model, info))
 	}
 	return 0
 }

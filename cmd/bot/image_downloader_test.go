@@ -253,6 +253,40 @@ func TestFreedSlotGoesToBestPhoto(t *testing.T) {
 	}
 }
 
+// A failed image's freed slot goes to the most urgent profile image its photos fall back to.
+func TestFreedSlotGoesToBestProfileImage(t *testing.T) {
+	t.Parallel()
+	data := pngImage(t)
+	fail, free := make(chan struct{}), make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/missing" {
+			<-fail
+			rw.WriteHeader(http.StatusNotFound)
+			return
+		}
+		<-free
+		_, _ = rw.Write(data)
+	}))
+	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(free) })
+	w, users := photoSendWorker(t, &fakeTelegram{}, srv.Client(), 101)
+	w.sender("test").cooling = true
+	missing := srv.URL + "/missing"
+	alertProfile, replyProfile := srv.URL+"/alert-profile.jpg", srv.URL+"/reply-profile.jpg"
+	queueImages(w, users, []*image{{key: missing, fallbackURL: alertProfile}})
+	for i := range maxUserDownloads - 1 {
+		queueImages(w, users, []*image{{key: fmt.Sprintf("%s/%d.jpg", srv.URL, i)}})
+	}
+	tr := &cmdlib.Translation{Key: "online", Parse: cmdlib.ParseHTML}
+	img := &image{key: missing, fallbackURL: replyProfile}
+	w.enqueueTr(db.PriorityHigh, "test", users[0], true, tr, tplData{}, img, nil, reply("pics"), testNotificationID)
+	close(fail)
+	w.completeDownload(<-w.imageDownloader.results)
+	if !w.imageDownloader.images[replyProfile].started || w.imageDownloader.images[alertProfile].started {
+		t.Error("the freed slot went to the alert's profile image, not to the reply's")
+	}
+}
+
 // A download starting takes the other photos of its image out of their users' queues.
 func TestStartedDownloadTakesItsPhotos(t *testing.T) {
 	t.Parallel()

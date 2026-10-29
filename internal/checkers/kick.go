@@ -4,10 +4,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
@@ -32,9 +36,28 @@ func (c *KickCheckerConfig) validate() error {
 	return nil
 }
 
+// kickProfileImageTTL is how long the checker caches a profile image before looking it up again
+const kickProfileImageTTL = time.Hour
+
+// kickLookupPause is how long the checker stops looking up profile images after a lookup fails
+const kickLookupPause = 5 * time.Minute
+
+// kickUsersPerRequest is how many ids a users lookup takes.
+// Kick refuses 51 with a 400, and documents the limit only for channels.
+const kickUsersPerRequest = 50
+
 // KickChecker implements a checker for Kick
 type KickChecker struct {
 	BaseChecker[*KickCheckerConfig]
+	// profileImages caches the profile images looked up, by broadcaster user id
+	profileImages map[int64]kickProfileImage
+	// lookUpAfter is when profile image lookups resume after one failed
+	lookUpAfter time.Time
+}
+
+type kickProfileImage struct {
+	url     string
+	expires time.Time
 }
 
 var _ Checker = &KickChecker{}
@@ -52,6 +75,7 @@ func (c *KickChecker) Init(checkerCfgPath string) error {
 		return err
 	}
 	c.BaseChecker = NewBaseChecker(cfg)
+	c.profileImages = map[int64]kickProfileImage{}
 	return nil
 }
 
@@ -69,13 +93,23 @@ type kickStream struct {
 }
 
 type kickChannel struct {
-	Slug        string      `json:"slug"`
-	StreamTitle string      `json:"stream_title"`
-	Stream      *kickStream `json:"stream"`
+	Slug              string      `json:"slug"`
+	BroadcasterUserID int64       `json:"broadcaster_user_id"`
+	StreamTitle       string      `json:"stream_title"`
+	Stream            *kickStream `json:"stream"`
 }
 
 type kickChannelsResponse struct {
 	Data []kickChannel `json:"data"`
+}
+
+type kickUser struct {
+	UserID         int64  `json:"user_id"`
+	ProfilePicture string `json:"profile_picture"`
+}
+
+type kickUsersResponse struct {
+	Data []kickUser `json:"data"`
 }
 
 // NicknamePreprocessing preprocesses nickname to canonical form
@@ -122,25 +156,95 @@ func (c *KickChecker) queryChannels(
 	for _, s := range slugs {
 		params.Add("slug", s)
 	}
-	reqURL := "https://api.kick.com/public/v1/channels?" + params.Encode()
+	var channelsResp kickChannelsResponse
+	if err := queryKickAPI(httpClient, token, "channels", params, &channelsResp); err != nil {
+		return nil, err
+	}
+	return channelsResp.Data, nil
+}
+
+func (c *KickChecker) queryUsers(httpClient *http.Client, token string, ids []int64) ([]kickUser, error) {
+	params := url.Values{}
+	for _, id := range ids {
+		params.Add("id", strconv.FormatInt(id, 10))
+	}
+	var usersResp kickUsersResponse
+	if err := queryKickAPI(httpClient, token, "users", params, &usersResp); err != nil {
+		return nil, err
+	}
+	return usersResp.Data, nil
+}
+
+// queryKickAPI decodes the answer of a public API endpoint, such as channels, into out
+func queryKickAPI(httpClient *http.Client, token, endpoint string, params url.Values, out any) error {
+	reqURL := "https://api.kick.com/public/v1/" + endpoint + "?" + params.Encode()
 	req, err := http.NewRequest("GET", reqURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating kick request, %w", err)
+		return fmt.Errorf("creating kick request, %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("querying kick channels, %w", err)
+		return fmt.Errorf("querying kick %s, %w", endpoint, err)
 	}
 	defer cmdlib.CloseBody(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("kick channels API status %d", resp.StatusCode)
+		return fmt.Errorf("kick %s API status %d", endpoint, resp.StatusCode)
 	}
-	var channelsResp kickChannelsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&channelsResp); err != nil {
-		return nil, fmt.Errorf("decoding kick channels response, %w", err)
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return fmt.Errorf("decoding kick %s response, %w", endpoint, err)
 	}
-	return channelsResp.Data, nil
+	return nil
+}
+
+// lookUpProfileImages caches the channels' profile images, looking up those not cached,
+// and refreshing a request's worth of the expired ones.
+// Expired ones serve for up to another TTL. A failed lookup pauses lookups.
+func (c *KickChecker) lookUpProfileImages(token string, channels []kickChannel) {
+	now := time.Now()
+	maps.DeleteFunc(c.profileImages, func(_ int64, p kickProfileImage) bool {
+		return !now.Before(p.expires.Add(kickProfileImageTTL))
+	})
+	if now.Before(c.lookUpAfter) {
+		return
+	}
+	var missing, expired []int64
+	for _, ch := range channels {
+		switch p, ok := c.profileImages[ch.BroadcasterUserID]; {
+		case !ok:
+			missing = append(missing, ch.BroadcasterUserID)
+		case !now.Before(p.expires):
+			expired = append(expired, ch.BroadcasterUserID)
+		}
+	}
+	due := append(missing, expired[:min(len(expired), kickUsersPerRequest)]...)
+	for chunk := range slices.Chunk(due, kickUsersPerRequest) {
+		users, err := c.queryUsers(c.Client, token, chunk)
+		if err != nil {
+			cmdlib.Lerr("cannot look up profile images, %v", err)
+			c.lookUpAfter = now.Add(kickLookupPause)
+			return
+		}
+		pictures := map[int64]string{}
+		for _, u := range users {
+			pictures[u.UserID] = u.ProfilePicture
+		}
+		// An id the answer leaves out is cached too, so it is not asked again on every check
+		for _, id := range chunk {
+			c.profileImages[id] = kickProfileImage{
+				url:     kickProfileImageURL(pictures[id]),
+				expires: now.Add(kickProfileImageTTL),
+			}
+		}
+	}
+}
+
+// kickProfileImageURL returns a profile picture, empty for Kick's shared default avatars
+func kickProfileImageURL(picture string) string {
+	if strings.Contains(picture, "/img/default-profile-pictures/") {
+		return ""
+	}
+	return picture
 }
 
 // QueryStreamer checks Kick channel status
@@ -187,7 +291,7 @@ func (c *KickChecker) QueryFixedListOnlineStreamers(
 	if err != nil {
 		return nil, err
 	}
-	result := map[string]cmdlib.StreamerInfo{}
+	var live []kickChannel
 	// Kick API allows up to 50 slugs per request
 	for _, chunk := range chunks(channelIDs, 50) {
 		channels, err := c.queryChannels(c.Client, token, chunk)
@@ -195,16 +299,20 @@ func (c *KickChecker) QueryFixedListOnlineStreamers(
 			return nil, err
 		}
 		for _, ch := range channels {
-			if ch.Stream == nil || !ch.Stream.IsLive {
-				continue
+			if ch.Stream != nil && ch.Stream.IsLive {
+				live = append(live, ch)
 			}
-			slug := strings.ToLower(ch.Slug)
-			viewers := ch.Stream.ViewerCount
-			result[slug] = cmdlib.StreamerInfo{
-				ImageURL: ch.Stream.Thumbnail,
-				Viewers:  &viewers,
-				Subject:  ch.StreamTitle,
-			}
+		}
+	}
+	c.lookUpProfileImages(token, live)
+	result := map[string]cmdlib.StreamerInfo{}
+	for _, ch := range live {
+		viewers := ch.Stream.ViewerCount
+		result[strings.ToLower(ch.Slug)] = cmdlib.StreamerInfo{
+			ImageURL:        ch.Stream.Thumbnail,
+			ProfileImageURL: c.profileImages[ch.BroadcasterUserID].url,
+			Viewers:         &viewers,
+			Subject:         ch.StreamTitle,
 		}
 	}
 	return result, nil

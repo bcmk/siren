@@ -219,13 +219,28 @@ func (s ShowKind) String() string {
 	return fmt.Sprintf("ShowKind(%d)", int(s))
 }
 
-// StreamerInfo carries presentation data for a streamer: cover image,
+// StreamerInfo carries presentation data for a streamer: cover image, profile image,
 // viewer count, current show kind, and the room subject when supported.
 type StreamerInfo struct {
-	ImageURL string   `json:"image_url,omitempty"`
-	Viewers  *int     `json:"viewers,omitempty"`
-	ShowKind ShowKind `json:"show_kind,omitempty"`
-	Subject  string   `json:"subject,omitempty"`
+	ImageURL string `json:"image_url,omitempty"`
+	// ProfileImageURL is the streamer's profile image, a fallback for ImageURL.
+	ProfileImageURL string   `json:"profile_image_url,omitempty"`
+	Viewers         *int     `json:"viewers,omitempty"`
+	ShowKind        ShowKind `json:"show_kind,omitempty"`
+	Subject         string   `json:"subject,omitempty"`
+}
+
+// OnlineListLine is a streamer's line in the online lists the CLI tools print:
+// "<nickname>, pic: <image_url>, prof: <profile_image_url>", leaving out an empty URL.
+func OnlineListLine(nickname string, info StreamerInfo) string {
+	line := nickname
+	if info.ImageURL != "" {
+		line += ", pic: " + info.ImageURL
+	}
+	if info.ProfileImageURL != "" {
+		line += ", prof: " + info.ProfileImageURL
+	}
+	return line
 }
 
 // StreamerInfoWithStatus is StreamerInfo plus a StatusKind verdict

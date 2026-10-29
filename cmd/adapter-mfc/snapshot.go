@@ -444,15 +444,12 @@ func (s *snapshot) collectIfReady() (streamers map[string]cmdlib.StreamerInfo, o
 			continue
 		}
 		viewers := cur.rc
-		img := mfcLiveSnapshotURL(cur.uid, cur.vs, s.videoHosts[cur.camserv])
-		if img == "" {
-			img = mfcImageURL(cur.uid)
-		}
 		out[strings.ToLower(cur.name)] = cmdlib.StreamerInfo{
-			ImageURL: img,
-			Viewers:  &viewers,
-			ShowKind: mfcShowKind(cur.vs),
-			Subject:  cur.topic,
+			ImageURL:        mfcLiveSnapshotURL(cur.uid, cur.vs, s.videoHosts[cur.camserv]),
+			ProfileImageURL: mfcImageURL(cur.uid),
+			Viewers:         &viewers,
+			ShowKind:        mfcShowKind(cur.vs),
+			Subject:         cur.topic,
 		}
 	}
 	return out, true

@@ -55,10 +55,11 @@ func (c *Cam4Checker) NicknameRegexp() *regexp.Regexp {
 }
 
 type cam4Model struct {
-	Nickname string `json:"nickname"`
-	ThumbBig string `json:"thumb_big"`
-	Viewers  int    `json:"viewers"`
-	ShowType string `json:"show_type"`
+	Nickname     string `json:"nickname"`
+	ThumbBig     string `json:"thumb_big"`
+	ProfileThumb string `json:"profile_thumb"`
+	Viewers      int    `json:"viewers"`
+	ShowType     string `json:"show_type"`
 }
 
 type cam4Response struct {
@@ -109,6 +110,14 @@ func cam4WentOnlineAt(parsed *cam4Response) *time.Time {
 	return &start
 }
 
+// cam4ProfileImage returns the model's profile image, empty for CAM4's shared default cards.
+func cam4ProfileImage(profileThumb string) string {
+	if strings.Contains(profileThumb, "/web/images/defaults/") {
+		return ""
+	}
+	return profileThumb
+}
+
 func cam4ShowKind(showType string) cmdlib.ShowKind {
 	switch showType {
 	case "NORMAL":
@@ -141,9 +150,10 @@ func (c *Cam4Checker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, er
 		modelID := strings.ToLower(m.Nickname)
 		viewers := m.Viewers
 		streamers[modelID] = cmdlib.StreamerInfo{
-			ImageURL: m.ThumbBig,
-			Viewers:  &viewers,
-			ShowKind: cam4ShowKind(m.ShowType),
+			ImageURL:        m.ThumbBig,
+			ProfileImageURL: cam4ProfileImage(m.ProfileThumb),
+			Viewers:         &viewers,
+			ShowKind:        cam4ShowKind(m.ShowType),
 		}
 	}
 	if len(streamers) == 0 {

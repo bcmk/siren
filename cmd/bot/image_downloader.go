@@ -30,9 +30,13 @@ type downloadResult struct {
 	durationMs int
 }
 
-// imageRequest is what the downloader needs of a request: to set its image's download outcome.
+// imageRequest is what the downloader needs of a request: to take its image's bytes,
+// and to take its fallback image when its own fails.
 type imageRequest interface {
 	setDownloadResult(data []byte, downloadedAt time.Time)
+	// takeFallbackImage gives the request its fallback image and reports whether it got one,
+	// false once it has taken it.
+	takeFallbackImage() bool
 }
 
 // pendingImageRequest is a request the downloader holds, with its order, image, endpoint and user.
@@ -77,6 +81,8 @@ type imageDownload[R imageRequest] struct {
 	// started marks a download under way or done, running in one of userID's slots.
 	started bool
 	userID  db.UserID
+	// fallback marks an image first wanted in place of one that failed.
+	fallback bool
 	// data is the image once downloaded, for the requests made within an imageTTL.
 	data         []byte
 	downloadedAt time.Time
@@ -209,32 +215,39 @@ type imageDownloader[R imageRequest] struct {
 	results chan downloadResult
 	// downloadImage runs off the main goroutine.
 	downloadImage func(url string) ([]byte, error)
+	// imageToDownload is the URL of the image a request needs downloaded, empty for none.
+	imageToDownload func(request R, now time.Time) string
 }
 
-func newImageDownloader[R imageRequest](downloadImage func(url string) ([]byte, error)) imageDownloader[R] {
+func newImageDownloader[R imageRequest](
+	downloadImage func(url string) ([]byte, error),
+	imageToDownload func(request R, now time.Time) string,
+) imageDownloader[R] {
 	return imageDownloader[R]{
-		held:          map[endpointUser]*requestHeap[R]{},
-		queue:         newDownloadQueue[R](),
-		images:        map[string]*imageDownload[R]{},
-		results:       make(chan downloadResult, maxDownloads),
-		downloadImage: downloadImage,
+		held:            map[endpointUser]*requestHeap[R]{},
+		queue:           newDownloadQueue[R](),
+		images:          map[string]*imageDownload[R]{},
+		results:         make(chan downloadResult, maxDownloads),
+		downloadImage:   downloadImage,
+		imageToDownload: imageToDownload,
 	}
 }
 
-// push takes a user's request on an endpoint, its order, and the image to download, empty for none,
+// push takes a user's request on an endpoint and its order,
 // and returns, in order, the user's requests on that endpoint that it releases.
 func (dl *imageDownloader[R]) push(
 	endpoint string,
 	userID db.UserID,
 	order queueOrder,
 	request R,
-	key string,
 	now time.Time,
 ) []R {
 	dl.sweep(now)
+	key := dl.imageToDownload(request, now)
 	p := &pendingImageRequest[R]{request: request, order: order, key: key, endpoint: endpoint, userID: userID}
 	if key != "" {
-		dl.fetch(p, now)
+		dl.fetch(p, false, now)
+		dl.startDownloads()
 	}
 	u := endpointUser{endpoint, userID}
 	h := dl.held[u]
@@ -250,7 +263,8 @@ func (dl *imageDownloader[R]) push(
 // fetch gives a request the image downloaded within an imageTTL,
 // or has it await the image's download, under way or waiting to start.
 // A full step leaves it without the image, since downloads this far behind would only delay it.
-func (dl *imageDownloader[R]) fetch(p *pendingImageRequest[R], now time.Time) {
+// fallback marks an image wanted in place of one that failed.
+func (dl *imageDownloader[R]) fetch(p *pendingImageRequest[R], fallback bool, now time.Time) {
 	d := dl.images[p.key]
 	if d != nil && d.data != nil {
 		if now.Before(d.downloadedAt.Add(imageTTL)) {
@@ -264,14 +278,13 @@ func (dl *imageDownloader[R]) fetch(p *pendingImageRequest[R], now time.Time) {
 		return
 	}
 	if d == nil {
-		d = &imageDownload[R]{}
+		d = &imageDownload[R]{fallback: fallback}
 		dl.images[p.key] = d
 	}
 	p.awaits = true
 	d.requests = append(d.requests, p)
 	if !d.started {
 		dl.queue.push(p)
-		dl.startDownloads()
 	}
 }
 
@@ -328,9 +341,11 @@ func (dl *imageDownloader[R]) download(key string) {
 }
 
 // complete takes in a finished download, gives it to the requests awaiting it,
-// and returns the requests it releases, in each user's order.
+// and returns the requests it releases, in each user's order,
+// and whether the image was first wanted in place of one that failed.
 // It caches the image for the requests made within an imageTTL, and starts the next downloads.
-func (dl *imageDownloader[R]) complete(r downloadResult, now time.Time) []R {
+// A request whose image failed takes its fallback image, if any, as a new request would.
+func (dl *imageDownloader[R]) complete(r downloadResult, now time.Time) (released []R, fallback bool) {
 	d := dl.images[r.key]
 	dl.queue.finish(d.userID)
 	if r.err == nil {
@@ -338,15 +353,20 @@ func (dl *imageDownloader[R]) complete(r downloadResult, now time.Time) []R {
 	} else {
 		delete(dl.images, r.key)
 	}
-	var released []R
 	for _, p := range d.requests {
 		p.awaits = false
-		p.request.setDownloadResult(d.data, now)
+		if r.err == nil {
+			p.request.setDownloadResult(d.data, now)
+		} else if p.request.takeFallbackImage() {
+			if p.key = dl.imageToDownload(p.request, now); p.key != "" {
+				dl.fetch(p, true, now)
+			}
+		}
 		released = dl.release(endpointUser{p.endpoint, p.userID}, released)
 	}
 	d.requests = nil
 	dl.startDownloads()
-	return released
+	return released, d.fallback
 }
 
 // sweep drops the images an imageTTL old, once an imageTTL.

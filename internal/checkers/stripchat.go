@@ -76,6 +76,7 @@ func (c *StripchatChecker) Init(checkerCfgPath string) error {
 type stripchatModel struct {
 	Username     string `json:"username"`
 	SnapshotURL  string `json:"snapshotUrl"`
+	PreviewURL   string `json:"previewUrl"`
 	Status       string `json:"status"`
 	ViewersCount int    `json:"viewersCount"`
 }
@@ -383,9 +384,10 @@ func (c *StripchatChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInf
 				modelID := strings.ToLower(m.Username)
 				viewers := m.ViewersCount
 				streamers[modelID] = cmdlib.StreamerInfo{
-					ImageURL: m.SnapshotURL,
-					Viewers:  &viewers,
-					ShowKind: stripchatShowKind(m.Status),
+					ImageURL:        m.SnapshotURL,
+					ProfileImageURL: m.PreviewURL,
+					Viewers:         &viewers,
+					ShowKind:        stripchatShowKind(m.Status),
 				}
 			}
 		}

@@ -40,6 +40,7 @@ type flirt4FreeCheckResponse struct {
 type flirt4FreeOnlineModel struct {
 	Name           string `json:"name"`
 	ScreencapImage string `json:"screencap_image"`
+	SampleImage    string `json:"sample_image"`
 	RoomStatus     string `json:"room_status"`
 }
 
@@ -145,22 +146,25 @@ func (c *Flirt4FreeChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerIn
 	for _, m := range parsed.Girls {
 		modelID := flirt4FreeCanonicalAPIModelID(m.Name)
 		streamers[modelID] = cmdlib.StreamerInfo{
-			ImageURL: m.ScreencapImage,
-			ShowKind: flirt4FreeShowKind(m.RoomStatus),
+			ImageURL:        m.ScreencapImage,
+			ProfileImageURL: m.SampleImage,
+			ShowKind:        flirt4FreeShowKind(m.RoomStatus),
 		}
 	}
 	for _, m := range parsed.Guys {
 		modelID := flirt4FreeCanonicalAPIModelID(m.Name)
 		streamers[modelID] = cmdlib.StreamerInfo{
-			ImageURL: m.ScreencapImage,
-			ShowKind: flirt4FreeShowKind(m.RoomStatus),
+			ImageURL:        m.ScreencapImage,
+			ProfileImageURL: m.SampleImage,
+			ShowKind:        flirt4FreeShowKind(m.RoomStatus),
 		}
 	}
 	for _, m := range parsed.Trans {
 		modelID := flirt4FreeCanonicalAPIModelID(m.Name)
 		streamers[modelID] = cmdlib.StreamerInfo{
-			ImageURL: m.ScreencapImage,
-			ShowKind: flirt4FreeShowKind(m.RoomStatus),
+			ImageURL:        m.ScreencapImage,
+			ProfileImageURL: m.SampleImage,
+			ShowKind:        flirt4FreeShowKind(m.RoomStatus),
 		}
 	}
 	return streamers, nil

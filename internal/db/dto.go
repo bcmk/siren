@@ -17,6 +17,8 @@ type Notification struct {
 	Status   cmdlib.StatusKind
 	TimeDiff *int
 	ImageURL string
+	// ProfileImageURL is the streamer's profile image, shown where ImageURL fails.
+	ProfileImageURL string
 	// MissingImage marks a notification that should show an image its site did not report.
 	MissingImage bool
 	Viewers      *int

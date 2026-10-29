@@ -495,17 +495,31 @@ func (w *worker) onSendDone(endpoint string) {
 	w.trySend(endpoint)
 }
 
-// pickImage sets what the photo sends, its own image or else the placeholder, by id or upload,
-// and reports whether it can send either.
-// While its own image's uploads are paused, the placeholder goes by id alone.
-func (p *photoParams) pickImage(images *imageCache, placeholder *image, now, queuedAt time.Time) bool {
-	id, uploads := images.lookup(p.image, now, queuedAt)
-	p.sentImage, p.fileID, p.upload = p.image, id, p.downloaded
-	if p.image.data != nil {
-		p.upload = p.image.data
+// imageToSend returns the image the photo goes with short of the placeholder,
+// with its id, empty for none, and whether it may upload it.
+// That is its fallback image once its own image's download has failed
+// and the bot has cached no id for its own image, else its own image.
+func (p *photoParams) imageToSend(images *imageCache, now, queuedAt time.Time) (img *image, id string, uploads bool) {
+	id, uploads = images.lookup(p.image, now, queuedAt)
+	if id == "" && p.fallbackImage != nil {
+		id, uploads = images.lookup(p.fallbackImage, now, queuedAt)
+		return p.fallbackImage, id, uploads
 	}
-	if own := id != "" || (uploads && p.upload != nil); own || placeholder == nil {
-		return own
+	return p.image, id, uploads
+}
+
+// pickImage sets what the photo sends, by id or upload:
+// its own image, its fallback image, or else the placeholder, and reports whether it can send one.
+// While uploads of the image imageToSend returns are paused, the placeholder goes by id alone.
+func (p *photoParams) pickImage(images *imageCache, placeholder *image, now, queuedAt time.Time) bool {
+	img, id, uploads := p.imageToSend(images, now, queuedAt)
+	// Once a photo has its fallback image, its downloaded bytes are the fallback image's.
+	p.sentImage, p.fileID, p.upload = img, id, p.downloaded
+	if img.data != nil {
+		p.upload = img.data
+	}
+	if found := id != "" || (uploads && p.upload != nil); found || placeholder == nil {
+		return found
 	}
 	placeholderID, placeholderUploads := images.lookup(placeholder, now, queuedAt)
 	p.sentImage, p.fileID, p.upload = placeholder, placeholderID, placeholder.data

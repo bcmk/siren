@@ -332,7 +332,7 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 		incomingPackets:            incomingPackets,
 	}
 	w.chatMember = w.getChatMember
-	w.imageDownloader = newImageDownloader[*queuedMessage](w.downloadImage)
+	w.imageDownloader = newImageDownloader(w.downloadImage, w.imageToDownload)
 	// The bot starts in maintenance: the database is not created yet.
 	w.maintenance.Store(true)
 	w.loadTranslations(trsByEndpoint(cfg))
@@ -809,17 +809,19 @@ func (w *worker) enqueueNotifications(nots []db.Notification) {
 	})
 	plans := w.planNotifications(nots)
 	w.numberNotifications(plans)
-	// One image per URL, so the queue holds each URL once.
-	images := map[string]*image{}
+	// One image per URL and profile URL, so the queue holds each pair once.
+	type imageURLs struct{ url, profileURL string }
+	images := map[imageURLs]*image{}
 	for _, p := range plans {
 		var img *image
 		switch {
 		case !w.cfg.ShowImages:
 		case p.ImageURL != "":
-			img = images[p.ImageURL]
+			urls := imageURLs{p.ImageURL, p.ProfileImageURL}
+			img = images[urls]
 			if img == nil {
-				img = &image{key: p.ImageURL}
-				images[p.ImageURL] = img
+				img = &image{key: p.ImageURL, fallbackURL: p.ProfileImageURL}
+				images[urls] = img
 			}
 		case p.MissingImage:
 			img = shippedImage(w.tr[p.Endpoint].ImageUnavailable)
@@ -2074,16 +2076,18 @@ func (w *worker) listOnlineStreamers(m receivedMessage) {
 	var nots []db.Notification
 	for _, s := range online {
 		info := w.unconfirmedOnlineStreamers[s.Nickname]
+		imageURL, profileImageURL := notificationImages(info)
 		not := db.Notification{
-			Priority:   db.PriorityHigh,
-			Endpoint:   m.endpoint,
-			UserID:     m.userID,
-			StreamerID: &s.ID,
-			Nickname:   s.Nickname,
-			Status:     cmdlib.StatusOnline,
-			ImageURL:   info.ImageURL,
+			Priority:        db.PriorityHigh,
+			Endpoint:        m.endpoint,
+			UserID:          m.userID,
+			StreamerID:      &s.ID,
+			Nickname:        s.Nickname,
+			Status:          cmdlib.StatusOnline,
+			ImageURL:        imageURL,
+			ProfileImageURL: profileImageURL,
 			// An answer to /pics shows an image whatever the chat's setting.
-			MissingImage: info.ImageURL == "",
+			MissingImage: imageURL == "",
 			Viewers:      info.Viewers,
 			ShowKind:     info.ShowKind,
 			TimeDiff:     w.streamerDuration(s, m.timestamp),
@@ -3733,6 +3737,16 @@ func attemptBlockedSend(blocked, threshold int) bool {
 	return blocked < threshold || rand.Intn(blocked) < threshold
 }
 
+// notificationImages returns a notification's image and the profile image it falls back to.
+// The profile image stands in for an image the site did not report,
+// and is dropped when it is the image.
+func notificationImages(info cmdlib.StreamerInfo) (imageURL, profileImageURL string) {
+	if info.ImageURL == "" || info.ImageURL == info.ProfileImageURL {
+		return info.ProfileImageURL, ""
+	}
+	return info.ImageURL, info.ProfileImageURL
+}
+
 func (w *worker) buildNotifications(
 	confirmedStatusChanges []db.ConfirmedStatusChange,
 	now int,
@@ -3775,8 +3789,8 @@ func (w *worker) buildNotifications(
 					Priority:   db.PriorityLow,
 					Kind:       db.NotificationPacket}
 				if user.ShowImages {
-					n.ImageURL = info.ImageURL
-					n.MissingImage = c.Status == cmdlib.StatusOnline && info.ImageURL == ""
+					n.ImageURL, n.ProfileImageURL = notificationImages(info)
+					n.MissingImage = c.Status == cmdlib.StatusOnline && n.ImageURL == ""
 				}
 				if user.ShowSubject {
 					n.Subject = info.Subject
