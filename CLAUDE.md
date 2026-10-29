@@ -220,6 +220,7 @@
   When a question settles something, update its finding.
   A request to update, change or fix anything means editing the findings.
   Apply fixes only when explicitly asked to apply them.
+- A review reports every confirmed finding, however many there are
 - When you have developed something
   and you report on findings you were asked to fix,
   list the fixed and the declined ones separately
