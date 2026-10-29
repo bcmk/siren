@@ -3,6 +3,20 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v6.6.0 — 2026-10-29
+
+### Added
+
+- An alert or `/pics` answer shows the streamer's profile image
+  where the image fails to download or is not reported,
+  on CAM4, Stripchat, BongaCams, Flirt4Free, CamSoda, Kick and MyFreeCams
+- `user_cooldown_ms`, `group_cooldown_ms` and `timed_out_upload_postpone_ms` set the send pacing
+
+### Changed
+
+- `siren-online-list`, `twitch-specific-streams` and `adapter-mfc` without `--daemon`
+  print a streamer as `<nickname>, pic: <url>, prof: <url>`
+
 ## v6.5.0 — 2026-10-25
 
 ### Added
