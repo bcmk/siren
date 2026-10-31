@@ -139,10 +139,7 @@ func (c *ChaturbateChecker) QueryStreamer(modelID string, extras Extras) (cmdlib
 	if parsed.Status != nil {
 		return cmdlib.StreamerInfoWithStatus{Status: chaturbateStatus(parsed.Code)}, nil
 	}
-	info := cmdlib.StreamerInfoWithStatus{
-		StreamerInfo: cmdlib.StreamerInfo{ShowKind: chaturbateShowKind(parsed.RoomStatus)},
-		Status:       chaturbateRoomStatus(parsed.RoomStatus),
-	}
+	info := chaturbateRoomInfo(modelID, parsed)
 	if extras&ExtraTimes != 0 {
 		end, err := chaturbateWentOfflineAt(parsed)
 		if err != nil {
@@ -163,6 +160,19 @@ func chaturbateStatus(status string) cmdlib.StatusKind {
 		return cmdlib.StatusOnline | cmdlib.StatusOffline
 	}
 	return cmdlib.StatusUnknown
+}
+
+// chaturbateRoomInfo is what a room's biocontext tells of it.
+// An online room gets the image Chaturbate's online list names after the nickname.
+func chaturbateRoomInfo(modelID string, parsed *chaturbateResponse) cmdlib.StreamerInfoWithStatus {
+	info := cmdlib.StreamerInfoWithStatus{
+		StreamerInfo: cmdlib.StreamerInfo{ShowKind: chaturbateShowKind(parsed.RoomStatus)},
+		Status:       chaturbateRoomStatus(parsed.RoomStatus),
+	}
+	if info.Status == cmdlib.StatusOnline {
+		info.ImageURL = "https://thumb.live.mmcdn.com/ri/" + modelID + ".jpg"
+	}
+	return info
 }
 
 func chaturbateRoomStatus(roomStatus string) cmdlib.StatusKind {

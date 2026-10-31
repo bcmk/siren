@@ -97,3 +97,25 @@ func TestChaturbateShowKind(t *testing.T) {
 		})
 	}
 }
+
+// An online room polled on its own gets the image its online list would name,
+// and an offline one gets none.
+func TestChaturbateRoomImage(t *testing.T) {
+	cases := []struct {
+		roomStatus string
+		want       string
+	}{
+		{"public", "https://thumb.live.mmcdn.com/ri/alice.jpg"},
+		{"private", "https://thumb.live.mmcdn.com/ri/alice.jpg"},
+		{"away", ""},
+		{"offline", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.roomStatus, func(t *testing.T) {
+			info := chaturbateRoomInfo("alice", &chaturbateResponse{RoomStatus: tc.roomStatus})
+			if info.ImageURL != tc.want {
+				t.Errorf("image = %q, want %q", info.ImageURL, tc.want)
+			}
+		})
+	}
+}
