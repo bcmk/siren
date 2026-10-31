@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v6.7.1 — 2026-10-31
+
+### Fixed
+
+- A polled Chaturbate room shows its image
+
 ## v6.7.0 — 2026-10-29
 
 ### Added
