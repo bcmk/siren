@@ -65,6 +65,8 @@ type cam4Model struct {
 type cam4Response struct {
 	Online        bool  `json:"online"`
 	LastBroadcast int64 `json:"lastBroadcast"` // when the model last went online, Unix ms
+	// AvatarURL is the model's own image, set even where profileImageUrl is a default card.
+	AvatarURL string `json:"avatarUrl"`
 }
 
 // QueryStreamer checks CAM4 model status
@@ -91,14 +93,22 @@ func (c *Cam4Checker) QueryStreamer(modelID string, extras Extras) (cmdlib.Strea
 		cmdlib.Ldbg("response: %s", buf.String())
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
-	info := cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOffline}
-	if parsed.Online {
-		info.Status = cmdlib.StatusOnline
-	}
+	info := cam4ModelInfo(parsed)
 	if extras&ExtraTimes != 0 {
 		info.WentOnlineAt = cam4WentOnlineAt(parsed)
 	}
 	return info, nil
+}
+
+// cam4ModelInfo is what a model's profile info tells of them.
+// It lists no live snapshot, so an online model gets their avatar as the profile image.
+func cam4ModelInfo(parsed *cam4Response) cmdlib.StreamerInfoWithStatus {
+	info := cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOffline}
+	if parsed.Online {
+		info.Status = cmdlib.StatusOnline
+		info.ProfileImageURL = parsed.AvatarURL
+	}
+	return info
 }
 
 // cam4WentOnlineAt reads lastBroadcast; CAM4 never tells when the model went offline
