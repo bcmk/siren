@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v6.8.0 — 2026-11-01
+
+### Added
+
+- `siren-check` prints the profile image
+
+### Fixed
+
+- A polled CAM4 model shows their avatar
+
 ## v6.7.1 — 2026-10-31
 
 ### Fixed
