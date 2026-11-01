@@ -75,6 +75,9 @@ func run() int {
 	if info.ImageURL != "" {
 		fmt.Println(info.ImageURL)
 	}
+	if info.ProfileImageURL != "" {
+		fmt.Printf("prof: %s\n", info.ProfileImageURL)
+	}
 	if info.ShowKind != cmdlib.ShowUnknown {
 		line := showKindText(info.ShowKind)
 		if info.ShowKindSince != nil {
