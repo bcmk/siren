@@ -64,6 +64,7 @@ type database interface {
 	ProfilePhotoUploaded(endpoint string, hash string) bool
 	QueryDurations() map[string]db.QueryDurationsData
 	ReferralIDExists(endpoint string, referralID string) bool
+	ReferredUsersCount(referrerUserID db.UserID) int
 	RemoveAllSubscriptions(userID db.UserID, endpoint string)
 	RemoveSubscription(userID db.UserID, nickname string, endpoint string)
 	RequeueNotification(id int)

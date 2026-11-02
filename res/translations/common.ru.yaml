@@ -49,12 +49,11 @@ referee_exists:
 raw_commands:
   parse: raw
   str: |-
-    referral - Ваша реферальная ссылка
-    buy_subs - Купить дополнительные подписки
     add - Добавить модель
     remove - Удалить модель
     remove_all - Удалить всех моделей
     list - Ваши модели
+    more_subs - Больше подписок
     pics - Кадры трансляций в этот момент
     week - График модели в предыдущие 7 дней
     month - Дни трансляций в предыдущие 5 недель
@@ -70,6 +69,7 @@ commands:
     <b>{{ short_command "remove" }}</b> <code>МОДЕЛЬ</code> — Удалить модель
     <b>{{ short_command "remove_all" }}</b> — Удалить всех моделей
     <b>{{ short_command "list" }}</b> — Ваши модели
+    <b>{{ short_command "more_subs" }}</b> — Больше подписок
     <b>{{ short_command "pics" }}</b> — Кадры трансляций в этот момент
     {{- if feature_enabled "week" }}
     <b>{{ short_command "week" }}</b> <code>МОДЕЛЬ</code> — График модели в предыдущие 7 дней
@@ -200,25 +200,25 @@ profile_removed:
 referral_applied:
   parse: raw
   str: Поздравляем! Вы только что получили дополнительные подписки по реферальной ссылке!
-referral_link:
+more_subs:
   disable_preview: true
-  parse: raw
+  parse: html
   str: |-
     {{ template "subscription_usage" . }}
 
-    Зарабатывайте дополнительные подписки, делясь реферальной ссылкой!
+    <b>Поделитесь реферальной ссылкой</b>
     {{ .link }}
-
-    Вы получите по {{ .referral_bonus }} дополнительных подписок за каждого зарегистрировавшегося пользователя
-    Новый пользователь получит {{ .referee_bonus }} дополнительных подписок
-want_more:
-  disable_preview: true
-  parse: raw
-  str: |-
-    {{ template "referral_link" . }}
+    Вы получите по {{ .referral_bonus }} дополнительных подписок за каждого зарегистрировавшегося пользователя.
+    Новый пользователь тоже получит {{ .referee_bonus }} дополнительных подписок.
+    Зарегистрировалось по вашим ссылкам: {{ .referred_users }}
     {{- if feature_enabled "buy_subs" }}
 
-    Или купите подписки за звёзды Telegram: {{ command "buy_subs" }}
+    <b>Купите за звёзды Telegram</b>
+    Купите подписки, чтобы добавить в список новых {{ template "streamers_accusative" }}.
+    Оплата разовая, подписки остаются у вас навсегда.
+    Чем больше пакет, тем дешевле каждая подписка.
+
+    Выберите пакет ниже.
     {{- end }}
 remove_all:
   parse: raw
@@ -244,12 +244,12 @@ subscription_usage_ad:
     Использовано подписок: {{ .subscriptions_used }}/{{ .total_subscriptions }}
     Хотите больше подписок? Наберите
 
-    {{ command "want_more" }}
+    {{ command "more_subs" }}
 settings:
   parse: html
   str: |-
     {{ template "subscription_usage" . }}
-    Не хватает? Наберите {{ command "want_more" }}
+    Не хватает? Наберите {{ command "more_subs" }}
 
     Кадры трансляций в оповещениях: <b>{{ template "yes_no" .show_images }}</b>
     {{- print "\n" -}}
@@ -621,18 +621,10 @@ faq_pricing:
     <b>Цены</b>
 
     Базовый пакет — бесплатный.
-    Если вы хотите подписаться на более чем {{ .max_subs }} моделей, вы
-    можете зарабатывать дополнительные подписки, делясь реферальными
-    ссылками на этот сервис
-    {{- if feature_enabled "buy_subs" }}, или купить их за звёзды Telegram командой {{ command "buy_subs" }}{{ end }}.
-buy_subs:
-  parse: html
-  disable_preview: true
-  str: |-
-    Здесь вы можете купить дополнительные подписки за звёзды Telegram.
-    Чем больше пакет, тем дешевле каждая подписка.
-
-    Выберите пакет ниже.
+    Чтобы подписаться на более чем {{ .max_subs }} {{ template "streamers_accusative" }},
+    наберите {{ command "more_subs" }}:
+    вы можете зарабатывать дополнительные подписки, делясь реферальной ссылкой
+    {{- if feature_enabled "buy_subs" }}, или купить их за звёзды Telegram{{ end }}.
 buy_subs_package_button:
   parse: raw
   str: |-

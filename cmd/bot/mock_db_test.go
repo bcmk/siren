@@ -794,6 +794,13 @@ func (m *mockDB) ReferralIDExists(endpoint string, referralID string) bool {
 	return m.UserByReferralID(endpoint, referralID) != nil
 }
 
+func (m *mockDB) ReferredUsersCount(referrerUserID db.UserID) int {
+	m.checkGID()
+	return count(m.referralEvents, func(e mockReferralEvent) bool {
+		return e.referrer != nil && *e.referrer == referrerUserID
+	})
+}
+
 func (m *mockDB) RemoveAllSubscriptions(userID db.UserID, endpoint string) {
 	m.checkGID()
 	m.subscriptions = slices.DeleteFunc(m.subscriptions, func(s mockSubscription) bool {

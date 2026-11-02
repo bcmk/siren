@@ -8,7 +8,7 @@ other:
   str: We have bots for other streaming sites too! Type {{ command "help" }} for the full list
   weight: 10
 buy_subs:
-  str: 'Want to follow more streamers? Buy extra subscriptions with Telegram Stars: {{ command "buy_subs" }}'
+  str: 'Want to follow more streamers? Buy extra subscriptions with Telegram Stars: {{ command "more_subs" }}'
   weight: 10
   needs_feature: buy_subs
 ukraine:

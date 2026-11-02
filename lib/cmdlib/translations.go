@@ -80,8 +80,7 @@ type Translations struct {
 	NoOnlineStreamers           *Translation `yaml:"no_online_streamers"`
 	RemoveAll                   *Translation `yaml:"remove_all"`
 	AllStreamersRemoved         *Translation `yaml:"all_streamers_removed"`
-	ReferralLink                *Translation `yaml:"referral_link"`
-	WantMore                    *Translation `yaml:"want_more"`
+	MoreSubs                    *Translation `yaml:"more_subs"`
 	InvalidReferralLink         *Translation `yaml:"invalid_referral_link"`
 	RefereeExists               *Translation `yaml:"referee_exists"`
 	ReferralApplied             *Translation `yaml:"referral_applied"`
@@ -111,7 +110,6 @@ type Translations struct {
 	SearchNoResults             *Translation `yaml:"search_no_results"`
 	SearchFailed                *Translation `yaml:"search_failed"`
 	SearchFailedToAdd           *Translation `yaml:"search_failed_to_add"`
-	BuySubs                     *Translation `yaml:"buy_subs"`
 	BuySubsPackageButton        *Translation `yaml:"buy_subs_package_button"`
 	BuySubsInvoiceTitle         *Translation `yaml:"buy_subs_invoice_title"`
 	BuySubsInvoiceDescription   *Translation `yaml:"buy_subs_invoice_description"`

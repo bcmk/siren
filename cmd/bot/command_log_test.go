@@ -984,8 +984,8 @@ func TestBuySubsCommandNamesItself(t *testing.T) {
 		t.Fatal("no reply queued")
 	}
 	q.message.render("")
-	if got := q.message.(*messageParams).Text; got != "BuySubs" {
-		t.Errorf("reply = %q, want BuySubs", got)
+	if got := q.message.(*messageParams).Text; got != "MoreSubs" {
+		t.Errorf("reply = %q, want MoreSubs", got)
 	}
 	w.sendQueue.push(q)
 	commands := drainSendQueueToLog(t, w)

@@ -257,7 +257,6 @@ func TestDisabledCommandAnswersUnknown(t *testing.T) {
 			command:   "month",
 			configure: func(c *botconfig.Config) { c.EnableWeek = true },
 		},
-		{name: "buy_subs", chatID: 10, command: "buy_subs"},
 		{name: "affiliate from a group member", chatID: -10, command: "affiliate"},
 		{name: "reset_affiliate from a group member", chatID: -10, command: "reset_affiliate"},
 		{name: "subject in a private chat", chatID: 10, command: "enable_subject"},
@@ -329,8 +328,8 @@ func TestOfflineNotificationsNeedNoSubjects(t *testing.T) {
 	}
 }
 
-// TestRepliesNameNoDisabledCommand renders each reply with a feature_enabled guard
-// on a bot that offers no command the table may disable.
+// TestRepliesNameNoDisabledCommand renders each reply that guards a command the table may disable,
+// on a bot that offers none of them.
 func TestRepliesNameNoDisabledCommand(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -339,8 +338,6 @@ func TestRepliesNameNoDisabledCommand(t *testing.T) {
 	}{
 		// A group, which alone is offered the affiliate commands
 		{"settings", -10},
-		{"want_more", 10},
-		{"faq", 10},
 		{"help", 10},
 	}
 	// Kick and Twitch override guarded entries with their own
@@ -372,6 +369,41 @@ func TestRepliesNameNoDisabledCommand(t *testing.T) {
 				for q := w.sendQueue.pop(); q != nil; q = w.sendQueue.pop() {
 					q.message.render("@bot")
 					assertNoDisabledCommand(t, w, q.message.(*messageParams).Text)
+				}
+			})
+		}
+	}
+}
+
+// TestBuySubsGuardsHideBuying renders each reply that pitches buying with buy_subs off and on,
+// and finds the pitch only with it on.
+func TestBuySubsGuardsHideBuying(t *testing.T) {
+	t.Parallel()
+	for _, lang := range realLangs {
+		for _, command := range []string{"more_subs", "faq"} {
+			t.Run(lang+" "+command, func(t *testing.T) {
+				t.Parallel()
+				w := newTestWorker()
+				w.loadTranslations(siteTranslations("chaturbate", lang))
+				render := func(tiers []botconfig.SubsTier) string {
+					cfg := *w.cfg
+					cfg.SubsTiers = tiers
+					w.cfg = &cfg
+					m := testMessage(w, 10, command, 0)
+					w.processIncomingCommand(m, sender{from: &models.User{ID: 99}}, command, "", false)
+					var text strings.Builder
+					for q := w.sendQueue.pop(); q != nil; q = w.sendQueue.pop() {
+						q.message.render("")
+						text.WriteString(q.message.(*messageParams).Text)
+					}
+					return text.String()
+				}
+				pitch := map[string]string{"en": "Stars", "ru": "звёзд"}[lang]
+				if off := render(nil); strings.Contains(off, pitch) {
+					t.Errorf("/%s pitches buying with buying off:\n%s", command, off)
+				}
+				if on := render([]botconfig.SubsTier{{Count: 5, Cost: 100}}); !strings.Contains(on, pitch) {
+					t.Errorf("/%s does not pitch buying with buying on:\n%s", command, on)
 				}
 			})
 		}

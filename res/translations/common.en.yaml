@@ -49,12 +49,11 @@ referee_exists:
 raw_commands:
   parse: raw
   str: |-
-    referral - Your referral link
-    buy_subs - Buy more subscriptions
     add - Add model
     remove - Remove model
     remove_all - Remove all models
     list - Your model subscriptions
+    more_subs - More subscriptions
     pics - Pictures of your models online
     week - Camming hours in the previous 7 days
     month - Camming days in the previous 5 weeks
@@ -70,6 +69,7 @@ commands:
     <b>{{ short_command "remove" }}</b> <code>CAMNAME</code> — Remove model
     <b>{{ short_command "remove_all" }}</b> — Remove all models
     <b>{{ short_command "list" }}</b> — Your model subscriptions
+    <b>{{ short_command "more_subs" }}</b> — More subscriptions
     <b>{{ short_command "pics" }}</b> — Pictures of your models online
     {{- if feature_enabled "week" }}
     <b>{{ short_command "week" }}</b> <code>CAMNAME</code> — Camming hours in the previous 7 days
@@ -200,25 +200,25 @@ profile_removed:
 referral_applied:
   parse: raw
   str: Congrats! You've just got more subscriptions for the referral link!
-referral_link:
+more_subs:
   disable_preview: true
-  parse: raw
+  parse: html
   str: |-
     {{ template "subscription_usage" . }}
 
-    Earn additional subscriptions by sharing this referral link!
+    <b>Share your referral link</b>
     {{ .link }}
-
-    You will get {{ .referral_bonus }} additional subscriptions for every new registered user
-    New user will get {{ .referee_bonus }} additional subscriptions
-want_more:
-  disable_preview: true
-  parse: raw
-  str: |-
-    {{ template "referral_link" . }}
+    You will get {{ .referral_bonus }} additional subscriptions for every newly registered user.
+    A new user will get {{ .referee_bonus }} additional subscriptions as well.
+    Users registered via your referral links: {{ .referred_users }}
     {{- if feature_enabled "buy_subs" }}
 
-    Or buy more right away with Telegram Stars: {{ command "buy_subs" }}
+    <b>Buy with Telegram Stars</b>
+    Buy subscriptions to follow more {{ template "streamers_accusative" }}.
+    You pay once, and the subscriptions are yours for life.
+    The more you buy, the cheaper each subscription is.
+
+    Pick a package below.
     {{- end }}
 remove_all:
   parse: raw
@@ -244,12 +244,12 @@ subscription_usage_ad:
     {{ template "subscription_usage" . }}
     Want more subscriptions? Type
 
-    {{ command "want_more" }}
+    {{ command "more_subs" }}
 settings:
   parse: html
   str: |-
     {{ template "subscription_usage" . }}
-    Need more? Type {{ command "want_more" }}
+    Need more? Type {{ command "more_subs" }}
 
     Show images in notifications: <b>{{ template "yes_no" .show_images }}</b>
     {{- print "\n" -}}
@@ -621,17 +621,9 @@ faq_pricing:
     <b>Pricing</b>
 
     The basic service is free.
-    If you need to subscribe to more than {{ .max_subs }} models you may earn
-    additional subscriptions by sharing this service
-    {{- if feature_enabled "buy_subs" }} or buy them with Telegram Stars via {{ command "buy_subs" }}{{ end }}.
-buy_subs:
-  parse: html
-  disable_preview: true
-  str: |-
-    Buy additional subscriptions with Telegram Stars.
-    The more you buy, the cheaper each subscription is.
-
-    Pick a package below.
+    To subscribe to more than {{ .max_subs }} {{ template "streamers_accusative" }}, type {{ command "more_subs" }}:
+    you can earn additional subscriptions by sharing your referral link
+    {{- if feature_enabled "buy_subs" }} or buy them with Telegram Stars{{ end }}.
 buy_subs_package_button:
   parse: raw
   str: |-

@@ -1391,9 +1391,14 @@ func (w *worker) subscriptionUsage(m receivedMessage, ad bool) {
 	})
 }
 
-func (w *worker) wantMore(m receivedMessage) {
-	w.replyTr(m, db.PriorityHigh, false,
-		w.tr[m.endpoint].WantMore, w.referralData(m))
+// moreSubs shows the referral link and, when buying is on, the packages
+func (w *worker) moreSubs(m receivedMessage) {
+	var markup models.ReplyMarkup
+	if w.cfg.BuySubsEnabled() {
+		markup = w.subsPackagesKeyboard(m.endpoint)
+	}
+	w.replyTrMarkup(m, db.PriorityHigh, false,
+		w.tr[m.endpoint].MoreSubs, w.referralData(m), markup)
 }
 
 // preCheckoutCommand names an admitted pre-checkout query.
@@ -1424,17 +1429,14 @@ func (w *worker) findSubsTier(count int) (botconfig.SubsTier, bool) {
 	return botconfig.SubsTier{}, false
 }
 
-func (w *worker) buySubs(m receivedMessage) {
-	if len(w.cfg.SubsTiers) == 0 {
-		return
-	}
-	tr := w.tr[m.endpoint].BuySubs
-	buttonTpl := w.tr[m.endpoint].BuySubsPackageButton
+// subsPackagesKeyboard returns a buy button per subs tier
+func (w *worker) subsPackagesKeyboard(endpoint string) *models.InlineKeyboardMarkup {
+	buttonTpl := w.tr[endpoint].BuySubsPackageButton
 	base := w.cfg.SubsTiers[0]
 	buttons := make([][]models.InlineKeyboardButton, 0, len(w.cfg.SubsTiers))
 	for _, t := range w.cfg.SubsTiers {
 		discount := (t.Count*base.Cost - t.Cost*base.Count) * 100 / (t.Count * base.Cost)
-		label := templateToString(w.tpl[m.endpoint], buttonTpl.Key, tplData{
+		label := templateToString(w.tpl[endpoint], buttonTpl.Key, tplData{
 			"count":    t.Count,
 			"stars":    t.Cost,
 			"discount": discount,
@@ -1444,8 +1446,7 @@ func (w *worker) buySubs(m receivedMessage) {
 			CallbackData: fmt.Sprintf("buy:stars:%d", t.Count),
 		}})
 	}
-	w.replyTrMarkup(m, db.PriorityHigh, true, tr, nil,
-		&models.InlineKeyboardMarkup{InlineKeyboard: buttons})
+	return &models.InlineKeyboardMarkup{InlineKeyboard: buttons}
 }
 
 func (w *worker) sendSubsInvoice(m receivedMessage, tier botconfig.SubsTier) {
@@ -1512,7 +1513,7 @@ func (w *worker) handleBuyCallback(endpoint string, chatID int64, data string) {
 		// A payload we cannot read is no funnel entry,
 		// as handlePreCheckoutQuery skips a query it cannot parse,
 		// so the menu it re-shows names nothing either.
-		w.buySubs(m)
+		w.moreSubs(m)
 		return
 	}
 	// A menu tap is a command-like event, so it is recorded by name,
@@ -1528,7 +1529,7 @@ func (w *worker) handleStarsBuyCallback(m receivedMessage, arg string) {
 	tier, found := w.findSubsTier(count)
 	if err != nil || !found {
 		// Stale callback (tier removed or button data malformed): re-show menu.
-		w.buySubs(m)
+		w.moreSubs(m)
 		return
 	}
 	w.sendSubsInvoice(m, tier)
@@ -3321,14 +3322,10 @@ func (w *worker) referralData(m receivedMessage) tplData {
 		"link":                referralLink,
 		"referral_bonus":      w.cfg.ReferralBonus,
 		"referee_bonus":       w.cfg.RefereeBonus,
+		"referred_users":      w.db.ReferredUsersCount(m.userID),
 		"subscriptions_used":  subscriptionsNumber,
 		"total_subscriptions": chat.MaxSubs,
 	}
-}
-
-func (w *worker) showReferral(m receivedMessage) {
-	w.replyTr(m, db.PriorityHigh, false,
-		w.tr[m.endpoint].ReferralLink, w.referralData(m))
 }
 
 func (w *worker) start(m receivedMessage, referrer string, userCreated bool) {
@@ -3430,7 +3427,7 @@ var knownCommands = map[string]commandSpec{
 	"ad":                            {},
 	"add":                           {groupAdminOnly: true, memberSubscriptions: true},
 	"affiliate":                     {groupAdminOnly: true, feature: "custom_affiliate_link"},
-	"buy_subs":                      {feature: "buy_subs"},
+	"buy_subs":                      {},
 	"disable_images":                {groupAdminOnly: true},
 	"disable_member_subscriptions":  {groupAdminOnly: true},
 	"disable_offline_notifications": {groupAdminOnly: true, feature: "offline_notifications"},
@@ -3446,6 +3443,7 @@ var knownCommands = map[string]commandSpec{
 	"help":                          {},
 	"list":                          {},
 	"month":                         {feature: "month"},
+	"more_subs":                     {},
 	"online":                        {},
 	"pics":                          {},
 	"referral":                      {},
@@ -3566,10 +3564,8 @@ func (w *worker) processIncomingCommand(
 		w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].RemoveAll, nil)
 	case "sure_remove_all":
 		w.sureRemoveAll(m)
-	case "want_more":
-		w.wantMore(m)
-	case "buy_subs":
-		w.buySubs(m)
+	case "more_subs", "want_more", "referral", "buy_subs":
+		w.moreSubs(m)
 	case "settings":
 		w.settings(m)
 	case "enable_images":
@@ -3592,8 +3588,6 @@ func (w *worker) processIncomingCommand(
 		w.enableMemberSubscriptions(m, true)
 	case "disable_member_subscriptions":
 		w.enableMemberSubscriptions(m, false)
-	case "referral":
-		w.showReferral(m)
 	case "week":
 		w.showWeek(m, arguments)
 	case "month":

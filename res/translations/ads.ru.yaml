@@ -8,7 +8,7 @@ other:
   str: У нас есть боты и для других стриминговых сайтов! Наберите {{ command "help" }}, чтобы увидеть полный список
   weight: 10
 buy_subs:
-  str: 'Покупайте дополнительные подписки за звёзды Telegram: {{ command "buy_subs" }}'
+  str: 'Покупайте дополнительные подписки за звёзды Telegram: {{ command "more_subs" }}'
   weight: 10
   needs_feature: buy_subs
 ukraine:

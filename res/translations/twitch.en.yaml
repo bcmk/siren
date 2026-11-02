@@ -93,12 +93,11 @@ already_added:
 raw_commands:
   parse: raw
   str: |-
-    referral - Your referral link
-    buy_subs - Buy more subscriptions
     add - Add a channel
     remove - Remove a channel
     remove_all - Remove all channels
     list - Your subscriptions
+    more_subs - More subscriptions
     pics - Thumbnails of your channels online
     week - Online hours in the previous 7 days
     month - Online days in the previous 5 weeks
@@ -114,6 +113,7 @@ commands:
     <b>{{ short_command "remove" }}</b> <code>CHANNEL</code> — Remove a channel
     <b>{{ short_command "remove_all" }}</b> — Remove all channels
     <b>{{ short_command "list" }}</b> — Your subscriptions
+    <b>{{ short_command "more_subs" }}</b> — More subscriptions
     <b>{{ short_command "pics" }}</b> — Thumbnails of your channels online
     {{- if feature_enabled "week" }}
     <b>{{ short_command "week" }}</b> <code>CHANNEL</code> — Online hours in the previous 7 days
@@ -143,15 +143,6 @@ streamer_removed:
 no_online_streamers:
   parse: raw
   str: There are no online channels you subscribed to
-faq_pricing:
-  parse: html
-  str: >
-    <b>Pricing</b>
-
-    The basic service is free.
-    If you need to subscribe to more than {{ .max_subs }} channels you may earn
-    additional subscriptions by sharing this service
-    {{- if feature_enabled "buy_subs" }} or buy them with Telegram Stars via {{ command "buy_subs" }}{{ end }}.
 invalid_symbols:
   parse: raw
   disable_preview: true

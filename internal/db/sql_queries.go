@@ -1742,6 +1742,14 @@ func (d *Database) AddReferralEvent(timestamp int, referrerUserID *UserID, refer
 		streamerID)
 }
 
+// ReferredUsersCount returns how many users the referrer's links brought
+func (d *Database) ReferredUsersCount(referrerUserID UserID) int {
+	return d.MustInt(`
+		select count(*) from referral_events where referrer_user_id = $1
+		/*name='referred_users_count'*/`,
+		int64(referrerUserID))
+}
+
 // SetReferralID gives the user's chat on endpoint its referral id
 func (d *Database) SetReferralID(endpoint string, userID UserID, referralID string) {
 	d.MustExec(`

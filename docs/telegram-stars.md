@@ -2,9 +2,8 @@
 
 Users buy extra subscription slots with Telegram Stars (currency `XTR`).
 In a group or channel, a purchase raises the chat's limit, not the payer's.
-The `/buy_subs` command is enabled by configuring `subs_tiers`;
-with no tiers configured, buying is off.
-It shows fixed packages defined by `subs_tiers`.
+`/more_subs` shows the referral link and, with `subs_tiers` configured, a package per tier;
+without them, buying is off.
 Each tier is a count and a total price in Stars.
 `checkConfig` requires counts to ascend,
 and the per-subscription price (cost / count) not to rise as the count grows,
@@ -12,7 +11,7 @@ so larger packages are cheaper per subscription and discounts stay non-negative.
 
 ## Payment flow
 
-1. `/buy_subs` shows an inline keyboard of packages.
+1. `/more_subs` shows an inline keyboard of packages.
 2. Tapping a package sends an invoice (`sendInvoice`, currency `XTR`).
    In a group or channel only an admin's tap sends one, since the invoice posts into the chat.
    A non-admin, per Telegram, gets a notice only they see.

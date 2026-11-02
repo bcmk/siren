@@ -126,9 +126,9 @@ var testTranslations = cmdlib.Translations{
 		Str:   "List",
 		Parse: cmdlib.ParseRaw,
 	},
-	BuySubs: &cmdlib.Translation{
-		Key:   "buy_subs",
-		Str:   "BuySubs",
+	MoreSubs: &cmdlib.Translation{
+		Key:   "more_subs",
+		Str:   "MoreSubs",
 		Parse: cmdlib.ParseRaw,
 	},
 	BuySubsPackageButton: &cmdlib.Translation{
@@ -232,7 +232,7 @@ func newTestWorker() *testWorker {
 	template.Must(tpl.New("month").Parse("Month"))
 	template.Must(tpl.New("month_chunk").Parse("MonthChunk"))
 	template.Must(tpl.New("month_never_online").Parse("MonthNeverOnline"))
-	template.Must(tpl.New("buy_subs").Parse("BuySubs"))
+	template.Must(tpl.New("more_subs").Parse("MoreSubs"))
 	template.Must(tpl.New("buy_subs_package_button").Parse("BuySubsPackageButton"))
 
 	mock := newMockDB()

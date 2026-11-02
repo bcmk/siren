@@ -1,10 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/bcmk/siren/v7/internal/botconfig"
 	"github.com/bcmk/siren/v7/internal/db"
 	"github.com/bcmk/siren/v7/lib/cmdlib"
 	"github.com/go-telegram/bot/models"
@@ -438,6 +441,89 @@ func TestProcessSubsConfirmationsPartialList(t *testing.T) {
 	}
 	if subCount("also_still_pending_model") != 0 {
 		t.Error("expected also_still_pending_model not to be confirmed yet")
+	}
+}
+
+func TestMoreSubsAnswersEveryName(t *testing.T) {
+	t.Parallel()
+	tiers := []botconfig.SubsTier{{Count: 5, Cost: 100}}
+	tests := []struct {
+		command string
+		tiers   []botconfig.SubsTier
+	}{
+		{"more_subs", nil},
+		{"more_subs", tiers},
+		{"want_more", nil},
+		{"want_more", tiers},
+		{"referral", nil},
+		{"referral", tiers},
+		{"buy_subs", nil},
+		{"buy_subs", tiers},
+	}
+	for _, tc := range tests {
+		buying := tc.tiers != nil
+		t.Run(fmt.Sprintf("%s buying %v", tc.command, buying), func(t *testing.T) {
+			t.Parallel()
+			w := newTestWorker()
+			// Every worker shares &testConfig, so copy before setting the tiers.
+			cfg := *w.cfg
+			cfg.SubsTiers = tc.tiers
+			w.cfg = &cfg
+
+			m := testMessage(w, 1, tc.command, 0)
+			w.processIncomingCommand(m, sender{from: &models.User{ID: 1}}, tc.command, "", false)
+
+			q := w.sendQueue.pop()
+			if q == nil {
+				t.Fatal("no reply queued")
+			}
+			q.message.render("")
+			p := q.message.(*messageParams)
+			if p.Text != "MoreSubs" {
+				t.Errorf("reply = %q, want MoreSubs", p.Text)
+			}
+			if got := p.ReplyMarkup != nil; got != buying {
+				t.Errorf("buttons = %v, want %v", got, buying)
+			}
+			if w.sendQueue.Len() != 0 {
+				t.Errorf("%d extra replies queued", w.sendQueue.Len())
+			}
+		})
+	}
+}
+
+// TestMoreSubsShowsReferredUsers renders /more_subs with the real translation entries
+// and finds the count in it.
+func TestMoreSubsShowsReferredUsers(t *testing.T) {
+	t.Parallel()
+	tests := []struct{ lang, want string }{
+		{"en", "Users registered via your referral links: 1"},
+		{"ru", "Зарегистрировалось по вашим ссылкам: 1"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.lang, func(t *testing.T) {
+			t.Parallel()
+			w := newTestWorker()
+			w.loadTranslations(siteTranslations("chaturbate", tc.lang))
+			w.addUserAndChat(20, 0, "private")
+			w.db.SetReferralID("test", w.db.EnsureUser(20), "ref-abc")
+			_, userCreated := w.addUserAndChat(21, 100, "private")
+			w.start(testMessage(w, 21, "start", 100), "ref-abc", userCreated)
+			for w.sendQueue.Len() > 0 {
+				w.sendQueue.pop()
+			}
+
+			m := testMessage(w, 20, "more_subs", 200)
+			w.processIncomingCommand(m, sender{from: &models.User{ID: 20}}, "more_subs", "", false)
+			q := w.sendQueue.pop()
+			if q == nil {
+				t.Fatal("no reply queued")
+			}
+			q.message.render("")
+			if got := q.message.(*messageParams).Text; !strings.Contains(got, tc.want) {
+				t.Errorf("reply lacks %q:\n%s", tc.want, got)
+			}
+		})
 	}
 }
 

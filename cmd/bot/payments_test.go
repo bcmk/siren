@@ -6,9 +6,14 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strings"
 	"testing"
 
+	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+
+	"github.com/bcmk/siren/v7/internal/botconfig"
 )
 
 func TestRejectForRedeliveryWhileMigrating(t *testing.T) {
@@ -215,5 +220,78 @@ func TestParseStarsPayload(t *testing.T) {
 					product, chat, count, tt.wantProduct, tt.wantChat, tt.wantCount)
 			}
 		})
+	}
+}
+
+// TestPackageButtonsSendTheirInvoices reads the buttons /more_subs attaches,
+// then taps each one and checks the invoice it sends.
+func TestPackageButtonsSendTheirInvoices(t *testing.T) {
+	t.Parallel()
+	w := newTestWorker()
+	w.loadTranslations(siteTranslations("chaturbate", "en"))
+	// Every worker shares &testConfig, so copy before setting the tiers.
+	cfg := *w.cfg
+	cfg.SubsTiers = []botconfig.SubsTier{{Count: 5, Cost: 100}, {Count: 10, Cost: 150}}
+	w.cfg = &cfg
+	invoices := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		if strings.HasSuffix(req.URL.Path, "/sendInvoice") {
+			invoices <- req.FormValue("payload") + " " + req.FormValue("prices")
+			_, _ = rw.Write([]byte(`{"ok":true,"result":{"message_id":1,"date":0,"chat":{"id":10,"type":"private"}}}`))
+			return
+		}
+		_, _ = rw.Write([]byte(`{"ok":true,"result":true}`))
+	}))
+	defer srv.Close()
+	stub, err := bot.New("token", bot.WithServerURL(srv.URL), bot.WithSkipGetMe())
+	if err != nil {
+		t.Fatalf("cannot build the stub bot: %v", err)
+	}
+	w.bots = map[string]*bot.Bot{"test": stub}
+
+	m := testMessage(w, 10, "more_subs", 0)
+	w.processIncomingCommand(m, sender{from: &models.User{ID: 10}}, "more_subs", "", false)
+	q := w.sendQueue.pop()
+	if q == nil {
+		t.Fatal("no reply queued")
+	}
+	keyboard, ok := q.message.(*messageParams).ReplyMarkup.(*models.InlineKeyboardMarkup)
+	if !ok || len(keyboard.InlineKeyboard) != 2 {
+		t.Fatalf("keyboard = %#v, want two rows", q.message.(*messageParams).ReplyMarkup)
+	}
+	tests := []struct{ label, invoice string }{
+		{"5 subs · 100 ⭐", `stars:subs:10:5 [{"label":"5 subs","amount":100}]`},
+		{"10 subs · 150 ⭐ (-25%)", `stars:subs:10:10 [{"label":"10 subs","amount":150}]`},
+	}
+	for i, tc := range tests {
+		button := keyboard.InlineKeyboard[i][0]
+		if button.Text != tc.label {
+			t.Errorf("button %d label = %q, want %q", i, button.Text, tc.label)
+		}
+		w.processTGUpdate(incomingPacket{endpoint: "test", message: &models.Update{
+			CallbackQuery: &models.CallbackQuery{
+				Data: button.CallbackData,
+				From: models.User{ID: 10},
+				Message: models.MaybeInaccessibleMessage{
+					Type:    models.MaybeInaccessibleMessageTypeMessage,
+					Message: &models.Message{Chat: models.Chat{ID: 10}},
+				},
+			},
+		}})
+		select {
+		case got := <-invoices:
+			if got != tc.invoice {
+				t.Errorf("button %d invoice = %q, want %q", i, got, tc.invoice)
+			}
+		default:
+			t.Errorf("button %d sent no invoice", i)
+		}
+	}
+	// A sent invoice is logged and needs no reply, which goes out only when sending fails.
+	if n := w.sendQueue.Len(); n != 0 {
+		t.Errorf("replies queued = %d, want 0", n)
+	}
+	if got := w.mockDB.receivedMessageChats(invoiceCommand); !slices.Equal(got, []string{"test 10", "test 10"}) {
+		t.Errorf("invoices logged for %q, want two for test 10", got)
 	}
 }
