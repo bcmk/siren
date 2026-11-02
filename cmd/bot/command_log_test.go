@@ -386,6 +386,16 @@ func TestOwnerCommandsStayOffKnownCommands(t *testing.T) {
 	}
 }
 
+// A command's feature must name a features entry: a misspelt one turns the command off.
+func TestCommandFeaturesAreKnown(t *testing.T) {
+	t.Parallel()
+	for name, spec := range knownCommands {
+		if _, ok := features[spec.feature]; spec.feature != "" && !ok {
+			t.Errorf("/%s needs unknown feature %q", name, spec.feature)
+		}
+	}
+}
+
 // The processTGUpdate whitelist gate keeps a non-whitelisted chat out of the database
 // and out of both logs, whichever update kind carries it;
 // the web app, maintenance and search gates are pinned by their own tests.

@@ -71,10 +71,10 @@ commands:
     <b>{{ short_command "remove_all" }}</b> — Удалить всех моделей
     <b>{{ short_command "list" }}</b> — Ваши модели
     <b>{{ short_command "pics" }}</b> — Кадры трансляций в этот момент
-    {{- if command_enabled "week" }}
+    {{- if feature_enabled "week" }}
     <b>{{ short_command "week" }}</b> <code>МОДЕЛЬ</code> — График модели в предыдущие 7 дней
     {{- end }}
-    {{- if command_enabled "month" }}
+    {{- if feature_enabled "month" }}
     <b>{{ short_command "month" }}</b> <code>МОДЕЛЬ</code> — Дни трансляций в предыдущие 5 недель
     {{- end }}
     <b>{{ short_command "help" }}</b> — Список команд
@@ -216,7 +216,7 @@ want_more:
   parse: raw
   str: |-
     {{ template "referral_link" . }}
-    {{- if command_enabled "buy_subs" }}
+    {{- if feature_enabled "buy_subs" }}
 
     Или купите подписки за звёзды Telegram: {{ command "buy_subs" }}
     {{- end }}
@@ -259,7 +259,7 @@ settings:
       Включить: {{ command "enable_images" }}
     {{- end -}}
 
-    {{- if command_enabled "enable_offline_notifications" -}}
+    {{- if feature_enabled "offline_notifications" -}}
       {{- print "\n" -}}
       {{- print "\n" -}}
       Оповещения о выходе из сети: <b>{{ template "yes_no" .offline_notifications }}</b>
@@ -271,7 +271,7 @@ settings:
       {{- end -}}
     {{- end -}}
 
-    {{- if command_enabled "enable_subject" -}}
+    {{- if feature_enabled "subject" -}}
       {{- print "\n" -}}
       {{- print "\n" -}}
       Показывать тему комнаты: <b>{{ template "yes_no" .show_subject }}</b>
@@ -624,7 +624,7 @@ faq_pricing:
     Если вы хотите подписаться на более чем {{ .max_subs }} моделей, вы
     можете зарабатывать дополнительные подписки, делясь реферальными
     ссылками на этот сервис
-    {{- if command_enabled "buy_subs" }}, или купить их за звёзды Telegram командой {{ command "buy_subs" }}{{ end }}.
+    {{- if feature_enabled "buy_subs" }}, или купить их за звёзды Telegram командой {{ command "buy_subs" }}{{ end }}.
 buy_subs:
   parse: html
   disable_preview: true

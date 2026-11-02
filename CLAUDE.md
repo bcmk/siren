@@ -389,7 +389,7 @@
 
 - When adding a command to the bot, add it to the `knownCommands` table
   so the switch dispatches it and its usage gets logged,
-  and decide there whether the bot offers it (`enabled`)
+  and decide there whether the bot offers it (`feature`)
   and whether only group admins may run it —
   the zero value always offers it and lets any group member.
   An owner-only command goes to `ownerCommands` instead;

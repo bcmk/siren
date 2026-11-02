@@ -930,7 +930,7 @@ func (w *worker) statusTranslation(endpoint string, status cmdlib.StatusKind) *c
 func (w *worker) trAdsSlice(endpoint string) []*cmdlib.Translation {
 	var res []*cmdlib.Translation
 	for _, v := range w.trAds[endpoint] {
-		if v.NeedsCommand != "" && !w.commandEnabled(v.NeedsCommand) {
+		if v.NeedsFeature != "" && !w.featureEnabled(v.NeedsFeature) {
 			continue
 		}
 		res = append(res, v)
@@ -3386,22 +3386,38 @@ type commandSpec struct {
 	// memberSubscriptions commands lose the admin gate where the chat has turned the setting on.
 	memberSubscriptions bool
 
-	// enabled reports whether the bot offers the command; nil means always.
-	enabled func(*worker) bool
+	// feature is the features key that gates the command; empty means always.
+	feature string
 }
 
-// loadTranslations loads the translation entries, binding command_enabled to the command table
+// loadTranslations loads the translation entries, binding feature_enabled to the feature table
 func (w *worker) loadTranslations(files map[string][]string) {
 	w.tr, w.tpl = cmdlib.LoadAllTranslations(files)
 	for _, t := range w.tpl {
-		t.Funcs(texttemplate.FuncMap{"command_enabled": w.commandEnabled})
+		t.Funcs(texttemplate.FuncMap{"feature_enabled": w.featureEnabled})
 	}
 }
 
 // commandEnabled reports whether the command is in the table and the bot offers it.
 func (w *worker) commandEnabled(command string) bool {
 	spec, ok := knownCommands[command]
-	return ok && (spec.enabled == nil || spec.enabled(w))
+	return ok && (spec.feature == "" || w.featureEnabled(spec.feature))
+}
+
+// features holds each feature's check, keyed by the name commands, translations and ads use
+var features = map[string]func(*worker) bool{
+	"buy_subs":              (*worker).buySubsEnabled,
+	"custom_affiliate_link": (*worker).customAffiliateLinkEnabled,
+	"month":                 (*worker).monthEnabled,
+	"offline_notifications": (*worker).offlineNotificationsEnabled,
+	"subject":               (*worker).subjectSupported,
+	"week":                  (*worker).weekEnabled,
+}
+
+// featureEnabled reports whether the feature is in the table and the bot has it on
+func (w *worker) featureEnabled(name string) bool {
+	enabled, ok := features[name]
+	return ok && enabled(w)
 }
 
 func (w *worker) buySubsEnabled() bool              { return w.cfg.BuySubsEnabled() }
@@ -3413,29 +3429,29 @@ func (w *worker) offlineNotificationsEnabled() bool { return w.cfg.OfflineNotifi
 var knownCommands = map[string]commandSpec{
 	"ad":                            {},
 	"add":                           {groupAdminOnly: true, memberSubscriptions: true},
-	"affiliate":                     {groupAdminOnly: true, enabled: (*worker).customAffiliateLinkEnabled},
-	"buy_subs":                      {enabled: (*worker).buySubsEnabled},
+	"affiliate":                     {groupAdminOnly: true, feature: "custom_affiliate_link"},
+	"buy_subs":                      {feature: "buy_subs"},
 	"disable_images":                {groupAdminOnly: true},
 	"disable_member_subscriptions":  {groupAdminOnly: true},
-	"disable_offline_notifications": {groupAdminOnly: true, enabled: (*worker).offlineNotificationsEnabled},
+	"disable_offline_notifications": {groupAdminOnly: true, feature: "offline_notifications"},
 	"disable_silent_messages":       {groupAdminOnly: true},
-	"disable_subject":               {groupAdminOnly: true, enabled: (*worker).subjectSupported},
+	"disable_subject":               {groupAdminOnly: true, feature: "subject"},
 	"enable_images":                 {groupAdminOnly: true},
 	"enable_member_subscriptions":   {groupAdminOnly: true},
-	"enable_offline_notifications":  {groupAdminOnly: true, enabled: (*worker).offlineNotificationsEnabled},
+	"enable_offline_notifications":  {groupAdminOnly: true, feature: "offline_notifications"},
 	"enable_silent_messages":        {groupAdminOnly: true},
-	"enable_subject":                {groupAdminOnly: true, enabled: (*worker).subjectSupported},
+	"enable_subject":                {groupAdminOnly: true, feature: "subject"},
 	"faq":                           {},
 	"feedback":                      {},
 	"help":                          {},
 	"list":                          {},
-	"month":                         {enabled: (*worker).monthEnabled},
+	"month":                         {feature: "month"},
 	"online":                        {},
 	"pics":                          {},
 	"referral":                      {},
 	"remove":                        {groupAdminOnly: true, memberSubscriptions: true},
 	"remove_all":                    {groupAdminOnly: true},
-	"reset_affiliate":               {groupAdminOnly: true, enabled: (*worker).customAffiliateLinkEnabled},
+	"reset_affiliate":               {groupAdminOnly: true, feature: "custom_affiliate_link"},
 	"reset_timezone":                {groupAdminOnly: true},
 	"settings":                      {groupAdminOnly: true},
 	"social":                        {},
@@ -3445,7 +3461,7 @@ var knownCommands = map[string]commandSpec{
 	"timezone":                      {groupAdminOnly: true},
 	"version":                       {},
 	"want_more":                     {},
-	"week":                          {enabled: (*worker).weekEnabled},
+	"week":                          {feature: "week"},
 }
 
 // affiliateCommandAllowed refuses a private chat, telling it where the command works

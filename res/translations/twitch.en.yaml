@@ -115,10 +115,10 @@ commands:
     <b>{{ short_command "remove_all" }}</b> — Remove all channels
     <b>{{ short_command "list" }}</b> — Your subscriptions
     <b>{{ short_command "pics" }}</b> — Thumbnails of your channels online
-    {{- if command_enabled "week" }}
+    {{- if feature_enabled "week" }}
     <b>{{ short_command "week" }}</b> <code>CHANNEL</code> — Online hours in the previous 7 days
     {{- end }}
-    {{- if command_enabled "month" }}
+    {{- if feature_enabled "month" }}
     <b>{{ short_command "month" }}</b> <code>CHANNEL</code> — Online days in the previous 5 weeks
     {{- end }}
     <b>{{ short_command "help" }}</b> — Help
@@ -151,7 +151,7 @@ faq_pricing:
     The basic service is free.
     If you need to subscribe to more than {{ .max_subs }} channels you may earn
     additional subscriptions by sharing this service
-    {{- if command_enabled "buy_subs" }} or buy them with Telegram Stars via {{ command "buy_subs" }}{{ end }}.
+    {{- if feature_enabled "buy_subs" }} or buy them with Telegram Stars via {{ command "buy_subs" }}{{ end }}.
 invalid_symbols:
   parse: raw
   disable_preview: true

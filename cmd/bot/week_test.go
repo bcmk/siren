@@ -36,8 +36,8 @@ var loadedRealTemplates = sync.OnceValue(func() map[string]*texttemplate.Templat
 	templates := map[string]*texttemplate.Template{}
 	for _, lang := range realLangs {
 		_, tpl := cmdlib.LoadAllTranslations(realTranslations(lang))
-		// The bot binds command_enabled at startup, and every command is enabled here.
-		templates[lang] = tpl["test"].Funcs(texttemplate.FuncMap{"command_enabled": func(string) bool { return true }})
+		// The bot binds feature_enabled at startup, and every feature is on here.
+		templates[lang] = tpl["test"].Funcs(texttemplate.FuncMap{"feature_enabled": func(string) bool { return true }})
 	}
 	return templates
 })

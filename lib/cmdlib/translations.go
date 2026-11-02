@@ -45,8 +45,8 @@ type Translation struct {
 	Image          string    `yaml:"image"`
 	ImageBytes     []byte    `yaml:"-"`
 	Weight         int       `yaml:"weight"`
-	// NeedsCommand drops an ad that pitches a command the bot does not offer.
-	NeedsCommand string `yaml:"needs_command"`
+	// NeedsFeature drops an ad that pitches a feature the bot has off.
+	NeedsFeature string `yaml:"needs_feature"`
 }
 
 // AllTranslations represents a collection of translated texts in all supported languages
@@ -221,15 +221,15 @@ func (x *Translations) ToMap() map[string]*Translation {
 // short_command writes the shortest form that still reaches the bot.
 // Both refuse here: the names must resolve at parse time, but only the send path knows the chat,
 // so executing this set without CommandFuncs fails instead of writing a command bare.
-// command_enabled reports whether the bot offers a command, and refuses until the bot binds it.
+// feature_enabled reports whether the bot has a feature on, and refuses until the bot binds it.
 func TemplateFuncs() template.FuncMap {
 	return template.FuncMap{
 		"mod":           func(i, j int) int { return i % j },
 		"add":           func(i, j int) int { return i + j },
 		"command":       unboundCommand("command"),
 		"short_command": unboundCommand("short_command"),
-		"command_enabled": func(name string) (bool, error) {
-			return false, fmt.Errorf("command_enabled %q rendered with no bot bound", name)
+		"feature_enabled": func(name string) (bool, error) {
+			return false, fmt.Errorf("feature_enabled %q rendered with no bot bound", name)
 		},
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/bcmk/siren/v7/internal/botconfig"
+	"github.com/bcmk/siren/v7/internal/checkers"
 	"github.com/bcmk/siren/v7/lib/cmdlib"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -241,6 +242,8 @@ func TestDisabledCommandAnswersUnknown(t *testing.T) {
 		command string
 		// configure edits the test config, leaving the command off
 		configure func(*botconfig.Config)
+		// subjectSupported runs the bot on a site that reports subjects
+		subjectSupported bool
 	}{
 		{
 			name:      "week with month on",
@@ -265,6 +268,13 @@ func TestDisabledCommandAnswersUnknown(t *testing.T) {
 			command:   "enable_offline_notifications",
 			configure: func(c *botconfig.Config) { c.OfflineNotifications = false },
 		},
+		{
+			name:             "offline notifications turned off on a site with subjects",
+			chatID:           10,
+			command:          "enable_offline_notifications",
+			configure:        func(c *botconfig.Config) { c.OfflineNotifications = false },
+			subjectSupported: true,
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -275,6 +285,9 @@ func TestDisabledCommandAnswersUnknown(t *testing.T) {
 				cfg := *w.cfg
 				tc.configure(&cfg)
 				w.cfg = &cfg
+			}
+			if tc.subjectSupported {
+				w.checker = &checkers.ChaturbateChecker{}
 			}
 			looked := false
 			w.chatMember = func(string, int64, int64) (*models.ChatMember, error) {
@@ -298,7 +311,25 @@ func TestDisabledCommandAnswersUnknown(t *testing.T) {
 	}
 }
 
-// TestRepliesNameNoDisabledCommand renders each reply with a command_enabled guard
+// Offline notifications need no subjects, so a site without them still offers their commands.
+func TestOfflineNotificationsNeedNoSubjects(t *testing.T) {
+	t.Parallel()
+	w := newTestWorker()
+	if w.checker.Capabilities().SupportsSubject {
+		t.Fatal("the test checker reports subjects, so it cannot check this")
+	}
+	// Every worker shares &testConfig, so copy before changing it.
+	cfg := *w.cfg
+	cfg.OfflineNotifications = true
+	w.cfg = &cfg
+	for _, command := range []string{"enable_offline_notifications", "disable_offline_notifications"} {
+		if !w.commandEnabled(command) {
+			t.Errorf("/%s is not offered", command)
+		}
+	}
+}
+
+// TestRepliesNameNoDisabledCommand renders each reply with a feature_enabled guard
 // on a bot that offers no command the table may disable.
 func TestRepliesNameNoDisabledCommand(t *testing.T) {
 	t.Parallel()
@@ -374,11 +405,42 @@ func TestAdsNameNoDisabledCommand(t *testing.T) {
 	}
 }
 
+func TestBuySubsAdNeedsItsFeature(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		tiers []botconfig.SubsTier
+		want  bool
+	}{
+		{"buy_subs off", nil, false},
+		{"buy_subs on", []botconfig.SubsTier{{Count: 5, Cost: 100}}, true},
+	}
+	for _, lang := range realLangs {
+		files := []string{filepath.Join("..", "..", "res", "translations", "ads."+lang+".yaml")}
+		for _, tc := range tests {
+			t.Run(lang+" "+tc.name, func(t *testing.T) {
+				t.Parallel()
+				cfg := testConfig
+				cfg.SubsTiers = tc.tiers
+				w := &worker{cfg: &cfg}
+				w.trAds, w.tplAds = cmdlib.LoadAllAds(map[string][]string{"test": files})
+				got := false
+				for _, ad := range w.trAdsSlice("test") {
+					got = got || ad.Key == "buy_subs"
+				}
+				if got != tc.want {
+					t.Errorf("buy_subs ad offered = %v, want %v", got, tc.want)
+				}
+			})
+		}
+	}
+}
+
 // assertNoDisabledCommand fails the test where text names a command the bot does not offer
 func assertNoDisabledCommand(t *testing.T, w *testWorker, text string) {
 	t.Helper()
 	for command, spec := range knownCommands {
-		if spec.enabled == nil {
+		if spec.feature == "" {
 			continue
 		}
 		if w.commandEnabled(command) {

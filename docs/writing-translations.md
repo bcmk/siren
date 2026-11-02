@@ -36,7 +36,7 @@ and for a translation entry with no markup.
 
 Optional fields: `disable_preview: true` suppresses link previews;
 `image:` attaches an image; `weight:` biases random selection (ads);
-`needs_command:` drops an ad where the bot does not offer that command.
+`needs_feature:` drops an ad where the bot has that feature off.
 
 ## Punctuation
 
@@ -74,10 +74,11 @@ it writes the least a reader must type, a bare `add` in a private chat
 and `/add@SirenBot` in a group or channel.
 Bolding the name instead, as `<b>add</b>`, gives a channel reader nothing that works.
 
-Wrap a line naming a command the bot may not offer
-in `{{- if command_enabled "name" }}` and `{{- end }}`,
-as the `commands` translation entry does for /week and /month, and `want_more` for /buy_subs.
-An ad cannot call `command_enabled`; `needs_command` drops the whole ad instead.
+Wrap a line that needs a feature the bot may have off, such as a command it may not offer,
+in `{{- if feature_enabled "name" }}` and `{{- end }}`,
+as the `commands` translation entry does for /week and /month.
+The names are the keys of `features` in `cmd/bot/main.go`.
+An ad cannot call `feature_enabled`; `needs_feature` drops the whole ad instead.
 
 A channel drops a bare command, and in a group every bot present answers one,
 so a command the bot prints must name the bot.
@@ -91,17 +92,20 @@ A misspelled `command` is a parse error at startup,
 where a misspelled field would render `<no value>` to a user,
 and a sub-template needs no dot, since a function does not read the data.
 
-Some keys never reach a chat as a message and must not name a command at all.
-They render for an API that takes no chat: menu entries, button labels, payment chrome.
-The `search_*` keys are not rendered at all, but read as raw text into the web app,
-so a mention there would reach the user verbatim.
-`unaddressedKeys` in `cmd/bot/command_mention_test.go` lists them.
-Nothing derives that list, so a render added with no chat needs a key added by hand.
-A key that slips the list is not silent:
-`command` is unbound until the send path binds it, so rendering with no chat fails.
+Some keys must not name a command at all, and `cmd/bot/command_mention_test.go` lists them.
+`unaddressedKeys` are rendered with no chat:
+the command menu, package buttons, invoice fields, pre-checkout and callback answers.
+`unrenderedKeys` are read as raw text, never rendered:
+the web app keys and their buttons, and `affiliate_command`.
+A mention or a `feature_enabled` call in a key read raw would reach the user verbatim.
+Nothing derives either list, so add the key by hand when you add such a render or raw read.
+A command in a key left out of `unaddressedKeys` fails at render,
+since `command` is unbound until the send path binds it.
+A key left out of `unrenderedKeys` fails nothing, since nothing renders it.
 
 `TestTranslationsMarkEveryCommand` fails on a command written bare or bolded as a name,
-on a name no command has, and on a mention in any key that never reaches a chat.
+on a command name missing from `knownCommands`, on a feature name missing from `features`,
+on a mention in a key on either list, and on a `feature_enabled` call in a key of `unrenderedKeys`.
 
 ## Whitespace and templates
 

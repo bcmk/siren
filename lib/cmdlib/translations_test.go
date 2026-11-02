@@ -231,9 +231,9 @@ func TestTranslationTemplatesExecute(t *testing.T) {
 			_, allTr := LoadEndpointTranslations(files)
 			tpl := template.New("")
 			tpl.Funcs(TemplateFuncs())
-			// The bot binds command_enabled at startup and a chat per send, and so must this.
+			// The bot binds feature_enabled at startup and a chat per send, and so must this.
 			tpl.Funcs(CommandFuncs("@bot"))
-			tpl.Funcs(template.FuncMap{"command_enabled": func(string) bool { return true }})
+			tpl.Funcs(template.FuncMap{"feature_enabled": func(string) bool { return true }})
 			for k, v := range allTr {
 				_, err := tpl.New(k).Parse(v.Str)
 				if err != nil {

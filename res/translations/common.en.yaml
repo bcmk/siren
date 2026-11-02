@@ -71,10 +71,10 @@ commands:
     <b>{{ short_command "remove_all" }}</b> — Remove all models
     <b>{{ short_command "list" }}</b> — Your model subscriptions
     <b>{{ short_command "pics" }}</b> — Pictures of your models online
-    {{- if command_enabled "week" }}
+    {{- if feature_enabled "week" }}
     <b>{{ short_command "week" }}</b> <code>CAMNAME</code> — Camming hours in the previous 7 days
     {{- end }}
-    {{- if command_enabled "month" }}
+    {{- if feature_enabled "month" }}
     <b>{{ short_command "month" }}</b> <code>CAMNAME</code> — Camming days in the previous 5 weeks
     {{- end }}
     <b>{{ short_command "help" }}</b> — Help
@@ -216,7 +216,7 @@ want_more:
   parse: raw
   str: |-
     {{ template "referral_link" . }}
-    {{- if command_enabled "buy_subs" }}
+    {{- if feature_enabled "buy_subs" }}
 
     Or buy more right away with Telegram Stars: {{ command "buy_subs" }}
     {{- end }}
@@ -259,7 +259,7 @@ settings:
       Enable: {{ command "enable_images" }}
     {{- end -}}
 
-    {{- if command_enabled "enable_offline_notifications" -}}
+    {{- if feature_enabled "offline_notifications" -}}
       {{- print "\n" -}}
       {{- print "\n" -}}
       Send offline notifications: <b>{{ template "yes_no" .offline_notifications }}</b>
@@ -271,7 +271,7 @@ settings:
       {{- end -}}
     {{- end -}}
 
-    {{- if command_enabled "enable_subject" -}}
+    {{- if feature_enabled "subject" -}}
       {{- print "\n" -}}
       {{- print "\n" -}}
       Show room subject: <b>{{ template "yes_no" .show_subject }}</b>
@@ -623,7 +623,7 @@ faq_pricing:
     The basic service is free.
     If you need to subscribe to more than {{ .max_subs }} models you may earn
     additional subscriptions by sharing this service
-    {{- if command_enabled "buy_subs" }} or buy them with Telegram Stars via {{ command "buy_subs" }}{{ end }}.
+    {{- if feature_enabled "buy_subs" }} or buy them with Telegram Stars via {{ command "buy_subs" }}{{ end }}.
 buy_subs:
   parse: html
   disable_preview: true

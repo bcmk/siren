@@ -7,4 +7,4 @@ streamer:
     Мы не постим рекламу в каналах и группах.
     Как начать: https://siren.chat/streamer
   weight: 5
-  needs_command: affiliate
+  needs_feature: custom_affiliate_link

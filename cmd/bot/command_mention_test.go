@@ -43,13 +43,9 @@ func TestCommandRendersPerMention(t *testing.T) {
 	}
 }
 
-// unaddressedKeys never reach a chat as a message, so a command named in one can never work.
-// Add a key here when you render one with no chat.
-// One that slips the list is not silent: the render fails, naming the command.
-// Some render for an API that takes no chat: the command menu, an inline button label,
-// the invoice fields, a pre-checkout answer, a callback answer.
-// The search keys are not rendered at all, but read as raw Str into the web app,
-// where a mention would reach the user verbatim.
+// unaddressedKeys are rendered with no chat, so they must name no command:
+// the command menu, package buttons, invoice fields, pre-checkout and callback answers.
+// Add a key here when you add such a render: a command in a key left out fails at render.
 var unaddressedKeys = map[string]bool{
 	"raw_commands":                 true,
 	"buy_subs_package_button":      true,
@@ -58,6 +54,12 @@ var unaddressedKeys = map[string]bool{
 	"buy_subs_invoice_label":       true,
 	"buy_invoice_expired":          true,
 	"buy_admins_only":              true,
+}
+
+// unrenderedKeys are read as raw Str, never rendered,
+// so a command or a feature_enabled call in one would reach the user verbatim.
+// Add a key here when you read one raw: nothing fails for a key left out.
+var unrenderedKeys = map[string]bool{
 	"affiliate_command":            true,
 	"search_button":                true,
 	"search_header":                true,
@@ -114,19 +116,28 @@ func TestTranslationsMarkEveryCommand(t *testing.T) {
 		path := filepath.Join(dir, e.Name())
 		// LoadAds is the one loader that takes a lone file without demanding completeness.
 		for key, tr := range cmdlib.LoadAds([]string{path}) {
-			if _, ok := knownCommands[tr.NeedsCommand]; tr.NeedsCommand != "" && !ok {
-				t.Errorf("%s: %s needs unknown command %q", e.Name(), key, tr.NeedsCommand)
+			if _, ok := features[tr.NeedsFeature]; tr.NeedsFeature != "" && !ok {
+				t.Errorf("%s: %s needs unknown feature %q", e.Name(), key, tr.NeedsFeature)
 			}
-			names, problems := commandCalls(tr.Str)
+			calls, problems := commandAndFeatureCalls(tr.Str)
 			for _, problem := range problems {
 				t.Errorf("%s: %s: %s", e.Name(), key, problem)
 			}
-			for _, name := range names {
-				if _, ok := knownCommands[name]; !ok {
-					t.Errorf("%s: %s names unknown command %q", e.Name(), key, name)
+			for _, call := range calls {
+				if call.fn == "feature_enabled" {
+					if _, ok := features[call.name]; !ok {
+						t.Errorf("%s: %s calls feature_enabled with unknown feature %q", e.Name(), key, call.name)
+					}
+					if unrenderedKeys[key] {
+						t.Errorf("%s: %s is read raw: do not call feature_enabled here", e.Name(), key)
+					}
+					continue
 				}
-				if unaddressedKeys[key] {
-					t.Errorf("%s: %s never reaches a chat: do not name /%s here", e.Name(), key, name)
+				if _, ok := knownCommands[call.name]; !ok {
+					t.Errorf("%s: %s names unknown command %q", e.Name(), key, call.name)
+				}
+				if unaddressedKeys[key] || unrenderedKeys[key] {
+					t.Errorf("%s: %s is not rendered for a chat: do not name /%s here", e.Name(), key, call.name)
 				}
 			}
 		}
@@ -139,10 +150,10 @@ func TestTranslationsMarkEveryCommand(t *testing.T) {
 			if k := topLevelKey.FindStringSubmatch(line); k != nil {
 				key = k[1]
 			}
-			if unaddressedKeys[key] {
+			if unaddressedKeys[key] || unrenderedKeys[key] {
 				// The tree walk above already rejects a call here, so only a bare command is left.
 				if m := bare.FindStringSubmatch(line); m != nil {
-					t.Errorf("%s:%d %s never reaches a chat: do not name /%s here", e.Name(), i+1, key, m[2])
+					t.Errorf("%s:%d %s is not rendered for a chat: do not name /%s here", e.Name(), i+1, key, m[2])
 				}
 				continue
 			}
@@ -156,12 +167,15 @@ func TestTranslationsMarkEveryCommand(t *testing.T) {
 	}
 }
 
-// commandCalls returns every command name passed to command, short_command or command_enabled,
+// commandOrFeatureCall is a call to command, short_command or feature_enabled with its quoted name
+type commandOrFeatureCall struct{ fn, name string }
+
+// commandAndFeatureCalls returns every call to command, short_command or feature_enabled,
 // however the action is spelled.
 // Quoting, spacing, folded lines, nesting and defines are the engine's business, not a regexp's.
 // Each call it cannot vouch for, and a text that does not parse,
 // comes back as a problem for the caller to report.
-func commandCalls(text string) (names, problems []string) {
+func commandAndFeatureCalls(text string) (calls []commandOrFeatureCall, problems []string) {
 	tpl, err := texttemplate.New("t").Funcs(cmdlib.TemplateFuncs()).Parse(text)
 	if err != nil {
 		return nil, []string{fmt.Sprintf("does not parse: %v", err)}
@@ -174,10 +188,10 @@ func commandCalls(text string) (names, problems []string) {
 		}
 		for _, cmd := range p.Cmds {
 			if id, ok := cmd.Args[0].(*parse.IdentifierNode); ok &&
-				(id.Ident == "command" || id.Ident == "short_command" || id.Ident == "command_enabled") {
+				(id.Ident == "command" || id.Ident == "short_command" || id.Ident == "feature_enabled") {
 				if len(cmd.Args) == 2 {
 					if lit, ok := cmd.Args[1].(*parse.StringNode); ok {
-						names = append(names, lit.Text)
+						calls = append(calls, commandOrFeatureCall{fn: id.Ident, name: lit.Text})
 						continue
 					}
 				}
@@ -223,34 +237,54 @@ func commandCalls(text string) (names, problems []string) {
 			walk(assoc.Root)
 		}
 	}
-	// The set's order is a map's, so pin the names for a caller that compares.
-	sort.Strings(names)
-	return names, problems
+	// The templates come in a map's order, so sort the calls for a caller that compares them.
+	sort.Slice(calls, func(i, j int) bool {
+		if calls[i].name != calls[j].name {
+			return calls[i].name < calls[j].name
+		}
+		return calls[i].fn < calls[j].fn
+	})
+	return calls, problems
 }
 
-// TestCommandWalkSeesEveryForm pins the extraction to the engine, not to a spelling:
+// TestCommandAndFeatureCallsSeeEveryForm pins the extraction to the engine, not to a spelling:
 // whatever parses as a call is seen, however it is quoted, spaced, folded or nested,
 // and a call the walk cannot vouch for is a problem, not a panic.
-func TestCommandWalkSeesEveryForm(t *testing.T) {
+func TestCommandAndFeatureCallsSeeEveryForm(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name     string
 		form     string
-		want     []string
+		want     []commandOrFeatureCall
 		problems bool
 	}{
-		{"canonical", `{{ command "add" }}`, []string{"add"}, false},
-		{"no spaces", `{{command "add"}}`, []string{"add"}, false},
-		{"extra spaces", `{{  command  "add"  }}`, []string{"add"}, false},
-		{"both trims", `{{- command "add" -}}`, []string{"add"}, false},
-		{"backticks", "{{ command `add` }}", []string{"add"}, false},
-		{"uppercase passes to validation", `{{ command "ADD" }}`, []string{"ADD"}, false},
-		{"nested in print", `{{ print (command "add") }}`, []string{"add"}, false},
-		{"split across lines", "{{ command\n\"add\" }}", []string{"add"}, false},
-		{"inside a branch", `{{ if . }}{{ command "add" }}{{ end }}`, []string{"add"}, false},
-		{"inside a define", `{{ define "d" }}{{ command "add" }}{{ end }}{{ template "d" }}`, []string{"add"}, false},
-		{"short form", `{{ short_command "list" }}`, []string{"list"}, false},
-		{"command_enabled check", `{{ if command_enabled "week" }}week{{ end }}`, []string{"week"}, false},
+		{"canonical", `{{ command "add" }}`, []commandOrFeatureCall{{"command", "add"}}, false},
+		{"no spaces", `{{command "add"}}`, []commandOrFeatureCall{{"command", "add"}}, false},
+		{"extra spaces", `{{  command  "add"  }}`, []commandOrFeatureCall{{"command", "add"}}, false},
+		{"both trims", `{{- command "add" -}}`, []commandOrFeatureCall{{"command", "add"}}, false},
+		{"backticks", "{{ command `add` }}", []commandOrFeatureCall{{"command", "add"}}, false},
+		{"uppercase passes to validation", `{{ command "ADD" }}`, []commandOrFeatureCall{{"command", "ADD"}}, false},
+		{"nested in print", `{{ print (command "add") }}`, []commandOrFeatureCall{{"command", "add"}}, false},
+		{"split across lines", "{{ command\n\"add\" }}", []commandOrFeatureCall{{"command", "add"}}, false},
+		{
+			"inside a branch",
+			`{{ if . }}{{ command "add" }}{{ end }}`,
+			[]commandOrFeatureCall{{"command", "add"}},
+			false,
+		},
+		{
+			"inside a define",
+			`{{ define "d" }}{{ command "add" }}{{ end }}{{ template "d" }}`,
+			[]commandOrFeatureCall{{"command", "add"}},
+			false,
+		},
+		{"short form", `{{ short_command "list" }}`, []commandOrFeatureCall{{"short_command", "list"}}, false},
+		{
+			"feature_enabled check",
+			`{{ if feature_enabled "week" }}week{{ end }}`,
+			[]commandOrFeatureCall{{"feature_enabled", "week"}},
+			false,
+		},
 		{"no call", `plain text with {{ .field }}`, nil, false},
 		{"no argument", `{{ command }}`, nil, true},
 		{"piped argument", `{{ "add" | command }}`, nil, true},
@@ -260,12 +294,12 @@ func TestCommandWalkSeesEveryForm(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			names, problems := commandCalls(tc.form)
-			if !slices.Equal(names, tc.want) {
-				t.Errorf("commandCalls(%q) = %v, want %v", tc.form, names, tc.want)
+			calls, problems := commandAndFeatureCalls(tc.form)
+			if !slices.Equal(calls, tc.want) {
+				t.Errorf("commandAndFeatureCalls(%q) = %v, want %v", tc.form, calls, tc.want)
 			}
 			if (len(problems) > 0) != tc.problems {
-				t.Errorf("commandCalls(%q) problems = %v, want problems: %v", tc.form, problems, tc.problems)
+				t.Errorf("commandAndFeatureCalls(%q) problems = %v, want problems: %v", tc.form, problems, tc.problems)
 			}
 		})
 	}
