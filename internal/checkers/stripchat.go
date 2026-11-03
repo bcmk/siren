@@ -219,6 +219,9 @@ func (c *StripchatChecker) QueryStreamer(modelID string, extras Extras) (cmdlib.
 				// A public-private switch resets statusChangedAt, so it is not when the model went online
 				online.ShowKindSince = &since
 			}
+			if extras&ExtraImages != 0 {
+				online.ProfileImageURL = c.queryProfileImage(modelID)
+			}
 			return online, nil
 		}
 	}
@@ -334,6 +337,56 @@ func (c *StripchatChecker) checkOnlyOnline() (map[string]cmdlib.StreamerInfo, er
 	return streamers, nil
 }
 
+// queryProfileImage looks up an online model's profile image in the models endpoint, empty for none
+func (c *StripchatChecker) queryProfileImage(modelID string) string {
+	// min_request_interval_ms paces each request, not just each status query
+	time.Sleep(c.Cfg.MinRequestInterval())
+	models, err := c.queryModels(c.Cfg.UsersOnlineEndpoint, []string{modelID})
+	if err != nil {
+		cmdlib.Lerr("cannot query the profile image: model = %s, %v", modelID, err)
+		return ""
+	}
+	for _, m := range models {
+		if strings.EqualFold(m.Username, modelID) {
+			return m.PreviewURL
+		}
+	}
+	return ""
+}
+
+// queryModels asks the models endpoint about the online models of the given nicknames
+func (c *StripchatChecker) queryModels(endpoint string, nicknames []string) ([]stripchatModel, error) {
+	request, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("cannot parse endpoint %q", endpoint)
+	}
+	q := request.Query()
+	q.Set("userId", string(c.Cfg.UserID))
+	q.Set("modelsList", strings.Join(nicknames, ","))
+	q.Set("strict", "1")
+	// Without status, the endpoint returns public models only
+	q.Set("status", "public,groupShow,private,p2p,p2pVoice,virtualPrivate")
+	// Otherwise the endpoint hides models geobanned where the bot runs
+	q.Set("applyGeobans", "0")
+	q.Set("limit", strconv.Itoa(len(nicknames)))
+	request.RawQuery = q.Encode()
+
+	resp, buf, err := cmdlib.OnlineQuery(request.String(), c.Client, c.Cfg.Headers)
+	if err != nil {
+		return nil, fmt.Errorf("cannot send a query, %v", err)
+	}
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("query status %d", resp.StatusCode)
+	}
+	parsed := &stripchatResponse{}
+	if err := json.Unmarshal(buf.Bytes(), parsed); err != nil {
+		cmdlib.Ldbg("response: %s", buf.String())
+		return nil, fmt.Errorf("cannot parse response, %v", err)
+	}
+	cmdlib.Ldbg("models count in the response: %d", len(parsed.Models))
+	return parsed.Models, nil
+}
+
 // QueryOnlineStreamers returns Stripchat online models
 func (c *StripchatChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInfo, error) {
 	endpoint := c.Cfg.UsersOnlineEndpoint
@@ -344,42 +397,12 @@ func (c *StripchatChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInf
 	// This is the actual limit, although the documentation states 1000
 	limitK := 400
 	chunkIter := slices.Chunk(slices.Collect(maps.Keys(streamers)), limitK)
-	userID := string(c.Cfg.UserID)
 	for chunk := range chunkIter {
-		modelIDs := strings.Join(chunk, ",")
-
-		request, err := url.Parse(endpoint)
+		models, err := c.queryModels(endpoint, chunk)
 		if err != nil {
-			return nil, fmt.Errorf("cannot parse endpoint %q", endpoint)
+			return nil, err
 		}
-
-		q := request.Query()
-		q.Set("userId", userID)
-		q.Set("modelsList", modelIDs)
-		q.Set("strict", "1")
-		// Without status, the endpoint returns public models only
-		q.Set("status", "public,groupShow,private,p2p,p2pVoice,virtualPrivate")
-		// Otherwise the endpoint hides models geobanned where the bot runs
-		q.Set("applyGeobans", "0")
-		q.Set("limit", strconv.Itoa(len(chunk)))
-
-		request.RawQuery = q.Encode()
-
-		resp, buf, err := cmdlib.OnlineQuery(request.String(), c.Client, c.Cfg.Headers)
-		if err != nil {
-			return nil, fmt.Errorf("cannot send a query, %v", err)
-		}
-		if resp.StatusCode != 200 {
-			return nil, fmt.Errorf("query status %d", resp.StatusCode)
-		}
-		parsed := &stripchatResponse{}
-		err = json.Unmarshal(buf.Bytes(), parsed)
-		if err != nil {
-			cmdlib.Ldbg("response: %s", buf.String())
-			return nil, fmt.Errorf("cannot parse response, %v", err)
-		}
-		cmdlib.Ldbg("models count in the response: %d", len(parsed.Models))
-		for _, m := range parsed.Models {
+		for _, m := range models {
 			if m.Username != "" {
 				modelID := strings.ToLower(m.Username)
 				viewers := m.ViewersCount

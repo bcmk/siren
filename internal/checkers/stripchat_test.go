@@ -2,9 +2,44 @@ package checkers
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
+
+// An online model's profile image is the preview the models endpoint lists for them alone,
+// and one it doesn't list gets none.
+func TestStripchatQueryProfileImage(t *testing.T) {
+	t.Parallel()
+	const preview = "https://static-proxy.strpst.com/previews/5/7/b/57b2-full"
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		models := ""
+		if r.URL.Query().Get("modelsList") == "alice" && r.URL.Query().Get("limit") == "1" {
+			models = `{"username": "Alice", "previewUrl": "` + preview + `"}`
+		}
+		_, _ = rw.Write([]byte(`{"models": [` + models + `]}`))
+	}))
+	t.Cleanup(srv.Close)
+	c := &StripchatChecker{}
+	c.Cfg = &StripchatCheckerConfig{UsersOnlineEndpoint: srv.URL + "/api/models?a=1"}
+	c.Client = srv.Client()
+	cases := []struct {
+		name    string
+		modelID string
+		want    string
+	}{
+		{"listed", "alice", preview},
+		{"not listed", "bob", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := c.queryProfileImage(tc.modelID); got != tc.want {
+				t.Errorf("profile image = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestStripchatNicknamePreprocessing(t *testing.T) {
 	cases := []struct {
