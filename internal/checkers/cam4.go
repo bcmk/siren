@@ -93,7 +93,7 @@ func (c *Cam4Checker) QueryStreamer(modelID string, extras Extras) (cmdlib.Strea
 		cmdlib.Ldbg("response: %s", buf.String())
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
-	info := cam4ModelInfo(parsed)
+	info := cam4ModelInfo(modelID, parsed)
 	if extras&ExtraTimes != 0 {
 		info.WentOnlineAt = cam4WentOnlineAt(parsed)
 	}
@@ -101,11 +101,12 @@ func (c *Cam4Checker) QueryStreamer(modelID string, extras Extras) (cmdlib.Strea
 }
 
 // cam4ModelInfo is what a model's profile info tells of them.
-// It lists no live snapshot, so an online model gets their avatar as the profile image.
-func cam4ModelInfo(parsed *cam4Response) cmdlib.StreamerInfoWithStatus {
+// An online model gets their live snapshot, which CAM4 serves by nickname, and their avatar.
+func cam4ModelInfo(modelID string, parsed *cam4Response) cmdlib.StreamerInfoWithStatus {
 	info := cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOffline}
 	if parsed.Online {
 		info.Status = cmdlib.StatusOnline
+		info.ImageURL = "https://snapshots.xcdnpro.com/thumbnails/" + modelID
 		info.ProfileImageURL = parsed.AvatarURL
 	}
 	return info

@@ -54,18 +54,20 @@ func TestCam4ProfileImage(t *testing.T) {
 	}
 }
 
-// An online model queried on their own gets their avatar as the profile image,
-// and an offline one gets none.
+// An online model queried on their own gets their live snapshot,
+// with their avatar as the profile image, and an offline one gets neither.
 func TestCam4ModelInfo(t *testing.T) {
 	const avatar = "https://stackvaults-media.xcdnpro.com/a//raw:true/b"
+	const snapshot = "https://snapshots.xcdnpro.com/thumbnails/alice"
 	cases := []struct {
-		name       string
-		body       string
-		wantStatus cmdlib.StatusKind
-		want       string
+		name        string
+		body        string
+		wantStatus  cmdlib.StatusKind
+		wantImage   string
+		wantProfile string
 	}{
-		{"online", `{"online": true, "avatarUrl": "` + avatar + `"}`, cmdlib.StatusOnline, avatar},
-		{"offline", `{"online": false, "avatarUrl": "` + avatar + `"}`, cmdlib.StatusOffline, ""},
+		{"online", `{"online": true, "avatarUrl": "` + avatar + `"}`, cmdlib.StatusOnline, snapshot, avatar},
+		{"offline", `{"online": false, "avatarUrl": "` + avatar + `"}`, cmdlib.StatusOffline, "", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -73,12 +75,15 @@ func TestCam4ModelInfo(t *testing.T) {
 			if err := json.Unmarshal([]byte(tc.body), parsed); err != nil {
 				t.Fatal(err)
 			}
-			info := cam4ModelInfo(parsed)
+			info := cam4ModelInfo("alice", parsed)
 			if info.Status != tc.wantStatus {
 				t.Errorf("status = %v, want %v", info.Status, tc.wantStatus)
 			}
-			if info.ProfileImageURL != tc.want {
-				t.Errorf("profile image = %q, want %q", info.ProfileImageURL, tc.want)
+			if info.ImageURL != tc.wantImage {
+				t.Errorf("image = %q, want %q", info.ImageURL, tc.wantImage)
+			}
+			if info.ProfileImageURL != tc.wantProfile {
+				t.Errorf("profile image = %q, want %q", info.ProfileImageURL, tc.wantProfile)
 			}
 		})
 	}
