@@ -1,6 +1,7 @@
 package db
 
 import (
+	"slices"
 	"testing"
 	"time"
 )
@@ -522,6 +523,9 @@ func TestMigrateChat(t *testing.T) {
 		d := tdb.Database
 
 		const oldID, newID = int64(-800), int64(-800500)
+		// First, so a chain not seeded by the given id returns this user
+		const otherChat = int64(-5)
+		otherID, _ := d.AddUser(otherChat, 5, 1000, "group")
 		srcID, _ := d.AddUser(oldID, 5, 1000, "group")
 		dstID, _ := d.AddUser(newID, 7, 2000, "supergroup")
 
@@ -539,6 +543,16 @@ func TestMigrateChat(t *testing.T) {
 		if got, ok := d.ChatIDForUser(srcID); !ok || got != newID {
 			t.Errorf("ChatIDForUser(tombstone) = (%d, %v), want (%d, true)", got, ok, newID)
 		}
+		if got, ok := d.ChatIDForUser(otherID); !ok || got != otherChat {
+			t.Errorf("ChatIDForUser(other live) = (%d, %v), want (%d, true)", got, ok, otherChat)
+		}
+		// An update from the tombstoned chat reaches the live user as well.
+		if user, found := d.UserByChatID(oldID); !found || user.UserID != dstID {
+			t.Errorf("UserByChatID(tombstoned chat) = (%d, %v), want (%d, true)", user.UserID, found, dstID)
+		}
+		if id, created := d.AddUser(oldID, 5, 1000, "group"); created || id != dstID {
+			t.Errorf("AddUser(tombstoned chat) = (%d, %v), want (%d, false)", id, created, dstID)
+		}
 
 		// A redelivery re-runs MigrateChat; the tombstone keeps its chat_id,
 		// so migrated_to is what marks it already applied. It must be a no-op.
@@ -547,6 +561,28 @@ func TestMigrateChat(t *testing.T) {
 		}
 		if user, found := d.UserByChatID(newID); !found || user.MaxSubs != 7 {
 			t.Errorf("destination after redelivery: found=%v max_subs=%d, want 7", found, user.MaxSubs)
+		}
+	})
+
+	t.Run("same id changes nothing", func(t *testing.T) {
+		t.Parallel()
+		tdb := newTestDB(t)
+		defer tdb.terminate()
+		d := tdb.Database
+
+		const chat = int64(-300)
+		id, _ := d.AddUser(chat, 5, 1000, "group")
+		tdb.addSub(chat, "a", ep)
+		tdb.addPending(chat, "b", ep)
+
+		if m := d.MigrateChat(chat, chat); m != nil {
+			t.Errorf("migration = %+v, want nil", m)
+		}
+		if user, found := d.UserByChatID(chat); !found || user.UserID != id {
+			t.Errorf("UserByChatID = (%d, %v), want (%d, true)", user.UserID, found, id)
+		}
+		if got, want := d.SubscribedOrPendingNicknames(ep, id), []string{"a", "b"}; !slices.Equal(got, want) {
+			t.Errorf("subscribed or pending = %q, want %q", got, want)
 		}
 	})
 

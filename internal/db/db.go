@@ -28,7 +28,7 @@ type QueryDurationsData struct {
 
 // Database represents a database and operatons with it
 type Database struct {
-	Durations         map[string]QueryDurationsData
+	durations         map[string]QueryDurationsData
 	db                *pgx.Conn
 	mainGID           int
 	shouldCheckGID    bool
@@ -54,7 +54,7 @@ func NewDatabase(connString string, shouldCheckGID bool, defaultMaxSubs int) Dat
 	db, err := pgx.ConnectConfig(context.Background(), config)
 	checkErr(err)
 	return Database{
-		Durations:      map[string]QueryDurationsData{},
+		durations:      map[string]QueryDurationsData{},
 		db:             db,
 		shouldCheckGID: shouldCheckGID,
 		mainGID:        gid(),
@@ -102,16 +102,19 @@ func (d *Database) SuspendGIDCheck() { d.gidCheckSuspended = true }
 // ResumeGIDCheck restores the check after the startup handoff.
 func (d *Database) ResumeGIDCheck() { d.gidCheckSuspended = false }
 
+// QueryDurations returns each measured query's duration statistics
+func (d *Database) QueryDurations() map[string]QueryDurationsData { return d.durations }
+
 // Measure measures query duration
 func (d *Database) Measure(query string) func() {
 	now := time.Now()
 	d.checkTID()
 	return func() {
 		elapsed := time.Since(now).Seconds()
-		data := d.Durations[query]
+		data := d.durations[query]
 		data.Avg = (data.Avg*float64(data.Count) + elapsed) / float64(data.Count+1)
 		data.Count++
-		d.Durations[query] = data
+		d.durations[query] = data
 	}
 }
 

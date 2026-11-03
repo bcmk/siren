@@ -976,22 +976,6 @@ func (d *Database) SubscribedStreamers() map[string]bool {
 	return streamers
 }
 
-// SubscribedStreamerStatuses returns each subscribed streamer's unconfirmed status
-func (d *Database) SubscribedStreamerStatuses() map[string]cmdlib.StatusKind {
-	statuses := map[string]cmdlib.StatusKind{}
-	var nickname string
-	var status cmdlib.StatusKind
-	d.MustQuery(`
-		select s.nickname, s.unconfirmed_status
-		from (select distinct streamer_id from subscriptions) sub
-		join streamers s on s.id = sub.streamer_id
-		/*name='subscribed_streamer_statuses'*/`,
-		nil,
-		ScanTo{&nickname, &status},
-		func() { statuses[nickname] = status })
-	return statuses
-}
-
 // OnlineStreamers returns the streamers whose unconfirmed status is online
 func (d *Database) OnlineStreamers() map[string]bool {
 	onlineStreamers := map[string]bool{}

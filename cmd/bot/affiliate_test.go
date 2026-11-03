@@ -162,7 +162,6 @@ func TestStripchatAffiliate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
-			defer w.terminate()
 			w.loadTranslations(map[string][]string{"test": {
 				filepath.Join(base, "common.en.yaml"),
 				filepath.Join(base, "stripchat.en.yaml"),

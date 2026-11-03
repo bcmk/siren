@@ -10,7 +10,7 @@ import (
 )
 
 type testChecker struct {
-	BaseChecker[*stubConfig]
+	BaseChecker[*mockConfig]
 	status cmdlib.StatusKind
 	info   cmdlib.StreamerInfo
 	online map[string]bool
@@ -21,9 +21,9 @@ type testOnlineListChecker struct {
 	testChecker
 }
 
-// stubConfig is a minimal config for tests that build a BaseChecker
+// mockConfig is a minimal config for tests that build a BaseChecker
 // without going through the factory.
-type stubConfig struct {
+type mockConfig struct {
 	BaseCheckerConfig
 }
 
@@ -80,7 +80,7 @@ func (*testOnlineListChecker) Capabilities() Capabilities {
 
 func TestOnlineListCheckerHandlesFixedList(t *testing.T) {
 	checker := &testOnlineListChecker{}
-	checker.BaseChecker = NewBaseChecker(&stubConfig{})
+	checker.BaseChecker = NewBaseChecker(&mockConfig{})
 	resultsCh := make(chan cmdlib.CheckerResults)
 	StartCheckerDaemon(t.Context(), checker)
 
@@ -111,7 +111,7 @@ func TestOnlineListCheckerHandlesFixedList(t *testing.T) {
 
 func TestSingleStatusRequestPropagatesInfo(t *testing.T) {
 	checker := &testOnlineListChecker{}
-	checker.BaseChecker = NewBaseChecker(&stubConfig{})
+	checker.BaseChecker = NewBaseChecker(&mockConfig{})
 	viewers := 42
 	checker.info = cmdlib.StreamerInfo{
 		ImageURL: "https://example/img.jpg",
@@ -155,7 +155,7 @@ func TestSingleStatusRequestPropagatesInfo(t *testing.T) {
 }
 
 type testPolledChecker struct {
-	BaseChecker[*stubConfig]
+	BaseChecker[*mockConfig]
 	online     map[string]bool
 	individual map[string]cmdlib.StatusKind
 	queryCalls []string
@@ -238,7 +238,7 @@ func TestOnlineListCheckerPollsAdditionalStreamers(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			checker := &testPolledChecker{online: tc.online, individual: tc.individual}
-			checker.BaseChecker = NewBaseChecker(&stubConfig{})
+			checker.BaseChecker = NewBaseChecker(&mockConfig{})
 			resultsCh := make(chan cmdlib.CheckerResults, 1)
 			StartCheckerDaemon(t.Context(), checker)
 
@@ -278,7 +278,7 @@ func TestOnlineListCheckerPollsAdditionalStreamers(t *testing.T) {
 
 func TestOnlineListCheckerError(t *testing.T) {
 	checker := &testOnlineListChecker{}
-	checker.BaseChecker = NewBaseChecker(&stubConfig{})
+	checker.BaseChecker = NewBaseChecker(&mockConfig{})
 	resultsCh := make(chan cmdlib.CheckerResults)
 	StartCheckerDaemon(t.Context(), checker)
 

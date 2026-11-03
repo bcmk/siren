@@ -55,7 +55,6 @@ func TestMemberSubscriptionsGate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
-			defer w.terminate()
 			m := testMessage(w, -10, tc.command, 0)
 			w.db.SetMemberSubscriptions(m.userID, tc.setting)
 			if got := w.groupAdminOnly(m, tc.command, tc.arguments); got != tc.wantGated {
@@ -114,7 +113,6 @@ func TestMemberSubscriptionsToggle(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
-			defer w.terminate()
 			w.chatMember = func(string, int64, int64) (*models.ChatMember, error) {
 				return tc.member, nil
 			}
@@ -123,7 +121,7 @@ func TestMemberSubscriptionsToggle(t *testing.T) {
 			w.db.SetMemberSubscriptions(m.userID, tc.before)
 			w.processIncomingCommand(m, sender{from: &models.User{ID: 99}}, tc.command, "", false)
 
-			got := w.db.MustBool("select member_subscriptions from users where chat_id = $1", tc.chatID)
+			got := w.mockDB.userByChat(tc.chatID).MemberSubscriptions
 			if got != tc.want {
 				t.Errorf("member_subscriptions = %v, want %v", got, tc.want)
 			}
@@ -144,7 +142,7 @@ func setChatType(w *testWorker, chatID int64, chatType string) {
 	if chatType == "" {
 		return
 	}
-	w.db.MustExec("update users set chat_type = $1 where chat_id = $2", chatType, chatID)
+	w.mockDB.userByChat(chatID).ChatType = &chatType
 }
 
 // TestSettingsShowsMemberSubscriptions renders the real settings message,
@@ -168,7 +166,6 @@ func TestSettingsShowsMemberSubscriptions(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
-			defer w.terminate()
 			w.loadTranslations(realTranslations(tc.lang))
 			m := testMessage(w, tc.chatID, "settings", 0)
 			setChatType(w, tc.chatID, tc.chatType)

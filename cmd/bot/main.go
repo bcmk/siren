@@ -79,8 +79,8 @@ type streamerListEntry struct {
 }
 
 type worker struct {
-	db                         db.Database
-	fuzzySearchDB              db.Database
+	db                         database
+	fuzzySearchDB              database
 	client                     *http.Client
 	bots                       map[string]*bot.Bot
 	secretTokens               map[string]string
@@ -119,7 +119,7 @@ type worker struct {
 	incomingPackets           chan incomingPacket
 	maintenance               atomic.Bool
 	shuttingDown              atomic.Bool
-	// chatMember is the admin gate's lookup, a field so tests can fake the answer.
+	// chatMember is the admin gate's lookup, a field so tests can mock the answer.
 	chatMember func(endpoint string, chatID, userID int64) (*models.ChatMember, error)
 	shutdownCh chan struct{}
 }
@@ -306,11 +306,13 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 	if cfg.AffiliateLink != "" {
 		legacyAffiliateTpl = texttemplate.Must(texttemplate.New("affiliate_link").Parse(cfg.AffiliateLink))
 	}
+	mainDB := db.NewDatabase(string(cfg.DBConnectionString), cfg.CheckGID, cfg.MaxSubs)
+	fuzzySearchDB := db.NewDatabase(string(cfg.DBConnectionString), false, cfg.MaxSubs)
 	w := &worker{
 		bots:                       bots,
 		secretTokens:               secretTokens,
-		db:                         db.NewDatabase(string(cfg.DBConnectionString), cfg.CheckGID, cfg.MaxSubs),
-		fuzzySearchDB:              db.NewDatabase(string(cfg.DBConnectionString), false, cfg.MaxSubs),
+		db:                         &mainDB,
+		fuzzySearchDB:              &fuzzySearchDB,
 		cfg:                        cfg,
 		client:                     client,
 		legacyAffiliateTpl:         legacyAffiliateTpl,
@@ -2353,7 +2355,7 @@ func (w *worker) performanceStat(endpoint string, arguments string) {
 			return
 		}
 	}
-	durations := w.db.Durations
+	durations := w.db.QueryDurations()
 	var queries []string
 	for x := range durations {
 		queries = append(queries, x)

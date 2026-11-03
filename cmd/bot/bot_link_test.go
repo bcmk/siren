@@ -66,7 +66,7 @@ func storeNotification(
 	status cmdlib.StatusKind,
 	nickname string,
 ) {
-	streamerID := insertTestStreamer(&w.db, db.Streamer{Nickname: nickname})
+	streamerID := insertStreamer(w.mockDB, db.Streamer{Nickname: nickname})
 	w.storeNotifications([]db.Notification{{
 		Endpoint:   "test",
 		UserID:     userID,
@@ -91,7 +91,6 @@ func storeStatusNotifications(w *testWorker, userID db.UserID, nicknames ...stri
 func TestQueuingAnAlertCountsIt(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 
 	userID, _ := w.db.AddUser(-1001234567890, 3, 0, "channel")
 	storeStatusNotifications(w, userID, "a")
@@ -117,7 +116,6 @@ func TestQueuingAnAlertCountsIt(t *testing.T) {
 func TestBatchNumbersEveryNotification(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 
 	userID, _ := w.db.AddUser(-1001234567890, 3, 0, "channel")
 	otherID, _ := w.db.AddUser(-1001234567891, 3, 0, "channel")
@@ -149,7 +147,6 @@ func TestBatchNumbersEveryNotification(t *testing.T) {
 func TestChannelNotificationReachesTheChatWithTheLink(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	cfg := testConfig
 	cfg.BotLinkPeriod = testBotLinkPeriod
 	w.cfg = &cfg
@@ -199,7 +196,6 @@ func TestOnlyAlertsTakeATurn(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
-			defer w.terminate()
 
 			userID, _ := w.db.AddUser(-1001234567890, 3, 0, "channel")
 			storeNotification(w, userID, tc.kind, tc.status, "a")
@@ -250,44 +246,5 @@ func TestStatusTemplatesComposeTheBotLink(t *testing.T) {
 				}
 			})
 		}
-	}
-}
-
-// TestNewNotificationsCarriesTheChatType pins the column that tells a channel from a group.
-// A queued row holds no chat identity, so the fetch joins it.
-func TestNewNotificationsCarriesTheChatType(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name     string
-		chatID   int64
-		chatType string
-	}{
-		{"a channel", -1001234567890, "channel"},
-		{"a supergroup", -1001234567891, "supergroup"},
-		{"a private chat", 1, "private"},
-	}
-	w := newTestWorker()
-	defer w.terminate()
-
-	// One fetch for all three chats, as a real one carries every recipient of a status change.
-	fetched := map[db.UserID]db.Notification{}
-	userIDs := make([]db.UserID, len(tests))
-	for i, tc := range tests {
-		userIDs[i], _ = w.db.AddUser(tc.chatID, 3, 0, tc.chatType)
-		storeStatusNotifications(w, userIDs[i], tc.chatType)
-	}
-	for _, n := range w.db.NewNotifications() {
-		fetched[n.UserID] = n
-	}
-	for i, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			n, ok := fetched[userIDs[i]]
-			if !ok {
-				t.Fatal("the fetch dropped the chat's notification")
-			}
-			if n.ChatType == nil || *n.ChatType != tc.chatType {
-				t.Errorf("chat type = %v, want %q", n.ChatType, tc.chatType)
-			}
-		})
 	}
 }

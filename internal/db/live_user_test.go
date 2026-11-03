@@ -11,6 +11,8 @@ func TestLiveUserID(t *testing.T) {
 	d := tdb.Database
 
 	const src, dst = int64(-100), int64(-100500)
+	// First, so a chain not seeded by the given id returns this user
+	otherID, _ := d.AddUser(-200, 5, 1000, "group")
 	srcID, _ := d.AddUser(src, 5, 1000, "group")
 	dstID, _ := d.AddUser(dst, 5, 1000, "supergroup")
 	d.MigrateChat(src, dst) // tombstones srcID, migrated_to = dstID
@@ -20,5 +22,8 @@ func TestLiveUserID(t *testing.T) {
 	}
 	if got := d.LiveUserID(dstID); got != dstID {
 		t.Errorf("LiveUserID(live %d) = %d, want unchanged", dstID, got)
+	}
+	if got := d.LiveUserID(otherID); got != otherID {
+		t.Errorf("LiveUserID(live %d) = %d, want unchanged", otherID, got)
 	}
 }

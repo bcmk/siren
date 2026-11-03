@@ -227,7 +227,6 @@ func TestPerformWebAppTimezoneIsWhitelistGated(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
-			defer w.terminate()
 			w.initCache()
 			// Every worker shares &testConfig, so copy before changing it.
 			cfg := testConfig
@@ -245,8 +244,8 @@ func TestPerformWebAppTimezoneIsWhitelistGated(t *testing.T) {
 				t.Errorf("admitted = %v, want %v", got, c.admitted)
 			}
 
-			received := commandsInLog(w, "select command from received_message_log", nil)
-			users := w.db.MustInt("select count(*) from users")
+			received := w.mockDB.receivedCommands
+			users := len(w.mockDB.users)
 			if !c.admitted {
 				sent := drainSendQueueToLog(t, w)
 				if len(received) != 0 || len(sent) != 0 || users != 0 {
@@ -258,8 +257,7 @@ func TestPerformWebAppTimezoneIsWhitelistGated(t *testing.T) {
 			if !slices.Equal(received, []string{webAppTimezoneCommand}) || users != 1 {
 				t.Errorf("an admitted pick left no trace: received %q, users %d", received, users)
 			}
-			stored := w.db.MustInt(
-				"select count(*) from users where timezone = 'Europe/Berlin'")
+			stored := count(w.mockDB.users, func(u *mockUser) bool { return u.inZone("Europe/Berlin") })
 			if stored != 1 {
 				t.Errorf("the picked zone was not stored")
 			}
@@ -290,7 +288,6 @@ func TestReplyTimezoneOffersThePicker(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			w := webAppTestWorker(t)
-			defer w.terminate()
 
 			w.replyTimezone(testMessage(w, tc.chatID, "timezone", 100), utcZone, tc.help)
 			if got := webAppButtonURL(t, w); got != tc.wantURL {

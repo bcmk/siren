@@ -83,7 +83,6 @@ func TestGroupAdminGate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
-			defer w.terminate()
 			w.shuttingDown.Store(tc.shuttingDown)
 			looked := false
 			w.chatMember = func(string, int64, int64) (*models.ChatMember, error) {
@@ -93,7 +92,7 @@ func TestGroupAdminGate(t *testing.T) {
 			m := testMessage(w, tc.chatID, "disable_images", 0)
 			snd := sender{from: tc.from, senderChat: tc.senderChat}
 			w.processIncomingCommand(m, snd, "disable_images", "", false)
-			showImages := w.db.MustBool("select show_images from users where chat_id = $1", tc.chatID)
+			showImages := w.mockDB.userByChat(tc.chatID).ShowImages
 			if applied := !showImages; applied != tc.wantApplied {
 				t.Errorf("command applied = %v, want %v", applied, tc.wantApplied)
 			}
@@ -157,7 +156,6 @@ func TestDisabledCommandAnswersUnknown(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
-			defer w.terminate()
 			if tc.configure != nil {
 				// Every worker shares &testConfig, so copy before changing it.
 				cfg := *w.cfg
@@ -212,7 +210,6 @@ func TestRepliesNameNoDisabledCommand(t *testing.T) {
 			t.Run(set.site+" "+set.lang+" "+tc.command, func(t *testing.T) {
 				t.Parallel()
 				w := newTestWorker()
-				defer w.terminate()
 				w.initCache()
 				w.initTimezones()
 				cfg := *w.cfg
@@ -241,7 +238,6 @@ func TestRepliesNameNoDisabledCommand(t *testing.T) {
 func TestAdsNameNoDisabledCommand(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	cfg := *w.cfg
 	cfg.OfflineNotifications = false
 	w.cfg = &cfg

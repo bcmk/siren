@@ -24,7 +24,7 @@ const Image = "timescale/timescaledb:2.22.1-pg17-oss"
 // pg_stat_statements is loaded, as in production, for the tests that read it.
 // It tracks only the sessions that ask, as a full table would evict their entries.
 // NO_TS_TUNE keeps the image from sizing the server to the developer's VM:
-// a small one gets max_connections = 25, fewer than the bot tests open.
+// a small one gets max_connections = 25, which parallel tests can run out of.
 // The data lives on tmpfs, where clones run faster than on the container's disk.
 func Run(ctx context.Context, dbName string) (*postgres.PostgresContainer, error) {
 	return postgres.Run(

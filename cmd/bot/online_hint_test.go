@@ -113,11 +113,10 @@ func TestOnlineCaptionFitsTheTelegramLimit(t *testing.T) {
 
 // A topic past subjectLimit reaches the chat cut and marked, inside the caption's limit.
 // The real templates render, tying notifyOfStatus's clip to the mark the message prints,
-// which a stub that renders neither cannot.
+// which a mock template that renders neither cannot.
 func TestOnlinePicsClipALongSubject(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 	cfg := testConfig
 	cfg.ShowImages = true
@@ -126,8 +125,8 @@ func TestOnlinePicsClipALongSubject(t *testing.T) {
 
 	const nickname = "online_model"
 	const url = "http://" + nickname + ".jpg"
-	insertTestStreamer(&w.db, db.Streamer{Nickname: nickname, UnconfirmedStatus: cmdlib.StatusOnline})
-	insertSubscription(&w.db, "test", 1, nickname)
+	insertStreamer(w.mockDB, db.Streamer{Nickname: nickname, UnconfirmedStatus: cmdlib.StatusOnline})
+	insertSubscription(w.mockDB, "test", 1, nickname)
 	// Emoji, so the topic spends two units a character and overruns the limit twice over.
 	w.unconfirmedOnlineStreamers[nickname] = cmdlib.StreamerInfo{
 		ImageURL: url,

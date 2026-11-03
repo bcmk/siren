@@ -73,7 +73,6 @@ func TestRejectForRedeliveryWhileMigrating(t *testing.T) {
 func TestHandleSuccessfulPaymentMalformedCreatesNoUser(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 
 	const chatID = int64(555)
 	w.handleSuccessfulPayment("test", chatID, &models.SuccessfulPayment{

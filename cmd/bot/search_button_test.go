@@ -43,7 +43,6 @@ func TestFailedAddOffersSearch(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			w := webAppTestWorker(t)
-			defer w.terminate()
 			if tc.fixedList {
 				w.checker = &checkers.TwitchChecker{}
 			}

@@ -16,7 +16,7 @@ import (
 
 const kickDefaultAvatar = "https://kick.com/img/default-profile-pictures/default-avatar-4.webp"
 
-// kickTransport fakes Kick's token, channels and users endpoints, and records the user ids asked.
+// kickTransport mocks Kick's token, channels and users endpoints, and records the user ids asked.
 // The channels answer one live channel, a, of user 1.
 type kickTransport struct {
 	asked []string

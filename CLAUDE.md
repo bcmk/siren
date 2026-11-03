@@ -145,6 +145,7 @@
 - Ask before modifying tests — explain what needs changing and why
 - Use table-driven tests with `t.Run` subtests
 - Think about speeding up a test that takes more than 0.5 s, and report it if no idea comes
+- Prefer a test on the mock database to one on a real database
 - Don't fix something that can only happen if someone skips the tests
 
 ## Build

@@ -252,7 +252,6 @@ func TestRemovalAppPageRenders(t *testing.T) {
 func TestPerformWebAppRemovalListIsWhitelistGated(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 	// Every worker shares &testConfig, so copy before changing it.
 	cfg := testConfig
@@ -278,19 +277,19 @@ func TestPerformWebAppRemovalListIsWhitelistGated(t *testing.T) {
 	if !res.allowed || len(res.nicknames) != 0 {
 		t.Errorf("an unknown chat got allowed=%v, nicknames=%q", res.allowed, res.nicknames)
 	}
-	if users := w.db.MustInt("select count(*) from users"); users != 0 {
+	if users := len(w.mockDB.users); users != 0 {
 		t.Errorf("a list read materialized %d users", users)
 	}
 
 	// The removable set is what /remove accepts: subscriptions and pending alike.
-	insertTestStreamer(&w.db, db.Streamer{Nickname: "b_model"})
-	insertSubscription(&w.db, "test", 5, "b_model")
-	insertPendingSubscription(&w.db, "test", 5, "a_model", false)
+	insertStreamer(w.mockDB, db.Streamer{Nickname: "b_model"})
+	insertSubscription(w.mockDB, "test", 5, "b_model")
+	insertPendingSubscription(w.mockDB, "test", 5, "a_model", false)
 	res = ask(5)
 	if !slices.Equal(res.nicknames, []string{"a_model", "b_model"}) {
 		t.Errorf("nicknames = %q, want [a_model b_model]", res.nicknames)
 	}
-	received := commandsInLog(w, "select command from received_message_log", nil)
+	received := w.mockDB.receivedCommands
 	if len(received) != 0 {
 		t.Errorf("a list read logged %q", received)
 	}
@@ -312,15 +311,14 @@ func TestPerformWebAppRemoveIsWhitelistGated(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
-			defer w.terminate()
 			w.initCache()
 			// Every worker shares &testConfig, so copy before changing it.
 			cfg := testConfig
 			cfg.WhitelistChats = c.whitelist
 			w.cfg = &cfg
 
-			insertTestStreamer(&w.db, db.Streamer{Nickname: "known_model"})
-			insertSubscription(&w.db, "test", c.chatID, "known_model")
+			insertStreamer(w.mockDB, db.Streamer{Nickname: "known_model"})
+			insertSubscription(w.mockDB, "test", c.chatID, "known_model")
 
 			admitted := make(chan bool, 1)
 			w.performWebAppRemove(webAppRemoveRequest{
@@ -333,8 +331,8 @@ func TestPerformWebAppRemoveIsWhitelistGated(t *testing.T) {
 				t.Errorf("admitted = %v, want %v", got, c.admitted)
 			}
 
-			received := commandsInLog(w, "select command from received_message_log", nil)
-			subs := w.db.MustInt("select count(*) from subscriptions")
+			received := w.mockDB.receivedCommands
+			subs := len(w.mockDB.subscriptions)
 			if !c.admitted {
 				sent := drainSendQueueToLog(t, w)
 				if len(received) != 0 || len(sent) != 0 || subs != 1 {
@@ -379,7 +377,6 @@ func TestRemoveOffersTheRemovalApp(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			w := webAppTestWorker(t)
-			defer w.terminate()
 
 			w.removeStreamer(testMessage(w, tc.chatID, "remove", 100), tc.nickname)
 			if got := webAppButtonURL(t, w); got != tc.wantURL {

@@ -113,15 +113,14 @@ func TestWeekTemplateRowCount(t *testing.T) {
 // The never-online branch feeds streamerListEntry rows to week_never_online;
 // a subscription with no online hours must come back in that reply, not vanish.
 // The real templates render, tying the call site's data keys to the template's ranges,
-// which a stub that ignores its data cannot.
+// which a mock template that ignores its data cannot.
 func TestShowWeekNeverOnline(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 	w.tpl["test"] = realTemplates(t, "en")
 	m := testMessage(w, 10, "week", 100)
-	id := insertTestStreamer(&w.db, db.Streamer{Nickname: "ghost_model"})
+	id := insertStreamer(w.mockDB, db.Streamer{Nickname: "ghost_model"})
 	w.db.AddSubscription(m.userID, id, "test")
 	w.showWeek(m, "")
 	if n := w.sendQueue.Len(); n != 1 {

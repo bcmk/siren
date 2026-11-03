@@ -302,7 +302,6 @@ func TestTimezoneCommandGates(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
-			defer w.terminate()
 			w.initCache()
 			w.initTimezones()
 			looked := false
@@ -329,23 +328,18 @@ func TestTimezoneCommandGates(t *testing.T) {
 			if got := queued.message.(*messageParams).Text; got != tc.want {
 				t.Errorf("reply = %q, want %q", got, tc.want)
 			}
-			stored := w.db.MustInt(
-				"select count(*) from users where chat_id = $1 and timezone = 'Europe/Berlin'",
-				tc.chatID)
-			if (stored == 1) != tc.wantStored {
-				t.Errorf("zone stored = %v, want %v", stored == 1, tc.wantStored)
+			u := w.mockDB.userByChat(tc.chatID)
+			if stored := u != nil && u.inZone("Europe/Berlin"); stored != tc.wantStored {
+				t.Errorf("zone stored = %v, want %v", stored, tc.wantStored)
 			}
 			// A refused command must not have cost a round trip to Telegram to refuse.
 			if looked != tc.wantLookup {
 				t.Errorf("member lookup made = %v, want %v", looked, tc.wantLookup)
 			}
-			// A cleared column has to read as unset, not as the empty string:
-			// an empty one is not null, so the settings listing would offer to reset nothing.
+			// The reset passes an empty zone, which internal/db holds to storing a null.
 			if tc.command == "reset_timezone" && !tc.wantStored {
-				cleared := w.db.MustInt(
-					"select count(*) from users where chat_id = $1 and timezone is null", tc.chatID)
-				if cleared != 1 {
-					t.Error("the reset left the column set rather than null")
+				if u == nil || u.Timezone != nil {
+					t.Error("the reset left the chat's zone set")
 				}
 			}
 		})
@@ -358,7 +352,6 @@ func TestTimezoneCommandGates(t *testing.T) {
 func TestChatLocationKeepsAZoneTheTableDropped(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 	w.initTimezones()
 	m := testMessage(w, 10, "timezone", 100)
@@ -371,9 +364,7 @@ func TestChatLocationKeepsAZoneTheTableDropped(t *testing.T) {
 	if zone != dropped || loc.String() != dropped {
 		t.Errorf("read as %q / %q, want %q", zone, loc, dropped)
 	}
-	kept := w.db.MustInt(
-		"select count(*) from users where id = $1 and timezone = $2", int64(m.userID), dropped)
-	if kept != 1 {
+	if !w.mockDB.user(m.userID).inZone(dropped) {
 		t.Error("a zone the binary can still load was overwritten")
 	}
 }
@@ -385,19 +376,16 @@ func TestChatLocationKeepsAZoneTheTableDropped(t *testing.T) {
 func TestChatLocationKeepsADeadZone(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 	w.initTimezones()
 	m := testMessage(w, 10, "timezone", 100)
 	const dead = "Europe/Atlantis"
-	w.db.MustExec("update users set timezone = $1 where id = $2", dead, int64(m.userID))
+	w.mockDB.user(m.userID).Timezone = ptr(dead)
 
 	if _, zone := w.chatLocation(w.mustUserByID(m.userID)); zone != utcZone {
 		t.Errorf("a dead zone read as %q, want %q", zone, utcZone)
 	}
-	kept := w.db.MustInt(
-		"select count(*) from users where id = $1 and timezone = $2", int64(m.userID), dead)
-	if kept != 1 {
+	if !w.mockDB.user(m.userID).inZone(dead) {
 		t.Error("a listing overwrote a zone the chat chose")
 	}
 }
@@ -421,7 +409,6 @@ func TestSettingsReportsTheZone(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
-			defer w.terminate()
 			w.initCache()
 			w.initTimezones()
 			// The real translations, so the render is the one a chat receives.
@@ -466,7 +453,7 @@ func settingsData(timezoneSet bool) tplData {
 }
 
 // TestTimezoneTemplatesRender ties the call sites' data keys to the real templates,
-// which a stub that ignores its data cannot.
+// which a mock template that ignores its data cannot.
 func TestTimezoneTemplatesRender(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -529,7 +516,6 @@ func TestTimezoneTemplatesRender(t *testing.T) {
 func TestSetTimezone(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 	w.initTimezones()
 	m := testMessage(w, 10, "timezone", 100)

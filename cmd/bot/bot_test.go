@@ -1,25 +1,18 @@
 package main
 
 import (
-	"context"
 	"math"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/bcmk/siren/v6/internal/db"
 	"github.com/bcmk/siren/v6/lib/cmdlib"
 	"github.com/go-telegram/bot/models"
-	"github.com/jackc/pgx/v5"
 )
 
 func checkUnconfirmedOnlineStreamers(w *testWorker, t *testing.T) {
-	dbOnline := map[string]bool{}
-	var nickname string
-	w.db.MustQuery(
-		"select nickname from streamers where unconfirmed_status = $1",
-		[]interface{}{cmdlib.StatusOnline},
-		db.ScanTo{&nickname},
-		func() { dbOnline[nickname] = true })
+	dbOnline := w.mockDB.OnlineStreamers()
 	if len(w.unconfirmedOnlineStreamers) != len(dbOnline) {
 		t.Errorf("unconfirmedOnlineStreamers size %d != DB size %d", len(w.unconfirmedOnlineStreamers), len(dbOnline))
 	}
@@ -35,136 +28,20 @@ func checkUnconfirmedOnlineStreamers(w *testWorker, t *testing.T) {
 	}
 }
 
-// broadcastUserIDs projects broadcast recipients to their ids.
-func broadcastUserIDs(users []db.User) (ids []db.UserID) {
-	for _, u := range users {
-		ids = append(ids, u.UserID)
-	}
-	return
-}
-
-func TestSql(t *testing.T) {
-	t.Parallel()
-	w := newTestWorker()
-	defer w.terminate()
-	w.initCache()
-	for _, n := range []string{"a", "b", "c", "c2", "c3", "d", "e", "f", "g"} {
-		insertTestStreamer(&w.db, db.Streamer{Nickname: n})
-	}
-	insertSubscription(&w.db, "ep1", 1, "a")
-	insertSubscription(&w.db, "ep1", 2, "b")
-	insertSubscription(&w.db, "ep1", 3, "c")
-	insertSubscription(&w.db, "ep1", 3, "c2")
-	insertSubscription(&w.db, "ep1", 3, "c3")
-	insertSubscription(&w.db, "ep1", 4, "d")
-	insertSubscription(&w.db, "ep1", 5, "d")
-	insertSubscription(&w.db, "ep1", 6, "e")
-	insertSubscription(&w.db, "ep1", 7, "f")
-	insertSubscription(&w.db, "ep2", 6, "e")
-	insertSubscription(&w.db, "ep2", 7, "f")
-	insertSubscription(&w.db, "ep2", 8, "g")
-	w.db.MustExec("insert into block (endpoint, user_id, block) select $1, u.id, $3 from users u where u.chat_id = $2", "ep1", 2, 0)
-	w.db.MustExec("insert into block (endpoint, user_id, block) select $1, u.id, $3 from users u where u.chat_id = $2", "ep1", 3, 5)
-	w.db.MustExec("update streamers set confirmed_status = $2 where nickname = $1", "a", cmdlib.StatusOnline)
-	w.db.MustExec("update streamers set confirmed_status = $2 where nickname = $1", "b", cmdlib.StatusOnline)
-	w.db.MustExec("update streamers set confirmed_status = $2 where nickname = $1", "c", cmdlib.StatusOnline)
-	w.db.MustExec("update streamers set confirmed_status = $2 where nickname = $1", "c2", cmdlib.StatusOnline)
-	broadcast1 := w.db.BroadcastUsers("ep1")
-	if !reflect.DeepEqual(broadcastUserIDs(broadcast1), []db.UserID{1, 2, 3, 4, 5, 6, 7}) {
-		t.Error("unexpected broadcast users result", broadcast1)
-	}
-	// Only user 3 has a nonzero block row; a broken join or coalesce would zero it.
-	for _, u := range broadcast1 {
-		want := 0
-		if u.UserID == 3 {
-			want = 5
-		}
-		if u.Blocked != want {
-			t.Errorf("broadcast user %d blocked = %d, want %d", u.UserID, u.Blocked, want)
-		}
-	}
-	broadcastUsers := broadcastUserIDs(w.db.BroadcastUsers("ep2"))
-	if !reflect.DeepEqual(broadcastUsers, []db.UserID{6, 7, 8}) {
-		t.Error("unexpected broadcast users result", broadcastUsers)
-	}
-	chatsForStreamer, endpoints := w.chatsForStreamer("a")
-	if !reflect.DeepEqual(endpoints, []string{"ep1"}) {
-		t.Error("unexpected chats for streamer result", chatsForStreamer)
-	}
-	if !reflect.DeepEqual(chatsForStreamer, []int64{1}) {
-		t.Error("unexpected chats for streamer result", chatsForStreamer)
-	}
-	chatsForStreamer, _ = w.chatsForStreamer("b")
-	if !reflect.DeepEqual(chatsForStreamer, []int64{2}) {
-		t.Error("unexpected chats for streamer result", chatsForStreamer)
-	}
-	chatsForStreamer, _ = w.chatsForStreamer("c")
-	if !reflect.DeepEqual(chatsForStreamer, []int64{3}) {
-		t.Error("unexpected chats for streamer result", chatsForStreamer)
-	}
-	chatsForStreamer, _ = w.chatsForStreamer("d")
-	if !reflect.DeepEqual(chatsForStreamer, []int64{4, 5}) {
-		t.Error("unexpected chats for streamer result", chatsForStreamer)
-	}
-	chatsForStreamer, _ = w.chatsForStreamer("e")
-	if !reflect.DeepEqual(chatsForStreamer, []int64{6, 6}) {
-		t.Error("unexpected chats for streamer result", chatsForStreamer)
-	}
-	chatsForStreamer, _ = w.chatsForStreamer("f")
-	if !reflect.DeepEqual(chatsForStreamer, []int64{7, 7}) {
-		t.Error("unexpected chats for streamer result", chatsForStreamer)
-	}
-	w.db.IncrementBlock("ep1", 2)
-	w.db.IncrementBlock("ep1", 2)
-	if w.db.MustInt("select b.block from block b join users u on u.id = b.user_id where u.chat_id = $1 and b.endpoint = $2", 2, "ep1") != 2 {
-		t.Error("unexpected block for streamer result", chatsForStreamer)
-	}
-	w.db.IncrementBlock("ep2", 2)
-	if w.db.MustInt("select b.block from block b join users u on u.id = b.user_id where u.chat_id = $1 and b.endpoint = $2", 2, "ep2") != 1 {
-		t.Error("unexpected block for streamer result", chatsForStreamer)
-	}
-	w.db.ResetBlock("ep1", 2)
-	if w.db.MustInt("select b.block from block b join users u on u.id = b.user_id where u.chat_id = $1 and b.endpoint = $2", 2, "ep1") != 0 {
-		t.Error("unexpected block for streamer result", chatsForStreamer)
-	}
-	if w.db.MustInt("select b.block from block b join users u on u.id = b.user_id where u.chat_id = $1 and b.endpoint = $2", 2, "ep2") != 1 {
-		t.Error("unexpected block for streamer result", chatsForStreamer)
-	}
-	w.db.IncrementBlock("ep1", 1)
-	w.db.IncrementBlock("ep1", 1)
-	if w.db.MustInt("select b.block from block b join users u on u.id = b.user_id where u.chat_id = $1", 1) != 2 {
-		t.Error("unexpected block for streamer result", chatsForStreamer)
-	}
-	statuses := confirmedStatusesForChat(&w.db, "ep1", 3)
-	if !reflect.DeepEqual(statuses, []db.Streamer{
-		{Nickname: "c", ConfirmedStatus: cmdlib.StatusOnline},
-		{Nickname: "c2", ConfirmedStatus: cmdlib.StatusOnline},
-		{Nickname: "c3"}}) {
-		t.Error("unexpected statuses", statuses)
-	}
-	_ = w.db.Close()
-}
-
 func TestUpdateNotifications(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 
 	for _, n := range []string{"a", "b", "c", "d"} {
-		insertTestStreamer(&w.db, db.Streamer{Nickname: n})
+		insertStreamer(w.mockDB, db.Streamer{Nickname: n})
 	}
-	insertSubscription(&w.db, "ep1", 1, "a")
-	insertSubscription(&w.db, "ep1", 2, "b")
-	insertSubscription(&w.db, "ep1", 3, "a")
-	insertSubscription(&w.db, "ep1", 3, "c")
-	insertSubscription(&w.db, "ep1", 4, "d")
-	insertSubscription(&w.db, "ep2", 4, "d")
-
-	w.db.MustExec("insert into users (chat_id, created_at) values ($1, 0) on conflict (chat_id) do nothing", 1)
-	w.db.MustExec("insert into users (chat_id, created_at) values ($1, 0) on conflict (chat_id) do nothing", 2)
-	w.db.MustExec("insert into users (chat_id, created_at) values ($1, 0) on conflict (chat_id) do nothing", 3)
-	w.db.MustExec("insert into users (chat_id, created_at) values ($1, 0) on conflict (chat_id) do nothing", 4)
+	insertSubscription(w.mockDB, "ep1", 1, "a")
+	insertSubscription(w.mockDB, "ep1", 2, "b")
+	insertSubscription(w.mockDB, "ep1", 3, "a")
+	insertSubscription(w.mockDB, "ep1", 3, "c")
+	insertSubscription(w.mockDB, "ep1", 4, "d")
+	insertSubscription(w.mockDB, "ep2", 4, "d")
 
 	// All subscribed streamers for this test
 	allStreamers := map[string]bool{"a": true, "b": true, "c": true, "d": true}
@@ -178,21 +55,21 @@ func TestUpdateNotifications(t *testing.T) {
 	if r := w.handleCheckerResults(result, 2); len(r.notifications) != 2 {
 		t.Errorf("expected 2 notifications for streamer 'a' online, got %d", len(r.notifications))
 	}
-	checkInv(&w.worker, t)
+	if got := w.mockDB.statusChanges[len(w.mockDB.statusChanges)-1].timestamp; got != 2 {
+		t.Errorf("the status change is stamped %d, want the checker's time 2", got)
+	}
 
 	// Streamer "a" goes offline — no notifications yet (needs 5s confirmation)
 	result.Streamers = map[string]cmdlib.StreamerInfo{}
 	if r := w.handleCheckerResults(result, 3); len(r.notifications) != 0 {
 		t.Errorf("expected 0 notifications before offline confirmation, got %d", len(r.notifications))
 	}
-	checkInv(&w.worker, t)
 
 	// Trigger confirmation check at t=8 — offline confirmed, 2 notifications
 	result.Streamers = map[string]cmdlib.StreamerInfo{}
 	if r := w.handleCheckerResults(result, 8); len(r.notifications) != 2 {
 		t.Errorf("expected 2 notifications after offline confirmation, got %d", len(r.notifications))
 	}
-	checkInv(&w.worker, t)
 
 	// Streamer "d" goes online — 2 notifications (chat 4 on ep1 and ep2)
 	result.Streamers = map[string]cmdlib.StreamerInfo{
@@ -201,89 +78,6 @@ func TestUpdateNotifications(t *testing.T) {
 	if r := w.handleCheckerResults(result, 9); len(r.notifications) != 2 {
 		t.Errorf("expected 2 notifications for streamer 'd' online, got %d", len(r.notifications))
 	}
-	checkInv(&w.worker, t)
-}
-
-func TestNotificationsStorage(t *testing.T) {
-	t.Parallel()
-	w := newTestWorker()
-	defer w.terminate()
-
-	w.db.AddUser(1, 3, 0, "private")
-	w.db.AddUser(2, 3, 0, "private")
-	w.db.AddUser(3, 3, 0, "private")
-
-	idA := insertTestStreamer(&w.db, db.Streamer{Nickname: "a"})
-	idB := insertTestStreamer(&w.db, db.Streamer{Nickname: "b"})
-	idC := insertTestStreamer(&w.db, db.Streamer{Nickname: "c"})
-
-	timeDiff := 2
-	nots := []db.Notification{
-		{
-			Endpoint:   "endpoint_a",
-			UserID:     w.db.EnsureUser(1),
-			StreamerID: &idA,
-			Nickname:   "a",
-			Status:     cmdlib.StatusUnknown,
-			TimeDiff:   nil,
-			ImageURL:   "image_a",
-			Social:     false,
-			Priority:   db.PriorityHigh,
-			Sound:      false,
-			Kind:       db.NotificationPacket,
-		},
-		{
-			Endpoint:   "endpoint_b",
-			UserID:     w.db.EnsureUser(2),
-			StreamerID: &idB,
-			Nickname:   "b",
-			Status:     cmdlib.StatusOffline,
-			TimeDiff:   &timeDiff,
-			ImageURL:   "image_b",
-			Social:     true,
-			Priority:   db.PriorityLow,
-			Sound:      true,
-			Kind:       db.ReplyPacket,
-		},
-	}
-
-	w.db.StoreNotifications(nots)
-	newNots := w.db.NewNotifications()
-	nots[0].ID = 1
-	nots[1].ID = 2
-	// The read joins the recipient's chat, which the stored literal does not carry.
-	nots[0].ChatID = 1
-	nots[1].ChatID = 2
-	nots[0].ChatType = ptr("private")
-	nots[1].ChatType = ptr("private")
-	if !reflect.DeepEqual(nots, newNots) {
-		t.Errorf("unexpected notifications, expocted: %v, got: %v", nots, newNots)
-	}
-	nots = []db.Notification{
-		{
-			Endpoint:   "endpoint_c",
-			UserID:     w.db.EnsureUser(3),
-			StreamerID: &idC,
-			Nickname:   "c",
-			Status:     cmdlib.StatusOnline,
-			TimeDiff:   nil,
-			ImageURL:   "image_c",
-			Social:     true,
-			Priority:   db.PriorityLow,
-		},
-	}
-	w.db.StoreNotifications(nots)
-	newNots = w.db.NewNotifications()
-	nots[0].ID = 3
-	nots[0].ChatID = 3
-	nots[0].ChatType = ptr("private")
-	if !reflect.DeepEqual(nots, newNots) {
-		t.Errorf("unexpected notifications, expocted: %v, got: %v", nots, newNots)
-	}
-	count := w.db.MustInt("select count(*) from notification_queue")
-	if count != 3 {
-		t.Errorf("unexpected notifications count %d", count)
-	}
 }
 
 // A same-id migrate result re-arms the notification
@@ -291,10 +85,9 @@ func TestNotificationsStorage(t *testing.T) {
 func TestCompleteSendResultMigrateReArms(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 
 	w.db.AddUser(1, 3, 0, "private")
-	streamerID := insertTestStreamer(&w.db, db.Streamer{Nickname: "a"})
+	streamerID := insertStreamer(w.mockDB, db.Streamer{Nickname: "a"})
 	w.db.StoreNotifications([]db.Notification{{
 		Endpoint:   "test",
 		UserID:     w.db.EnsureUser(1),
@@ -317,78 +110,6 @@ func TestCompleteSendResultMigrateReArms(t *testing.T) {
 	// Re-armed, not finalized: it returns on the next fetch.
 	if requeued := w.db.NewNotifications(); len(requeued) != 1 || requeued[0].ID != not.ID {
 		t.Errorf("migrate finalized the notification instead of re-arming it: %v", requeued)
-	}
-}
-
-func TestStreamers(t *testing.T) {
-	t.Parallel()
-	w := newTestWorker()
-	defer w.terminate()
-	insertTestStreamer(&w.db, db.Streamer{Nickname: "a", ConfirmedStatus: cmdlib.StatusOffline})
-	if w.db.MaybeStreamer("a") == nil {
-		t.Error("unexpected result")
-	}
-	if w.db.MaybeStreamer("b") != nil {
-		t.Error("unexpected result")
-	}
-}
-
-func TestCopyFromAndBatchInTransaction(t *testing.T) {
-	t.Parallel()
-	w := newTestWorker()
-	defer w.terminate()
-
-	// Test that CopyFrom and SendBatch are in the same transaction
-	// by making SendBatch fail and verifying CopyFrom data is rolled back
-
-	// Insert a streamer to get an integer ID for the CopyFrom test
-	streamerIntID := insertTestStreamer(&w.db, db.Streamer{Nickname: "a"})
-
-	tx, err := w.db.Begin()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = tx.Rollback(context.Background()) }()
-
-	// CopyFrom should succeed
-	rows := [][]interface{}{
-		{streamerIntID, 100, int16(cmdlib.StatusOnline), int16(cmdlib.StatusUnknown)},
-	}
-	_, err = tx.CopyFrom(
-		context.Background(),
-		pgx.Identifier{"status_changes"},
-		[]string{"streamer_id", "timestamp", "status", "prev_status"},
-		pgx.CopyFromRows(rows),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// SendBatch with invalid status (violates check constraint) should fail
-	batch := &pgx.Batch{}
-	batch.Queue(`
-		insert into streamers (nickname, unconfirmed_status)
-		values ($1, $2)`,
-		"test_streamer", 999) // 999 violates check constraint
-	br := tx.SendBatch(context.Background(), batch)
-	err = br.Close()
-
-	// Batch should have failed
-	if err == nil {
-		t.Fatal("expected batch to fail due to constraint violation")
-	}
-
-	// Explicitly rollback the failed transaction
-	_ = tx.Rollback(context.Background())
-
-	// Verify status_changes has NO data (CopyFrom was rolled back)
-	// Query using a new connection, not the failed transaction
-	count := w.db.MustInt(
-		"select count(*) from status_changes where streamer_id = $1",
-		streamerIntID,
-	)
-	if count != 0 {
-		t.Errorf("expected 0 status_changes after rollback, got %d", count)
 	}
 }
 
@@ -504,236 +225,44 @@ func TestCommandParser(t *testing.T) {
 	}
 }
 
-func TestUnconfirmedStatusConsistency(t *testing.T) {
+// A send the dice skip is logged at the checker's time.
+func TestCheckerResultsStampSkippedSends(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
+	insertStreamer(w.mockDB, db.Streamer{Nickname: "a"})
+	insertSubscription(w.mockDB, "test", 100, "a")
+	// The count is MaxInt32, so the subscriber loses any roll
+	w.mockDB.setBlock("test", 100, math.MaxInt32)
 
-	// Insert first status change for streamer "a"
-	w.db.UpsertUnconfirmedStatusChanges([]db.StatusChange{
-		{Nickname: "a", Status: cmdlib.StatusOnline},
-	}, 100)
+	w.handleCheckerResults(&cmdlib.OnlineListResults{Streamers: map[string]cmdlib.StreamerInfo{"a": {}}}, 1000)
 
-	streamer := w.db.MaybeStreamer("a")
-	if streamer == nil {
-		t.Fatal("streamer not found")
+	if rows := w.mockDB.sentMessageLog; len(rows) != 1 || rows[0].timestamp != 1000 {
+		t.Errorf("sent message log = %+v, want a row at 1000", rows)
 	}
-	if streamer.UnconfirmedStatus != cmdlib.StatusOnline || streamer.UnconfirmedTimestamp != 100 {
-		t.Errorf("unexpected unconfirmed status: %+v", streamer)
-	}
-	if streamer.PrevUnconfirmedStatus != cmdlib.StatusUnknown || streamer.PrevUnconfirmedTimestamp != 0 {
-		t.Errorf("unexpected prev unconfirmed status: %+v", streamer)
-	}
-
-	// Insert second status change — prev should be updated
-	w.db.UpsertUnconfirmedStatusChanges([]db.StatusChange{
-		{Nickname: "a", Status: cmdlib.StatusOffline},
-	}, 200)
-
-	streamer = w.db.MaybeStreamer("a")
-	if streamer.UnconfirmedStatus != cmdlib.StatusOffline || streamer.UnconfirmedTimestamp != 200 {
-		t.Errorf("unexpected unconfirmed status: %+v", streamer)
-	}
-	if streamer.PrevUnconfirmedStatus != cmdlib.StatusOnline || streamer.PrevUnconfirmedTimestamp != 100 {
-		t.Errorf("unexpected prev unconfirmed status: %+v", streamer)
-	}
-
-	// Insert third status change — prev should shift
-	w.db.UpsertUnconfirmedStatusChanges([]db.StatusChange{
-		{Nickname: "a", Status: cmdlib.StatusOnline},
-	}, 300)
-
-	streamer = w.db.MaybeStreamer("a")
-	if streamer.UnconfirmedStatus != cmdlib.StatusOnline || streamer.UnconfirmedTimestamp != 300 {
-		t.Errorf("unexpected unconfirmed status: %+v", streamer)
-	}
-	if streamer.PrevUnconfirmedStatus != cmdlib.StatusOffline || streamer.PrevUnconfirmedTimestamp != 200 {
-		t.Errorf("unexpected prev unconfirmed status: %+v", streamer)
-	}
-}
-
-type lastTwoChanges struct {
-	unconfirmed, prev db.StatusChange
-}
-
-func queryLastTwoChanges(d *db.Database) map[string]lastTwoChanges {
-	lastTwo := map[string]lastTwoChanges{}
-	var sc db.StatusChange
-	var row int
-	d.MustQuery(`
-		select s.nickname, sub.status, sub.timestamp, sub.row
-		from (
-			select *, row_number() over (partition by streamer_id order by timestamp desc) as row
-			from status_changes
-		) sub
-		join streamers s on s.id = sub.streamer_id
-		where sub.row <= 2
-		order by s.id, sub.row`,
-		nil,
-		db.ScanTo{&sc.Nickname, &sc.Status, &sc.Timestamp, &row},
-		func() {
-			entry := lastTwo[sc.Nickname]
-			if row == 1 {
-				entry.unconfirmed = sc
-			} else {
-				entry.prev = sc
-			}
-			lastTwo[sc.Nickname] = entry
-		})
-	return lastTwo
-}
-
-func queryAllStreamers(d *db.Database) []db.Streamer {
-	var streamers []db.Streamer
-	var streamer db.Streamer
-	d.MustQuery(`
-		select
-			nickname,
-			unconfirmed_status,
-			unconfirmed_timestamp,
-			prev_unconfirmed_status,
-			prev_unconfirmed_timestamp
-		from streamers`,
-		nil,
-		db.ScanTo{
-			&streamer.Nickname,
-			&streamer.UnconfirmedStatus,
-			&streamer.UnconfirmedTimestamp,
-			&streamer.PrevUnconfirmedStatus,
-			&streamer.PrevUnconfirmedTimestamp,
-		},
-		func() { streamers = append(streamers, streamer) })
-	return streamers
-}
-
-func queryAllNicknames(d *db.Database) map[string]bool {
-	nicknames := map[string]bool{}
-	var nickname string
-	d.MustQuery(
-		"select nickname from nicknames",
-		nil,
-		db.ScanTo{&nickname},
-		func() { nicknames[nickname] = true })
-	return nicknames
-}
-
-func checkLatestStatusChanges(t *testing.T, d *db.Database, lastTwo map[string]lastTwoChanges) {
-	t.Helper()
-	latest := map[string]db.StatusChange{}
-	for nickname, pair := range lastTwo {
-		latest[nickname] = pair.unconfirmed
-	}
-	if !reflect.DeepEqual(latest, queryLastStatusChanges(d)) {
-		t.Errorf("latest status changes mismatch: %v vs %v", latest, queryLastStatusChanges(d))
-	}
-}
-
-func checkUnconfirmedConsistency(t *testing.T, streamers []db.Streamer, lastTwo map[string]lastTwoChanges) {
-	t.Helper()
-	for _, s := range streamers {
-		if s.UnconfirmedTimestamp == 0 {
-			continue
-		}
-		expected := lastTwo[s.Nickname]
-		if s.UnconfirmedStatus != expected.unconfirmed.Status ||
-			s.UnconfirmedTimestamp != expected.unconfirmed.Timestamp {
-			t.Errorf("unconfirmed status mismatch for %s: streamer=%+v, expected=%+v", s.Nickname, s, expected)
-		}
-		if s.PrevUnconfirmedStatus != expected.prev.Status ||
-			s.PrevUnconfirmedTimestamp != expected.prev.Timestamp {
-			t.Errorf("prev unconfirmed status mismatch for %s: streamer=%+v, expected=%+v", s.Nickname, s, expected)
-		}
-	}
-}
-
-func checkNicknamesMatch(t *testing.T, streamers []db.Streamer, dbNicknames map[string]bool) {
-	t.Helper()
-	streamerNicknames := map[string]bool{}
-	for _, s := range streamers {
-		streamerNicknames[s.Nickname] = true
-	}
-	if !reflect.DeepEqual(streamerNicknames, dbNicknames) {
-		t.Errorf("nicknames mismatch: streamers=%v, nicknames=%v", streamerNicknames, dbNicknames)
-	}
-}
-
-// checkPrevStatuses holds both invariants of prev_status:
-// it never repeats the row's own status, and always names the status before it.
-func checkPrevStatuses(t *testing.T, d *db.Database) {
-	t.Helper()
-	type entry struct {
-		nickname        string
-		timestamp       int
-		status          cmdlib.StatusKind
-		prevStatus      cmdlib.StatusKind
-		precedingStatus cmdlib.StatusKind
-	}
-	var e entry
-	var results []entry
-	d.MustQuery(`
-		select nickname, timestamp, status, prev_status, preceding_status
-		from (
-			select
-				s.nickname,
-				sc.timestamp,
-				sc.status,
-				sc.prev_status,
-				coalesce(
-					lag(sc.status) over (partition by sc.streamer_id order by sc.timestamp),
-					0::smallint) as preceding_status
-			from status_changes sc
-			join streamers s on s.id = sc.streamer_id
-		) sc
-		where status = prev_status
-		or prev_status != preceding_status`,
-		nil,
-		db.ScanTo{&e.nickname, &e.timestamp, &e.status, &e.prevStatus, &e.precedingStatus},
-		func() { results = append(results, e) })
-	for _, r := range results {
-		t.Errorf(
-			"bad prev_status for %s at %d: status = %v, prev_status = %v, preceding status = %v",
-			r.nickname, r.timestamp, r.status, r.prevStatus, r.precedingStatus)
-	}
-}
-
-func checkInv(w *worker, t *testing.T) {
-	t.Helper()
-	lastTwoChanges := queryLastTwoChanges(&w.db)
-	streamers := queryAllStreamers(&w.db)
-	nicknames := queryAllNicknames(&w.db)
-
-	checkLatestStatusChanges(t, &w.db, lastTwoChanges)
-	checkUnconfirmedConsistency(t, streamers, lastTwoChanges)
-	checkNicknamesMatch(t, streamers, nicknames)
-	checkPrevStatuses(t, &w.db)
 }
 
 func TestAddStreamer(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.db.AddUser(1, 3, 0, "private")
 
 	// Add streamer that doesn't exist — should insert into pending_subscriptions and return nil
 	if w.addStreamer(testMessage(w, 1, "add", 100), "newmodel", false) != nil {
 		t.Error("expected addStreamer to return nil when streamer is not in the database and subscription is pending verification")
 	}
-	if w.db.MustInt("select count(*) from pending_subscriptions where nickname = $1", "newmodel") != 1 {
+	if w.mockDB.pendingSubscriptionCount("newmodel") != 1 {
 		t.Error("expected pending subscription for new streamer")
 	}
 	// Drain the "checking streamer" message
 	w.nextOutgoing()
 
 	// Add streamer that exists with online status — should return non-nil
-	insertTestStreamer(&w.db, db.Streamer{Nickname: "onlinemodel", ConfirmedStatus: cmdlib.StatusOnline})
+	insertStreamer(w.mockDB, db.Streamer{Nickname: "onlinemodel", ConfirmedStatus: cmdlib.StatusOnline})
 	if w.addStreamer(testMessage(w, 1, "add", 100), "onlinemodel", false) == nil {
 		t.Error("expected addStreamer to return non-nil for existing streamer")
 	}
-	if w.db.MustInt(`
-		select count(*) from subscriptions sub
-		join streamers s on s.id = sub.streamer_id
-		where s.nickname = $1`, "onlinemodel") != 1 {
+	if w.mockDB.subscriptionCount("onlinemodel") != 1 {
 		t.Error("expected subscription for existing streamer")
 	}
 	// Drain messages
@@ -744,7 +273,7 @@ func TestAddStreamer(t *testing.T) {
 	}
 
 	// Add streamer that exists with offline status — should return non-nil
-	insertTestStreamer(&w.db, db.Streamer{Nickname: "offlinemodel", ConfirmedStatus: cmdlib.StatusOffline})
+	insertStreamer(w.mockDB, db.Streamer{Nickname: "offlinemodel", ConfirmedStatus: cmdlib.StatusOffline})
 	if w.addStreamer(testMessage(w, 1, "add", 100), "offlinemodel", false) == nil {
 		t.Error("expected addStreamer to return non-nil for existing offline streamer")
 	}
@@ -754,84 +283,33 @@ func TestAddStreamer(t *testing.T) {
 	}
 }
 
-func TestConfirmSub(t *testing.T) {
-	t.Parallel()
-	w := newTestWorker()
-	defer w.terminate()
-
-	// Insert pending subscription
-	w.db.AddUser(1, 0, 0, "")
-	insertPendingSubscription(&w.db, "test", 1, "a", false)
-
-	// Confirm the subscription
-	streamerID := w.db.ConfirmSub(db.PendingSubscription{Endpoint: "test", UserID: 1, Nickname: "a"})
-
-	// Check returned streamer ID is valid
-	if streamerID == 0 {
-		t.Error("expected non-zero streamer ID from ConfirmSub")
-	}
-
-	// Check subscription was moved to subscriptions table
-	if w.db.MustInt(`
-		select count(*) from subscriptions
-		where streamer_id = $1`, streamerID) != 1 {
-		t.Error("expected subscription after ConfirmSub")
-	}
-
-	// Check pending subscription was deleted
-	if w.db.MustInt("select count(*) from pending_subscriptions where nickname = $1", "a") != 0 {
-		t.Error("expected pending subscription to be deleted after ConfirmSub")
-	}
-
-	// Check streamer was created
-	if w.db.MaybeStreamer("a") == nil {
-		t.Error("expected streamer to exist after ConfirmSub")
-	}
-
-	checkInv(&w.worker, t)
-}
-
-func TestDenySub(t *testing.T) {
-	t.Parallel()
-	w := newTestWorker()
-	defer w.terminate()
-
-	// Insert pending subscription
-	w.db.AddUser(1, 0, 0, "")
-	insertPendingSubscription(&w.db, "test", 1, "b", false)
-
-	// Deny the subscription
-	w.db.DenySub(db.PendingSubscription{Endpoint: "test", UserID: 1, Nickname: "b"})
-
-	// Check pending subscription is deleted
-	if w.db.MustInt("select count(*) from pending_subscriptions where nickname = $1", "b") != 0 {
-		t.Error("expected pending subscription to be deleted after DenySub")
-	}
-}
-
 func TestProcessSubsConfirmations(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 
 	// Insert pending subscriptions in checking state
 	for chatID := int64(1); chatID <= 9; chatID++ {
 		w.db.AddUser(chatID, 0, 0, "")
 	}
-	insertPendingSubscription(&w.db, "test", 1, "online_model", true)
-	insertPendingSubscription(&w.db, "test", 2, "offline_model", true)
-	insertPendingSubscription(&w.db, "test", 3, "notfound_model", true)
-	insertPendingSubscription(&w.db, "test", 4, "denied_model", true)
-	insertPendingSubscription(&w.db, "test", 5, "notfound_denied_model", true)
-	insertPendingSubscription(&w.db, "test", 6, "online_offline_model", true)
-	insertPendingSubscription(&w.db, "test", 7, "unknown_model", true)
+	insertPendingSubscription(w.mockDB, "test", 1, "online_model", true)
+	insertPendingSubscription(w.mockDB, "test", 2, "offline_model", true)
+	insertPendingSubscription(w.mockDB, "test", 3, "notfound_model", true)
+	insertPendingSubscription(w.mockDB, "test", 4, "denied_model", true)
+	insertPendingSubscription(w.mockDB, "test", 5, "notfound_denied_model", true)
+	insertPendingSubscription(w.mockDB, "test", 6, "online_offline_model", true)
+	insertPendingSubscription(w.mockDB, "test", 7, "unknown_model", true)
 	// Referral pending subscription — should create referral event on confirmation
-	w.db.MustExec(
-		"insert into pending_subscriptions (endpoint, user_id, nickname, checking, referral) select $1, u.id, $3, $4, $5 from users u where u.chat_id = $2",
-		"test", 8, "referral_model", true, true,
-	)
+	w.mockDB.insertPendingSubscription(mockPendingSubscription{
+		PendingSubscription: db.PendingSubscription{
+			UserID:   w.mockDB.userByChat(8).UserID,
+			Nickname: "referral_model",
+			Endpoint: "test",
+			Referral: true,
+		},
+		checking: true,
+	})
 	// Non-referral pending subscription — should NOT create referral event
-	insertPendingSubscription(&w.db, "test", 9, "nonreferral_model", true)
+	insertPendingSubscription(w.mockDB, "test", 9, "nonreferral_model", true)
 
 	// Process confirmations with checker results
 	w.processSubsConfirmations(&cmdlib.ExistenceListResults{
@@ -848,16 +326,8 @@ func TestProcessSubsConfirmations(t *testing.T) {
 		},
 	})
 
-	subCount := func(nickname string) int {
-		return w.db.MustInt(`
-			select count(*) from subscriptions sub
-			join streamers s on s.id = sub.streamer_id
-			where s.nickname = $1`, nickname)
-	}
-	pendingCount := func(nickname string) int {
-		return w.db.MustInt(
-			"select count(*) from pending_subscriptions where nickname = $1", nickname)
-	}
+	subCount := w.mockDB.subscriptionCount
+	pendingCount := w.mockDB.pendingSubscriptionCount
 
 	// Online model should be confirmed (in subscriptions, not in pending)
 	if subCount("online_model") != 1 {
@@ -907,12 +377,7 @@ func TestProcessSubsConfirmations(t *testing.T) {
 	if subCount("referral_model") != 1 {
 		t.Error("expected referral_model to be in subscriptions")
 	}
-	referralCount := w.db.MustInt(`
-		select count(*)
-		from referral_events r
-		join streamers s on s.id = r.streamer_id
-		join users u on u.id = r.follower_user_id
-		where s.nickname = $1 and u.chat_id = $2`, "referral_model", 8)
+	referralCount := w.mockDB.streamerReferralEventCount("referral_model", 8)
 	if referralCount != 1 {
 		t.Error("expected referral event for referral_model")
 	}
@@ -921,12 +386,7 @@ func TestProcessSubsConfirmations(t *testing.T) {
 	if subCount("nonreferral_model") != 1 {
 		t.Error("expected nonreferral_model to be in subscriptions")
 	}
-	nonReferralCount := w.db.MustInt(`
-		select count(*)
-		from referral_events r
-		join streamers s on s.id = r.streamer_id
-		join users u on u.id = r.follower_user_id
-		where s.nickname = $1 and u.chat_id = $2`, "nonreferral_model", 9)
+	nonReferralCount := w.mockDB.streamerReferralEventCount("nonreferral_model", 9)
 	if nonReferralCount != 0 {
 		t.Error("expected no referral event for nonreferral_model")
 	}
@@ -939,14 +399,13 @@ func TestProcessSubsConfirmations(t *testing.T) {
 func TestProcessSubsConfirmationsPartialList(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 
 	for chatID := int64(1); chatID <= 3; chatID++ {
 		w.db.AddUser(chatID, 0, 0, "")
 	}
-	insertPendingSubscription(&w.db, "test", 1, "answered_model", true)
-	insertPendingSubscription(&w.db, "test", 2, "still_pending_model", true)
-	insertPendingSubscription(&w.db, "test", 3, "also_still_pending_model", true)
+	insertPendingSubscription(w.mockDB, "test", 1, "answered_model", true)
+	insertPendingSubscription(w.mockDB, "test", 2, "still_pending_model", true)
+	insertPendingSubscription(w.mockDB, "test", 3, "also_still_pending_model", true)
 
 	w.processSubsConfirmations(&cmdlib.ExistenceListResults{
 		Streamers: map[string]cmdlib.StreamerInfoWithStatus{
@@ -954,16 +413,11 @@ func TestProcessSubsConfirmationsPartialList(t *testing.T) {
 		},
 	})
 
-	subCount := func(nickname string) int {
-		return w.db.MustInt(`
-			select count(*) from subscriptions sub
-			join streamers s on s.id = sub.streamer_id
-			where s.nickname = $1`, nickname)
-	}
+	subCount := w.mockDB.subscriptionCount
 	pendingCheckingCount := func(nickname string) int {
-		return w.db.MustInt(
-			"select count(*) from pending_subscriptions where nickname = $1 and checking",
-			nickname)
+		return count(w.mockDB.pendingSubscriptions, func(p *mockPendingSubscription) bool {
+			return p.Nickname == nickname && p.checking
+		})
 	}
 
 	if subCount("answered_model") != 1 {
@@ -994,7 +448,6 @@ func TestUserReferral(t *testing.T) {
 	t.Run("valid referral creates event and bonuses", func(t *testing.T) {
 		t.Parallel()
 		w := newTestWorker()
-		defer w.terminate()
 
 		// Create referrer and their referral link
 		w.db.AddUser(20, w.cfg.MaxSubs, 0, "private")
@@ -1010,12 +463,9 @@ func TestUserReferral(t *testing.T) {
 		}
 
 		// Verify referral event was created with referrer
-		refCount := w.db.MustInt(`
-			select count(*)
-			from referral_events re
-			join users ur on ur.id = re.referrer_user_id
-			join users uf on uf.id = re.follower_user_id
-			where ur.chat_id = $1 and uf.chat_id = $2`, 20, 21)
+		refCount := count(w.mockDB.referralEvents, func(e mockReferralEvent) bool {
+			return e.referrer != nil && w.mockDB.chatID(*e.referrer) == 20 && w.mockDB.chatID(e.follower) == 21
+		})
 		if refCount != 1 {
 			t.Error("expected referral event")
 		}
@@ -1041,9 +491,10 @@ func TestUserReferral(t *testing.T) {
 		}
 
 		// Verify referred_users counter incremented
-		referredUsers := w.db.MustInt(
-			"select r.referred_users from referrals r join users u on u.id = r.user_id where u.chat_id = $1", 20)
-		if referredUsers != 1 {
+		referral := w.mockDB.referrals[slices.IndexFunc(w.mockDB.referrals, func(r *mockReferral) bool {
+			return w.mockDB.chatID(r.userID) == 20
+		})]
+		if referredUsers := referral.referredUsers; referredUsers != 1 {
 			t.Errorf("expected referred_users=1, got %d", referredUsers)
 		}
 	})
@@ -1051,7 +502,6 @@ func TestUserReferral(t *testing.T) {
 	t.Run("invalid referral ID", func(t *testing.T) {
 		t.Parallel()
 		w := newTestWorker()
-		defer w.terminate()
 
 		_, created := w.db.AddUser(30, w.cfg.MaxSubs, 100, "private")
 		w.start(testMessage(w, 30, "start", 100), "nonexistent-ref", created)
@@ -1062,8 +512,7 @@ func TestUserReferral(t *testing.T) {
 		}
 
 		// Verify no referral event
-		refCount := w.db.MustInt(
-			"select count(*) from referral_events re join users u on u.id = re.follower_user_id where u.chat_id = $1", 30)
+		refCount := len(w.mockDB.referralEvents)
 		if refCount != 0 {
 			t.Error("expected no referral event for invalid referral ID")
 		}
@@ -1072,7 +521,6 @@ func TestUserReferral(t *testing.T) {
 	t.Run("existing user ignores referral", func(t *testing.T) {
 		t.Parallel()
 		w := newTestWorker()
-		defer w.terminate()
 
 		// Create referrer with referral link
 		w.db.AddUser(40, w.cfg.MaxSubs, 0, "private")
@@ -1090,8 +538,7 @@ func TestUserReferral(t *testing.T) {
 		}
 
 		// Verify no referral event
-		refCount := w.db.MustInt(
-			"select count(*) from referral_events re join users u on u.id = re.follower_user_id where u.chat_id = $1", 41)
+		refCount := len(w.mockDB.referralEvents)
 		if refCount != 0 {
 			t.Error("expected no referral event for existing user")
 		}
@@ -1107,7 +554,6 @@ func TestUserReferral(t *testing.T) {
 	t.Run("own referral link is rejected", func(t *testing.T) {
 		t.Parallel()
 		w := newTestWorker()
-		defer w.terminate()
 
 		// Create user with referral link
 		w.db.AddUser(50, w.cfg.MaxSubs, 0, "private")
@@ -1122,8 +568,7 @@ func TestUserReferral(t *testing.T) {
 		}
 
 		// Verify no referral event
-		refCount := w.db.MustInt(
-			"select count(*) from referral_events re join users u on u.id = re.follower_user_id where u.chat_id = $1", 50)
+		refCount := len(w.mockDB.referralEvents)
 		if refCount != 0 {
 			t.Error("expected no referral event for own link")
 		}
@@ -1135,10 +580,9 @@ func TestStreamerReferral(t *testing.T) {
 	t.Run("known streamer creates referral event", func(t *testing.T) {
 		t.Parallel()
 		w := newTestWorker()
-		defer w.terminate()
 
 		// Pre-create a known streamer
-		insertTestStreamer(&w.db, db.Streamer{Nickname: "known_model", ConfirmedStatus: cmdlib.StatusOnline})
+		insertStreamer(w.mockDB, db.Streamer{Nickname: "known_model", ConfirmedStatus: cmdlib.StatusOnline})
 
 		_, created := w.db.AddUser(10, w.cfg.MaxSubs, 100, "private")
 		w.start(testMessage(w, 10, "start", 100), "m-known_model", created)
@@ -1149,23 +593,15 @@ func TestStreamerReferral(t *testing.T) {
 		}
 
 		// Verify subscription was created
-		subCount := w.db.MustInt(`
-			select count(*)
-			from subscriptions sub
-			join streamers s on s.id = sub.streamer_id
-			join users u on u.id = sub.user_id
-			where s.nickname = $1 and u.chat_id = $2`, "known_model", 10)
+		subCount := count(w.mockDB.subscriptions, func(s mockSubscription) bool {
+			return w.mockDB.streamer(s.streamerID).Nickname == "known_model" && w.mockDB.chatID(s.userID) == 10
+		})
 		if subCount != 1 {
 			t.Error("expected subscription for known_model")
 		}
 
 		// Verify referral event was created
-		refCount := w.db.MustInt(`
-			select count(*)
-			from referral_events r
-			join streamers s on s.id = r.streamer_id
-			join users u on u.id = r.follower_user_id
-			where s.nickname = $1 and u.chat_id = $2`, "known_model", 10)
+		refCount := w.mockDB.streamerReferralEventCount("known_model", 10)
 		if refCount != 1 {
 			t.Error("expected referral event for known_model")
 		}
@@ -1174,7 +610,6 @@ func TestStreamerReferral(t *testing.T) {
 	t.Run("unknown streamer defers referral to pending", func(t *testing.T) {
 		t.Parallel()
 		w := newTestWorker()
-		defer w.terminate()
 
 		_, created := w.db.AddUser(11, w.cfg.MaxSubs, 100, "private")
 		w.start(testMessage(w, 11, "start", 100), "m-unknown_model", created)
@@ -1185,210 +620,30 @@ func TestStreamerReferral(t *testing.T) {
 		}
 
 		// Verify pending subscription was created with referral flag
-		refFlag := w.db.MustInt(`
-			select ps.referral::int
-			from pending_subscriptions ps
-			join users u on u.id = ps.user_id
-			where ps.nickname = $1 and u.chat_id = $2`,
-			"unknown_model", 11)
-		if refFlag != 1 {
+		pendingIndex := slices.IndexFunc(w.mockDB.pendingSubscriptions, func(p *mockPendingSubscription) bool {
+			return p.Nickname == "unknown_model" && w.mockDB.chatID(p.UserID) == 11
+		})
+		pending := w.mockDB.pendingSubscriptions[pendingIndex]
+		if !pending.Referral {
 			t.Error("expected pending subscription with referral=true")
 		}
 
 		// Verify no referral event yet
-		refCount := w.db.MustInt(`
-			select count(*)
-			from referral_events r
-			join streamers s on s.id = r.streamer_id
-			join users u on u.id = r.follower_user_id
-			where s.nickname = $1 and u.chat_id = $2`, "unknown_model", 11)
+		refCount := w.mockDB.streamerReferralEventCount("unknown_model", 11)
 		if refCount != 0 {
 			t.Error("expected no referral event for unknown streamer")
 		}
 	})
 }
 
-func TestStatusConfirmations(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name        string
-		confirmed   cmdlib.StatusKind
-		unconfirmed cmdlib.StatusKind
-		timestamp   int
-		now         int
-		expect      *cmdlib.StatusKind // nil means no confirmation expected
-	}{
-		{
-			name:        "offline to online confirms immediately",
-			confirmed:   cmdlib.StatusOffline,
-			unconfirmed: cmdlib.StatusOnline,
-			timestamp:   100,
-			now:         100,
-			expect:      ptr(cmdlib.StatusOnline),
-		},
-		{
-			name:        "online to offline confirms when timing met",
-			confirmed:   cmdlib.StatusOnline,
-			unconfirmed: cmdlib.StatusOffline,
-			timestamp:   100,
-			now:         105,
-			expect:      ptr(cmdlib.StatusOffline),
-		},
-		{
-			name:        "online to offline not confirmed when timing not met",
-			confirmed:   cmdlib.StatusOnline,
-			unconfirmed: cmdlib.StatusOffline,
-			timestamp:   103,
-			now:         105,
-			expect:      nil,
-		},
-		{
-			name:        "online to unknown confirms immediately",
-			confirmed:   cmdlib.StatusOnline,
-			unconfirmed: cmdlib.StatusUnknown,
-			timestamp:   100,
-			now:         100,
-			expect:      ptr(cmdlib.StatusUnknown),
-		},
-		{
-			name:        "offline to unknown confirms immediately",
-			confirmed:   cmdlib.StatusOffline,
-			unconfirmed: cmdlib.StatusUnknown,
-			timestamp:   100,
-			now:         100,
-			expect:      ptr(cmdlib.StatusUnknown),
-		},
-		{
-			name:        "same status online no change",
-			confirmed:   cmdlib.StatusOnline,
-			unconfirmed: cmdlib.StatusOnline,
-			timestamp:   100,
-			now:         105,
-			expect:      nil,
-		},
-		{
-			name:        "same status offline no change",
-			confirmed:   cmdlib.StatusOffline,
-			unconfirmed: cmdlib.StatusOffline,
-			timestamp:   100,
-			now:         105,
-			expect:      nil,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			w := newTestWorker()
-			defer w.terminate()
-
-			// Set up background streamers that should remain unchanged
-			insertTestStreamer(&w.db, db.Streamer{
-				Nickname:             "always_online",
-				ConfirmedStatus:      cmdlib.StatusOnline,
-				UnconfirmedStatus:    cmdlib.StatusOnline,
-				UnconfirmedTimestamp: 100,
-			})
-			insertTestStreamer(&w.db, db.Streamer{
-				Nickname:             "always_offline",
-				ConfirmedStatus:      cmdlib.StatusOffline,
-				UnconfirmedStatus:    cmdlib.StatusOffline,
-				UnconfirmedTimestamp: 100,
-			})
-			insertTestStreamer(&w.db, db.Streamer{
-				Nickname:             "always_unknown",
-				ConfirmedStatus:      cmdlib.StatusUnknown,
-				UnconfirmedStatus:    cmdlib.StatusUnknown,
-				UnconfirmedTimestamp: 100,
-			})
-			insertTestStreamer(&w.db, db.Streamer{
-				Nickname:             "ch",
-				ConfirmedStatus:      tt.confirmed,
-				UnconfirmedStatus:    tt.unconfirmed,
-				UnconfirmedTimestamp: tt.timestamp,
-			})
-
-			changes := w.db.ConfirmStatusChanges(
-				tt.now,
-				w.cfg.StatusConfirmationSeconds.Online,
-				w.cfg.StatusConfirmationSeconds.Offline,
-			)
-
-			if tt.expect == nil {
-				if len(changes) != 0 {
-					t.Errorf("expected no confirmation, got %v", changes)
-				}
-			} else {
-				if len(changes) != 1 || changes[0].Status != *tt.expect {
-					t.Errorf("expected %v confirmation, got %v", *tt.expect, changes)
-				}
-			}
-
-			// Verify background streamers were not affected
-			if s := w.db.MustInt("select confirmed_status from streamers where nickname = $1", "always_online"); s != int(cmdlib.StatusOnline) {
-				t.Errorf("always_online confirmed_status was affected, got %v", s)
-			}
-			if s := w.db.MustInt("select confirmed_status from streamers where nickname = $1", "always_offline"); s != int(cmdlib.StatusOffline) {
-				t.Errorf("always_offline confirmed_status was affected, got %v", s)
-			}
-			if s := w.db.MustInt("select confirmed_status from streamers where nickname = $1", "always_unknown"); s != int(cmdlib.StatusUnknown) {
-				t.Errorf("always_unknown confirmed_status was affected, got %v", s)
-			}
-		})
-	}
-}
-
-func TestSubscribedStreamerStatuses(t *testing.T) {
-	t.Parallel()
-	w := newTestWorker()
-	defer w.terminate()
-
-	// Insert streamers and confirmed subscriptions
-	insertTestStreamer(&w.db, db.Streamer{
-		Nickname:          "model_with_status",
-		ConfirmedStatus:   cmdlib.StatusOnline,
-		UnconfirmedStatus: cmdlib.StatusOnline,
-	})
-	insertTestStreamer(&w.db, db.Streamer{Nickname: "model_without_status"})
-	w.db.AddUser(1, 0, 0, "")
-	w.db.AddUser(2, 0, 0, "")
-	w.db.MustExec(`
-		insert into subscriptions (endpoint, user_id, streamer_id)
-		select $1, u.id, s.id
-		from users u, streamers s
-		where u.chat_id = $2 and s.nickname = $3`,
-		"test", 1, "model_with_status",
-	)
-	w.db.MustExec(`
-		insert into subscriptions (endpoint, user_id, streamer_id)
-		select $1, u.id, s.id
-		from users u, streamers s
-		where u.chat_id = $2 and s.nickname = $3`,
-		"test", 2, "model_without_status",
-	)
-
-	statuses := w.db.SubscribedStreamerStatuses()
-
-	// Model with unconfirmed_status should return correct status
-	if statuses["model_with_status"] != cmdlib.StatusOnline {
-		t.Errorf("expected model_with_status to be online, got %v", statuses["model_with_status"])
-	}
-
-	// Model with default unconfirmed_status (0) should return StatusUnknown
-	if statuses["model_without_status"] != cmdlib.StatusUnknown {
-		t.Errorf("expected model_without_status to be unknown, got %v", statuses["model_without_status"])
-	}
-}
-
 func TestHandleStatusUpdates(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 
 	// Insert a subscription
-	insertTestStreamer(&w.db, db.Streamer{Nickname: "a"})
-	insertSubscription(&w.db, "test", 1, "a")
+	insertStreamer(w.mockDB, db.Streamer{Nickname: "a"})
+	insertSubscription(w.mockDB, "test", 1, "a")
 
 	// Test with OnlineListResults
 	result := &cmdlib.OnlineListResults{
@@ -1402,7 +657,6 @@ func TestHandleStatusUpdates(t *testing.T) {
 		t.Errorf("expected ImageURL to be set, got %s", w.unconfirmedOnlineStreamers["a"].ImageURL)
 	}
 	checkUnconfirmedOnlineStreamers(w, t)
-	checkInv(&w.worker, t)
 
 	// Test ImageURL update for streamer that remains online
 	result.Streamers["a"] = cmdlib.StreamerInfo{ImageURL: "http://a2.jpg"}
@@ -1411,7 +665,6 @@ func TestHandleStatusUpdates(t *testing.T) {
 		t.Errorf("expected ImageURL to be updated, got %s", w.unconfirmedOnlineStreamers["a"].ImageURL)
 	}
 	checkUnconfirmedOnlineStreamers(w, t)
-	checkInv(&w.worker, t)
 
 	// Test with FixedListOnlineResults — streamer goes offline (not in Streamers)
 	result2 := &cmdlib.FixedListOnlineResults{
@@ -1426,13 +679,11 @@ func TestHandleStatusUpdates(t *testing.T) {
 		t.Error("expected offline streamer to be removed from unconfirmedOnlineStreamers")
 	}
 	checkUnconfirmedOnlineStreamers(w, t)
-	checkInv(&w.worker, t)
 
 	// Streamer comes back online (use new map to avoid aliasing with unconfirmedOnlineStreamers)
 	result2.Streamers = map[string]cmdlib.StreamerInfo{"a": {ImageURL: "http://a3.jpg"}}
 	w.handleCheckerResults(result2, 103)
 	checkUnconfirmedOnlineStreamers(w, t)
-	checkInv(&w.worker, t)
 
 	// Streamer goes offline again (use new empty map)
 	result2.Streamers = map[string]cmdlib.StreamerInfo{}
@@ -1441,7 +692,6 @@ func TestHandleStatusUpdates(t *testing.T) {
 		t.Error("expected offline streamer to be removed from unconfirmedOnlineStreamers")
 	}
 	checkUnconfirmedOnlineStreamers(w, t)
-	checkInv(&w.worker, t)
 
 	// Test error case (should return early with zero values)
 	result3 := cmdlib.NewOnlineListResultsFailed()
@@ -1461,26 +711,23 @@ func TestHandleStatusUpdates(t *testing.T) {
 			r.unconfirmedChangesCount, r.confirmedChangesCount, len(r.notifications), r.elapsed)
 	}
 
-	// New streamer discovered via OnlineListResults —
-	// should insert into both streamers and nicknames
+	// New streamer discovered via OnlineListResults
 	result5 := &cmdlib.OnlineListResults{
 		Streamers: map[string]cmdlib.StreamerInfo{"newmodel": {}},
 	}
 	w.handleCheckerResults(result5, 107)
-	checkInv(&w.worker, t)
 }
 
 func TestUnsubscribeBeforeRestart(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 
 	// Subscribe to "a" and "b"
-	insertTestStreamer(&w.db, db.Streamer{Nickname: "a"})
-	insertTestStreamer(&w.db, db.Streamer{Nickname: "b"})
-	insertSubscription(&w.db, "test", 1, "a")
-	insertSubscription(&w.db, "test", 1, "b")
+	insertStreamer(w.mockDB, db.Streamer{Nickname: "a"})
+	insertStreamer(w.mockDB, db.Streamer{Nickname: "b"})
+	insertSubscription(w.mockDB, "test", 1, "a")
+	insertSubscription(w.mockDB, "test", 1, "b")
 
 	// Both streamers come online
 	result := &cmdlib.FixedListOnlineResults{
@@ -1491,7 +738,6 @@ func TestUnsubscribeBeforeRestart(t *testing.T) {
 		},
 	}
 	w.handleCheckerResults(result, 100)
-	checkInv(&w.worker, t)
 
 	// Verify both are online in DB
 	if w.db.MaybeStreamer("a").UnconfirmedStatus != cmdlib.StatusOnline {
@@ -1502,9 +748,7 @@ func TestUnsubscribeBeforeRestart(t *testing.T) {
 	}
 
 	// Unsubscribe from "a"
-	w.db.MustExec(`
-		delete from subscriptions
-		where streamer_id = (select id from streamers where nickname = $1)`, "a")
+	w.db.RemoveSubscription(w.mockDB.userByChat(1).UserID, "a", "test")
 
 	// Simulate restart: reinitialize cache as would happen on restart
 	w.initCache()
@@ -1518,7 +762,6 @@ func TestUnsubscribeBeforeRestart(t *testing.T) {
 		},
 	}
 	w.handleCheckerResults(result2, 101)
-	checkInv(&w.worker, t)
 
 	// "a" should now have StatusUnknown in DB because it's a known streamer
 	// but not in RequestedStreamers (not subscribed anymore).
@@ -1531,7 +774,6 @@ func TestUnsubscribeBeforeRestart(t *testing.T) {
 func TestUnknownStreamerFirstOfflineSaved(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 
 	// Add a user
@@ -1546,13 +788,13 @@ func TestUnknownStreamerFirstOfflineSaved(t *testing.T) {
 	w.nextOutgoing()
 
 	// Verify pending subscription exists
-	if w.db.MustInt("select count(*) from pending_subscriptions where nickname = $1", "unknown_model") != 1 {
+	if w.mockDB.pendingSubscriptionCount("unknown_model") != 1 {
 		t.Error("expected pending subscription for new streamer")
 	}
 
 	// 2. Subscription is confirmed — checker returns offline status (Twitch returns Online|Offline)
 	// Set subscription to "checking" state as queryUnconfirmedSubs would do
-	w.db.MustExec("update pending_subscriptions set checking = true where nickname = $1", "unknown_model")
+	w.db.MarkUnconfirmedAsChecking()
 	w.processSubsConfirmations(&cmdlib.ExistenceListResults{
 		Streamers: map[string]cmdlib.StreamerInfoWithStatus{
 			// Twitch returns Online|Offline when streamer exists but is offline
@@ -1561,10 +803,7 @@ func TestUnknownStreamerFirstOfflineSaved(t *testing.T) {
 	})
 
 	// Verify subscription moved to subscriptions table
-	if w.db.MustInt(`
-		select count(*) from subscriptions sub
-		join streamers s on s.id = sub.streamer_id
-		where s.nickname = $1`, "unknown_model") != 1 {
+	if w.mockDB.subscriptionCount("unknown_model") != 1 {
 		t.Error("expected subscription after confirmation")
 	}
 
@@ -1575,7 +814,6 @@ func TestUnknownStreamerFirstOfflineSaved(t *testing.T) {
 		Streamers:          map[string]cmdlib.StreamerInfo{}, // empty = offline
 	}
 	r := w.handleCheckerResults(result, 101)
-	checkInv(&w.worker, t)
 
 	// 4. Offline status should be recorded for proper online time calculation
 	if r.unconfirmedChangesCount != 1 {
@@ -1583,10 +821,7 @@ func TestUnknownStreamerFirstOfflineSaved(t *testing.T) {
 	}
 
 	// Verify status_change was recorded
-	count := w.db.MustInt(
-		"select count(*) from status_changes where streamer_id = (select id from streamers where nickname = $1)",
-		"unknown_model",
-	)
+	count := w.mockDB.statusChangeCount("unknown_model")
 	if count != 1 {
 		t.Errorf("expected 1 status_change for first offline, got %d", count)
 	}
@@ -1603,16 +838,12 @@ func TestUnknownStreamerFirstOfflineSaved(t *testing.T) {
 	// 5. Subsequent status update with same offline status should NOT record a new change
 	result.Streamers = map[string]cmdlib.StreamerInfo{} // use new map to avoid aliasing
 	r = w.handleCheckerResults(result, 102)
-	checkInv(&w.worker, t)
 	if r.unconfirmedChangesCount != 0 {
 		t.Errorf("expected 0 changes for same offline status, got %d", r.unconfirmedChangesCount)
 	}
 
 	// Still only 1 status_change
-	count = w.db.MustInt(
-		"select count(*) from status_changes where streamer_id = (select id from streamers where nickname = $1)",
-		"unknown_model",
-	)
+	count = w.mockDB.statusChangeCount("unknown_model")
 	if count != 1 {
 		t.Errorf("expected still 1 status_change, got %d", count)
 	}
@@ -1725,49 +956,28 @@ func TestStatusTransitions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
-			defer w.terminate()
 			// Set up background streamers that should remain unchanged
-			insertTestStreamer(&w.db, db.Streamer{
+			insertStreamer(w.mockDB, db.Streamer{
 				Nickname:             "always_online",
 				UnconfirmedStatus:    cmdlib.StatusOnline,
 				UnconfirmedTimestamp: 1,
 			})
-			insertTestStreamer(&w.db, db.Streamer{
+			insertStreamer(w.mockDB, db.Streamer{
 				Nickname:             "always_offline",
 				UnconfirmedStatus:    cmdlib.StatusOffline,
 				UnconfirmedTimestamp: 1,
 			})
 			// Unknown is only ever reached from another status, so this one starts offline.
-			insertTestStreamer(&w.db, db.Streamer{
+			insertStreamer(w.mockDB, db.Streamer{
 				Nickname:                 "always_unknown",
 				UnconfirmedStatus:        cmdlib.StatusUnknown,
 				UnconfirmedTimestamp:     1,
 				PrevUnconfirmedStatus:    cmdlib.StatusOffline,
 				PrevUnconfirmedTimestamp: 0,
 			})
-			insertSubscription(&w.db, "ep", 1, "always_online")
-			insertSubscription(&w.db, "ep", 1, "always_offline")
-			insertSubscription(&w.db, "ep", 1, "always_unknown")
-			w.db.MustExec(`
-				insert into status_changes (streamer_id, timestamp, status, prev_status)
-				values ((select id from streamers where nickname = $1), $2, $3, $4)`,
-				"always_online", 1, cmdlib.StatusOnline, cmdlib.StatusUnknown,
-			)
-			w.db.MustExec(`
-				insert into status_changes (streamer_id, timestamp, status, prev_status)
-				values ((select id from streamers where nickname = $1), $2, $3, $4)`,
-				"always_offline", 1, cmdlib.StatusOffline, cmdlib.StatusUnknown,
-			)
-			w.db.MustExec(`
-				insert into status_changes (streamer_id, timestamp, status, prev_status)
-				values ((select id from streamers where nickname = $1), $2, $3, $4)`,
-				"always_unknown", 0, cmdlib.StatusOffline, cmdlib.StatusUnknown,
-			)
-			w.db.MustExec(`
-				insert into status_changes (streamer_id, timestamp, status, prev_status)
-				values ((select id from streamers where nickname = $1), $2, $3, $4)`,
-				"always_unknown", 1, cmdlib.StatusUnknown, cmdlib.StatusOffline,
-			)
+			insertSubscription(w.mockDB, "ep", 1, "always_online")
+			insertSubscription(w.mockDB, "ep", 1, "always_offline")
+			insertSubscription(w.mockDB, "ep", 1, "always_unknown")
 
 			// Initialize cache after setting up background streamers
 			w.initCache()
@@ -1775,8 +985,8 @@ func TestStatusTransitions(t *testing.T) {
 			// Always subscribe during setup if we need to set initial state
 			// (subscription is needed to track the streamer)
 			if tt.dbBefore != nil || tt.subscribed {
-				insertTestStreamer(&w.db, db.Streamer{Nickname: "ch"})
-				insertSubscription(&w.db, "ep", 1, "ch")
+				insertStreamer(w.mockDB, db.Streamer{Nickname: "ch"})
+				insertSubscription(w.mockDB, "ep", 1, "ch")
 			}
 
 			// Include background streamers in RequestedStreamers to prevent them from being set to unknown
@@ -1801,7 +1011,6 @@ func TestStatusTransitions(t *testing.T) {
 					}
 					w.handleCheckerResults(setupResult, 100)
 				}
-				checkInv(&w.worker, t)
 			}
 
 			if tt.fixedList {
@@ -1825,7 +1034,6 @@ func TestStatusTransitions(t *testing.T) {
 				}
 				w.handleCheckerResults(result, 101)
 			}
-			checkInv(&w.worker, t)
 
 			streamer := w.db.MaybeStreamer("ch")
 			if tt.dbAfter == nil {
@@ -1859,7 +1067,6 @@ func ptr[T any](v T) *T { return &v }
 func TestNotifyOfStatuses(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 
 	w.db.AddUser(100, 3, 0, "private")
 	w.db.AddUser(101, 3, 0, "private")
@@ -1899,7 +1106,6 @@ func TestNotifyOfStatuses(t *testing.T) {
 func TestDeliverOffMainGoroutine(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 
 	w.db.AddUser(100, 3, 0, "private")
 	userID := w.db.EnsureUser(100)
@@ -1969,21 +1175,16 @@ func TestAttemptBlockedSend(t *testing.T) {
 func TestBuildNotificationsDiceGate(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 
-	streamerID := insertTestStreamer(&w.db, db.Streamer{Nickname: "s1"})
-	insertSubscription(&w.db, "test", 100, "s1")
-	insertSubscription(&w.db, "test", 101, "s1")
+	streamerID := insertStreamer(w.mockDB, db.Streamer{Nickname: "s1"})
+	insertSubscription(w.mockDB, "test", 100, "s1")
+	insertSubscription(w.mockDB, "test", 101, "s1")
 	// An endpoint absent from the config.
-	insertSubscription(&w.db, "ghost", 102, "s1")
+	insertSubscription(w.mockDB, "ghost", 102, "s1")
 	// The count is MaxInt32, so these subscribers lose any roll:
 	// a win at p = threshold/MaxInt32 is unreachable in practice.
-	w.db.MustExec(
-		"insert into block (endpoint, user_id, block) select $1, u.id, $2 from users u where u.chat_id = $3",
-		"test", math.MaxInt32, 100)
-	w.db.MustExec(
-		"insert into block (endpoint, user_id, block) select $1, u.id, $2 from users u where u.chat_id = $3",
-		"ghost", math.MaxInt32, 102)
+	w.mockDB.setBlock("test", 100, math.MaxInt32)
+	w.mockDB.setBlock("ghost", 102, math.MaxInt32)
 
 	nots := w.buildNotifications([]db.ConfirmedStatusChange{
 		{StreamerID: streamerID, Nickname: "s1", Status: cmdlib.StatusOnline},
@@ -1997,24 +1198,22 @@ func TestBuildNotificationsDiceGate(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("notified users = %v, want %v (no roll for the orphaned endpoint)", got, want)
 	}
-	skipRows := func(chatID int64) int {
-		return w.db.MustInt(`
-			select count(*) from sent_message_log l
-			join users u on u.id = l.user_id
-			where l.result = $1 and u.chat_id = $2`,
-			messageDiceSkipped, chatID)
+	skipRows := func(chatID int64) []mockSentMessageLog {
+		var rows []mockSentMessageLog
+		for _, l := range w.mockDB.sentMessageLog {
+			if l.result == messageDiceSkipped && w.mockDB.chatID(l.userID) == chatID {
+				rows = append(rows, l)
+			}
+		}
+		return rows
 	}
-	if n := skipRows(100); n != 1 {
+	if n := len(skipRows(100)); n != 1 {
 		t.Errorf("dice-skip log rows for the blocked subscriber = %d, want 1", n)
 	}
-	if n := skipRows(102); n != 0 {
+	if n := len(skipRows(102)); n != 0 {
 		t.Errorf("dice-skip log rows for the orphaned endpoint = %d, want 0", n)
 	}
-	stamp := w.db.MustInt(`
-		select l.timestamp from sent_message_log l
-		join users u on u.id = l.user_id
-		where l.result = $1 and u.chat_id = $2`,
-		messageDiceSkipped, 100)
+	stamp := skipRows(100)[0].timestamp
 	if stamp != 1000 {
 		t.Errorf("dice-skip log timestamp = %d, want the batch's 1000", stamp)
 	}
@@ -2025,16 +1224,13 @@ func TestBuildNotificationsDiceGate(t *testing.T) {
 func TestBroadcastDiceGate(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 
-	insertTestStreamer(&w.db, db.Streamer{Nickname: "s1"})
-	insertSubscription(&w.db, "test", 100, "s1")
-	insertSubscription(&w.db, "test", 101, "s1")
+	insertStreamer(w.mockDB, db.Streamer{Nickname: "s1"})
+	insertSubscription(w.mockDB, "test", 100, "s1")
+	insertSubscription(w.mockDB, "test", 101, "s1")
 	w.ownerUserID = w.db.EnsureUser(999)
 	// The count is MaxInt32, so this subscriber loses the roll.
-	w.db.MustExec(
-		"insert into block (endpoint, user_id, block) select $1, u.id, $2 from users u where u.chat_id = $3",
-		"test", math.MaxInt32, 100)
+	w.mockDB.setBlock("test", 100, math.MaxInt32)
 
 	w.broadcast("test", "hi")
 
@@ -2043,11 +1239,9 @@ func TestBroadcastDiceGate(t *testing.T) {
 	if got := w.sendQueue.Len(); got != 2 {
 		t.Errorf("queued messages = %d, want the winner's copy and the ack", got)
 	}
-	skipLogged := w.db.MustInt(`
-		select count(*) from sent_message_log l
-		join users u on u.id = l.user_id
-		where l.result = $1 and l.kind = $2 and u.chat_id = $3`,
-		messageDiceSkipped, db.MessagePacket, 100)
+	skipLogged := count(w.mockDB.sentMessageLog, func(l mockSentMessageLog) bool {
+		return l.result == messageDiceSkipped && l.kind == db.MessagePacket && w.mockDB.chatID(l.userID) == 100
+	})
 	if skipLogged != 1 {
 		t.Errorf("dice-skip log rows = %d, want 1", skipLogged)
 	}

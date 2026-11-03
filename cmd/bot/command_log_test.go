@@ -29,9 +29,6 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
-// nullCommand marks a message log row storing a sql null.
-const nullCommand = "<null>"
-
 // completeQueuedSends puts every queued message
 // through the real send-result path, as the main loop does.
 func completeQueuedSends(t *testing.T, w *testWorker) {
@@ -75,43 +72,25 @@ func completeQueuedSends(t *testing.T, w *testWorker) {
 	w.sender("test").cooling = true
 }
 
-// commandsInLog runs a query selecting one command column,
-// reporting a stored null as nullCommand.
-// The rows come back sorted,
-// neither log carrying a serial id to order by.
-func commandsInLog(w *testWorker, query string, params db.QueryParams) []string {
-	var command *string
+func sentCommands(sent []mockSentMessageLog) []string {
 	var commands []string
-	w.db.MustQuery(
-		query,
-		params,
-		db.ScanTo{&command},
-		func() {
-			if command == nil {
-				commands = append(commands, nullCommand)
-				return
-			}
-			commands = append(commands, *command)
-		})
-	slices.Sort(commands)
+	for _, l := range sent {
+		commands = append(commands, l.command)
+	}
 	return commands
 }
 
 // drainSeqsToLog completes every queued message
-// and returns the reply positions recorded for them, sorted.
+// and returns the reply positions recorded for them.
 // It clears the log on the way out, like drainSendQueueToLog.
 func drainSeqsToLog(t *testing.T, w *testWorker) []int {
 	t.Helper()
 	completeQueuedSends(t, w)
-	var seq int
 	var seqs []int
-	w.db.MustQuery(
-		"select reply_seq from sent_message_log",
-		nil,
-		db.ScanTo{&seq},
-		func() { seqs = append(seqs, seq) })
-	slices.Sort(seqs)
-	w.db.MustExec("delete from sent_message_log")
+	for _, l := range w.mockDB.sentMessageLog {
+		seqs = append(seqs, l.replySeq)
+	}
+	w.mockDB.sentMessageLog = nil
 	return seqs
 }
 
@@ -122,8 +101,8 @@ func drainSeqsToLog(t *testing.T, w *testWorker) []int {
 func drainSendQueueToLog(t *testing.T, w *testWorker) []string {
 	t.Helper()
 	completeQueuedSends(t, w)
-	commands := commandsInLog(w, "select command from sent_message_log", nil)
-	w.db.MustExec("delete from sent_message_log")
+	commands := sentCommands(w.mockDB.sentMessageLog)
+	w.mockDB.sentMessageLog = nil
 	return commands
 }
 
@@ -133,15 +112,14 @@ func drainSendQueueToLog(t *testing.T, w *testWorker) []string {
 func TestDeferredAddResultLogsItsCommand(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 
 	// The streamer is unknown, so this parks a pending subscription.
 	w.addStreamer(testMessage(w, 1, "add", 100), "pending_model", false)
 
-	stored := w.db.MustInt(
-		"select count(*) from pending_subscriptions where nickname = $1 and command = $2",
-		"pending_model", "add")
+	stored := count(w.mockDB.pendingSubscriptions, func(p *mockPendingSubscription) bool {
+		return p.Nickname == "pending_model" && p.Command == "add"
+	})
 	if stored != 1 {
 		t.Fatalf("pending_subscriptions did not keep the command, got %d rows", stored)
 	}
@@ -169,17 +147,15 @@ func TestDeferredAddResultLogsItsCommand(t *testing.T) {
 func TestDeferredAddedStreamerStatusLogsItsCommand(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 
-	insertTestStreamer(&w.db, db.Streamer{
+	insertStreamer(w.mockDB, db.Streamer{
 		Nickname:        "known_model",
 		ConfirmedStatus: cmdlib.StatusOnline,
 	})
 	w.addStreamer(testMessage(w, 1, "add", 100), "known_model", false)
 
-	stored := w.db.MustInt(
-		"select count(*) from notification_queue where command = $1", "add")
+	stored := count(w.mockDB.notifications, func(n *mockNotification) bool { return n.Command == "add" })
 	if stored != 1 {
 		t.Fatalf("notification_queue did not keep the command, got %d rows", stored)
 	}
@@ -205,18 +181,16 @@ func TestDeferredAddedStreamerStatusLogsItsCommand(t *testing.T) {
 func TestDeferredOnlinePicsLogItsCommand(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 
-	insertTestStreamer(&w.db, db.Streamer{
+	insertStreamer(w.mockDB, db.Streamer{
 		Nickname:          "online_model",
 		UnconfirmedStatus: cmdlib.StatusOnline,
 	})
-	insertSubscription(&w.db, "test", 1, "online_model")
+	insertSubscription(w.mockDB, "test", 1, "online_model")
 	w.listOnlineStreamers(testMessage(w, 1, "pics", 100))
 
-	stored := w.db.MustInt(
-		"select count(*) from notification_queue where command = $1", "pics")
+	stored := count(w.mockDB.notifications, func(n *mockNotification) bool { return n.Command == "pics" })
 	if stored != 1 {
 		t.Fatalf("notification_queue did not keep the command, got %d rows", stored)
 	}
@@ -238,13 +212,10 @@ func TestDeferredOnlinePicsLogItsCommand(t *testing.T) {
 	}
 }
 
-// A command the bot does not track is still counted,
-// but with no name against it,
-// so received_message_log stores a null rather than an empty string.
-func TestReceivedCommandIsNullWhenUntracked(t *testing.T) {
+// A command the bot does not track is still counted, but with no name against it.
+func TestUntrackedCommandLogsNoName(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 	w.botNames = map[string]string{"test": "bot"}
 
@@ -258,10 +229,10 @@ func TestReceivedCommandIsNullWhenUntracked(t *testing.T) {
 		})
 	}
 
-	commands := commandsInLog(w, "select command from received_message_log", nil)
+	commands := w.mockDB.receivedCommands
 	t.Logf("received_message_log commands: %q", commands)
-	if !slices.Equal(commands, []string{nullCommand, "start"}) {
-		t.Errorf("untracked command was not stored as a null, got %q", commands)
+	if !slices.Equal(commands, []string{"start", ""}) {
+		t.Errorf("untracked command was logged with a name, got %q", commands)
 	}
 }
 
@@ -270,7 +241,6 @@ func TestReceivedCommandIsNullWhenUntracked(t *testing.T) {
 func TestCapitalizedCommandIsTracked(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 	w.botNames = map[string]string{"test": "bot"}
 
@@ -282,7 +252,7 @@ func TestCapitalizedCommandIsTracked(t *testing.T) {
 		}},
 	})
 
-	received := commandsInLog(w, "select command from received_message_log", nil)
+	received := w.mockDB.receivedCommands
 	sent := drainSendQueueToLog(t, w)
 	t.Logf("received %q, sent %q", received, sent)
 	if !slices.Equal(received, []string{"start"}) {
@@ -298,7 +268,6 @@ func TestCapitalizedCommandIsTracked(t *testing.T) {
 func TestFeedbackCopyToOwnerLogsNoCommand(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 
 	w.ownerUserID = w.db.EnsureUser(99)
@@ -306,11 +275,15 @@ func TestFeedbackCopyToOwnerLogsNoCommand(t *testing.T) {
 	w.feedback(testMessage(w, 1, "feedback", 100), "something is broken")
 
 	completeQueuedSends(t, w)
-	forUser := "select command from sent_message_log where user_id = $1"
-	ownerRows := commandsInLog(w, forUser, db.QueryParams{int64(w.ownerUserID)})
-	userCommands := commandsInLog(w, forUser, db.QueryParams{int64(userID)})
+	forUser := func(userID db.UserID) []string {
+		return sentCommands(slices.DeleteFunc(slices.Clone(w.mockDB.sentMessageLog), func(l mockSentMessageLog) bool {
+			return l.userID != userID
+		}))
+	}
+	ownerRows := forUser(w.ownerUserID)
+	userCommands := forUser(userID)
 	t.Logf("owner %q, user %q", ownerRows, userCommands)
-	if !slices.Equal(ownerRows, []string{nullCommand}) {
+	if !slices.Equal(ownerRows, []string{""}) {
 		t.Errorf("the owner copy was logged as a reply, got %q", ownerRows)
 	}
 	if !slices.Equal(userCommands, []string{"feedback"}) {
@@ -323,7 +296,6 @@ func TestFeedbackCopyToOwnerLogsNoCommand(t *testing.T) {
 func TestOwnerReplyLogsNoCommand(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 
 	w.botNames = map[string]string{"test": "bot"}
@@ -337,18 +309,18 @@ func TestOwnerReplyLogsNoCommand(t *testing.T) {
 		}},
 	})
 
-	received := commandsInLog(w, "select command from received_message_log", nil)
+	received := w.mockDB.receivedCommands
 	sent := drainSendQueueToLog(t, w)
 	t.Logf("received %q, sent %q", received, sent)
-	if !slices.Equal(received, []string{nullCommand}) {
+	if !slices.Equal(received, []string{""}) {
 		t.Errorf("the received log named an owner command, got %q", received)
 	}
-	if !slices.Equal(sent, []string{nullCommand}) {
+	if !slices.Equal(sent, []string{""}) {
 		t.Errorf("an owner reply named a command the received log lacks, got %q", sent)
 	}
 	// The unknown-command fallback writes these same rows,
 	// so only the blacklisted chat proves the owner dispatch ran.
-	if !w.db.MustBool("select coalesce(bool_or(blacklist), false) from users where chat_id = 5") {
+	if u := w.mockDB.userByChat(5); u == nil || !u.Blacklist {
 		t.Error("the owner command did not run: chat 5 is not blacklisted")
 	}
 }
@@ -358,7 +330,6 @@ func TestOwnerReplyLogsNoCommand(t *testing.T) {
 func TestOwnerGateRefusesStrangers(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 	w.botNames = map[string]string{"test": "bot"}
 	w.ownerUserID = w.db.EnsureUser(w.cfg.OwnerID)
@@ -369,7 +340,7 @@ func TestOwnerGateRefusesStrangers(t *testing.T) {
 			Chat: models.Chat{ID: 77, Type: "private"},
 		}},
 	})
-	if w.db.MustBool("select coalesce(bool_or(blacklist), false) from users where chat_id = 5") {
+	if u := w.mockDB.userByChat(5); u != nil && u.Blacklist {
 		t.Error("a stranger's /blacklist ran")
 	}
 	q := w.sendQueue.pop()
@@ -384,7 +355,6 @@ func TestOwnerGateRefusesStrangers(t *testing.T) {
 func TestOwnerCommandsDispatch(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 	w.ownerUserID = w.db.EnsureUser(99)
 	for name := range ownerCommands {
@@ -411,24 +381,23 @@ func TestOwnerCommandsStayOffKnownCommands(t *testing.T) {
 func TestProcessTGUpdateWhitelistGate(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 	w.botNames = map[string]string{"test": "bot"}
 	cfg := testConfig
 	cfg.WhitelistChats = []int64{5}
 	cfg.SubsTiers = []botconfig.SubsTier{{Count: 1, Cost: 10}}
 	w.cfg = &cfg
-	// A real bot against a stub server: a deleted callback gate reaches
+	// A real bot against a mock server: a deleted callback gate reaches
 	// AnswerCallbackQuery, which must not panic the run before the assertions.
 	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
 		_, _ = rw.Write([]byte(`{"ok":true,"result":true}`))
 	}))
 	defer srv.Close()
-	stub, err := bot.New("token", bot.WithServerURL(srv.URL), bot.WithSkipGetMe())
+	botOnMockServer, err := bot.New("token", bot.WithServerURL(srv.URL), bot.WithSkipGetMe())
 	if err != nil {
-		t.Fatalf("cannot build the stub bot: %v", err)
+		t.Fatalf("cannot build the bot: %v", err)
 	}
-	w.bots = map[string]*bot.Bot{"test": stub}
+	w.bots = map[string]*bot.Bot{"test": botOnMockServer}
 	message := func(chatID int64) *models.Update {
 		return &models.Update{Message: &models.Message{
 			Text: "/nosuch",
@@ -458,14 +427,14 @@ func TestProcessTGUpdateWhitelistGate(t *testing.T) {
 	for _, u := range []*models.Update{message(999), callback(999), payment(999)} {
 		w.processTGUpdate(incomingPacket{endpoint: "test", message: u})
 	}
-	if users := w.db.MustInt("select count(*) from users"); users != 0 {
+	if users := len(w.mockDB.users); users != 0 {
 		t.Errorf("a non-whitelisted chat reached the database: %d users", users)
 	}
-	if got := commandsInLog(w, "select command from received_message_log", nil); len(got) != 0 {
+	if got := w.mockDB.receivedCommands; len(got) != 0 {
 		t.Errorf("a non-whitelisted chat was logged: %q", got)
 	}
 	w.processTGUpdate(incomingPacket{endpoint: "test", message: message(5)})
-	if users := w.db.MustInt("select count(*) from users"); users != 1 {
+	if users := len(w.mockDB.users); users != 1 {
 		t.Errorf("the whitelisted chat did not reach the database: %d users", users)
 	}
 }
@@ -489,7 +458,6 @@ func TestProcessTGUpdateAppliesMigrations(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
-			defer w.terminate()
 			w.initCache()
 			w.db.AddUser(fromID, 3, 0, "group")
 			w.processTGUpdate(incomingPacket{
@@ -522,7 +490,6 @@ func TestChatterSkipsTheWhitelistLog(t *testing.T) {
 	cmdlib.Verbosity = cmdlib.InfVerbosity
 	t.Cleanup(func() { cmdlib.Verbosity = was })
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 	w.botNames = map[string]string{"test": "bot"}
 	cfg := testConfig
@@ -538,7 +505,7 @@ func TestChatterSkipsTheWhitelistLog(t *testing.T) {
 	if out := buf.String(); strings.Contains(out, "not in whitelist") {
 		t.Errorf("chatter drew a whitelist log line: %q", out)
 	}
-	if users := w.db.MustInt("select count(*) from users"); users != 0 {
+	if users := len(w.mockDB.users); users != 0 {
 		t.Errorf("chatter reached the database: %d users", users)
 	}
 }
@@ -580,7 +547,6 @@ func TestWebAppAddIsWhitelistGated(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
-			defer w.terminate()
 			w.initCache()
 			// Every worker shares &testConfig, so copy before changing it.
 			cfg := testConfig
@@ -598,8 +564,8 @@ func TestWebAppAddIsWhitelistGated(t *testing.T) {
 				t.Errorf("admitted = %v, want %v", got, c.admitted)
 			}
 
-			received := commandsInLog(w, "select command from received_message_log", nil)
-			users := w.db.MustInt("select count(*) from users")
+			received := w.mockDB.receivedCommands
+			users := len(w.mockDB.users)
 			t.Logf("received %q, users %d", received, users)
 			if c.admitted {
 				if !slices.Equal(received, []string{webAppAddCommand}) || users != 1 {
@@ -622,7 +588,6 @@ func TestWebAppAddIsWhitelistGated(t *testing.T) {
 func TestDuplicatePaymentReplyLogsNoCommand(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 
 	payment := &models.SuccessfulPayment{
@@ -640,7 +605,7 @@ func TestDuplicatePaymentReplyLogsNoCommand(t *testing.T) {
 	w.handleSuccessfulPayment("test", 1, payment, 100)
 	got := drainSendQueueToLog(t, w)
 	t.Logf("duplicate payment reply logged: %q", got)
-	if !slices.Equal(got, []string{nullCommand}) {
+	if !slices.Equal(got, []string{""}) {
 		t.Errorf("the duplicate reply named an unreceived command, got %q", got)
 	}
 }
@@ -651,7 +616,6 @@ func TestDuplicatePaymentReplyLogsNoCommand(t *testing.T) {
 func TestAddResultForUnknownEndpointIsDropped(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 
 	userID := w.db.EnsureUser(1)
@@ -676,13 +640,12 @@ func TestAddResultForUnknownEndpointIsDropped(t *testing.T) {
 func TestBroadcastAckQueuesBehindTheBroadcast(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 
 	w.ownerUserID = w.db.EnsureUser(99)
-	insertTestStreamer(&w.db, db.Streamer{Nickname: "some_model"})
+	insertStreamer(w.mockDB, db.Streamer{Nickname: "some_model"})
 	for _, chatID := range []int64{1, 2, 3} {
-		insertSubscription(&w.db, "test", chatID, "some_model")
+		insertSubscription(w.mockDB, "test", chatID, "some_model")
 	}
 
 	w.broadcast("test", "hello")
@@ -717,11 +680,10 @@ func TestBroadcastAckQueuesBehindTheBroadcast(t *testing.T) {
 func TestWebAppAddAdmitsARefusedAdd(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 
-	insertTestStreamer(&w.db, db.Streamer{Nickname: "known_model"})
-	insertSubscription(&w.db, "test", 1, "known_model")
+	insertStreamer(w.mockDB, db.Streamer{Nickname: "known_model"})
+	insertSubscription(w.mockDB, "test", 1, "known_model")
 
 	admitted := make(chan bool, 1)
 	w.performWebAppAdd(webAppAddRequest{
@@ -735,7 +697,7 @@ func TestWebAppAddAdmitsARefusedAdd(t *testing.T) {
 	}
 
 	// It refused, so it subscribed nothing new but did answer.
-	subs := w.db.MustInt("select count(*) from subscriptions")
+	subs := len(w.mockDB.subscriptions)
 	sent := drainSendQueueToLog(t, w)
 	t.Logf("subscriptions %d, sent %q", subs, sent)
 	if subs != 1 {
@@ -751,7 +713,6 @@ func TestWebAppAddAdmitsARefusedAdd(t *testing.T) {
 func TestAdCommandNamesItsCommand(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 	w.botNames = map[string]string{"test": "bot"}
 
@@ -782,7 +743,6 @@ func TestAdCommandNamesItsCommand(t *testing.T) {
 func TestBuyCallbackIsLoggedAsReceived(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 
 	// Every worker shares &testConfig, so copy before enabling the tiers.
@@ -795,7 +755,7 @@ func TestBuyCallbackIsLoggedAsReceived(t *testing.T) {
 	// The tap still counts: the user meant to buy and could not.
 	w.handleBuyCallback("test", 1, "buy:stars:999")
 
-	received := commandsInLog(w, "select command from received_message_log", nil)
+	received := w.mockDB.receivedCommands
 	sent := drainSendQueueToLog(t, w)
 	t.Logf("stale tier: received %q, sent %q", received, sent)
 	if !slices.Equal(received, []string{buyCallbackCommand}) {
@@ -807,13 +767,13 @@ func TestBuyCallbackIsLoggedAsReceived(t *testing.T) {
 
 	// A payload we cannot read is no funnel entry, so neither log names it.
 	w.handleBuyCallback("test", 1, "buy:")
-	received = commandsInLog(w, "select command from received_message_log", nil)
+	received = w.mockDB.receivedCommands
 	sent = drainSendQueueToLog(t, w)
 	t.Logf("unreadable: received %q, sent %q", received, sent)
 	if !slices.Equal(received, []string{buyCallbackCommand}) {
 		t.Errorf("an unreadable payload was counted as a tap, got %q", received)
 	}
-	if !slices.Equal(sent, []string{nullCommand}) {
+	if !slices.Equal(sent, []string{""}) {
 		t.Errorf("an unreadable payload named a command, got %q", sent)
 	}
 }
@@ -856,7 +816,6 @@ func TestWebAppSearchVetsItsCaller(t *testing.T) {
 func TestWebAppSearchWritesOnlyForAVettedChat(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 	w.fuzzySearchDB = w.db
 	// Every worker shares &testConfig, so copy before narrowing the whitelist.
@@ -877,8 +836,8 @@ func TestWebAppSearchWritesOnlyForAVettedChat(t *testing.T) {
 
 	for _, chatID := range []int64{999, 0} {
 		res := search(chatID)
-		received := commandsInLog(w, "select command from received_message_log", nil)
-		users := w.db.MustInt("select count(*) from users")
+		received := w.mockDB.receivedCommands
+		users := len(w.mockDB.users)
 		t.Logf("chat %d: allowed %v, received %q, users %d",
 			chatID, res.allowed, received, users)
 		if res.allowed || res.streamers != nil || len(received) != 0 || users != 0 {
@@ -888,7 +847,7 @@ func TestWebAppSearchWritesOnlyForAVettedChat(t *testing.T) {
 	}
 
 	search(1)
-	received := commandsInLog(w, "select command from received_message_log", nil)
+	received := w.mockDB.receivedCommands
 	t.Logf("vetted: received %q", received)
 	if !slices.Equal(received, []string{searchCommand}) {
 		t.Errorf("the search was not recorded, got %q", received)
@@ -900,7 +859,6 @@ func TestWebAppSearchWritesOnlyForAVettedChat(t *testing.T) {
 func TestBuySubsCommandNamesItself(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 	w.botNames = map[string]string{"test": "bot"}
 
@@ -989,14 +947,13 @@ func TestWebAppAddGivesUpOnShutdown(t *testing.T) {
 func TestChunkedListNumbersItsReplies(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 
 	// Chunks are 50 streamers, so 120 fills three of them.
 	for i := range 120 {
 		nickname := fmt.Sprintf("model_%03d", i)
-		insertTestStreamer(&w.db, db.Streamer{Nickname: nickname})
-		insertSubscription(&w.db, "test", 1, nickname)
+		insertStreamer(w.mockDB, db.Streamer{Nickname: nickname})
+		insertSubscription(w.mockDB, "test", 1, nickname)
 	}
 	w.listStreamers(testMessage(w, 1, "list", 100))
 
@@ -1042,7 +999,6 @@ func TestOnlinePicsCarryTheHintInTheLastMessage(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
-			defer w.terminate()
 			w.initCache()
 			// Above the three images, so the group cap is not what suppresses the hint.
 			cfg := testConfig
@@ -1052,11 +1008,11 @@ func TestOnlinePicsCarryTheHintInTheLastMessage(t *testing.T) {
 
 			for i := range 3 {
 				nickname := fmt.Sprintf("online_%d", i)
-				insertTestStreamer(&w.db, db.Streamer{
+				insertStreamer(w.mockDB, db.Streamer{
 					Nickname:          nickname,
 					UnconfirmedStatus: cmdlib.StatusOnline,
 				})
-				insertSubscription(&w.db, "test", tc.chatID, nickname)
+				insertSubscription(w.mockDB, "test", tc.chatID, nickname)
 				if tc.withPic {
 					url := "http://" + nickname + ".jpg"
 					w.unconfirmedOnlineStreamers[nickname] = cmdlib.StreamerInfo{ImageURL: url}
@@ -1118,13 +1074,12 @@ func TestPicsHintRollsTheDice(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
-			defer w.terminate()
 			w.initCache()
 			cfg := testConfig
 			cfg.FieldsHintChancePercent = tc.chance
 			w.cfg = &cfg
-			insertTestStreamer(&w.db, db.Streamer{Nickname: "online_0", UnconfirmedStatus: cmdlib.StatusOnline})
-			insertSubscription(&w.db, "test", 1, "online_0")
+			insertStreamer(w.mockDB, db.Streamer{Nickname: "online_0", UnconfirmedStatus: cmdlib.StatusOnline})
+			insertSubscription(w.mockDB, "test", 1, "online_0")
 			const answers = 20
 			for range answers {
 				w.listOnlineStreamers(testMessage(w, 1, "pics", 100))
@@ -1148,7 +1103,6 @@ func TestPicsHintRollsTheDice(t *testing.T) {
 func TestPendingAddNumbersItsWholeAnswer(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 
 	// The streamer is unknown, so this parks a pending subscription.
@@ -1182,17 +1136,14 @@ func TestPendingAddNumbersItsWholeAnswer(t *testing.T) {
 func TestPolledListNumbersItsChunks(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 	w.ownerUserID = w.db.EnsureUser(99)
 
 	// Chunks are 50 streamers, so 60 fills two of them.
 	for i := range 60 {
 		nickname := fmt.Sprintf("polled_%02d", i)
-		insertTestStreamer(&w.db, db.Streamer{Nickname: nickname})
-		if !w.db.SetPoll(nickname, true) {
-			t.Fatalf("cannot poll %s", nickname)
-		}
+		insertStreamer(w.mockDB, db.Streamer{Nickname: nickname})
+		w.db.SetPoll(nickname, true)
 	}
 
 	w.sendPolledList("test", 100, 0)
@@ -1212,18 +1163,17 @@ func TestPolledListNumbersItsChunks(t *testing.T) {
 func TestAddedStreamerNumbersItsWholeAnswer(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 
-	insertTestStreamer(&w.db, db.Streamer{
+	insertStreamer(w.mockDB, db.Streamer{
 		Nickname:        "known_model",
 		ConfirmedStatus: cmdlib.StatusOnline,
 	})
 	// Two already held, a limit of three and a heavy-user remainder of one,
 	// so this add lands in the band that warns about the usage.
 	for _, nickname := range []string{"filler_a", "filler_b"} {
-		insertTestStreamer(&w.db, db.Streamer{Nickname: nickname})
-		insertSubscription(&w.db, "test", 1, nickname)
+		insertStreamer(w.mockDB, db.Streamer{Nickname: nickname})
+		insertSubscription(w.mockDB, "test", 1, nickname)
 	}
 	w.db.SetLimit(w.db.EnsureUser(1), 3)
 	w.addStreamer(testMessage(w, 1, "add", 100), "known_model", false)
@@ -1248,7 +1198,6 @@ func TestAddedStreamerNumbersItsWholeAnswer(t *testing.T) {
 func TestEmptyPolledListKeepsItsNumber(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 	w.ownerUserID = w.db.EnsureUser(99)
 
@@ -1262,7 +1211,6 @@ func TestEmptyPolledListKeepsItsNumber(t *testing.T) {
 func TestUnpromptedSendLogsNoCommand(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 
 	userID := w.db.EnsureUser(1)
@@ -1271,7 +1219,7 @@ func TestUnpromptedSendLogsNoCommand(t *testing.T) {
 
 	commands := drainSendQueueToLog(t, w)
 	t.Logf("unprompted send logged: %q", commands)
-	if !slices.Equal(commands, []string{nullCommand}) {
+	if !slices.Equal(commands, []string{""}) {
 		t.Errorf("an unprompted send recorded a command, got %q", commands)
 	}
 }
@@ -1280,7 +1228,6 @@ func TestUnpromptedSendLogsNoCommand(t *testing.T) {
 func TestUnknownCommandLogsNoCommand(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.initCache()
 
 	w.botNames = map[string]string{"test": "bot"}
@@ -1294,7 +1241,7 @@ func TestUnknownCommandLogsNoCommand(t *testing.T) {
 
 	commands := drainSendQueueToLog(t, w)
 	t.Logf("unknown command logged: %q", commands)
-	if !slices.Equal(commands, []string{nullCommand}) {
+	if !slices.Equal(commands, []string{""}) {
 		t.Errorf("arbitrary user text reached the log, got %q", commands)
 	}
 }

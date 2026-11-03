@@ -78,7 +78,6 @@ func TestSenderScheduling(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
-			defer w.terminate()
 			w.sender("test").cooling = false
 
 			userIDs := make([]db.UserID, tt.users)
@@ -147,7 +146,6 @@ func (m *barrierMessage) send(context.Context, *bot.Bot) (*models.Message, error
 func TestEndpointsDeliverConcurrently(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 
 	userID, _ := w.db.AddUser(100, 3, 0, "private")
 	var arrived atomic.Int32
@@ -459,9 +457,9 @@ func TestTransientDelay(t *testing.T) {
 	}
 }
 
-// TestDeliverTiming runs a delivery on a fake clock and checks the durations
-// the old readyAt test asserted: the result is reported after the global
-// pacing gap, and the user is freed only after the full per-user cooldown.
+// TestDeliverTiming runs a delivery on synctest's clock:
+// the result is reported after the global pacing gap,
+// and the user is freed only after the full per-user cooldown.
 func TestDeliverTiming(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -764,11 +762,10 @@ func TestDeliverPaceEndsOnShutdown(t *testing.T) {
 func TestDrainKeepsPostponedNotificationArmed(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
-	defer w.terminate()
 	w.shuttingDown.Store(true) // the drain runs only during shutdown
 
 	userID, _ := w.db.AddUser(100, 3, 0, "private")
-	streamerID := insertTestStreamer(&w.db, db.Streamer{Nickname: "s1"})
+	streamerID := insertStreamer(w.mockDB, db.Streamer{Nickname: "s1"})
 	w.db.StoreNotifications([]db.Notification{
 		{Endpoint: "test", UserID: userID, StreamerID: &streamerID},
 		{Endpoint: "test", UserID: userID, StreamerID: &streamerID},
@@ -802,11 +799,14 @@ func TestDrainKeepsPostponedNotificationArmed(t *testing.T) {
 	}
 	w.drainSendResults()
 
-	sending := w.db.MustInt("select sending from notification_queue where id = $1", postponed.ID)
-	if sending != 1 {
-		t.Errorf("postponed notification sending = %d, want 1 (armed for restart)", sending)
+	byID := func(id int) func(n *mockNotification) bool {
+		return func(n *mockNotification) bool { return n.ID == id }
 	}
-	left := w.db.MustInt("select count(*) from notification_queue where id = $1", delivered.ID)
+	sending := w.mockDB.notifications[slices.IndexFunc(w.mockDB.notifications, byID(postponed.ID))].sending
+	if !sending {
+		t.Errorf("postponed notification sending = %v, want true (armed for restart)", sending)
+	}
+	left := count(w.mockDB.notifications, byID(delivered.ID))
 	if left != 0 {
 		t.Errorf("delivered notification rows = %d, want 0 (finalized)", left)
 	}

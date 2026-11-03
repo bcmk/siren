@@ -85,7 +85,7 @@ application-level consistency is sufficient.
 The unconfirmed statuses in `streamers`
 must always match the latest entries in `status_changes`.
 We use this invariant to ensure correctness.
-This invariant is verified by `checkInv` in tests.
+Compaction tests in `cmd/compactor` verify it with `checkStatusChangesConsistent`.
 
 A second invariant holds within `status_changes` itself:
 a row's `prev_status` never equals its `status`,

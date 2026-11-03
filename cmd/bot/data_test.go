@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"net/http"
-	"os"
 	"testing"
 	"text/template"
 
@@ -12,7 +11,6 @@ import (
 	"github.com/bcmk/siren/v6/internal/botconfig"
 	"github.com/bcmk/siren/v6/internal/checkers"
 	"github.com/bcmk/siren/v6/internal/db"
-	"github.com/bcmk/siren/v6/internal/pgtest"
 	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
 
@@ -167,21 +165,14 @@ type testWorker struct {
 	worker
 	// sendQueue aliases the test endpoint's queue, where every test send parks.
 	sendQueue *sendQueue
-	terminate func()
+	// mockDB is the worker's database, for tests to arrange and inspect its rows
+	mockDB *mockDB
 }
-
-var clones = pgtest.NewClones(func(connStr string) error {
-	d := db.NewDatabase(connStr, false, testConfig.MaxSubs)
-	d.ApplyMigrations()
-	return d.Close()
-})
 
 func TestMain(m *testing.M) {
 	// Set once here: parallel tests must not race on this global.
 	cmdlib.Verbosity = cmdlib.SilentVerbosity
-	code := m.Run()
-	clones.Terminate()
-	os.Exit(code)
+	m.Run()
 }
 
 // testMessage builds the inbound message a handler answers,
@@ -193,9 +184,6 @@ func testMessage(w *testWorker, chatID int64, command string, now int) receivedM
 
 // newTestWorker gives the test a worker on a database of its own
 func newTestWorker() *testWorker {
-	connStr, drop, err := clones.Clone()
-	checkErr(err)
-
 	tpl := template.New("")
 	template.Must(tpl.New("start").Parse("Start"))
 	template.Must(tpl.New("checking_streamer").Parse("CheckingStreamer"))
@@ -232,10 +220,12 @@ func newTestWorker() *testWorker {
 	template.Must(tpl.New("buy_subs").Parse("BuySubs"))
 	template.Must(tpl.New("buy_subs_package_button").Parse("BuySubsPackageButton"))
 
+	mock := newMockDB(testConfig.MaxSubs)
 	w := &testWorker{
+		mockDB: mock,
 		worker: worker{
 			bots:        nil,
-			db:          db.NewDatabase(connStr, true, testConfig.MaxSubs),
+			db:          mock,
 			cfg:         &testConfig,
 			client:      &http.Client{Transport: noNetwork{}},
 			tr:          map[string]*cmdlib.Translations{"test": &testTranslations},
@@ -254,10 +244,6 @@ func newTestWorker() *testWorker {
 	s := w.sender("test")
 	s.cooling = true
 	w.sendQueue = &s.queue
-	w.terminate = func() {
-		checkErr(w.db.Close())
-		checkErr(drop())
-	}
 	return w
 }
 
@@ -287,91 +273,23 @@ func webAppButtonURL(t *testing.T, w *testWorker) string {
 	return webApp.URL
 }
 
-func confirmedStatusesForChat(d *db.Database, endpoint string, chatID int64) (statuses []db.Streamer) {
-	var iter db.Streamer
-	d.MustQuery(`
-		select s.nickname, s.confirmed_status
-		from subscriptions sub
-		join streamers s on s.id = sub.streamer_id
-		join users u on u.id = sub.user_id
-		where u.chat_id = $1 and sub.endpoint = $2
-		order by s.nickname`,
-		db.QueryParams{chatID, endpoint},
-		db.ScanTo{&iter.Nickname, &iter.ConfirmedStatus},
-		func() { statuses = append(statuses, iter) })
-	return
+func insertStreamer(mock *mockDB, s db.Streamer) int {
+	return mock.insertStreamer(s).ID
 }
 
-func queryLastStatusChanges(d *db.Database) map[string]db.StatusChange {
-	statusChanges := map[string]db.StatusChange{}
-	var statusChange db.StatusChange
-	d.MustQuery(`
-		select distinct on (sc.streamer_id)
-			s.nickname, sc.status, sc.timestamp
-		from status_changes sc
-		join streamers s on s.id = sc.streamer_id
-		order by sc.streamer_id, sc.timestamp desc`,
-		nil,
-		db.ScanTo{&statusChange.Nickname, &statusChange.Status, &statusChange.Timestamp},
-		func() { statusChanges[statusChange.Nickname] = statusChange })
-	return statusChanges
+func insertSubscription(mock *mockDB, endpoint string, chatID int64, nickname string) {
+	mock.AddUser(chatID, 0, 0, "")
+	mock.AddSubscription(mock.userByChat(chatID).UserID, mock.streamerByNickname(nickname).ID, endpoint)
 }
 
-func (w *testWorker) chatsForStreamer(nickname string) (chats []int64, endpoints []string) {
-	var chatID int64
-	var endpoint string
-	w.db.MustQuery(`
-		select u.chat_id, sub.endpoint
-		from subscriptions sub
-		join streamers s on s.id = sub.streamer_id
-		join users u on u.id = sub.user_id
-		where s.nickname = $1
-		order by u.chat_id`,
-		db.QueryParams{nickname},
-		db.ScanTo{&chatID, &endpoint},
-		func() {
-			chats = append(chats, chatID)
-			endpoints = append(endpoints, endpoint)
-		})
-	return
-}
-
-func insertTestStreamer(d *db.Database, s db.Streamer) int {
-	d.MustExec("insert into nicknames (nickname) values ($1)", s.Nickname)
-	return d.MustInt(`
-		insert into streamers (
-			nickname,
-			confirmed_status,
-			unconfirmed_status,
-			unconfirmed_timestamp,
-			prev_unconfirmed_status,
-			prev_unconfirmed_timestamp)
-		values ($1, $2, $3, $4, $5, $6)
-		returning id`,
-		s.Nickname,
-		s.ConfirmedStatus,
-		s.UnconfirmedStatus,
-		s.UnconfirmedTimestamp,
-		s.PrevUnconfirmedStatus,
-		s.PrevUnconfirmedTimestamp)
-}
-
-func insertSubscription(d *db.Database, endpoint string, chatID int64, nickname string) {
-	d.AddUser(chatID, 0, 0, "")
-	d.MustExec(`
-		insert into subscriptions (endpoint, user_id, streamer_id)
-		select $1, u.id, s.id
-		from users u, streamers s
-		where u.chat_id = $2 and s.nickname = $3`,
-		endpoint, chatID, nickname)
-}
-
-func insertPendingSubscription(d *db.Database, endpoint string, chatID int64, nickname string, checking bool) {
-	d.AddUser(chatID, 0, 0, "")
-	d.MustExec(`
-		insert into pending_subscriptions (endpoint, user_id, nickname, checking)
-		select $1, u.id, $3, $4
-		from users u
-		where u.chat_id = $2`,
-		endpoint, chatID, nickname, checking)
+func insertPendingSubscription(mock *mockDB, endpoint string, chatID int64, nickname string, checking bool) {
+	mock.AddUser(chatID, 0, 0, "")
+	mock.insertPendingSubscription(mockPendingSubscription{
+		PendingSubscription: db.PendingSubscription{
+			UserID:   mock.userByChat(chatID).UserID,
+			Nickname: nickname,
+			Endpoint: endpoint,
+		},
+		checking: checking,
+	})
 }
