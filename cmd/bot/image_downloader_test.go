@@ -539,3 +539,24 @@ func TestHeldNotificationLatencyStartsInTheQueue(t *testing.T) {
 		t.Errorf("latency = %d ms, want it to leave out the wait for the image", latency)
 	}
 }
+
+// A download's read buffer is trimmed before its fitting, which may wait for other scalings,
+// and the fitted image is trimmed after.
+func TestDownloadTrimsAroundFitting(t *testing.T) {
+	t.Parallel()
+	var fitSpare bool
+	dl := newImageDownloader(
+		func(string) ([]byte, error) { return make([]byte, 100_000, 200_000), nil },
+		func(_ string, data []byte) ([]byte, bool, error) {
+			fitSpare = hasSpareRoom(data)
+			return make([]byte, 50_000, 100_000), true, nil
+		},
+		func(*queuedMessage, time.Time) string { return "" },
+	)
+	dl.download("key")
+	r := <-dl.results
+	if fitSpare || hasSpareRoom(r.data) {
+		t.Errorf("spare room: in the fitting's bytes %t, in the result's %t, want neither",
+			fitSpare, hasSpareRoom(r.data))
+	}
+}

@@ -249,7 +249,7 @@ func newTestWorker() *testWorker {
 		},
 	}
 	// A notification's photo starts its download, which only completeDownloads takes in.
-	w.imageDownloader = newImageDownloader(w.downloadImage, w.imageToDownload)
+	w.imageDownloader = newImageDownloader(w.downloadImage, fitImage, w.imageToDownload)
 	// Hold the test endpoint's slot so enqueues park for inspection.
 	s := w.sender("test")
 	s.cooling = true

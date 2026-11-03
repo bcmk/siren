@@ -41,6 +41,30 @@ Feature: Image sending
       And A's later notifications and ads on that bot wait behind A's alert
       And A's replies are sent meanwhile
 
+  Rule: An image over 2560 px a side is scaled down to that
+
+    Scenario: A big image is scaled down
+      Given a site's image is 4284x3213
+      When it downloads
+      Then the bot uploads it as a 2560x1920 JPEG
+
+    Scenario: An image over Telegram's width plus height is scaled to fit
+      Given a site's image is 6000x5000
+      When it downloads
+      Then the bot uploads it as a 2560x2133 JPEG
+
+    Scenario Outline: An image goes as it is
+      Given a site's image over 2560 px a side <case>
+      And Telegram takes it as it is
+      When it downloads
+      Then the bot uploads it as it is
+
+      Examples:
+        | case                                                        |
+        | would take over 128 MB to decode                            |
+        | is a JPEG with an EXIF orientation that rotates or flips it |
+        | scales to a JPEG no smaller than itself                     |
+
   Rule: A /pics answer's images download ahead of waiting alerts
 
     Scenario: /pics passes an alert wave
@@ -67,7 +91,7 @@ Feature: Image sending
 
     Scenario Outline: What a photo goes as while its image's uploads are paused
       Given an upload of the image the photo would send timed out within the last minute
-      And that image is its profile image once its own image's download has failed, else its own
+      And that image is its own, or its profile image once its own failed to download or was refused
       And the bot has cached <ids>
       When the photo reaches its turn
       Then it goes <as>
@@ -126,11 +150,11 @@ Feature: Image sending
       Then it goes with the placeholder, by its id or uploaded
 
       Examples:
-        | reason                                                               |
-        | whose download failed, and whose profile image could not stand in    |
-        | whose id was refused                                                 |
-        | whose id expired after it was queued                                 |
-        | that reached a full download step with no bytes from the last minute |
+        | reason                                                                             |
+        | whose image failed to download or was refused, and no profile image could stand in |
+        | whose id was refused                                                               |
+        | whose id expired after it was queued                                               |
+        | that reached a full download step with no bytes from the last minute               |
 
   Rule: A refused file id falls back
 
@@ -138,6 +162,21 @@ Feature: Image sending
       When Telegram answers a send by id with 400 "wrong file identifier"
       Then the send is logged as -11
       And the photo goes again by a newer id, with its bytes, with the placeholder, or as text
+
+  Rule: An image Telegram refuses falls back to the profile image
+
+    Scenario: Telegram refuses an image
+      When Telegram answers an upload of an image from a site to user A with IMAGE_PROCESS_FAILED
+      Then the send is logged as -14
+      And A's photo goes again with the profile image, else the placeholder, or as text
+      And so do the photos of that image queued within a minute
+      And the bot uploads that image again only after a minute
+      And A's later notifications and ads on that bot wait behind A's photo
+      And A's replies are sent meanwhile
+
+    Scenario: Another 400 refuses no image
+      When Telegram answers an upload with a 400 about the chat or the caption
+      Then the other chats' photos still upload the image
 
   Rule: An ad goes with its image or not at all
 
@@ -177,4 +216,5 @@ Feature: Image sending
       Then file_upload marks the sends that carried an image's bytes
       And the result -11 marks a refused id
       And the result -12 marks an ad dropped without a send attempt
-      And latency counts from entry to the send queue
+      And the result -14 marks an image Telegram refused
+      And latency counts from first entry to the send queue

@@ -3,8 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
+	"hash/crc32"
 	goimage "image"
+	"image/jpeg"
 	"image/png"
 	"io"
 	"math/rand/v2"
@@ -14,6 +17,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -100,6 +104,105 @@ func pngImage(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
+}
+
+// A downloaded image goes scaled down when that makes it smaller or makes it fit Telegram's limits.
+// One Telegram would refuse, even scaled, fails.
+func TestDownloadedImageFitsTelegram(t *testing.T) {
+	t.Parallel()
+	encoded := func(img goimage.Image) []byte {
+		var buf bytes.Buffer
+		if err := png.Encode(&buf, img); err != nil {
+			t.Fatal(err)
+		}
+		return buf.Bytes()
+	}
+	gray := func(width, height int) []byte { return encoded(goimage.NewGray(goimage.Rect(0, 0, width, height))) }
+	tests := []struct {
+		name       string
+		body       []byte
+		wantOK     bool
+		wantScaled bool
+	}{
+		{"an ordinary image", gray(1200, 1600), true, false},
+		{"a big image its scaling would make bigger", gray(4284, 3213), true, false},
+		{"a big image its scaling makes smaller", noisyJPEG(t), true, true},
+		{"one over Telegram's width plus height", gray(9000, 1100), true, true},
+		{"one over Telegram's width plus height, too big to scale", pngStart(9000, 1100), false, false},
+		{"one wider than Telegram's ratio", gray(2100, 100), false, false},
+		{"one taller than Telegram's ratio", gray(100, 2100), false, false},
+		{"a body over Telegram's size", make([]byte, maxImageBytes+1), false, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
+				_, _ = rw.Write(tc.body)
+			}))
+			defer srv.Close()
+			w := &worker{client: srv.Client()}
+			data, err := w.downloadImage(srv.URL)
+			if err == nil {
+				data, _, err = fitImage(srv.URL, data)
+			}
+			if (err == nil) != tc.wantOK {
+				t.Fatalf("error = %v, want success %t", err, tc.wantOK)
+			}
+			if scaled := err == nil && !bytes.Equal(data, tc.body); scaled != tc.wantScaled {
+				t.Errorf("scaled = %t, want %t", scaled, tc.wantScaled)
+			}
+		})
+	}
+}
+
+// noisyJPEG is a 2600x400 JPEG of noise at quality 100, which its scaling makes smaller.
+func noisyJPEG(t *testing.T) []byte {
+	img := goimage.NewGray(goimage.Rect(0, 0, 2600, 400))
+	rng := rand.New(rand.NewPCG(1, 2))
+	for i := range img.Pix {
+		img.Pix[i] = uint8(rng.UintN(256))
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 100}); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// A scaled download logs its scaling's time apart from the download's,
+// and the bytes it caches hold no spare buffer.
+func TestScaledDownload(t *testing.T) {
+	t.Parallel()
+	data := noisyJPEG(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
+		_, _ = rw.Write(data)
+	}))
+	t.Cleanup(srv.Close)
+	f := &fakeTelegram{replies: []fakeReply{{body: photoSent}}}
+	w, users := photoSendWorker(t, f, srv.Client(), 101)
+	sendImages(w, users, []*image{{key: srv.URL + "/a.jpg"}}, 1)
+	scalings := w.db.MustInt(
+		`select count(*) from performance_log where kind = $1 and data ? 'scale_ms'`,
+		db.PerformanceLogImageDownload)
+	if scalings != 1 {
+		t.Errorf("scalings logged = %d, want 1", scalings)
+	}
+	cached := w.imageDownloader.images[srv.URL+"/a.jpg"].data
+	if hasSpareRoom(cached) {
+		t.Errorf("the cache holds %d bytes for an image of %d", cap(cached), len(cached))
+	}
+}
+
+// pngStart is a PNG's start up to its header, of a 16-bit RGBA image of the size.
+func pngStart(width, height uint32) []byte {
+	header := []byte("IHDR")
+	header = binary.BigEndian.AppendUint32(header, width)
+	header = binary.BigEndian.AppendUint32(header, height)
+	// 16 bits a sample, RGBA, then the default compression, filter and interlace
+	header = append(header, 16, 6, 0, 0, 0)
+	b := []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\x0d")
+	b = append(b, header...)
+	return binary.BigEndian.AppendUint32(b, crc32.ChecksumIEEE(header))
 }
 
 // A download's cached bytes hold no spare buffer, however its read grew it.
@@ -1024,6 +1127,157 @@ func TestPhotoWithoutImageGoesWithPlaceholder(t *testing.T) {
 				t.Errorf("downloads = %d, want 0", got)
 			}
 		})
+	}
+}
+
+// A photo whose image Telegram refuses goes again with its profile image, else the placeholder,
+// and so does a later photo of the image, by the id the first one got.
+// Another 400 refuses no image.
+func TestRefusedUploadFallsBack(t *testing.T) {
+	t.Parallel()
+	refused := fakeReply{body: `{"ok":false,"error_code":400,"description":"Bad Request: IMAGE_PROCESS_FAILED"}`}
+	badEntities := fakeReply{body: `{"ok":false,"error_code":400,"description":"Bad Request: can't parse entities"}`}
+	tests := []struct {
+		name    string
+		profile string
+		replies []fakeReply
+		// firstSends counts the first photo's sends, wantSent every photo's.
+		// Zero queues both photos together, in one batch.
+		firstSends int
+		wantSent   []string
+		// wantIDUnder is the image whose key takes the id "large", empty for the placeholder's.
+		wantIDUnder string
+	}{
+		{"refused with a profile image", "/p.jpg", []fakeReply{refused, {body: photoSent}, {body: photoSent}}, 2,
+			[]string{"upload", "upload", "large"}, "/p.jpg"},
+		{"refused with one, both queued together", "/p.jpg",
+			[]fakeReply{refused, {body: photoSent}, {body: photoSent}}, 0,
+			[]string{"upload", "upload", "large"}, "/p.jpg"},
+		{"refused without one", "", []fakeReply{refused, {body: photoSent}, {body: photoSent}}, 2,
+			[]string{"upload", "upload", "large"}, ""},
+		{"another 400", "/p.jpg", []fakeReply{badEntities, {body: photoSent}}, 1,
+			[]string{"upload", "upload"}, "/a.jpg"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			srv, client, _ := imageServer(t)
+			f := &fakeTelegram{replies: tc.replies}
+			w, users := photoSendWorker(t, f, client, 101, 102)
+			img := &image{key: srv.URL + "/a.jpg"}
+			if tc.profile != "" {
+				img.fallbackURL = srv.URL + tc.profile
+			}
+			if tc.firstSends == 0 {
+				sendImages(w, users, []*image{img, img}, len(tc.replies))
+			} else {
+				sendImages(w, users[:1], []*image{img}, tc.firstSends)
+				sendImages(w, users[1:], []*image{img}, len(tc.replies)-tc.firstSends)
+			}
+			if slices.Contains(f.uploads, "placeholder") != (tc.wantIDUnder == "") {
+				t.Errorf("uploaded %d files, the placeholder among them: %t, want %t",
+					len(f.uploads), slices.Contains(f.uploads, "placeholder"), tc.wantIDUnder == "")
+			}
+			if !slices.Equal(f.sent, tc.wantSent) {
+				t.Errorf("sent %v, want %v", f.sent, tc.wantSent)
+			}
+			fallbacks := w.db.MustInt(
+				`select count(*) from performance_log where kind = $1 and data->>'fallback_image' = 'true'`,
+				db.PerformanceLogImageDownload)
+			// A refused image's profile image downloads once, for both photos
+			want := 0
+			if tc.wantIDUnder == "/p.jpg" {
+				want = 1
+			}
+			if fallbacks != want {
+				t.Errorf("fallback image downloads logged = %d, want %d", fallbacks, want)
+			}
+			key := w.tr["test"].ImageUnavailable.Image
+			if tc.wantIDUnder != "" {
+				key = srv.URL + tc.wantIDUnder
+			}
+			now := time.Now()
+			if id, _ := w.sender("test").images.lookup(&image{key: key}, now, now); id != "large" {
+				t.Errorf("the id under %s = %q, want %q", key, id, "large")
+			}
+		})
+	}
+}
+
+// A photo sent back for its profile image downloads nothing else for its user:
+// their photo whose download failed goes with the placeholder, without another try.
+func TestSentBackPhotoRetriesNoDownload(t *testing.T) {
+	t.Parallel()
+	refused := fakeReply{body: `{"ok":false,"error_code":400,"description":"Bad Request: IMAGE_PROCESS_FAILED"}`}
+	srv, client, hits := imageServer(t)
+	f := &fakeTelegram{replies: []fakeReply{refused, {body: photoSent}, {body: photoSent}, {body: photoSent}}}
+	w, users := photoSendWorker(t, f, client, 101, 102)
+	img := &image{key: srv.URL + "/a.jpg", fallbackURL: srv.URL + "/p.jpg"}
+	s := w.sender("test")
+	s.cooling = true
+	queueImages(w, []db.UserID{users[0], users[1], users[1]}, []*image{img, img, {key: srv.URL + "/missing"}})
+	for range 2 {
+		w.completeDownload(<-w.imageDownloader.results)
+	}
+	s.cooling = false
+	w.trySend("test")
+	completeSends(w, 4)
+	// The image, its profile image and the missing image, once each
+	if got := hits.Load(); got != 3 {
+		t.Errorf("downloads = %d, want 3", got)
+	}
+}
+
+// A photo sent back for its fallback image keeps its place: its user's ad waits until it is sent.
+// Their reply goes meanwhile. The photo's latency counts from its first entry to the send queue.
+func TestSentBackPhotoKeepsItsPlace(t *testing.T) {
+	t.Parallel()
+	data := pngImage(t)
+	free := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/p.jpg" {
+			<-free
+		}
+		_, _ = rw.Write(data)
+	}))
+	t.Cleanup(srv.Close)
+	release := sync.OnceFunc(func() { close(free) })
+	t.Cleanup(release)
+	refused := fakeReply{body: `{"ok":false,"error_code":400,"description":"Bad Request: IMAGE_PROCESS_FAILED"}`}
+	f := &fakeTelegram{replies: []fakeReply{refused, {body: textSent}, {body: photoSent}, {body: photoSent}}}
+	w, users := photoSendWorker(t, f, srv.Client(), 101)
+	ad := flagAd(w)
+	queueImages(w, users, []*image{{key: srv.URL + "/a.jpg", fallbackURL: srv.URL + "/p.jpg"}})
+	w.sendAdsTr(db.PriorityLow, "test", users[0], false, ad, "")
+	completeSends(w, 1)
+	tr := &cmdlib.Translation{Key: "online", Parse: cmdlib.ParseHTML}
+	w.enqueueTr(db.PriorityLow, "test", users[0], false, tr, tplData{}, nil, nil, reply("list"), 0)
+	// The ad would go once the user cools, unless the photo back in the download step holds it
+	deadline := time.After(3 * time.Duration(testConfig.UserCooldownMs) * time.Millisecond)
+	for waiting := true; waiting; {
+		select {
+		case u := <-w.cooledUsers:
+			w.onUserCooled(u)
+		case r := <-w.sendResults:
+			w.completeSendResult(r)
+		case <-deadline:
+			waiting = false
+		}
+	}
+	if want := []string{"upload", "text"}; !slices.Equal(f.sent, want) {
+		t.Fatalf("sent %v while the photo was back in the download step, want %v", f.sent, want)
+	}
+	release()
+	completeSends(w, 2)
+	if n := len(f.uploads); n != 3 || f.uploads[n-1] != "flag" {
+		t.Errorf("uploaded %d files, want the image, the profile image, then the ad", n)
+	}
+	latency := w.db.MustInt(
+		`select latency from sent_message_log where kind = $1 and result = $2`,
+		db.MessagePacket,
+		messageSent)
+	if wait := 3 * testConfig.UserCooldownMs; latency < wait {
+		t.Errorf("the photo's latency = %d ms, want at least %d", latency, wait)
 	}
 }
 

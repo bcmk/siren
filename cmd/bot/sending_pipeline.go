@@ -35,9 +35,7 @@ func (w *worker) enqueueMessage(
 		notificationID: notificationID,
 		requestedAt:    time.Now(),
 	}
-	// Notifications go through the download step to get their images.
-	// Ads go through it too, so one sent after a notification cannot overtake it.
-	if notificationID != 0 || tag.kind == db.AdPacket {
+	if q.passesDownloadStep() {
 		w.hold(q)
 		return
 	}
@@ -46,10 +44,17 @@ func (w *worker) enqueueMessage(
 }
 
 // hold passes a notification or an ad through the download step.
+// A photo whose image Telegram refused within an imageTTL takes its fallback image there.
+// A message back from the send queue downloads only the fallback image it takes there.
 // Main goroutine only.
 func (w *worker) hold(q *queuedMessage) {
 	now := time.Now()
-	w.sendReady(w.imageDownloader.push(q.endpoint, q.userID, q.order, q, now))
+	fallback := false
+	if p, ok := q.message.(*photoParams); ok && w.sender(q.endpoint).images.refuses(p.image, now) {
+		fallback = q.takeFallbackImage()
+	}
+	download := fallback || q.enqueuedAt.IsZero()
+	w.sendReady(w.imageDownloader.push(q.endpoint, q.userID, q.order, q, download, fallback, now))
 }
 
 // imageToDownload is the URL of the image a photo needs downloaded: its own, or its fallback image.
@@ -74,6 +79,9 @@ func (w *worker) completeDownload(r downloadResult) {
 	if fallback {
 		data["fallback_image"] = true
 	}
+	if r.scaled {
+		data["scale_ms"] = r.scaleMs
+	}
 	w.db.LogPerformance(int(now.Unix()), db.PerformanceLogImageDownload, r.durationMs, data)
 	if r.err != nil {
 		linf("cannot download image, %v", r.err)
@@ -87,7 +95,10 @@ func (w *worker) sendReady(ready []*queuedMessage) {
 	sort.Slice(ready, func(i, j int) bool { return orderLess(ready[i].order, ready[j].order) })
 	now := time.Now()
 	for _, q := range ready {
-		q.enqueuedAt = now
+		// A message sent back from the send queue keeps its latency baseline
+		if q.enqueuedAt.IsZero() {
+			q.enqueuedAt = now
+		}
 		w.enqueue(q)
 	}
 }
@@ -112,7 +123,7 @@ func (q *queuedMessage) setDownloadResult(data []byte, downloadedAt time.Time) {
 	p.downloaded, p.downloadedAt = data, downloadedAt
 }
 
-// takeFallbackImage gives the photo its fallback image
+// takeFallbackImage gives the photo its fallback image, dropping any bytes of its own,
 // and reports whether it got one: false without one, or once that failed too.
 func (q *queuedMessage) takeFallbackImage() bool {
 	p := q.message.(*photoParams)
@@ -120,5 +131,6 @@ func (q *queuedMessage) takeFallbackImage() bool {
 		return false
 	}
 	p.fallbackImage = &image{key: p.image.fallbackURL}
+	p.downloaded, p.downloadedAt = nil, time.Time{}
 	return true
 }

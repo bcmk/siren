@@ -65,6 +65,8 @@ type imageState struct {
 	idExpires    time.Time
 	// gaveUpUntil is when uploads may resume after one timed out.
 	gaveUpUntil time.Time
+	// refusedUntil is when the bot may upload the image again after Telegram refused it.
+	refusedUntil time.Time
 }
 
 // photoOutcome is what a photo's send found out about its image.
@@ -76,6 +78,8 @@ type photoOutcome struct {
 	uploadedID string
 	// timedOut marks an upload that ran out of time.
 	timedOut bool
+	// refused marks an upload of an image from a site that Telegram refused for its content.
+	refused bool
 	// downloadedAt is when an image from a site was downloaded, the time its id ages from.
 	downloadedAt time.Time
 	// fileUpload marks a send that carried the image's bytes, whatever its result.
@@ -92,6 +96,11 @@ func (c *imageCache) lookup(img *image, now, queuedAt time.Time) (id string, upl
 	return id, !now.Before(e.gaveUpUntil)
 }
 
+// refuses reports whether Telegram refused an upload of img within the last imageTTL.
+func (c *imageCache) refuses(img *image, now time.Time) bool {
+	return now.Before(c.images[img.key].refusedUntil)
+}
+
 // learn takes in what a photo's send found out about its image.
 func (c *imageCache) learn(o photoOutcome, now time.Time) {
 	c.sweep(now)
@@ -101,6 +110,8 @@ func (c *imageCache) learn(o photoOutcome, now time.Time) {
 		e.id, e.downloadedAt, e.idExpires = o.uploadedID, o.downloadedAt, now.Add(imageIDTTL)
 	case o.timedOut:
 		e.gaveUpUntil = now.Add(imageTTL)
+	case o.refused:
+		e.refusedUntil = now.Add(imageTTL)
 	case o.rejected:
 		e.id = ""
 	default:
@@ -119,7 +130,7 @@ func (c *imageCache) sweep(now time.Time) {
 	}
 	c.sweepAt = now.Add(imageTTL)
 	maps.DeleteFunc(c.images, func(_ string, e imageState) bool {
-		return !now.Before(e.idExpires) && !now.Before(e.gaveUpUntil)
+		return !now.Before(e.idExpires) && !now.Before(e.gaveUpUntil) && !now.Before(e.refusedUntil)
 	})
 }
 
@@ -271,8 +282,14 @@ type queuedMessage struct {
 	notificationID int
 	requestedAt    time.Time
 	stalls         int
-	// enqueuedAt is when the message entered the send queue, which its latency counts from.
+	// enqueuedAt is when the message first entered the send queue, which its latency counts from.
 	enqueuedAt time.Time
+}
+
+// passesDownloadStep reports whether the message goes through the download step:
+// a notification, for its image, or an ad, so it cannot overtake one.
+func (q *queuedMessage) passesDownloadStep() bool {
+	return q.notificationID != 0 || q.tag.kind == db.AdPacket
 }
 
 // msgHeap is one user's pending messages, ordered by orderLess.
@@ -459,6 +476,48 @@ func (s *sendQueue) stopCooling(userID db.UserID) {
 	}
 }
 
+// takeNotificationsAndAds removes a user's queued notifications and ads and returns them.
+func (s *sendQueue) takeNotificationsAndAds(userID db.UserID) []*queuedMessage {
+	u := s.byUser[userID]
+	if u == nil {
+		return nil
+	}
+	var taken []*queuedMessage
+	kept := u.items[:0]
+	for _, q := range u.items {
+		if q.passesDownloadStep() {
+			taken = append(taken, q)
+		} else {
+			kept = append(kept, q)
+		}
+	}
+	clear(u.items[len(kept):])
+	u.items = kept
+	heap.Init(&u.items)
+	s.size -= len(taken)
+	switch {
+	case len(u.items) == 0:
+		if u.heapIndex != -1 {
+			heap.Remove(&s.ready, u.heapIndex)
+		}
+		delete(s.byUser, userID)
+	case u.heapIndex != -1:
+		heap.Fix(&s.ready, u.heapIndex)
+	}
+	return taken
+}
+
+// sendBack returns a photo to the download step for its fallback image,
+// with its user's queued notifications and ads, which stay behind it there.
+// Main goroutine only.
+func (w *worker) sendBack(q *queuedMessage) {
+	later := w.sender(q.endpoint).queue.takeNotificationsAndAds(q.userID)
+	w.hold(q)
+	for _, o := range later {
+		w.hold(o)
+	}
+}
+
 // enqueue inserts a prebuilt message and tries to start a send.
 // Main goroutine only.
 // A re-queued message (a fallback, postpone, or migrate) arrives here
@@ -497,7 +556,7 @@ func (w *worker) onSendDone(endpoint string) {
 
 // imageToSend returns the image the photo goes with short of the placeholder,
 // with its id, empty for none, and whether it may upload it.
-// That is its fallback image once its own image's download has failed
+// That is its fallback image once its own image failed to download or Telegram refused it,
 // and the bot has cached no id for its own image, else its own image.
 func (p *photoParams) imageToSend(images *imageCache, now, queuedAt time.Time) (img *image, id string, uploads bool) {
 	id, uploads = images.lookup(p.image, now, queuedAt)
@@ -517,6 +576,8 @@ func (p *photoParams) pickImage(images *imageCache, placeholder *image, now, que
 	p.sentImage, p.fileID, p.upload = img, id, p.downloaded
 	if img.data != nil {
 		p.upload = img.data
+	} else if images.refuses(img, now) {
+		p.upload = nil
 	}
 	if found := id != "" || (uploads && p.upload != nil); found || placeholder == nil {
 		return found
@@ -553,6 +614,14 @@ func (w *worker) trySend(endpoint string) {
 	if q.tag.kind != db.MaintenancePacket {
 		if p, ok := q.message.(*photoParams); ok {
 			now := time.Now()
+			// A photo queued before Telegram refused its image goes back for its fallback image
+			if p.fallbackImage == nil && p.image.fallbackURL != "" && s.images.refuses(p.image, now) {
+				if id, _ := s.images.lookup(p.image, now, q.requestedAt); id == "" {
+					w.sendBack(q)
+					w.trySend(endpoint)
+					return
+				}
+			}
 			// An ad goes with its own image or not at all.
 			var placeholder *image
 			if q.tag.kind != db.AdPacket {
@@ -640,6 +709,7 @@ func (w *worker) attempt(
 		key:          p.sentImage.key,
 		rejected:     p.fileID != "" && result == messageFileIDRejected,
 		timedOut:     p.fileID == "" && result == messageTimeout,
+		refused:      p.fileID == "" && result == messageImageRefused && p.sentImage.data == nil,
 		downloadedAt: p.downloadedAt,
 		fileUpload:   p.fileID == "" && result != messageSkipped,
 	}
@@ -706,11 +776,12 @@ func (w *worker) deliver(q *queuedMessage, msg sendable) {
 			q.message = p.toText()
 			resend = q
 		}
-	case photo.timedOut || photo.rejected:
+	case photo.timedOut || photo.refused || photo.rejected:
 		// Dispatch picks the photo's image afresh, now its upload is paused or its id dropped.
+		// A photo of a refused image goes back to the download step for its fallback image.
 		// Ahead of the transient case, so a timed-out upload counts no stall.
-		// A timed-out ad is not retried: its image stays paused, and an ad takes no placeholder.
-		if !photo.timedOut || tag.kind != db.AdPacket {
+		// A timed-out or refused ad is not retried: an ad takes no placeholder.
+		if photo.rejected || tag.kind != db.AdPacket {
 			resend = q
 		}
 	case transient || migrated:

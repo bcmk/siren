@@ -35,7 +35,8 @@ func (d *renderParams) render(mention string) string {
 type image struct {
 	// key names the image in a bot's imageCache: its URL, or a shipped image's file name.
 	key string
-	// fallbackURL names the image a photo shows when this one fails to download: the profile image.
+	// fallbackURL names the profile image,
+	// which a photo shows when this one fails to download or Telegram refuses it.
 	fallbackURL string
 	// data holds a shipped image's bytes, nil for an image from a site.
 	data []byte
@@ -149,7 +150,7 @@ func (m *messageParams) send(ctx context.Context, b *bot.Bot) (*models.Message, 
 type photoParams struct {
 	*bot.SendPhotoParams
 	image *image
-	// fallbackImage stands in once the photo's own image fails to download: the profile image.
+	// fallbackImage stands in once the photo's own image fails to download or Telegram refuses it.
 	fallbackImage *image
 	// sentImage is the image a dispatch sends the photo with:
 	// its own, its fallback image, or the placeholder.

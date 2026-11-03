@@ -37,6 +37,7 @@ A photo is `photoParams` in `cmd/bot/base_chattable.go`.
   so a bot learns an image's id only from a real send.
 - A file id works in any chat, but only for the bot that uploaded it.
   `file_unique_id` is shared across bots, but nothing can be sent by it.
+- Telegram stores a photo resized to at most 2560 px a side
 - A timed-out upload may still have reached the chat: the client cannot tell
 - A refused file id comes back as a 400 whose description contains "file identifier"
 
@@ -63,19 +64,26 @@ A photo is `photoParams` in `cmd/bot/base_chattable.go`.
      so the downloads of a `/pics` answer start before those of waiting alerts.
      A user running `maxUserDownloads` downloads waits as a cooling user does,
      so a long `/pics` answer leaves the pool to others.
+   - An image over 2560 px a side is scaled down to that as a JPEG,
+     so its upload carries fewer bytes.
+     Images scale one at a time, so their memory does not add up.
+     One goes as it is when it would take over `maxScaleBytes` to decode,
+     or it is a JPEG with an EXIF orientation that rotates or flips it, which scaling would drop.
+     So does one whose scaled JPEG is no smaller, when Telegram takes it as it is.
 3. When its turn comes, a photo the bot has cached a file id for goes by that id
    and uploads nothing.
 4. Otherwise it uploads the image's bytes:
    a shipped image's, or those downloaded for the photo, however long ago.
 5. A photo with no id, and no bytes it may upload, goes with the image-unavailable placeholder,
    `res/images/image-unavailable.<lang>.png`, built by `scripts/build-image-unavailable`.
-   That happens when its download failed and its profile image could not stand in,
+   That happens when its download failed, or Telegram refused its image,
+   and its profile image could not stand in,
    when its id was refused or expired after it was queued,
    when the download step was full as it was queued,
    or while the bot has stopped uploading the image it would send:
-   its profile image once its own image's download has failed, else its own.
+   its profile image once its own image failed to download or Telegram refused it, else its own.
    In that last case the placeholder goes by its id alone, as uploads are stalling.
-   The profile image stands in only for a failed download.
+   The profile image stands in only for a failed download or a refused image.
    In the other cases its id would rarely serve,
    as it serves only within an `imageTTL` of its download.
    A photo that cannot send the placeholder either
@@ -94,6 +102,9 @@ A bot caches an id for `imageIDTTL`, an hour.
 
 - **The download fails:** the photos fall back to the profile image,
   each taking it as a new photo would: by its file id, its bytes, or a download.
+  An image Telegram would refuse fails its download: one downloading over 10 MB,
+  one over 10000 in width plus height even after scaling,
+  or one with a side over 20 times the other.
   The bot caches the profile image's file id under the profile image's URL.
   When the streamer has no profile image, it fails too, or the download step is full,
   they go with the placeholder.
@@ -103,6 +114,13 @@ A bot caches an id for `imageIDTTL`, an hour.
   The next alert of that URL tries again.
 - **Telegram refuses the id:** the photo goes by an id the bot gains meanwhile,
   uploads the bytes downloaded for it, or else goes with the placeholder
+- **Telegram refuses the image** from a site, for its content, such as `IMAGE_PROCESS_FAILED`:
+  the photo falls back to the profile image, as after a failed download,
+  so it goes with the profile image, the placeholder, or as text.
+  Photos of that image queued within an `imageTTL` do the same,
+  and the bot uploads the image again only after that. An ad is dropped instead.
+  A photo already past the download step goes back to it for the profile image,
+  and its user's later notifications and ads on that bot go back behind it.
 - **The upload times out:** the bot stops uploading the image for an `imageTTL`.
   Photos that would send it meanwhile go by a file id,
   with the placeholder by its id, or else as text.
@@ -112,9 +130,11 @@ A bot caches an id for `imageIDTTL`, an hour.
 
 ## Logs
 
-- `sent_message_log.result` is -11 for a refused id and -12 for an ad dropped without a send attempt
+- `sent_message_log.result` is -11 for a refused id, -12 for an ad dropped without a send attempt,
+  and -14 for an image Telegram refused
 - `sent_message_log.file_upload` marks the sends that carried an image's bytes
-- `sent_message_log.latency` counts from when a message enters the send queue,
-  so it leaves out a held notification's wait for its image
+- `sent_message_log.latency` counts from when a message first enters the send queue,
+  so it leaves out the first wait in the download step
 - `performance_log` times each download, kind 2, with `failed` in its data,
-  and `fallback_image` set for one first wanted in place of an image that failed
+  `fallback_image` set for one first wanted in place of an image that failed or was refused,
+  and `scale_ms` timing the scaling of an image over 2560 px a side, its wait for others included

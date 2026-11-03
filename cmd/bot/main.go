@@ -222,6 +222,7 @@ const (
 	messageFileIDRejected      = -11
 	messageAdDropped           = -12
 	messageServerError         = -13
+	messageImageRefused        = -14
 )
 
 type msgSendResult struct {
@@ -332,7 +333,7 @@ func newWorker(cfg *botconfig.Config, checker checkers.Checker) *worker {
 		incomingPackets:            incomingPackets,
 	}
 	w.chatMember = w.getChatMember
-	w.imageDownloader = newImageDownloader(w.downloadImage, w.imageToDownload)
+	w.imageDownloader = newImageDownloader(w.downloadImage, fitImage, w.imageToDownload)
 	// The bot starts in maintenance: the database is not created yet.
 	w.maintenance.Store(true)
 	w.loadTranslations(trsByEndpoint(cfg))
@@ -612,6 +613,11 @@ func (w *worker) sendMessageInternal(
 			if strings.Contains(err.Error(), "file identifier") {
 				ldbg("cannot send a message, file id rejected")
 				return nil, messageFileIDRejected, 0, 0
+			}
+			// Telegram's errors about a photo's content, such as PHOTO_INVALID_DIMENSIONS
+			if strings.Contains(err.Error(), "IMAGE_PROCESS_FAILED") || strings.Contains(err.Error(), "PHOTO_") {
+				linf("cannot send a message, image refused, error: %v", err)
+				return nil, messageImageRefused, 0, 0
 			}
 			lerr("cannot send a message, bad request, error: %v", err)
 			return nil, messageBadRequest, 0, 0
@@ -2032,6 +2038,15 @@ func (w *worker) streamerTimeDiff(c db.Streamer, now int) *timeDiff {
 	return nil
 }
 
+const (
+	// maxImageBytes is the largest photo Telegram takes.
+	maxImageBytes = 10 << 20
+	// maxImageSides caps a photo's width plus height, as Telegram does.
+	maxImageSides = 10000
+	// maxImageRatio caps a photo's longer side over its shorter, as Telegram does.
+	maxImageRatio = 20
+)
+
 func (w *worker) downloadImage(url string) ([]byte, error) {
 	resp, err := w.client.Get(url)
 	if err != nil {
@@ -2042,16 +2057,48 @@ func (w *worker) downloadImage(url string) ([]byte, error) {
 		return nil, fmt.Errorf("cannot download the image %s, status code %v", url, resp.StatusCode)
 	}
 	buf := new(bytes.Buffer)
-	_, err = buf.ReadFrom(resp.Body)
+	if n := resp.ContentLength; n > 0 && n <= maxImageBytes {
+		buf.Grow(int(n) + bytes.MinRead)
+	}
+	// A byte past the limit tells an image at the limit from a bigger one
+	_, err = buf.ReadFrom(io.LimitReader(resp.Body, maxImageBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the image %s, %v", url, err)
 	}
-	data := buf.Bytes()
-	_, _, err = goimage.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, fmt.Errorf("cannot decode the image %s, %v", url, err)
+	if buf.Len() > maxImageBytes {
+		return nil, fmt.Errorf("cannot take the image %s, over %d bytes", url, maxImageBytes)
 	}
-	return data, nil
+	return buf.Bytes(), nil
+}
+
+// fitImage scales a downloaded image down to the size Telegram stores, failing one it would refuse,
+// and reports whether it scaled it.
+// The original goes when Telegram takes it and the scaled JPEG is no smaller.
+func fitImage(url string, data []byte) ([]byte, bool, error) {
+	// The header alone, as decoding a big image whole takes several bytes a pixel
+	cfg, format, err := goimage.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return nil, false, fmt.Errorf("cannot decode the image %s, %v", url, err)
+	}
+	original := goimage.Pt(cfg.Width, cfg.Height)
+	fitted, size, err := scaleDown(data, cfg, format)
+	if err != nil {
+		return nil, true, fmt.Errorf("cannot scale the image %s, %v", url, err)
+	}
+	scaled := size != original
+	if scaled && len(fitted) >= len(data) && imageSizeFits(original.X, original.Y) {
+		fitted, size = data, original
+	}
+	if !imageSizeFits(size.X, size.Y) {
+		return nil, scaled, fmt.Errorf("cannot take the image %s, %dx%d", url, size.X, size.Y)
+	}
+	return fitted, scaled, nil
+}
+
+// imageSizeFits reports whether Telegram takes a photo this size.
+func imageSizeFits(width, height int) bool {
+	short, long := min(width, height), max(width, height)
+	return short > 0 && width+height <= maxImageSides && long <= maxImageRatio*short
 }
 
 func (w *worker) listOnlineStreamers(m receivedMessage) {

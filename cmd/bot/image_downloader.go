@@ -25,10 +25,15 @@ const (
 
 // downloadResult is a finished download, for the main goroutine.
 type downloadResult struct {
-	key        string
-	data       []byte
-	err        error
+	key  string
+	data []byte
+	err  error
+	// durationMs times the download alone.
 	durationMs int
+	// scaled marks an image scaled down,
+	// and scaleMs times that, its wait for other scalings included.
+	scaled  bool
+	scaleMs int
 }
 
 // imageRequest is what the downloader needs of a request: to take its image's bytes,
@@ -82,7 +87,7 @@ type imageDownload[R imageRequest] struct {
 	// started marks a download under way or done, running in one of userID's slots.
 	started bool
 	userID  db.UserID
-	// fallback marks an image first wanted in place of one that failed.
+	// fallback marks an image first wanted in place of one that failed or Telegram refused.
 	fallback bool
 	// data is the image once downloaded, for the requests made within an imageTTL.
 	data         []byte
@@ -216,12 +221,16 @@ type imageDownloader[R imageRequest] struct {
 	results chan downloadResult
 	// downloadImage runs off the main goroutine.
 	downloadImage func(url string) ([]byte, error)
+	// fitImage readies a downloaded image for upload off the main goroutine,
+	// reporting whether it scaled it.
+	fitImage func(url string, data []byte) ([]byte, bool, error)
 	// imageToDownload is the URL of the image a request needs downloaded, empty for none.
 	imageToDownload func(request R, now time.Time) string
 }
 
 func newImageDownloader[R imageRequest](
 	downloadImage func(url string) ([]byte, error),
+	fitImage func(url string, data []byte) ([]byte, bool, error),
 	imageToDownload func(request R, now time.Time) string,
 ) imageDownloader[R] {
 	return imageDownloader[R]{
@@ -230,24 +239,32 @@ func newImageDownloader[R imageRequest](
 		images:          map[string]*imageDownload[R]{},
 		results:         make(chan downloadResult, maxDownloads),
 		downloadImage:   downloadImage,
+		fitImage:        fitImage,
 		imageToDownload: imageToDownload,
 	}
 }
 
 // push takes a user's request on an endpoint and its order,
 // and returns, in order, the user's requests on that endpoint that it releases.
+// It downloads the request's image only when download is set.
+// fallback marks a request that has taken its fallback image.
 func (dl *imageDownloader[R]) push(
 	endpoint string,
 	userID db.UserID,
 	order queueOrder,
 	request R,
+	download bool,
+	fallback bool,
 	now time.Time,
 ) []R {
 	dl.sweep(now)
-	key := dl.imageToDownload(request, now)
+	var key string
+	if download {
+		key = dl.imageToDownload(request, now)
+	}
 	p := &pendingImageRequest[R]{request: request, order: order, key: key, endpoint: endpoint, userID: userID}
 	if key != "" {
-		dl.fetch(p, false, now)
+		dl.fetch(p, fallback, now)
 		dl.startDownloads()
 	}
 	u := endpointUser{endpoint, userID}
@@ -264,7 +281,7 @@ func (dl *imageDownloader[R]) push(
 // fetch gives a request the image downloaded within an imageTTL,
 // or has it await the image's download, under way or waiting to start.
 // A full step leaves it without the image, since downloads this far behind would only delay it.
-// fallback marks an image wanted in place of one that failed.
+// fallback marks an image wanted in place of one that failed or Telegram refused.
 func (dl *imageDownloader[R]) fetch(p *pendingImageRequest[R], fallback bool, now time.Time) {
 	d := dl.images[p.key]
 	if d != nil && d.data != nil {
@@ -336,14 +353,22 @@ func (dl *imageDownloader[R]) startDownloads() {
 func (dl *imageDownloader[R]) download(key string) {
 	start := time.Now()
 	data, err := dl.downloadImage(key)
+	d := downloadResult{key: key, durationMs: int(time.Since(start).Milliseconds())}
+	// Frees the read buffer before the image waits for other scalings
 	data = trimmed(data)
-	d := downloadResult{key: key, data: data, err: err, durationMs: int(time.Since(start).Milliseconds())}
+	if err == nil {
+		start = time.Now()
+		data, d.scaled, err = dl.fitImage(key, data)
+		d.scaleMs = int(time.Since(start).Milliseconds())
+		data = trimmed(data)
+	}
+	d.data, d.err = data, err
 	// Never blocks: the channel holds a result for every download the pool runs.
 	dl.results <- d
 }
 
 // trimmed copies the image to a buffer of its size when its own has spare room.
-// A buffer grown while reading can hold twice the image, and the cache keeps it.
+// A buffer grown while reading or encoding can hold twice the image, and the cache keeps it.
 func trimmed(data []byte) []byte {
 	if hasSpareRoom(data) {
 		return bytes.Clone(data)
@@ -360,7 +385,7 @@ func hasSpareRoom(data []byte) bool {
 
 // complete takes in a finished download, gives it to the requests awaiting it,
 // and returns the requests it releases, in each user's order,
-// and whether the image was first wanted in place of one that failed.
+// and whether the image was first wanted in place of one that failed or Telegram refused.
 // It caches the image for the requests made within an imageTTL, and starts the next downloads.
 // A request whose image failed takes its fallback image, if any, as a new request would.
 func (dl *imageDownloader[R]) complete(r downloadResult, now time.Time) (released []R, fallback bool) {
