@@ -133,6 +133,14 @@ type streamateResponse struct {
 	AvailablePerformers availablePerformersResponse
 }
 
+// streamateImageURL is a performer's biopic, which a request gets by including it, empty for none.
+func streamateImageURL(m performerResponse) string {
+	if m.Media == nil || m.Media.Pic == nil || m.Media.Pic.Full == nil {
+		return ""
+	}
+	return "https:" + m.Media.Pic.Full.Src
+}
+
 func streamateShowKind(m performerResponse) cmdlib.ShowKind {
 	if m.GoldShow == "1" {
 		return cmdlib.ShowTicket
@@ -150,6 +158,7 @@ func (c *StreamateChecker) QueryStreamer(modelID string, _ Extras) (cmdlib.Strea
 		AvailablePerformers: availablePerformersRequest{
 			Exact:   true,
 			PageNum: 1,
+			Include: includeRequest{Media: &mediaRequest{Value: "biopic"}},
 			Constraints: constraintsRequest{
 				StreamType: &streamTypeRequest{Value: "live,recorded,offline"},
 				Name:       &nameRequest{Value: modelID},
@@ -192,9 +201,13 @@ func (c *StreamateChecker) QueryStreamer(modelID string, _ Extras) (cmdlib.Strea
 	if parsed.AvailablePerformers.ExactMatches != 1 || len(parsed.AvailablePerformers.Performers) != 1 {
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusNotFound}, nil
 	}
-	switch parsed.AvailablePerformers.Performers[0].StreamType {
+	performer := parsed.AvailablePerformers.Performers[0]
+	switch performer.StreamType {
 	case "live":
-		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOnline}, nil
+		return cmdlib.StreamerInfoWithStatus{
+			StreamerInfo: cmdlib.StreamerInfo{ImageURL: streamateImageURL(performer)},
+			Status:       cmdlib.StatusOnline,
+		}, nil
 	case "recorded", "offline":
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOffline}, nil
 	}
@@ -247,13 +260,9 @@ func (c *StreamateChecker) QueryOnlineStreamers() (map[string]cmdlib.StreamerInf
 			return nil, fmt.Errorf("cannot parse response %v", err)
 		}
 		for _, m := range parsed.AvailablePerformers.Performers {
-			image := ""
-			if m.Media != nil && m.Media.Pic != nil && m.Media.Pic.Full != nil {
-				image = "https:" + m.Media.Pic.Full.Src
-			}
 			modelID := strings.ToLower(m.Name)
 			streamers[modelID] = cmdlib.StreamerInfo{
-				ImageURL: image,
+				ImageURL: streamateImageURL(m),
 				ShowKind: streamateShowKind(m),
 			}
 		}
