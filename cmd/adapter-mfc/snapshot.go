@@ -455,6 +455,22 @@ func (s *snapshot) collectIfReady() (streamers map[string]cmdlib.StreamerInfo, o
 	return out, true
 }
 
+// lookupImages returns the live snapshot and the avatar of a model a lookup found online,
+// as collectIfReady does for the bulk list.
+func (s *snapshot) lookupImages(u sessionUpdate) (image, profile string) {
+	uid, vs, camserv := *u.UID, 0, 0
+	if u.VS != nil {
+		vs = *u.VS
+	}
+	if c := u.camserv(); c != nil {
+		camserv = *c
+	}
+	s.mu.RLock()
+	host := s.videoHosts[camserv]
+	s.mu.RUnlock()
+	return mfcLiveSnapshotURL(uid, vs, host), mfcImageURL(uid)
+}
+
 // bulkReady reports whether a bulk dump has been applied in the current
 // session. The bulk watchdog uses it to decide whether the session is making
 // progress; equivalent to the readiness gate in collectIfReady but without

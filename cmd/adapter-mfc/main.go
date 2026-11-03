@@ -283,8 +283,12 @@ func handleStatus(snap *snapshot) http.HandlerFunc {
 			http.Error(w, "lookup failed", http.StatusBadGateway)
 			return
 		}
+		info := cmdlib.StreamerInfoWithStatus{Status: mfcLookupStatus(reply, name)}
+		if info.Status == cmdlib.StatusOnline {
+			info.ImageURL, info.ProfileImageURL = snap.lookupImages(reply.update)
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(cmdlib.StreamerInfoWithStatus{Status: mfcLookupStatus(reply, name)})
+		_ = json.NewEncoder(w).Encode(info)
 	}
 }
 
