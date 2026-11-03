@@ -159,6 +159,8 @@ type testPolledChecker struct {
 	online     map[string]bool
 	individual map[string]cmdlib.StatusKind
 	queryCalls []string
+	// queryExtras holds what each query asked for, in queryCalls' order.
+	queryExtras []Extras
 }
 
 func (*testPolledChecker) Site() string { return "test" }
@@ -167,8 +169,9 @@ func (*testPolledChecker) Site() string { return "test" }
 // directly via NewBaseChecker, bypassing the production Init path.
 func (*testPolledChecker) Init(_ string) error { return nil }
 
-func (c *testPolledChecker) QueryStreamer(nickname string, _ Extras) (cmdlib.StreamerInfoWithStatus, error) {
+func (c *testPolledChecker) QueryStreamer(nickname string, extras Extras) (cmdlib.StreamerInfoWithStatus, error) {
 	c.queryCalls = append(c.queryCalls, nickname)
+	c.queryExtras = append(c.queryExtras, extras)
 	status, ok := c.individual[nickname]
 	if !ok {
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOffline}, nil
@@ -262,6 +265,12 @@ func TestOnlineListCheckerPollsAdditionalStreamers(t *testing.T) {
 			}
 			if !reflect.DeepEqual(gotCalls, tc.wantCalls) {
 				t.Errorf("query calls: got %v, want %v", gotCalls, tc.wantCalls)
+			}
+			// A polled streamer found online shows its images
+			for _, extras := range checker.queryExtras {
+				if extras != ExtraImages {
+					t.Errorf("a query asked for extras %d, want %d", extras, ExtraImages)
+				}
 			}
 		})
 	}

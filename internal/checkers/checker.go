@@ -98,6 +98,8 @@ type Extras uint
 const (
 	NoExtras   Extras = 0
 	ExtraTimes Extras = 1
+	// ExtraImages asks for an online streamer's images where they take another request
+	ExtraImages Extras = 2
 )
 
 // Checker is the interface for a per-site checker.
@@ -247,7 +249,7 @@ func StartCheckerDaemon(ctx context.Context, checker Checker) {
 					if !sleepCtx(ctx, interval) {
 						return
 					}
-					info, err := checker.QueryStreamer(nickname, NoExtras)
+					info, err := checker.QueryStreamer(nickname, ExtraImages)
 					if err != nil {
 						cmdlib.Lerr("%v", err)
 					}

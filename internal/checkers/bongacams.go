@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
@@ -53,12 +55,63 @@ func bongacamsImageURL(u string) string {
 	return "https:" + u
 }
 
+// bongacamsRoomData is the part of a room's data that names its performer's avatar
+type bongacamsRoomData struct {
+	PerformerData struct {
+		AvatarURL string `json:"avatarUrl"`
+	} `json:"performerData"`
+}
+
+// bongacamsProfileImage is the profile image the online list names after an avatar's path,
+// such as /0f5/0b2/2fc/<hash>_avatars.jpg, empty for none
+func bongacamsProfileImage(avatarPath string) string {
+	base, ok := strings.CutSuffix(avatarPath, "_avatars.jpg")
+	if !ok || base == "" {
+		return ""
+	}
+	return "https://i.bgicdn.com" + base + "_thumb_big.jpg"
+}
+
+// queryProfileImage looks up a performer's profile image in their room's data, empty for none
+func (c *BongaCamsChecker) queryProfileImage(modelID string) string {
+	// min_request_interval_ms paces each request, not just each status query
+	time.Sleep(c.Cfg.MinRequestInterval())
+	form := url.Values{"method": {"getRoomData"}, "args[]": {modelID, "false"}}
+	req, err := http.NewRequest("POST", "https://bongacams.com/tools/amf.php", strings.NewReader(form.Encode()))
+	cmdlib.CheckErr(err)
+	for _, h := range c.Cfg.Headers {
+		req.Header.Set(h[0], h[1])
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	resp, err := c.Client.Do(req)
+	if err != nil {
+		cmdlib.Lerr("cannot query the room data: model = %s, %v", modelID, err)
+		return ""
+	}
+	defer cmdlib.CloseBody(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		cmdlib.Lerr("cannot query the room data: model = %s, status = %d", modelID, resp.StatusCode)
+		return ""
+	}
+	var parsed bongacamsRoomData
+	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+		cmdlib.Lerr("cannot parse the room data: model = %s, %v", modelID, err)
+		return ""
+	}
+	return bongacamsProfileImage(parsed.PerformerData.AvatarURL)
+}
+
 // QueryStreamer checks BongaCams model status
-func (c *BongaCamsChecker) QueryStreamer(modelID string, _ Extras) (cmdlib.StreamerInfoWithStatus, error) {
+func (c *BongaCamsChecker) QueryStreamer(modelID string, extras Extras) (cmdlib.StreamerInfoWithStatus, error) {
 	code := c.QueryStatusCode(fmt.Sprintf("https://en.bongacams.com/%s", modelID), c.Cfg.Headers)
 	switch code {
 	case 200:
-		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOnline}, nil
+		info := cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOnline}
+		if extras&ExtraImages != 0 {
+			info.ProfileImageURL = c.queryProfileImage(modelID)
+		}
+		return info, nil
 	case 302:
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusOffline}, nil
 	case 404:

@@ -69,7 +69,7 @@ func run() int {
 		fmt.Fprintln(os.Stderr, "invalid model ID")
 		return 1
 	}
-	info, err := checker.QueryStreamer(modelID, checkers.ExtraTimes)
+	info, err := checker.QueryStreamer(modelID, checkers.ExtraTimes|checkers.ExtraImages)
 	// The status is valid regardless of the error
 	fmt.Println(info.Status)
 	if info.ImageURL != "" {
