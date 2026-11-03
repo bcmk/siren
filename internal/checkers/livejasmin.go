@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
+	"time"
 
 	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
@@ -82,7 +84,7 @@ type liveJasminResponse struct {
 }
 
 // QueryStreamer checks LiveJasmin model status
-func (c *LiveJasminChecker) QueryStreamer(modelID string, _ Extras) (cmdlib.StreamerInfoWithStatus, error) {
+func (c *LiveJasminChecker) QueryStreamer(modelID string, extras Extras) (cmdlib.StreamerInfoWithStatus, error) {
 	psID := string(c.Cfg.PsID)
 	accessKey := string(c.Cfg.AccessKey)
 	url := fmt.Sprintf("https://pt.potawe.com/api/model/status?performerId=%s&psId=%s&accessKey=%s&legacyRedirect=1", modelID, psID, accessKey)
@@ -103,7 +105,29 @@ func (c *LiveJasminChecker) QueryStreamer(modelID string, _ Extras) (cmdlib.Stre
 		cmdlib.Lerr("cannot read response for model %s, %v", modelID, err)
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
-	return cmdlib.StreamerInfoWithStatus{Status: liveJasminStatus(buf.String())}, nil
+	info := cmdlib.StreamerInfoWithStatus{Status: liveJasminStatus(buf.String())}
+	if info.Status == cmdlib.StatusOnline && extras&ExtraImages != 0 {
+		info.StreamerInfo = c.queryFeedInfo(modelID)
+	}
+	return info, nil
+}
+
+// queryFeedInfo is what the online feeds tell of one model, asked for by performer id,
+// empty when no feed lists them
+func (c *LiveJasminChecker) queryFeedInfo(modelID string) cmdlib.StreamerInfo {
+	for _, endpoint := range c.Cfg.UsersOnlineEndpoints {
+		// min_request_interval_ms paces each request, not just each status query
+		time.Sleep(c.Cfg.MinRequestInterval())
+		streamers, err := c.checkEndpoint(endpoint + "&performerId=" + url.QueryEscape(modelID))
+		if err != nil {
+			cmdlib.Lerr("cannot query the feed: model = %s, %v", modelID, err)
+			continue
+		}
+		if info, ok := streamers[modelID]; ok {
+			return info
+		}
+	}
+	return cmdlib.StreamerInfo{}
 }
 
 func liveJasminStatus(roomStatus string) cmdlib.StatusKind {
