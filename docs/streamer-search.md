@@ -49,6 +49,4 @@ which serves exact match and prefix search legs.
 No B-tree is needed on `nicknames`
 because those legs continue to query `streamers`.
 
-After upserting into `streamers`,
-the application uses `xmax = 0` in the `returning` clause
-to identify newly inserted rows and inserts only those into `nicknames`.
+Every path that inserts into `streamers` adds the new streamers to `nicknames`.
