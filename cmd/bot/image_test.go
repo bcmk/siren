@@ -7,6 +7,7 @@ import (
 	goimage "image"
 	"image/png"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -99,6 +100,31 @@ func pngImage(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
+}
+
+// A download's cached bytes hold no spare buffer, however its read grew it.
+func TestCachedDownloadHoldsNoSpareBuffer(t *testing.T) {
+	t.Parallel()
+	img := goimage.NewGray(goimage.Rect(0, 0, 600, 600))
+	rng := rand.New(rand.NewPCG(1, 2))
+	for i := range img.Pix {
+		img.Pix[i] = uint8(rng.UintN(256))
+	}
+	var data bytes.Buffer
+	if err := png.Encode(&data, img); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
+		_, _ = rw.Write(data.Bytes())
+	}))
+	t.Cleanup(srv.Close)
+	f := &fakeTelegram{replies: []fakeReply{{body: photoSent}}}
+	w, users := photoSendWorker(t, f, srv.Client(), 101)
+	sendImages(w, users, []*image{{key: srv.URL + "/a.png"}}, 1)
+	cached := w.imageDownloader.images[srv.URL+"/a.png"].data
+	if hasSpareRoom(cached) {
+		t.Errorf("the cache holds %d bytes for an image of %d", cap(cached), len(cached))
+	}
 }
 
 // imageServer serves an image, 404 under /missing, and drops the connection under /down.

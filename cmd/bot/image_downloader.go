@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"container/heap"
 	"maps"
 	"slices"
@@ -335,9 +336,26 @@ func (dl *imageDownloader[R]) startDownloads() {
 func (dl *imageDownloader[R]) download(key string) {
 	start := time.Now()
 	data, err := dl.downloadImage(key)
+	data = trimmed(data)
 	d := downloadResult{key: key, data: data, err: err, durationMs: int(time.Since(start).Milliseconds())}
 	// Never blocks: the channel holds a result for every download the pool runs.
 	dl.results <- d
+}
+
+// trimmed copies the image to a buffer of its size when its own has spare room.
+// A buffer grown while reading can hold twice the image, and the cache keeps it.
+func trimmed(data []byte) []byte {
+	if hasSpareRoom(data) {
+		return bytes.Clone(data)
+	}
+	return data
+}
+
+// hasSpareRoom reports whether a buffer holds much more than its bytes.
+// Go rounds a large allocation up to whole 8 KiB pages,
+// so even a copy of its size can hold that much more.
+func hasSpareRoom(data []byte) bool {
+	return cap(data)-len(data) > len(data)/16+8<<10
 }
 
 // complete takes in a finished download, gives it to the requests awaiting it,
