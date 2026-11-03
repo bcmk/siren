@@ -34,7 +34,8 @@ func (c *Flirt4FreeChecker) Init(checkerCfgPath string) error {
 }
 
 type flirt4FreeCheckResponse struct {
-	Status string `json:"status"`
+	Status  string `json:"status"`
+	ModelID int    `json:"model_id"`
 }
 
 type flirt4FreeOnlineModel struct {
@@ -78,7 +79,17 @@ func (c *Flirt4FreeChecker) QueryStreamer(modelID string, _ Extras) (cmdlib.Stre
 		cmdlib.Ldbg("response: %s", buf.String())
 		return cmdlib.StreamerInfoWithStatus{Status: cmdlib.StatusUnknown}, nil
 	}
-	return cmdlib.StreamerInfoWithStatus{Status: flirt4FreeStatus(parsed.Status)}, nil
+	return flirt4FreeModelInfo(parsed), nil
+}
+
+// flirt4FreeModelInfo is what a model's status check tells of them.
+// An online model gets the live screencap the online list names after their model id.
+func flirt4FreeModelInfo(parsed *flirt4FreeCheckResponse) cmdlib.StreamerInfoWithStatus {
+	info := cmdlib.StreamerInfoWithStatus{Status: flirt4FreeStatus(parsed.Status)}
+	if info.Status == cmdlib.StatusOnline && parsed.ModelID != 0 {
+		info.ImageURL = fmt.Sprintf("https://live-screencaps.vscdns.com/%d-desktop.jpg", parsed.ModelID)
+	}
+	return info
 }
 
 func flirt4FreeStatus(roomStatus string) cmdlib.StatusKind {
