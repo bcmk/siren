@@ -45,6 +45,52 @@ func TestTranslationsNoUnknownFields(t *testing.T) {
 	}
 }
 
+// TestLanguagesAgreeOnParseModes fails on a key a bot parses differently in en and ru,
+// which shows one language's markup as literal tags.
+// It compares the sets a bot loads, common merged with its site's file, and each pair of ads files.
+func TestLanguagesAgreeOnParseModes(t *testing.T) {
+	compare := func(name string, en, ru AllTranslations) {
+		for key, e := range en {
+			if r, ok := ru[key]; ok && r.Parse != e.Parse {
+				t.Errorf("%s: %s parses as %v in en and %v in ru", name, key, e.Parse, r.Parse)
+			}
+		}
+	}
+	combos := translationCombinations(t)
+	sites := 0
+	for name, enFiles := range combos {
+		site, ok := strings.CutSuffix(name, ".en")
+		if !ok {
+			continue
+		}
+		ruFiles, ok := combos[site+".ru"]
+		if !ok {
+			continue
+		}
+		sites++
+		_, en := LoadEndpointTranslations(enFiles)
+		_, ru := LoadEndpointTranslations(ruFiles)
+		compare(site, en, ru)
+	}
+	if sites == 0 {
+		t.Fatal("no site has both en and ru")
+	}
+	for _, enPath := range translationFiles(t) {
+		stem, ok := strings.CutSuffix(enPath, ".en.yaml")
+		if !ok || !adsFile(filepath.Base(stem)) {
+			continue
+		}
+		if ruPath := stem + ".ru.yaml"; fileExists(ruPath) {
+			compare(filepath.Base(stem), loadTranslations(enPath), loadTranslations(ruPath))
+		}
+	}
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 // adsFile reports a file of ads by its endpoint name: only ad entries, not a full translation set.
 func adsFile(name string) bool {
 	return name == "ads" || strings.HasSuffix(name, "-ads")

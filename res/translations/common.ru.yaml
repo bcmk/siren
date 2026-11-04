@@ -228,7 +228,7 @@ remove_all:
     {{ command "sure_remove_all" }}
 social:
   disable_preview: true
-  parse: raw
+  parse: html
   str: |-
     <b>Соцсети</b>
     X: https://x.com/siren_tlg
