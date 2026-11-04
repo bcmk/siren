@@ -1,4 +1,4 @@
-package main
+package db
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bcmk/siren/v6/internal/db"
 	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
 
@@ -21,7 +20,7 @@ type statusChangeRow struct {
 }
 
 // streamerChanges returns a streamer's rows in timestamp order
-func streamerChanges(d *db.Database, streamerID int) []statusChangeRow {
+func streamerChanges(d *Database, streamerID int) []statusChangeRow {
 	var rows []statusChangeRow
 	var row statusChangeRow
 	d.MustQuery(`
@@ -29,15 +28,15 @@ func streamerChanges(d *db.Database, streamerID int) []statusChangeRow {
 		from status_changes
 		where streamer_id = $1
 		order by timestamp`,
-		db.QueryParams{streamerID},
-		db.ScanTo{&row.timestamp, &row.status, &row.prevStatus},
+		QueryParams{streamerID},
+		ScanTo{&row.timestamp, &row.status, &row.prevStatus},
 		func() { rows = append(rows, row) })
 	return rows
 }
 
 // checkStatusChangesConsistent holds the invariants compaction must keep:
 // prev_status names the row before, and streamers holds the last two rows.
-func checkStatusChangesConsistent(t *testing.T, d *db.Database, nickname string) {
+func checkStatusChangesConsistent(t *testing.T, d *Database, nickname string) {
 	t.Helper()
 	s := d.MaybeStreamer(nickname)
 	if s == nil {
@@ -69,27 +68,16 @@ func checkStatusChangesConsistent(t *testing.T, d *db.Database, nickname string)
 	}
 }
 
-type compactionInsert struct {
-	ts     int
-	status cmdlib.StatusKind
-}
-
-func insertHistory(d *db.Database, nickname string, inserts []compactionInsert) {
-	for _, ins := range inserts {
-		d.UpsertUnconfirmedStatusChanges([]db.StatusChange{{Nickname: nickname, Status: ins.status}}, ins.ts)
-	}
-}
-
 // compact makes one run with no vacuum delay,
 // then vacuums every chunk left queued, which the daemon spreads over its next runs
 func compact(
 	ctx context.Context,
-	d *db.Database,
-	rules []db.ShortOfflineRule,
+	d *Database,
+	rules []ShortOfflineRule,
 	stepSeconds int,
 	now int,
 ) ([]int, int64, error) {
-	c, err := run(ctx, d, stepSeconds, rules, 0, now)
+	c, err := d.RunCompaction(ctx, stepSeconds, rules, 0, now)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -102,8 +90,8 @@ func compact(
 // mustCompact makes a run as compact does and fails the test if the run errs
 func mustCompact(
 	t *testing.T,
-	d *db.Database,
-	rules []db.ShortOfflineRule,
+	d *Database,
+	rules []ShortOfflineRule,
 	stepSeconds int,
 	now int,
 ) ([]int, int64) {
@@ -116,17 +104,17 @@ func mustCompact(
 }
 
 // testRules are the compactor's default rules
-var testRules = []db.ShortOfflineRule{
+var testRules = []ShortOfflineRule{
 	{After: 7 * day, ShorterThan: 15 * 60},
 	{After: 30 * day, ShorterThan: 30 * 60},
 	{After: 60 * day, ShorterThan: 60 * 60, Rewrite: true},
 }
 
-func coverageBegin(d *db.Database, rule db.ShortOfflineRule) int {
+func coverageBegin(d *Database, rule ShortOfflineRule) int {
 	return d.MustInt("select begin_timestamp from status_changes_lock where after = $1", rule.After)
 }
 
-func coverageEnd(d *db.Database, rule db.ShortOfflineRule) int {
+func coverageEnd(d *Database, rule ShortOfflineRule) int {
 	return d.MustInt("select end_timestamp from status_changes_lock where after = $1", rule.After)
 }
 
@@ -440,10 +428,10 @@ func TestCompactStatusChangesSkipsABusyLock(t *testing.T) {
 	insertHistory(tdb.Database, "a", shortHistory)
 	a := streamerID(t, tdb.Database, "a")
 
-	editor := db.NewDatabase(tdb.connStr, false, 5)
+	editor := NewDatabase(tdb.connStr, false, 5)
 	defer func() { _ = editor.Close() }()
 	ctx := context.Background()
-	edit, err := editor.Begin()
+	edit, err := editor.begin()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -459,7 +447,7 @@ func TestCompactStatusChangesSkipsABusyLock(t *testing.T) {
 	}
 
 	ends, deleted, err := compact(ctx, tdb.Database, testRules, 400*day, now)
-	if !errors.Is(err, db.ErrLockBusy) || ends != nil || deleted != 0 {
+	if !errors.Is(err, ErrLockBusy) || ends != nil || deleted != 0 {
 		t.Errorf("the run under the editor's lock got %v, %d, %v, want nothing and ErrLockBusy", ends, deleted, err)
 	}
 	if err := edit.Commit(ctx); err != nil {
@@ -503,13 +491,13 @@ func TestCompactStatusChangesRunsOneAtATime(t *testing.T) {
 	tdb := newTestDB(t)
 	defer tdb.terminate()
 	insertHistory(tdb.Database, "a", shortHistory)
-	other := db.NewDatabase(tdb.connStr, false, 5)
+	other := NewDatabase(tdb.connStr, false, 5)
 	defer func() { _ = other.Close() }()
-	holder := db.NewDatabase(tdb.connStr, false, 5)
+	holder := NewDatabase(tdb.connStr, false, 5)
 	defer func() { _ = holder.Close() }()
 
 	ctx := context.Background()
-	hold, err := holder.Begin()
+	hold, err := holder.begin()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -525,7 +513,7 @@ func TestCompactStatusChangesRunsOneAtATime(t *testing.T) {
 	outcomes := make(chan outcome)
 	runCtx, stopRuns := context.WithCancel(ctx)
 	defer stopRuns()
-	for _, d := range []*db.Database{tdb.Database, &other} {
+	for _, d := range []*Database{tdb.Database, &other} {
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -566,7 +554,7 @@ func TestCompactStatusChangesRunsOneAtATime(t *testing.T) {
 	var weekEnds []int
 	skipped := 0
 	for _, o := range []outcome{first, second} {
-		if failure, ok := o.failure.(error); ok && errors.Is(failure, db.ErrLockBusy) {
+		if failure, ok := o.failure.(error); ok && errors.Is(failure, ErrLockBusy) {
 			skipped++
 			continue
 		}
@@ -610,9 +598,9 @@ func TestCompactStatusChangesTellsStreamersApart(t *testing.T) {
 		{now - day, map[string]cmdlib.StatusKind{"a": cmdlib.StatusOffline, "b": cmdlib.StatusOnline}},
 		{now - 3600, map[string]cmdlib.StatusKind{"a": cmdlib.StatusOnline, "b": cmdlib.StatusOffline}},
 	} {
-		var changes []db.StatusChange
+		var changes []StatusChange
 		for nickname, status := range ins.status {
-			changes = append(changes, db.StatusChange{Nickname: nickname, Status: status})
+			changes = append(changes, StatusChange{Nickname: nickname, Status: status})
 		}
 		tdb.UpsertUnconfirmedStatusChanges(changes, ins.ts)
 	}
@@ -674,7 +662,7 @@ func TestCompactStatusChangesRestartsAChangedRule(t *testing.T) {
 		t.Errorf("the default rules deleted %d rows, want 0", deleted)
 	}
 
-	wider := []db.ShortOfflineRule{testRules[0], {After: 30 * day, ShorterThan: 45 * 60}}
+	wider := []ShortOfflineRule{testRules[0], {After: 30 * day, ShorterThan: 45 * 60}}
 	// The hour rule's coverage, with nothing 60 days old, is empty,
 	// so the wider rule takes up there, and a step short of the period cannot reach it yet
 	if _, deleted := mustCompact(t, tdb.Database, wider, 5*day, now); deleted != 0 {
@@ -707,7 +695,7 @@ func TestCompactStatusChangesKeepsAWalkOnATighterThreshold(t *testing.T) {
 		t.Errorf("the default rules deleted %d rows, want 2", deleted)
 	}
 
-	tighter := []db.ShortOfflineRule{testRules[0], {After: 30 * day, ShorterThan: 20 * 60}, testRules[2]}
+	tighter := []ShortOfflineRule{testRules[0], {After: 30 * day, ShorterThan: 20 * 60}, testRules[2]}
 	// A step short of the history would show a restart
 	if _, deleted := mustCompact(t, tdb.Database, tighter, 5*day, now); deleted != 0 {
 		t.Errorf("the tighter rule deleted %d rows, want 0", deleted)
@@ -739,7 +727,7 @@ func TestCompactStatusChangesTakesUpAMovedRule(t *testing.T) {
 		t.Errorf("the default rules deleted %d rows, want 0", deleted)
 	}
 
-	moved := []db.ShortOfflineRule{testRules[0], {After: 29 * day, ShorterThan: 30 * 60}, testRules[2]}
+	moved := []ShortOfflineRule{testRules[0], {After: 29 * day, ShorterThan: 30 * 60}, testRules[2]}
 	// A step short of the history would show a restart
 	if _, deleted := mustCompact(t, tdb.Database, moved, 5*day, now); deleted != 2 {
 		t.Errorf("the moved rule deleted %d rows, want 2", deleted)
@@ -769,13 +757,13 @@ func TestCompactStatusChangesReachesBackForARaisedAge(t *testing.T) {
 		{now - day, cmdlib.StatusOffline},
 		{now - 3600, cmdlib.StatusOnline},
 	})
-	rules := []db.ShortOfflineRule{testRules[0], testRules[2]}
+	rules := []ShortOfflineRule{testRules[0], testRules[2]}
 	// One run of a day's step: the week rule got to 59 days ago, the 60-day rule to 119
 	if _, deleted := mustCompact(t, tdb.Database, rules, day, now); deleted != 0 {
 		t.Errorf("the first run deleted %d rows, want 0", deleted)
 	}
 
-	raised := []db.ShortOfflineRule{testRules[0], {After: 90 * day, ShorterThan: 60 * 60}}
+	raised := []ShortOfflineRule{testRules[0], {After: 90 * day, ShorterThan: 60 * 60}}
 	if _, deleted := mustCompact(t, tdb.Database, raised, 400*day, now); deleted != 2 {
 		t.Errorf("the run with the raised age deleted %d rows, want 2", deleted)
 	}
@@ -811,7 +799,7 @@ func TestCompactStatusChangesAddsAnOlderRule(t *testing.T) {
 		t.Errorf("the default rules deleted %d rows, want 0", deleted)
 	}
 
-	older := append(slices.Clone(testRules), db.ShortOfflineRule{After: 90 * day, ShorterThan: 120 * 60})
+	older := append(slices.Clone(testRules), ShortOfflineRule{After: 90 * day, ShorterThan: 120 * 60})
 	// A step short of the history: the new rule starts over, so it cannot reach the period yet
 	if _, deleted := mustCompact(t, tdb.Database, older, 5*day, now); deleted != 0 {
 		t.Errorf("the first run of the older rule deleted %d rows, want 0", deleted)
@@ -834,7 +822,7 @@ func TestCompactStatusChangesAddsAnOlderRule(t *testing.T) {
 }
 
 // chunkVacuums returns each chunk's vacuum count by its number on the test database's 7-day grid
-func chunkVacuums(d *db.Database) map[int]int {
+func chunkVacuums(d *Database) map[int]int {
 	counts := map[int]int{}
 	var chunk, vacuums int
 	d.MustQuery(`
@@ -842,8 +830,8 @@ func chunkVacuums(d *db.Database) map[int]int {
 		from timescaledb_information.chunks c
 		join pg_stat_all_tables s on s.schemaname = c.chunk_schema and s.relname = c.chunk_name
 		where c.hypertable_name = 'status_changes'`,
-		db.QueryParams{7 * day},
-		db.ScanTo{&chunk, &vacuums},
+		QueryParams{7 * day},
+		ScanTo{&chunk, &vacuums},
 		func() { counts[chunk] = vacuums })
 	return counts
 }
@@ -885,7 +873,7 @@ func TestCompactStatusChangesVacuumsFinishedChunks(t *testing.T) {
 	// The runs share the database, so each compacts on the parent, and only its check is a subtest
 	ctx := context.Background()
 	for _, r := range runs {
-		if _, err := run(ctx, tdb.Database, 400*day, testRules, r.delay, r.now); err != nil {
+		if _, err := tdb.RunCompaction(ctx, 400*day, testRules, r.delay, r.now); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := vacuumQueued(ctx, tdb.Database); err != nil {
@@ -896,18 +884,6 @@ func TestCompactStatusChangesVacuumsFinishedChunks(t *testing.T) {
 				t.Errorf("vacuums = %v, want %v", got, r.want)
 			}
 		})
-	}
-}
-
-// vacuumQueued vacuums every queued chunk and returns how many it vacuumed
-func vacuumQueued(ctx context.Context, d *db.Database) (int, error) {
-	vacuumed := 0
-	for {
-		n, err := d.VacuumNextStatusChangesChunk(ctx, true)
-		if err != nil || n == 0 {
-			return vacuumed, err
-		}
-		vacuumed += n
 	}
 }
 
@@ -940,13 +916,13 @@ func TestCompactStatusChangesStopsWithTheContext(t *testing.T) {
 	insertHistory(tdb.Database, "a", shortHistory)
 	a := streamerID(t, tdb.Database, "a")
 	// pgx closes a connection whose statement it cancels, so the run gets one of its own
-	runner := db.NewDatabase(tdb.connStr, false, 5)
+	runner := NewDatabase(tdb.connStr, false, 5)
 	defer func() { _ = runner.Close() }()
-	holder := db.NewDatabase(tdb.connStr, false, 5)
+	holder := NewDatabase(tdb.connStr, false, 5)
 	defer func() { _ = holder.Close() }()
 
 	ctx := context.Background()
-	hold, err := holder.Begin()
+	hold, err := holder.begin()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1036,12 +1012,12 @@ func TestCompactStatusChangesLogsPerformance(t *testing.T) {
 	// A 5-day step: the 30-day rule's band, [160d, 165d), passes a chunk end by a threshold
 	// and stops 5 days short of its age; the week rule's, [170d, 175d), stops short of the period
 	ctx := context.Background()
-	c, err := run(ctx, tdb.Database, 5*day, testRules, 0, now)
+	c, err := tdb.RunCompaction(ctx, 5*day, testRules, 0, now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ends := c.ends()
-	queued, err := tdb.QueuedStatusChangesVacuums(ctx)
+	queued, err := tdb.queuedStatusChangesVacuums(ctx)
 	if err != nil || queued == 0 {
 		t.Fatalf("%d queued with %v, want some", queued, err)
 	}
@@ -1052,11 +1028,11 @@ func TestCompactStatusChangesLogsPerformance(t *testing.T) {
 	tdb.MustQuery(
 		"select kind, duration_ms, data from performance_log",
 		nil,
-		db.ScanTo{&kind, &durationMs, &data},
+		ScanTo{&kind, &durationMs, &data},
 		func() { rows++ })
-	if rows != 1 || kind != int(db.PerformanceLogCompaction) || durationMs < 0 {
+	if rows != 1 || kind != int(PerformanceLogCompaction) || durationMs < 0 {
 		t.Fatalf("%d rows, kind = %d, duration_ms = %d, want 1 row of kind %d",
-			rows, kind, durationMs, db.PerformanceLogCompaction)
+			rows, kind, durationMs, PerformanceLogCompaction)
 	}
 	var logged struct {
 		Deleted        int   `json:"deleted"`
@@ -1105,7 +1081,7 @@ func TestRunVacuumsOneChunk(t *testing.T) {
 	})
 	ctx := context.Background()
 	// The bands catch up, queueing chunks 18, 20 and 24 behind an empty queue
-	if _, err := run(ctx, tdb.Database, 400*day, testRules, 0, now); err != nil {
+	if _, err := tdb.RunCompaction(ctx, 400*day, testRules, 0, now); err != nil {
 		t.Fatal(err)
 	}
 	want := map[int]int{18: 0, 20: 0, 24: 0, 27: 0, 28: 0}
@@ -1113,14 +1089,14 @@ func TestRunVacuumsOneChunk(t *testing.T) {
 		t.Errorf("vacuums after the first run = %v, want %v", got, want)
 	}
 	// A period later no band finishes a chunk, and the run vacuums the front chunk alone
-	if _, err := run(ctx, tdb.Database, 400*day, testRules, 0, now+30); err != nil {
+	if _, err := tdb.RunCompaction(ctx, 400*day, testRules, 0, now+30); err != nil {
 		t.Fatal(err)
 	}
 	want = map[int]int{18: 1, 20: 0, 24: 0, 27: 0, 28: 0}
 	if got := chunkVacuums(tdb.Database); !reflect.DeepEqual(got, want) {
 		t.Errorf("vacuums after the second run = %v, want %v", got, want)
 	}
-	if n, err := tdb.QueuedStatusChangesVacuums(ctx); n != 2 || err != nil {
+	if n, err := tdb.queuedStatusChangesVacuums(ctx); n != 2 || err != nil {
 		t.Errorf("%d queued with %v, want 2", n, err)
 	}
 	if !tdb.MustBool("select data ? 'vacuum_ms' from performance_log where kind = 4 order by timestamp desc limit 1") {
@@ -1137,34 +1113,34 @@ func TestRunLogsAHeldChunksWait(t *testing.T) {
 	defer tdb.terminate()
 	insertHistory(tdb.Database, "a", []compactionInsert{{140 * day, cmdlib.StatusOnline}})
 	ctx := context.Background()
-	tx, err := tdb.Begin()
+	tx, err := tdb.begin()
 	if err != nil {
 		t.Fatal(err)
 	}
-	chunks, err := tdb.StatusChangesChunks(ctx, tx)
+	chunks, err := tdb.statusChangesChunks(ctx, tx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := tdb.QueueStatusChangesVacuums(ctx, tx, []db.StatusChangesVacuum{{Chunk: chunks[0].Name}}); err != nil {
+	if err := tdb.queueStatusChangesVacuums(ctx, tx, []statusChangesVacuum{{chunk: chunks[0].name}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	holder := db.NewDatabase(tdb.connStr, false, 5)
+	holder := NewDatabase(tdb.connStr, false, 5)
 	defer func() { _ = holder.Close() }()
-	hold, err := holder.Begin()
+	hold, err := holder.begin()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = hold.Rollback(ctx) }()
-	if _, err := hold.Exec(ctx, "lock table "+chunks[0].Name+" in share update exclusive mode"); err != nil {
+	if _, err := hold.Exec(ctx, "lock table "+chunks[0].name+" in share update exclusive mode"); err != nil {
 		t.Fatal(err)
 	}
 	// Fails rather than hangs should the lock timeout go
 	tdb.MustExec("set statement_timeout = '10s'")
-	tdb.VacuumLockTimeout = 200 * time.Millisecond
-	if _, err := run(ctx, tdb.Database, 400*day, testRules, 0, now); err != nil {
+	tdb.vacuumLockTimeout = 200 * time.Millisecond
+	if _, err := tdb.RunCompaction(ctx, 400*day, testRules, 0, now); err != nil {
 		t.Fatal(err)
 	}
 	var durationMs, vacuumed int
@@ -1174,9 +1150,9 @@ func TestRunLogsAHeldChunksWait(t *testing.T) {
 		from performance_log
 		where kind = 4`,
 		nil,
-		db.ScanTo{&durationMs, &vacuumed, &vacuumMs},
+		ScanTo{&durationMs, &vacuumed, &vacuumMs},
 		func() {})
-	if durationMs < int(tdb.VacuumLockTimeout.Milliseconds()) || vacuumed != 0 || vacuumMs != nil {
+	if durationMs < int(tdb.vacuumLockTimeout.Milliseconds()) || vacuumed != 0 || vacuumMs != nil {
 		t.Errorf("logged duration_ms = %d, vacuumed_chunks = %d, vacuum_ms = %v, want the lock timeout's wait, 0 and none",
 			durationMs, vacuumed, vacuumMs)
 	}
@@ -1202,8 +1178,8 @@ func TestRunRewritesARewritingRulesChunks(t *testing.T) {
 			select range_start_integer / $1, pg_relation_filenode(format('%I.%I', chunk_schema, chunk_name)::regclass)::bigint
 			from timescaledb_information.chunks
 			where hypertable_name = 'status_changes'`,
-			db.QueryParams{7 * day},
-			db.ScanTo{&chunk, &node},
+			QueryParams{7 * day},
+			ScanTo{&chunk, &node},
 			func() { nodes[chunk] = node })
 		return nodes
 	}
@@ -1229,11 +1205,11 @@ func TestLags(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			steps := make([]step, len(tt.ends))
+			steps := make([]compactionStep, len(tt.ends))
 			for i, end := range tt.ends {
-				steps[i] = step{rule: testRules[i], end: end}
+				steps[i] = compactionStep{rule: testRules[i], end: end}
 			}
-			if got := (compaction{steps: steps}).lags(now); !reflect.DeepEqual(got, tt.want) {
+			if got := (Compaction{steps: steps}).lags(now); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("lags = %v, want %v", got, tt.want)
 			}
 		})
@@ -1252,5 +1228,24 @@ func TestCompactStatusChangesEmpty(t *testing.T) {
 	}
 	if got := coverageEnd(tdb.Database, testRules[0]); got != now {
 		t.Errorf("end = %d, want %d", got, now)
+	}
+}
+
+func TestFormatLags(t *testing.T) {
+	tests := []struct {
+		name string
+		lags []int
+		want string
+	}{
+		{name: "caught up", lags: []int{0, 0, 0}, want: "[0 0 0]"},
+		{name: "lagging", lags: []int{0, 5 * day, 59*day + 3*hour + 59*60}, want: "[0 5d0h0m0s 59d3h59m0s]"},
+		{name: "under an hour", lags: []int{900, 59, 0}, want: "[0d0h15m0s 0d0h0m59s 0]"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := formatLags(tt.lags); got != tt.want {
+				t.Errorf("formatLags = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }

@@ -21,13 +21,11 @@ func insertHistory(d *Database, nickname string, inserts []compactionInsert) {
 	}
 }
 
-const day = 24 * 60 * 60
-
 // vacuumQueued vacuums every queued chunk and returns how many it vacuumed
 func vacuumQueued(ctx context.Context, d *Database) (int, error) {
 	vacuumed := 0
 	for {
-		n, err := d.VacuumNextStatusChangesChunk(ctx, true)
+		n, err := d.vacuumNextStatusChangesChunk(ctx, true)
 		if err != nil || n == 0 {
 			return vacuumed, err
 		}
@@ -39,22 +37,22 @@ func vacuumQueued(ctx context.Context, d *Database) (int, error) {
 func queueChunk(t *testing.T, d *Database, ts int, rewrite bool) {
 	t.Helper()
 	ctx := context.Background()
-	tx, err := d.Begin()
+	tx, err := d.begin()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	chunks, err := d.StatusChangesChunks(ctx, tx)
+	chunks, err := d.statusChangesChunks(ctx, tx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var vacuums []StatusChangesVacuum
+	var vacuums []statusChangesVacuum
 	for _, c := range chunks {
-		if c.Start <= ts && ts < c.End {
-			vacuums = append(vacuums, StatusChangesVacuum{Chunk: c.Name, Rewrite: rewrite})
+		if c.start <= ts && ts < c.end {
+			vacuums = append(vacuums, statusChangesVacuum{chunk: c.name, rewrite: rewrite})
 		}
 	}
-	if err := d.QueueStatusChangesVacuums(ctx, tx, vacuums); err != nil {
+	if err := d.queueStatusChangesVacuums(ctx, tx, vacuums); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -130,7 +128,7 @@ func TestVacuumQueue(t *testing.T) {
 		t.Fatalf("queued %v, want [24 19]", got)
 	}
 	db.MustExec("select pg_advisory_lock($1)", migrationLock)
-	if n, err := other.VacuumNextStatusChangesChunk(ctx, true); n != 0 || err != nil {
+	if n, err := other.vacuumNextStatusChangesChunk(ctx, true); n != 0 || err != nil {
 		t.Errorf("under a migration: vacuumed %d with %v, want 0", n, err)
 	}
 	db.MustExec("select pg_advisory_unlock($1)", migrationLock)
@@ -138,14 +136,14 @@ func TestVacuumQueue(t *testing.T) {
 		t.Errorf("queued %v after a migration, want [24 19]", got)
 	}
 	for i, want := range [][]int{{19}, nil} {
-		if n, err := other.VacuumNextStatusChangesChunk(ctx, true); n != 1 || err != nil {
+		if n, err := other.vacuumNextStatusChangesChunk(ctx, true); n != 1 || err != nil {
 			t.Fatalf("vacuum %d: vacuumed %d with %v, want 1", i, n, err)
 		}
 		if got := queuedChunks(db.Database); !slices.Equal(got, want) {
 			t.Errorf("queued %v after vacuum %d, want %v", got, i, want)
 		}
 	}
-	if n, err := other.VacuumNextStatusChangesChunk(ctx, true); n != 0 || err != nil {
+	if n, err := other.vacuumNextStatusChangesChunk(ctx, true); n != 0 || err != nil {
 		t.Errorf("an empty queue: vacuumed %d with %v, want 0", n, err)
 	}
 }
@@ -160,10 +158,10 @@ func TestVacuumNextStatusChangesChunkDequeuesAGoneChunk(t *testing.T) {
 	queueChunk(t, db.Database, 140*day, false)
 	db.MustExec("truncate status_changes")
 	ctx := context.Background()
-	if n, err := db.VacuumNextStatusChangesChunk(ctx, true); n != 0 || err != nil {
+	if n, err := db.vacuumNextStatusChangesChunk(ctx, true); n != 0 || err != nil {
 		t.Errorf("vacuumed %d with %v, want 0", n, err)
 	}
-	if n, err := db.QueuedStatusChangesVacuums(ctx); n != 0 || err != nil {
+	if n, err := db.queuedStatusChangesVacuums(ctx); n != 0 || err != nil {
 		t.Errorf("%d queued with %v, want 0", n, err)
 	}
 }
@@ -283,7 +281,7 @@ func TestVacuumNextStatusChangesChunkSendsAHeldRewriteBack(t *testing.T) {
 	defer func() { _ = other.Close() }()
 	ctx := context.Background()
 
-	reader, err := db.Begin()
+	reader, err := db.begin()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,19 +290,19 @@ func TestVacuumNextStatusChangesChunkSendsAHeldRewriteBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	start := time.Now()
-	if n, err := other.VacuumNextStatusChangesChunk(ctx, true); n != 0 || err != nil || time.Since(start) > 2*time.Second {
+	if n, err := other.vacuumNextStatusChangesChunk(ctx, true); n != 0 || err != nil || time.Since(start) > 2*time.Second {
 		t.Errorf("under a reader: vacuumed %d with %v in %v, want 0 at once", n, err, time.Since(start))
 	}
 	if got := queuedChunks(db.Database); !slices.Equal(got, []int{24, 20}) {
 		t.Errorf("queued %v under a reader, want [24 20]", got)
 	}
-	if n, err := other.VacuumNextStatusChangesChunk(ctx, true); n != 1 || err != nil {
+	if n, err := other.vacuumNextStatusChangesChunk(ctx, true); n != 1 || err != nil {
 		t.Errorf("vacuumed %d with %v behind the held chunk, want 1", n, err)
 	}
 	if err := reader.Rollback(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if n, err := other.VacuumNextStatusChangesChunk(ctx, true); n != 1 || err != nil {
+	if n, err := other.vacuumNextStatusChangesChunk(ctx, true); n != 1 || err != nil {
 		t.Errorf("vacuumed %d with %v once the reader ended, want 1", n, err)
 	}
 }
@@ -325,10 +323,10 @@ func TestVacuumNextStatusChangesChunkSendsAHeldVacuumBack(t *testing.T) {
 	queueChunk(t, db.Database, 171*day, false)
 	other := NewDatabase(db.connStr, false, 5)
 	defer func() { _ = other.Close() }()
-	other.VacuumLockTimeout = 200 * time.Millisecond
+	other.vacuumLockTimeout = 200 * time.Millisecond
 	ctx := context.Background()
 
-	holder, err := db.Begin()
+	holder, err := db.begin()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +337,7 @@ func TestVacuumNextStatusChangesChunkSendsAHeldVacuumBack(t *testing.T) {
 	}
 	// Fails rather than hangs should the lock timeout go
 	other.MustExec("set statement_timeout = '10s'")
-	if n, err := other.VacuumNextStatusChangesChunk(ctx, true); n != 0 || err != nil {
+	if n, err := other.vacuumNextStatusChangesChunk(ctx, true); n != 0 || err != nil {
 		t.Errorf("under a holder: vacuumed %d with %v, want 0", n, err)
 	}
 	if got := queuedChunks(db.Database); !slices.Equal(got, []int{24, 20}) {
@@ -364,7 +362,7 @@ func TestVacuumNextStatusChangesChunkRewritesOnlyWhileARuleDoes(t *testing.T) {
 		return db.MustInt("select pg_relation_filenode($1::text::regclass)::bigint", chunkName(db.Database, 140*day))
 	}
 	before := file()
-	if n, err := db.VacuumNextStatusChangesChunk(context.Background(), false); n != 1 || err != nil {
+	if n, err := db.vacuumNextStatusChangesChunk(context.Background(), false); n != 1 || err != nil {
 		t.Errorf("vacuumed %d with %v, want 1", n, err)
 	}
 	if after := file(); after != before {
@@ -392,7 +390,7 @@ func TestVacuumNextStatusChangesChunkRequeuesARewriteAsAVacuum(t *testing.T) {
 	other := NewDatabase(db.connStr, false, 5)
 	defer func() { _ = other.Close() }()
 	ctx := context.Background()
-	reader, err := other.Begin()
+	reader, err := other.begin()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -406,7 +404,7 @@ func TestVacuumNextStatusChangesChunkRequeuesARewriteAsAVacuum(t *testing.T) {
 	}
 	db.MustExec("delete from status_changes where timestamp between $1 and $2", start+1000, start+2000)
 	queueChunk(t, db.Database, start, true)
-	if n, err := db.VacuumNextStatusChangesChunk(ctx, true); n != 1 || err != nil {
+	if n, err := db.vacuumNextStatusChangesChunk(ctx, true); n != 1 || err != nil {
 		t.Fatalf("vacuumed %d with %v, want 1", n, err)
 	}
 	var rewrites []bool
@@ -461,7 +459,7 @@ func TestVacuumNextStatusChangesChunkRequeuesRowsASnapshotSees(t *testing.T) {
 	}
 	other := NewDatabase(db.connStr, false, 5)
 	defer func() { _ = other.Close() }()
-	reader, err := other.Begin()
+	reader, err := other.begin()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -476,7 +474,7 @@ func TestVacuumNextStatusChangesChunkRequeuesRowsASnapshotSees(t *testing.T) {
 	db.MustExec("delete from status_changes where timestamp between $1 and $2", start+1000, start+3000)
 	queueChunk(t, db.Database, start, false)
 	queueChunk(t, db.Database, 171*day, false)
-	if n, err := db.VacuumNextStatusChangesChunk(ctx, true); n != 1 || err != nil {
+	if n, err := db.vacuumNextStatusChangesChunk(ctx, true); n != 1 || err != nil {
 		t.Fatalf("vacuumed %d with %v, want 1", n, err)
 	}
 	if got := queuedChunks(db.Database); !slices.Equal(got, []int{24, 20}) {
@@ -536,10 +534,10 @@ func TestVacuumNextStatusChangesChunkFlushesStatsFirst(t *testing.T) {
 	db.MustExec("set vacuum_cost_limit = 1")
 	db.MustExec("delete from status_changes where timestamp between $1 and $2", start+1000, start+1100)
 	queueChunk(t, db.Database, start, false)
-	if n, err := db.VacuumNextStatusChangesChunk(ctx, true); n != 1 || err != nil {
+	if n, err := db.vacuumNextStatusChangesChunk(ctx, true); n != 1 || err != nil {
 		t.Fatalf("vacuumed %d with %v, want 1", n, err)
 	}
-	if n, err := db.QueuedStatusChangesVacuums(ctx); n != 0 || err != nil {
+	if n, err := db.queuedStatusChangesVacuums(ctx); n != 0 || err != nil {
 		t.Errorf("%d queued with %v after a clean vacuum, want 0", n, err)
 	}
 }
@@ -554,12 +552,12 @@ func TestLockStatusChangesSkipsAMigration(t *testing.T) {
 	defer func() { _ = migrator.Close() }()
 	ctx := context.Background()
 	lock := func() error {
-		tx, err := db.Begin()
+		tx, err := db.begin()
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer func() { _ = tx.Rollback(ctx) }()
-		return db.LockStatusChanges(ctx, tx)
+		return db.lockStatusChanges(ctx, tx)
 	}
 
 	migrator.lockMigrations()

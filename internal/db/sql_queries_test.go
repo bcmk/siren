@@ -302,7 +302,7 @@ func TestCopyFromAndBatchInTransaction(t *testing.T) {
 	// Insert a streamer to get an integer ID for the CopyFrom test
 	streamerIntID := insertStreamerRow(db.Database, Streamer{Nickname: "a"})
 
-	tx, err := db.Begin()
+	tx, err := db.begin()
 	if err != nil {
 		t.Fatal(err)
 	}

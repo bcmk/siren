@@ -234,7 +234,7 @@ func (d *Database) applyMigration(m migration) {
 	}
 
 	ctx := context.Background()
-	tx, err := d.Begin()
+	tx, err := d.begin()
 	checkErr(err)
 	defer func() { _ = tx.Rollback(ctx) }()
 

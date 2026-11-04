@@ -34,8 +34,8 @@ type Database struct {
 	shouldCheckGID    bool
 	gidCheckSuspended bool
 	defaultMaxSubs    int
-	// VacuumLockTimeout bounds a chunk vacuum's wait for its lock
-	VacuumLockTimeout time.Duration
+	// vacuumLockTimeout bounds a chunk vacuum's wait for its lock
+	vacuumLockTimeout time.Duration
 }
 
 // NewDatabase creates a new database object.
@@ -61,7 +61,7 @@ func NewDatabase(connString string, shouldCheckGID bool, defaultMaxSubs int) Dat
 		defaultMaxSubs: defaultMaxSubs,
 		// Past deadlock_timeout, so an autovacuum on the chunk yields to the plain vacuum,
 		// and bounded, as a migration may wait on the vacuum meanwhile
-		VacuumLockTimeout: 5 * time.Second,
+		vacuumLockTimeout: 5 * time.Second,
 	}
 }
 
@@ -260,11 +260,9 @@ func (d *Database) SetSetting(name, value string) {
 	d.MustExec("select set_config($1, $2, false)", name, value)
 }
 
-// Begin begins a transaction
-func (d *Database) Begin() (pgx.Tx, error) { return d.db.Begin(context.Background()) }
+func (d *Database) begin() (pgx.Tx, error) { return d.db.Begin(context.Background()) }
 
-// SendBatch sends a batch
-func (d *Database) SendBatch(batch *pgx.Batch) {
+func (d *Database) sendBatch(batch *pgx.Batch) {
 	conn := d.db.SendBatch(context.Background(), batch)
 	checkErr(conn.Close())
 }

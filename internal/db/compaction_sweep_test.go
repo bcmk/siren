@@ -1,4 +1,4 @@
-package main
+package db
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bcmk/siren/v6/internal/db"
 	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
 
@@ -34,7 +33,7 @@ func sweepPeriods(now int) map[int]int {
 }
 
 // sweepHistory inserts a streamer with the sweep history ending at now
-func sweepHistory(d *db.Database, nickname string, now int) {
+func sweepHistory(d *Database, nickname string, now int) {
 	insertHistory(d, nickname, []compactionInsert{{sweepOldest(now), cmdlib.StatusOnline}})
 	id := d.MustInt("select id from streamers where nickname = $1", nickname)
 	periods := sweepPeriods(now)
@@ -52,7 +51,7 @@ func sweepHistory(d *db.Database, nickname string, now int) {
 }
 
 // periodEnds returns the ends of the streamer's remaining periods
-func periodEnds(d *db.Database, streamerID int) map[int]bool {
+func periodEnds(d *Database, streamerID int) map[int]bool {
 	ends := map[int]bool{}
 	for _, r := range streamerChanges(d, streamerID) {
 		if r.status == cmdlib.StatusOnline && r.prevStatus == cmdlib.StatusOffline {
@@ -63,7 +62,7 @@ func periodEnds(d *db.Database, streamerID int) map[int]bool {
 }
 
 // deletable says whether the rules delete a period of dur seconds ending at end, as of now
-func deletable(rules []db.ShortOfflineRule, now, end, dur int) bool {
+func deletable(rules []ShortOfflineRule, now, end, dur int) bool {
 	for _, r := range rules {
 		if now-end > r.After && dur < r.ShorterThan {
 			return true
@@ -74,7 +73,7 @@ func deletable(rules []db.ShortOfflineRule, now, end, dur int) bool {
 
 type sweepConfig struct {
 	name  string
-	rules []db.ShortOfflineRule
+	rules []ShortOfflineRule
 }
 
 // sweepConfigs returns every reconfiguration of testRules under test:
@@ -93,10 +92,10 @@ func sweepConfigs() []sweepConfig {
 					for a3 := range 3 {
 						for t3 := range 3 {
 							as, ts := [3]int{a1, a2, a3}, [3]int{t1, t2, t3}
-							var rules []db.ShortOfflineRule
+							var rules []ShortOfflineRule
 							var changes []string
 							for i := range 3 {
-								rules = append(rules, db.ShortOfflineRule{After: ages[i][as[i]] * day, ShorterThan: thrs[i][ts[i]] * 60})
+								rules = append(rules, ShortOfflineRule{After: ages[i][as[i]] * day, ShorterThan: thrs[i][ts[i]] * 60})
 								if as[i] != 0 || ts[i] != 0 {
 									words := []string{fmt.Sprint(i + 1), ageNames[as[i]], thrNames[ts[i]]}
 									changes = append(changes, strings.Join(slices.DeleteFunc(words, func(w string) bool { return w == "" }), " "))
@@ -116,14 +115,14 @@ func sweepConfigs() []sweepConfig {
 	for i := range 3 {
 		configs = append(configs, sweepConfig{fmt.Sprintf("drop %d", i+1), slices.Delete(slices.Clone(testRules), i, i+1)})
 	}
-	for _, add := range []db.ShortOfflineRule{
+	for _, add := range []ShortOfflineRule{
 		{After: 3 * day, ShorterThan: 5 * 60},
 		{After: 15 * day, ShorterThan: 18 * 60},
 		{After: 45 * day, ShorterThan: 40 * 60},
 		{After: 90 * day, ShorterThan: 90 * 60},
 	} {
 		rules := append(slices.Clone(testRules), add)
-		slices.SortFunc(rules, func(a, b db.ShortOfflineRule) int { return a.After - b.After })
+		slices.SortFunc(rules, func(a, b ShortOfflineRule) int { return a.After - b.After })
 		configs = append(configs, sweepConfig{fmt.Sprintf("add %d", add.After/day), rules})
 	}
 	return configs
@@ -156,7 +155,7 @@ func sweepCheck(
 	periods map[int]int,
 	afterOld map[int]bool,
 	afterNew map[int]bool,
-	rules []db.ShortOfflineRule,
+	rules []ShortOfflineRule,
 	newNow int,
 ) []string {
 	var violations []string
@@ -180,14 +179,14 @@ func sweepCheck(
 // simulateRun runs the rules' steps over the periods in memory, as planStep plans them,
 // marking the periods gone and returning the coverages the run stores
 func simulateRun(
-	rules []db.ShortOfflineRule,
-	coverages []db.CompactionCoverage,
+	rules []ShortOfflineRule,
+	coverages []compactionCoverage,
 	periods map[int]int,
 	gone map[int]bool,
 	now int,
 	stepSeconds int,
-) []db.CompactionCoverage {
-	var stored []db.CompactionCoverage
+) []compactionCoverage {
+	var stored []compactionCoverage
 	for i, rule := range rules {
 		base, begin, end := planStep(rules, i, coverages, sweepOldest(sweepOldNow), now, now, stepSeconds)
 		for e, dur := range periods {
@@ -195,7 +194,7 @@ func simulateRun(
 				gone[e] = true
 			}
 		}
-		stored = append(stored, db.CompactionCoverage{ShorterThan: rule.ShorterThan, Begin: base, End: end})
+		stored = append(stored, compactionCoverage{shorterThan: rule.ShorterThan, begin: base, end: end})
 	}
 	return stored
 }
@@ -205,7 +204,7 @@ func simulateRun(
 func simulateSweep(
 	cfg sweepConfig,
 	v sweepVariant,
-	mutate func([]db.CompactionCoverage) []db.CompactionCoverage,
+	mutate func([]compactionCoverage) []compactionCoverage,
 ) []string {
 	periods := sweepPeriods(sweepOldNow)
 	remaining := func(gone map[int]bool) map[int]bool {
@@ -224,7 +223,7 @@ func simulateSweep(
 	return sweepCheck(periods, afterOld, remaining(gone), cfg.rules, sweepOldNow+v.elapsed)
 }
 
-func keepCoverages(coverages []db.CompactionCoverage) []db.CompactionCoverage { return coverages }
+func keepCoverages(coverages []compactionCoverage) []compactionCoverage { return coverages }
 
 // TestCompactStatusChangesPlanSweep runs every reconfiguration from sweepConfigs in memory,
 // from testRules caught up or lagging, at once or two days later,
@@ -248,19 +247,19 @@ func TestCompactStatusChangesPlanMutants(t *testing.T) {
 	t.Parallel()
 	mutants := []struct {
 		name   string
-		mutate func([]db.CompactionCoverage) []db.CompactionCoverage
+		mutate func([]compactionCoverage) []compactionCoverage
 	}{
-		{"trusts a coverage whatever it holds", func(cs []db.CompactionCoverage) []db.CompactionCoverage {
+		{"trusts a coverage whatever it holds", func(cs []compactionCoverage) []compactionCoverage {
 			cs = slices.Clone(cs)
 			for i := range cs {
-				cs[i].Begin = math.MinInt
+				cs[i].begin = math.MinInt
 			}
 			return cs
 		}},
-		{"trusts a coverage whatever its threshold", func(cs []db.CompactionCoverage) []db.CompactionCoverage {
+		{"trusts a coverage whatever its threshold", func(cs []compactionCoverage) []compactionCoverage {
 			cs = slices.Clone(cs)
 			for i := range cs {
-				cs[i].ShorterThan = math.MaxInt
+				cs[i].shorterThan = math.MaxInt
 			}
 			return cs
 		}},
@@ -283,7 +282,7 @@ func TestCompactStatusChangesPlanMutants(t *testing.T) {
 }
 
 // runSweep runs a reconfiguration on the database and reports what went wrong
-func runSweep(t *testing.T, d *db.Database, cfg sweepConfig, v sweepVariant) {
+func runSweep(t *testing.T, d *Database, cfg sweepConfig, v sweepVariant) {
 	t.Helper()
 	d.MustExec("truncate status_changes, status_changes_lock")
 	d.MustExec("delete from streamers")
@@ -291,8 +290,8 @@ func runSweep(t *testing.T, d *db.Database, cfg sweepConfig, v sweepVariant) {
 	id := streamerID(t, d, "a")
 	ctx := context.Background()
 	// No vacuums, which other tests pin: each run's queue is cleared instead
-	sweepRun := func(rules []db.ShortOfflineRule, stepSeconds, now int) {
-		if _, err := run(ctx, d, stepSeconds, rules, 0, now); err != nil {
+	sweepRun := func(rules []ShortOfflineRule, stepSeconds, now int) {
+		if _, err := d.RunCompaction(ctx, stepSeconds, rules, 0, now); err != nil {
 			t.Fatal(err)
 		}
 		d.MustExec("delete from status_changes_vacuum_queue")

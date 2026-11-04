@@ -361,7 +361,7 @@ func TestMigrationWaitsForWritersToFinish(t *testing.T) {
 	writer := NewDatabase(db.connStr, false, 5)
 	defer func() { _ = writer.Close() }()
 
-	tx, err := writer.Begin()
+	tx, err := writer.begin()
 	if err != nil {
 		t.Fatal(err)
 	}

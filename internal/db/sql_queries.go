@@ -109,7 +109,7 @@ func (d *Database) StoreNotifications(nots []Notification) {
 			n.ReplySeq, n.FieldsHint, n.Subject,
 		)
 	}
-	d.SendBatch(batch)
+	d.sendBatch(batch)
 }
 
 // UsersForStreamers returns users subscribed to particular streamers,
@@ -548,7 +548,7 @@ func (d *Database) MigrateChat(fromID, toID int64) *ChatMigration {
 	}
 	defer d.Measure("db: migrate chat")()
 	ctx := context.Background()
-	tx, err := d.Begin()
+	tx, err := d.begin()
 	checkErr(err)
 	defer func() { _ = tx.Rollback(ctx) }()
 
@@ -781,7 +781,7 @@ func (d *Database) GrantStarPaymentSubs(
 	now int,
 ) (added bool, maxSubs int, userID UserID) {
 	defer d.Measure("db: grant star payment subs")()
-	tx, err := d.Begin()
+	tx, err := d.begin()
 	checkErr(err)
 	defer func() { _ = tx.Rollback(context.Background()) }()
 
@@ -819,7 +819,7 @@ func (d *Database) GrantStarPaymentSubs(
 // and deleting the pending entry. Returns the streamer ID.
 func (d *Database) ConfirmSub(sub PendingSubscription) int {
 	defer d.Measure("db: confirm sub")()
-	tx, err := d.Begin()
+	tx, err := d.begin()
 	checkErr(err)
 	defer func() { _ = tx.Rollback(context.Background()) }()
 
@@ -1057,7 +1057,7 @@ func (d *Database) SearchStreamers(term string) []string {
 		prev = c
 	}
 
-	tx, err := d.Begin()
+	tx, err := d.begin()
 	checkErr(err)
 	defer func() { _ = tx.Rollback(context.Background()) }()
 
@@ -1327,7 +1327,7 @@ func (d *Database) UpsertUnconfirmedStatusChanges(
 		return UpsertUnconfirmedTimings{}
 	}
 
-	tx, err := d.Begin()
+	tx, err := d.begin()
 	checkErr(err)
 	defer func() { _ = tx.Rollback(context.Background()) }()
 
@@ -1529,7 +1529,7 @@ func (d *Database) UpdateMemberCount(userID UserID, memberCount int) {
 // and any pending subscription
 func (d *Database) RemoveSubscription(userID UserID, nickname string, endpoint string) {
 	defer d.Measure("db: remove subscription")()
-	tx, err := d.Begin()
+	tx, err := d.begin()
 	checkErr(err)
 	defer func() { _ = tx.Rollback(context.Background()) }()
 
@@ -1554,7 +1554,7 @@ func (d *Database) RemoveSubscription(userID UserID, nickname string, endpoint s
 // for a user and endpoint
 func (d *Database) RemoveAllSubscriptions(userID UserID, endpoint string) {
 	defer d.Measure("db: remove all subscriptions")()
-	tx, err := d.Begin()
+	tx, err := d.begin()
 	checkErr(err)
 	defer func() { _ = tx.Rollback(context.Background()) }()
 
@@ -1674,11 +1674,11 @@ var ErrLockBusy = errors.New("status_changes_lock is busy")
 // ErrMigrating says a migration holds the migration lock
 var ErrMigrating = errors.New("a migration is at work")
 
-// LockStatusChanges takes status_changes_lock in exclusive mode for tx,
+// lockStatusChanges takes status_changes_lock in exclusive mode for tx,
 // before anything on status_changes, as docs/status-changes.md's Invariant asks of an editor,
 // and the migration lock shared, so a migration waits for the commit.
 // A held lock is ErrLockBusy, a held migration lock ErrMigrating.
-func (d *Database) LockStatusChanges(ctx context.Context, tx pgx.Tx) error {
+func (d *Database) lockStatusChanges(ctx context.Context, tx pgx.Tx) error {
 	// Exclusive, not access exclusive: pg_dump's access share lock must not conflict
 	_, err := tx.Exec(ctx, `
 		lock table status_changes_lock in exclusive mode nowait
@@ -1704,14 +1704,14 @@ func (d *Database) LockStatusChanges(ctx context.Context, tx pgx.Tx) error {
 	return nil
 }
 
-// StatusChangesChunk is a status_changes chunk: its name, quoted for a statement, and its range
-type StatusChangesChunk struct {
-	Name       string
-	Start, End int
+// statusChangesChunk is a status_changes chunk: its name, quoted for a statement, and its range
+type statusChangesChunk struct {
+	name       string
+	start, end int
 }
 
-// OldestStatusChange returns the oldest row's timestamp, or fallback with no rows
-func (d *Database) OldestStatusChange(ctx context.Context, fallback int) (int, error) {
+// oldestStatusChange returns the oldest row's timestamp, or fallback with no rows
+func (d *Database) oldestStatusChange(ctx context.Context, fallback int) (int, error) {
 	var oldest int
 	err := d.db.QueryRow(ctx, `
 		select coalesce(min(timestamp), $1::integer) from status_changes
@@ -1720,12 +1720,12 @@ func (d *Database) OldestStatusChange(ctx context.Context, fallback int) (int, e
 	return oldest, err
 }
 
-// CompactionCoverage is a status_changes_lock row: the stretch a rule examined,
+// compactionCoverage is a status_changes_lock row: the stretch a rule examined,
 // docs/status-changes.md's $c$
-type CompactionCoverage struct{ ShorterThan, Begin, End int }
+type compactionCoverage struct{ shorterThan, begin, end int }
 
-// TakeCompactionCoverages deletes the coverages in tx and returns them with the latest run's time
-func (d *Database) TakeCompactionCoverages(ctx context.Context, tx pgx.Tx) ([]CompactionCoverage, int, error) {
+// takeCompactionCoverages deletes the coverages in tx and returns them with the latest run's time
+func (d *Database) takeCompactionCoverages(ctx context.Context, tx pgx.Tx) ([]compactionCoverage, int, error) {
 	rows, err := tx.Query(ctx, `
 		delete from status_changes_lock
 		returning shorter_than, begin_timestamp, end_timestamp, run_timestamp
@@ -1734,19 +1734,19 @@ func (d *Database) TakeCompactionCoverages(ctx context.Context, tx pgx.Tx) ([]Co
 		return nil, 0, err
 	}
 	lastRun := 0
-	coverages, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (CompactionCoverage, error) {
-		var c CompactionCoverage
+	coverages, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (compactionCoverage, error) {
+		var c compactionCoverage
 		var run int
-		err := row.Scan(&c.ShorterThan, &c.Begin, &c.End, &run)
+		err := row.Scan(&c.shorterThan, &c.begin, &c.end, &run)
 		lastRun = max(lastRun, run)
 		return c, err
 	})
 	return coverages, lastRun, err
 }
 
-// DeleteShortOfflinePeriods deletes in tx the offline periods shorter than shorterThan
+// deleteShortOfflinePeriods deletes in tx the offline periods shorter than shorterThan
 // that end in [begin, end), docs/status-changes.md's Compaction, and returns the rows deleted
-func (d *Database) DeleteShortOfflinePeriods(
+func (d *Database) deleteShortOfflinePeriods(
 	ctx context.Context,
 	tx pgx.Tx,
 	shorterThan int,
@@ -1793,8 +1793,8 @@ func (d *Database) DeleteShortOfflinePeriods(
 	return tag.RowsAffected(), err
 }
 
-// StoreCompactionCoverage stores in tx a rule's coverage, from base to end, as of the run's time
-func (d *Database) StoreCompactionCoverage(
+// storeCompactionCoverage stores in tx a rule's coverage, from base to end, as of the run's time
+func (d *Database) storeCompactionCoverage(
 	ctx context.Context,
 	tx pgx.Tx,
 	rule ShortOfflineRule,
@@ -1810,8 +1810,8 @@ func (d *Database) StoreCompactionCoverage(
 	return err
 }
 
-// StatusChangesChunks returns status_changes' chunks in tx, oldest first
-func (d *Database) StatusChangesChunks(ctx context.Context, tx pgx.Tx) ([]StatusChangesChunk, error) {
+// statusChangesChunks returns status_changes' chunks in tx, oldest first
+func (d *Database) statusChangesChunks(ctx context.Context, tx pgx.Tx) ([]statusChangesChunk, error) {
 	// The chunks come from the catalog, as a chunk interval change shapes new chunks only
 	rows, err := tx.Query(ctx, `
 		select format('%I.%I', chunk_schema, chunk_name), range_start_integer, range_end_integer
@@ -1822,30 +1822,30 @@ func (d *Database) StatusChangesChunks(ctx context.Context, tx pgx.Tx) ([]Status
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (StatusChangesChunk, error) {
-		var c StatusChangesChunk
-		err := row.Scan(&c.Name, &c.Start, &c.End)
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (statusChangesChunk, error) {
+		var c statusChangesChunk
+		err := row.Scan(&c.name, &c.start, &c.end)
 		return c, err
 	})
 }
 
-// StatusChangesVacuum is a chunk to vacuum, rewriting it first with Rewrite
-type StatusChangesVacuum struct {
-	Chunk   string
-	Rewrite bool
+// statusChangesVacuum is a chunk to vacuum, and whether to rewrite it first
+type statusChangesVacuum struct {
+	chunk   string
+	rewrite bool
 }
 
-// QueueStatusChangesVacuums queues vacuums in tx, each chunk at most once,
+// queueStatusChangesVacuums queues vacuums in tx, each chunk at most once,
 // so a queued vacuum survives the process as the deletes do.
 // A chunk queued already keeps its place, rewritten if either asks.
-func (d *Database) QueueStatusChangesVacuums(ctx context.Context, tx pgx.Tx, vacuums []StatusChangesVacuum) error {
+func (d *Database) queueStatusChangesVacuums(ctx context.Context, tx pgx.Tx, vacuums []statusChangesVacuum) error {
 	if len(vacuums) == 0 {
 		return nil
 	}
 	chunks := make([]string, len(vacuums))
 	rewrites := make([]bool, len(vacuums))
 	for i, v := range vacuums {
-		chunks[i], rewrites[i] = v.Chunk, v.Rewrite
+		chunks[i], rewrites[i] = v.chunk, v.rewrite
 	}
 	_, err := tx.Exec(ctx, `
 		insert into status_changes_vacuum_queue (chunk, rewrite)
@@ -1857,7 +1857,7 @@ func (d *Database) QueueStatusChangesVacuums(ctx context.Context, tx pgx.Tx, vac
 	return err
 }
 
-// VacuumNextStatusChangesChunk vacuums the chunk queued first, dequeues it and returns 1,
+// vacuumNextStatusChangesChunk vacuums the chunk queued first, dequeues it and returns 1,
 // rewriting it first when it was queued for a rewrite and rewrites says a rule still rewrites.
 // It returns 0 with an empty queue, while a migration keeps the chunk queued,
 // for a chunk another session holds, which goes to the back of the queue,
@@ -1865,7 +1865,7 @@ func (d *Database) QueueStatusChangesVacuums(ctx context.Context, tx pgx.Tx, vac
 // A chunk left with dead rows the vacuum could not remove goes to the back of the queue instead,
 // as their pages stay out of the visibility map.
 // It goes back for a plain vacuum, as a rewrite has given its space back already.
-func (d *Database) VacuumNextStatusChangesChunk(ctx context.Context, rewrites bool) (int, error) {
+func (d *Database) vacuumNextStatusChangesChunk(ctx context.Context, rewrites bool) (int, error) {
 	var id int64
 	var name string
 	var rewrite bool
@@ -1920,8 +1920,8 @@ func (d *Database) VacuumNextStatusChangesChunk(ctx context.Context, rewrites bo
 	return 1, nil
 }
 
-// QueuedStatusChangesVacuums returns how many chunks wait for a vacuum
-func (d *Database) QueuedStatusChangesVacuums(ctx context.Context) (int, error) {
+// queuedStatusChangesVacuums returns how many chunks wait for a vacuum
+func (d *Database) queuedStatusChangesVacuums(ctx context.Context) (int, error) {
 	var n int
 	err := d.db.QueryRow(ctx, `
 		select count(*)
@@ -1944,7 +1944,7 @@ func (d *Database) vacuumStatusChangesChunk(ctx context.Context, id int64, name 
 	}
 	_, err := d.db.PgConn().Exec(
 		ctx,
-		"set lock_timeout = "+strconv.FormatInt(d.VacuumLockTimeout.Milliseconds(), 10)).ReadAll()
+		"set lock_timeout = "+strconv.FormatInt(d.vacuumLockTimeout.Milliseconds(), 10)).ReadAll()
 	if err == nil && rewrite {
 		err = d.rewriteStatusChangesChunk(ctx, id, name)
 	}
@@ -2190,7 +2190,7 @@ func (d *Database) ConfirmStatusChanges(
 	done := d.Measure("db: confirm status changes")
 	defer done()
 
-	tx, err := d.Begin()
+	tx, err := d.begin()
 	checkErr(err)
 	defer func() { _ = tx.Rollback(context.Background()) }()
 

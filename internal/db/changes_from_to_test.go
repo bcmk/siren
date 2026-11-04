@@ -323,7 +323,7 @@ func TestChangesFromToForStreamersSkipsALockedOldChunk(t *testing.T) {
 	holder := NewDatabase(db.connStr, false, 5)
 	defer func() { _ = holder.Close() }()
 	ctx := context.Background()
-	tx, err := holder.Begin()
+	tx, err := holder.begin()
 	if err != nil {
 		t.Fatal(err)
 	}
