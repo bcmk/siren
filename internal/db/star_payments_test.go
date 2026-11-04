@@ -8,7 +8,7 @@ func TestGrantStarPaymentSubs(t *testing.T) {
 	d := tdb.Database
 
 	const chatID = int64(123)
-	payer, _ := d.insertUser(d.db, chatID, 1000, "private")
+	credited, _ := d.insertUser(d.db, chatID, 1000, "private")
 	bystander, _ := d.AddUserAndChat("ep", 456, 1000, "private")
 
 	// First credit: max_subs 5 -> 15, row stored.
@@ -18,16 +18,16 @@ func TestGrantStarPaymentSubs(t *testing.T) {
 
 	// Same charge id again: no-op, even with different amount/quantity.
 	added, maxSubs, id := d.GrantStarPaymentSubs(chatID, "ep", "charge_1", 999, "subs", 99, "stars:subs:123:99", 2000)
-	if added || maxSubs != 0 || id != payer {
-		t.Errorf("duplicate charge: added=%v maxSubs=%d payer=%d, want false 0 %d", added, maxSubs, id, payer)
+	if added || maxSubs != 0 || id != credited {
+		t.Errorf("duplicate charge: added=%v maxSubs=%d credited=%d, want false 0 %d", added, maxSubs, id, credited)
 	}
 
 	// Same charge id from a never-seen user: a no-op too, creating no user,
-	// and naming the first charge's payer, whose chat the reply's log row needs.
+	// and naming the user the first charge credited, whose chat the reply's log row needs.
 	const newChatID = int64(789)
 	added, _, id = d.GrantStarPaymentSubs(newChatID, "ep", "charge_1", 500, "subs", 10, "stars:subs:789:10", 2000)
-	if added || id != payer {
-		t.Errorf("duplicate charge from a never-seen user: added=%v payer=%d, want false %d", added, id, payer)
+	if added || id != credited {
+		t.Errorf("duplicate charge from a never-seen user: added=%v credited=%d, want false %d", added, id, credited)
 	}
 	if _, found := d.UserByChatID(newChatID); found {
 		t.Error("duplicate charge from a never-seen user left a user")
@@ -35,8 +35,9 @@ func TestGrantStarPaymentSubs(t *testing.T) {
 
 	// Same charge id from a user with no chat on the endpoint: a no-op too, creating no chat.
 	known := d.EnsureUser(790)
-	if added, _, id := d.GrantStarPaymentSubs(790, "ep", "charge_1", 500, "subs", 10, "", 2000); added || id != payer {
-		t.Errorf("duplicate charge from a user with no chat: added=%v payer=%d, want false %d", added, id, payer)
+	added, _, id = d.GrantStarPaymentSubs(790, "ep", "charge_1", 500, "subs", 10, "", 2000)
+	if added || id != credited {
+		t.Errorf("duplicate charge from a user with no chat: added=%v credited=%d, want false %d", added, id, credited)
 	}
 	if _, hasChat := d.Chat("ep", known); hasChat {
 		t.Error("duplicate charge left a stray chat")

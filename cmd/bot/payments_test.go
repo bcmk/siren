@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,8 @@ import (
 func TestRejectForRedeliveryWhileMigrating(t *testing.T) {
 	t.Parallel()
 	const paymentBody = `{"message":{"chat":{"id":123},"successful_payment":{"telegram_payment_charge_id":"ch_1"}}}`
+	const channelPaymentBody = `{"channel_post":{"chat":{"id":-1001234},` +
+		`"successful_payment":{"telegram_payment_charge_id":"ch_2"}}}`
 	const plainBody = `{"message":{"chat":{"id":123},"text":"/start"}}`
 	const migrateToBody = `{"message":{"chat":{"id":123},"migrate_to_chat_id":-1001234}}`
 	const migrateFromBody = `{"message":{"chat":{"id":-1001234},"migrate_from_chat_id":123}}`
@@ -25,6 +28,13 @@ func TestRejectForRedeliveryWhileMigrating(t *testing.T) {
 		wantInner  bool
 	}{
 		{name: "payment while migrating rejected", ready: false, body: paymentBody, wantStatus: http.StatusServiceUnavailable, wantInner: false},
+		{
+			name:       "channel payment while migrating rejected",
+			ready:      false,
+			body:       channelPaymentBody,
+			wantStatus: http.StatusServiceUnavailable,
+			wantInner:  false,
+		},
 		{name: "migrate_to while migrating rejected", ready: false, body: migrateToBody, wantStatus: http.StatusServiceUnavailable, wantInner: false},
 		{name: "migrate_from while migrating rejected", ready: false, body: migrateFromBody, wantStatus: http.StatusServiceUnavailable, wantInner: false},
 		{name: "migration when ready passes", ready: true, body: migrateToBody, wantStatus: http.StatusOK, wantInner: true},
@@ -66,23 +76,103 @@ func TestRejectForRedeliveryWhileMigrating(t *testing.T) {
 	}
 }
 
-// A malformed payment must create no user:
+// A rejected payment must create no user:
 // handleSuccessfulPayment resolves the user only through GrantStarPaymentSubs,
-// after the payload validates.
+// after the payment passes every check.
 // The DB-level test can't catch a stray user made here, above that call.
-func TestHandleSuccessfulPaymentMalformedCreatesNoUser(t *testing.T) {
+func TestHandleSuccessfulPaymentRejectedCreatesNoUser(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 
 	const chatID = int64(555)
-	w.handleSuccessfulPayment("test", chatID, &models.SuccessfulPayment{
-		InvoicePayload:          "garbage",
-		TelegramPaymentChargeID: "charge-malformed",
-		TotalAmount:             100,
-	}, 1000)
+	receipt := &models.Message{
+		Chat: models.Chat{ID: chatID},
+		SuccessfulPayment: &models.SuccessfulPayment{
+			InvoicePayload:          "stars:other:555:5",
+			TelegramPaymentChargeID: "charge-rejected",
+			TotalAmount:             100,
+		},
+	}
+	w.handleSuccessfulPayment("test", receipt, 1000)
 
 	if _, found := w.db.UserByChatID(chatID); found {
-		t.Error("malformed successful payment created a stray user")
+		t.Error("a rejected successful payment created a stray user")
+	}
+}
+
+// A receipt credits the chat the invoice is for, wherever it arrives,
+// and the whitelist is checked on that chat, as at pre-checkout.
+func TestPaymentCreditsThePayloadChat(t *testing.T) {
+	t.Parallel()
+	const group, channel, payer = int64(-10), int64(-1001234567890), int64(77)
+	tests := []struct {
+		name        string
+		receiptChat int64
+		channelPost bool
+		payloadChat int64
+		whitelist   []int64
+		credited    bool
+	}{
+		{name: "receipt in the group", receiptChat: group, payloadChat: group, credited: true},
+		{name: "receipt in the payer's chat", receiptChat: payer, payloadChat: group, credited: true},
+		{
+			name:        "receipt as a channel post",
+			receiptChat: channel,
+			channelPost: true,
+			payloadChat: channel,
+			credited:    true,
+		},
+		{
+			name:        "payload chat whitelisted, receipt chat not",
+			receiptChat: payer,
+			payloadChat: group,
+			whitelist:   []int64{group},
+			credited:    true,
+		},
+		{
+			name:        "receipt chat whitelisted, payload chat not",
+			receiptChat: payer,
+			payloadChat: group,
+			whitelist:   []int64{payer},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := newTestWorker()
+			w.initCache()
+			cfg := *w.cfg
+			cfg.WhitelistChats = tc.whitelist
+			w.cfg = &cfg
+			receipt := &models.Message{
+				Chat: models.Chat{ID: tc.receiptChat},
+				SuccessfulPayment: &models.SuccessfulPayment{
+					Currency:                "XTR",
+					TotalAmount:             100,
+					InvoicePayload:          fmt.Sprintf("stars:subs:%d:5", tc.payloadChat),
+					TelegramPaymentChargeID: "charge-1",
+				},
+			}
+			u := &models.Update{Message: receipt}
+			if tc.channelPost {
+				u = &models.Update{ChannelPost: receipt}
+			}
+			w.processTGUpdate(incomingPacket{endpoint: "test", message: u})
+			got, want := 0, 0
+			if user, found := w.db.UserByChatID(tc.payloadChat); found {
+				chat, _ := w.db.Chat("test", user.UserID)
+				got = chat.MaxSubs
+			}
+			if tc.credited {
+				want = w.cfg.MaxSubs + 5
+			}
+			if got != want {
+				t.Errorf("the payload chat's max_subs = %d, want %d", got, want)
+			}
+			if _, found := w.db.UserByChatID(payer); found {
+				t.Error("the payer's chat was given a row")
+			}
+		})
 	}
 }
 

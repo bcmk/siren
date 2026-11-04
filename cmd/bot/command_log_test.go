@@ -638,14 +638,15 @@ func TestDuplicatePaymentReplyLogsNoCommand(t *testing.T) {
 		TotalAmount:             100,
 		TelegramPaymentChargeID: "charge-1",
 	}
-	w.handleSuccessfulPayment("test", 1, payment, 100)
+	receipt := &models.Message{Chat: models.Chat{ID: 1}, SuccessfulPayment: payment}
+	w.handleSuccessfulPayment("test", receipt, 100)
 	// The credit is recorded, so its reply names the payment.
 	if got := drainSendQueueToLog(t, w); !slices.Equal(got, []string{paymentCommand}) {
 		t.Fatalf("the credited reply did not name the payment, got %q", got)
 	}
 
 	// The same charge again: rejected before anything is recorded.
-	w.handleSuccessfulPayment("test", 1, payment, 100)
+	w.handleSuccessfulPayment("test", receipt, 100)
 	got := drainSendQueueToLog(t, w)
 	t.Logf("duplicate payment reply logged: %q", got)
 	if !slices.Equal(got, []string{""}) {

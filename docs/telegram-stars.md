@@ -1,6 +1,7 @@
 # Telegram Stars subscriptions
 
 Users buy extra subscription slots with Telegram Stars (currency `XTR`).
+In a group or channel, a purchase raises the chat's limit, not the payer's.
 The `/buy_subs` command is enabled by configuring `subs_tiers`;
 with no tiers configured, buying is off.
 It shows fixed packages defined by `subs_tiers`.
@@ -15,6 +16,8 @@ so larger packages are cheaper per subscription and discounts stay non-negative.
 2. Tapping a package sends an invoice (`sendInvoice`, currency `XTR`).
 3. `pre_checkout_query` is validated and answered (10s deadline).
 4. `successful_payment` triggers `GrantStarPaymentSubs` (idempotent).
+   It credits the chat the invoice is for, wherever the receipt arrives;
+   in a channel the receipt comes as a channel post.
 
 Each step is named in `received_message_log`:
 `buy_callback`, `invoice`, `pre_checkout`, `successful_payment`.

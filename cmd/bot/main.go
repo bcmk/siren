@@ -1564,10 +1564,27 @@ func (w *worker) handlePreCheckoutQuery(endpoint string, q *models.PreCheckoutQu
 	}
 }
 
-func (w *worker) handleSuccessfulPayment(endpoint string, chatID int64, p *models.SuccessfulPayment, now int) {
-	product, payloadChatID, count, ok := parseStarsPayload(p.InvoicePayload)
-	if !ok || payloadChatID != chatID {
-		lerr("malformed successful payment payload %q for chat %d", p.InvoicePayload, chatID)
+// handleSuccessfulPayment credits the chat the invoice is for, wherever the receipt arrived.
+func (w *worker) handleSuccessfulPayment(endpoint string, receipt *models.Message, now int) {
+	p := receipt.SuccessfulPayment
+	// A refund needs the payer, and a receipt posted in a channel names none.
+	payer := "unknown"
+	if receipt.From != nil {
+		payer = strconv.FormatInt(receipt.From.ID, 10)
+	}
+	product, chatID, count, ok := parseStarsPayload(p.InvoicePayload)
+	if !ok {
+		lerr(
+			"malformed successful payment: payload = %q, charge = %s",
+			p.InvoicePayload, p.TelegramPaymentChargeID)
+		return
+	}
+	// Log the charge first: a refusal below or a failed credit leaves no other record of it.
+	linf(
+		"successful_payment received: chat = %d, receipt chat = %d, payer = %s, "+
+			"charge = %s, product = %s, count = %d, stars = %d",
+		chatID, receipt.Chat.ID, payer, p.TelegramPaymentChargeID, product, count, p.TotalAmount)
+	if !w.admitChat("successful_payment", chatID) {
 		return
 	}
 	if product != productSubs {
@@ -1581,13 +1598,9 @@ func (w *worker) handleSuccessfulPayment(endpoint string, chatID int64, p *model
 			"successful_payment tier/amount mismatch, crediting anyway: chat = %d, charge = %s, count = %d, paid = %d",
 			chatID, p.TelegramPaymentChargeID, count, p.TotalAmount)
 	}
-	// Log the charge first: a failed credit rolls back the star_payments row.
-	linf(
-		"crediting successful_payment: chat = %d, charge = %s, product = %s, count = %d, stars = %d",
-		chatID, p.TelegramPaymentChargeID, product, count, p.TotalAmount)
 	// GrantStarPaymentSubs resolves the user inside the charge tx,
 	// so a rejected payload above or a duplicate charge leaves no stray user.
-	// It returns the user to answer, on a duplicate the first charge's payer.
+	// It returns the user to answer, on a duplicate the user the first charge credited.
 	added, maxSubs, userID := w.db.GrantStarPaymentSubs(
 		chatID,
 		endpoint,
@@ -3963,6 +3976,16 @@ func migrationPair(m *models.Message) (fromID, toID int64, ok bool) {
 	return 0, 0, false
 }
 
+// paymentReceipt returns the update's payment receipt, which comes as a channel post in a channel.
+func paymentReceipt(u *models.Update) *models.Message {
+	for _, m := range []*models.Message{u.Message, u.ChannelPost} {
+		if m != nil && m.SuccessfulPayment != nil {
+			return m
+		}
+	}
+	return nil
+}
+
 // handleChatMigration migrates a user after a group-to-supergroup upgrade.
 // Both the migrate_to and migrate_from messages carry the same ID pair.
 func (w *worker) handleChatMigration(endpoint string, now int, fromID, toID int64) {
@@ -4026,12 +4049,8 @@ func (w *worker) processTGUpdate(p incomingPacket) {
 		}
 		return
 	}
-	if u.Message != nil && u.Message.SuccessfulPayment != nil {
-		chatID := u.Message.Chat.ID
-		if !w.admitChat("successful_payment", chatID) {
-			return
-		}
-		w.handleSuccessfulPayment(p.endpoint, chatID, u.Message.SuccessfulPayment, now)
+	if receipt := paymentReceipt(u); receipt != nil {
+		w.handleSuccessfulPayment(p.endpoint, receipt, now)
 		return
 	}
 	if m := u.Message; m != nil {
@@ -4139,14 +4158,14 @@ func (w *worker) rejectForRedeliveryWhileMigrating(inner http.Handler) http.Hand
 				http.Error(rw, "unparsable update", http.StatusServiceUnavailable)
 				return
 			}
+			if receipt := paymentReceipt(update); receipt != nil {
+				linf(
+					"rejecting successful_payment during migration for redelivery: chat = %d, charge = %s",
+					receipt.Chat.ID, receipt.SuccessfulPayment.TelegramPaymentChargeID)
+				http.Error(rw, "migrating", http.StatusServiceUnavailable)
+				return
+			}
 			if m := update.Message; m != nil {
-				if m.SuccessfulPayment != nil {
-					linf(
-						"rejecting successful_payment during migration for redelivery: chat = %d, charge = %s",
-						m.Chat.ID, m.SuccessfulPayment.TelegramPaymentChargeID)
-					http.Error(rw, "migrating", http.StatusServiceUnavailable)
-					return
-				}
 				if _, _, ok := migrationPair(m); ok {
 					linf("rejecting chat migration during startup for redelivery: chat = %d", m.Chat.ID)
 					http.Error(rw, "migrating", http.StatusServiceUnavailable)

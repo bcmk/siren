@@ -903,7 +903,8 @@ func (d *Database) SetLimit(endpoint string, userID UserID, maxSubs int) (found 
 
 // GrantStarPaymentSubs records the charge and bumps max_subs
 // in one transaction, returning the new max_subs.
-// A duplicate charge returns (false, 0) with the first charge's payer and changes nothing.
+// A duplicate charge changes nothing,
+// returning (false, 0) with the user the first charge credited.
 // The user and its chat are created if missing, so a charge is always credited.
 func (d *Database) GrantStarPaymentSubs(
 	chatID int64,
@@ -934,18 +935,18 @@ func (d *Database) GrantStarPaymentSubs(
 		userID, endpoint, chargeID, stars, product, quantity, payload, now)
 	checkErr(err)
 	if tag.RowsAffected() == 0 {
-		// Reply to the first charge's payer: after a group-to-supergroup upgrade,
+		// Reply to the user the first charge credited: after a group-to-supergroup upgrade,
 		// chatID can resolve to a user created above, which the rollback removes
-		var payer int64
+		var creditedUserID int64
 		err = tx.QueryRow(context.Background(), `
 			select c.user_id
 			from star_payments p
 			join chats c on c.id = p.chat_id
 			where p.telegram_payment_charge_id = $1
-			/*name='grant_star_payment_subs_payer'*/`,
-			chargeID).Scan(&payer)
+			/*name='grant_star_payment_subs_credited_user'*/`,
+			chargeID).Scan(&creditedUserID)
 		checkErr(err)
-		return false, 0, UserID(payer)
+		return false, 0, UserID(creditedUserID)
 	}
 	err = tx.QueryRow(context.Background(), `
 		update chats set max_subs = max_subs + $1 where user_id = $2 and endpoint = $3 returning max_subs
