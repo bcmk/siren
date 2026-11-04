@@ -308,7 +308,8 @@ and send the chunk back to the queue on every run.
 A chunk leaves the queue only after a vacuum has removed all its dead rows,
 so a restart, a shutdown or a long query never loses a vacuum.
 A vacuum cannot remove deleted rows that some other session's query,
-started before the deletes, can still see.
+started before the deletes, can still see,
+or rows on a page another process has pinned, as a checkpoint does while writing it.
 In that case the chunk goes to the back of the queue, and a later vacuum removes the rows.
 Until then, their pages stay out of the visibility map.
 

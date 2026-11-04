@@ -1875,9 +1875,9 @@ func (d *Database) QueueStatusChangesVacuums(ctx context.Context, tx pgx.Tx, vac
 // It returns 0 with an empty queue, while a migration keeps the chunk queued,
 // for a chunk another session holds, which goes to the back of the queue,
 // and for a chunk gone since it was queued, which it dequeues.
-// A chunk left with dead rows, which a snapshot older than their delete still sees,
-// goes to the back of the queue instead, as their pages stay out of the visibility map,
-// for a plain vacuum: a rewrite has given its space back already.
+// A chunk left with dead rows the vacuum could not remove goes to the back of the queue instead,
+// as their pages stay out of the visibility map.
+// It goes back for a plain vacuum, as a rewrite has given its space back already.
 func (d *Database) VacuumNextStatusChangesChunk(ctx context.Context, rewrites bool) (int, error) {
 	var id int64
 	var name string
