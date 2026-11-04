@@ -246,7 +246,7 @@ $$
 A run makes one step per rule, youngest first, all in one transaction.
 The compactor connects as the bot, whose login owns the tables,
 and needs `status_changes_lock` and `status_changes_vacuum_queue`,
-which the migrator's prebuild or the bot's start creates.
+which applying the migrations creates.
 
 ### Locking
 

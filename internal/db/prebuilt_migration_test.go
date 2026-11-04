@@ -180,6 +180,19 @@ func TestPrebuildRefusesBackdatedTail(t *testing.T) {
 	db.ApplyMigrations()
 }
 
+// Startup gives an empty database every prebuild through the schema snapshot.
+func TestPrebuildLeavesAnEmptyDatabaseToStartup(t *testing.T) {
+	t.Parallel()
+	d, _ := newEmptyDatabase(t)
+
+	if d.ApplyNextPrebuildMigrations() {
+		t.Error("a prebuild ran on an empty database")
+	}
+	if !d.noTablesInPublic() {
+		t.Error("the prebuild left tables behind")
+	}
+}
+
 // A chunked prebuild also runs at startup, where pausing would only add downtime.
 func TestChunkPausesOnlyForPrebuild(t *testing.T) {
 	t.Parallel()
@@ -231,6 +244,53 @@ func TestMigrationRunsAreSerialized(t *testing.T) {
 	holder.MustExec("select pg_advisory_unlock($1)", migrationLock)
 	// A run that never proceeds hits go test's own timeout, before Close takes its connection.
 	<-done
+}
+
+// Both runners can find the database empty, so the check and the schema snapshot need the lock.
+func TestMigrationRunsOnAnEmptyDatabaseAreSerialized(t *testing.T) {
+	t.Parallel()
+	connStr, drop, err := clones.EmptyDatabase()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := drop(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	const runners = 2
+	start := make(chan struct{})
+	// A panic in a goroutine would end the test binary
+	failures := make(chan any, runners)
+	for range runners {
+		d := NewDatabase(connStr, false, 5)
+		go func() {
+			defer func() {
+				failure := recover()
+				_ = d.Close()
+				failures <- failure
+			}()
+			<-start
+			d.ApplyMigrations()
+		}()
+	}
+	close(start)
+	for range runners {
+		if failure := <-failures; failure != nil {
+			t.Errorf("a run failed: %v", failure)
+		}
+	}
+
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := NewDatabase(connStr, false, 5)
+	defer func() { _ = d.Close() }()
+	if n := d.MustInt("select count(*) from schema_migrations"); n != len(migrations) {
+		t.Errorf("%d migrations recorded, want %d", n, len(migrations))
+	}
 }
 
 // A bot with nothing to apply starts without waiting for a prebuild holding the lock.

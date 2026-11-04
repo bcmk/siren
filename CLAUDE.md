@@ -357,6 +357,13 @@
   `migrator --prebuild` refuses two unapplied prebuild groups.
 - The bot owns its tables, and the logins that run migrations do not,
   so the migrator config gives every bot the role to create them as, and requires it
+- `ApplyMigrations`, which plain `cmd/migrator` and bot startup call,
+  starts a database with no table in `public` from `internal/db/schema_snapshot.sql`,
+  which equals all the migrations combined.
+  `migrator --prebuild` applies nothing to such a database.
+  Refresh the schema snapshot with every new or changed migration:
+  `go run ./cmd/schema-dump --schema-snapshot > internal/db/schema_snapshot.sql`.
+  It is generated, so the tag rule, lowercase keywords and the line limit don't apply to it.
 
 ## Commands and Logging
 

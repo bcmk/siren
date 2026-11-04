@@ -17,6 +17,9 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
+//go:embed schema_snapshot.sql
+var schemaSnapshot string
+
 type migration struct {
 	order         int
 	name          string
@@ -140,8 +143,19 @@ func (d *Database) unlockMigrations() {
 		migrationLock)
 }
 
-// ApplyMigrations applies all migrations to the database
+// ApplyMigrations brings the database up to date.
+// A database with no tables in public starts from the schema snapshot,
+// which equals all migrations combined.
 func (d *Database) ApplyMigrations() {
+	d.applyMigrations(true)
+}
+
+// ApplyMigrationsOneByOne skips the schema snapshot, to generate it and to compare with it.
+func (d *Database) ApplyMigrationsOneByOne() {
+	d.applyMigrations(false)
+}
+
+func (d *Database) applyMigrations(allowSnapshot bool) {
 	migrations, err := loadMigrations()
 	checkErr(err)
 	// With nothing to apply, don't wait on a running prebuild's lock.
@@ -153,6 +167,12 @@ func (d *Database) ApplyMigrations() {
 
 	d.lockMigrations()
 	defer d.unlockMigrations()
+
+	if allowSnapshot && d.noTablesInPublic() {
+		linf("applying the schema snapshot...")
+		d.MustExecScript(schemaSnapshot)
+		return
+	}
 
 	for _, m := range migrations[first:] {
 		// Check DB each time — migration 0000 populates schema_migrations
@@ -166,12 +186,25 @@ func (d *Database) ApplyMigrations() {
 	linf("no more migrations")
 }
 
+func (d *Database) noTablesInPublic() bool {
+	return d.MustBool(`
+		select not exists(select 1 from pg_tables where schemaname = 'public')
+		/*name='no_tables_in_public'*/`)
+}
+
 // ApplyNextPrebuildMigrations applies the earliest prebuild migration not yet applied
 // and those consecutive with it, reporting whether it found any.
 // A prebuild often needs a transactional step and a no_transaction one, so it runs as a group.
+// With no tables in public it applies nothing and reports false,
+// as startup applies the schema snapshot there.
 func (d *Database) ApplyNextPrebuildMigrations() bool {
 	d.lockMigrations()
 	defer d.unlockMigrations()
+
+	if d.noTablesInPublic() {
+		linf("no prebuild migrations pending: startup applies the schema snapshot")
+		return false
+	}
 
 	migrations, err := loadMigrations()
 	checkErr(err)

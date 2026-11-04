@@ -4,12 +4,16 @@ package pgtest
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/testcontainers/testcontainers-go"
+	tcexec "github.com/testcontainers/testcontainers-go/exec"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"github.com/bcmk/siren/v6/lib/cmdlib"
@@ -43,6 +47,29 @@ func Run(ctx context.Context, dbName string) (*postgres.PostgresContainer, error
 	)
 }
 
+// PgDump runs pg_dump on dbName and returns its output, without the random \restrict lines.
+func PgDump(ctx context.Context, container *postgres.PostgresContainer, dbName string, args ...string) (string, error) {
+	// stderr holds warnings a dump must not carry, so it shows only on failure
+	cmd := `e=$(mktemp); trap 'rm -f "$e"' EXIT; pg_dump -U test -d ` + dbName + " " + strings.Join(args, " ") +
+		` 2>"$e" || { c=$?; cat "$e"; exit $c; }`
+	code, out, err := container.Exec(ctx, []string{"sh", "-c", cmd}, tcexec.Multiplexed())
+	if err != nil {
+		return "", err
+	}
+	dump, err := io.ReadAll(out)
+	if err != nil {
+		return "", err
+	}
+	if code != 0 {
+		return "", fmt.Errorf("pg_dump of %s exited with %d: %s", dbName, code, dump)
+	}
+	lines := strings.SplitAfter(string(dump), "\n")
+	lines = slices.DeleteFunc(lines, func(line string) bool {
+		return strings.HasPrefix(line, `\restrict `) || strings.HasPrefix(line, `\unrestrict `)
+	})
+	return strings.Join(lines, ""), nil
+}
+
 // templateName is the database migrations are applied to once per run.
 // Each test clones it,
 // so a test pays for a file copy rather than a container start plus every migration.
@@ -66,7 +93,7 @@ type Clones struct {
 }
 
 // NewClones returns Clones whose template migrate migrates.
-// The container starts on the first Clone, so a run with no database test pays nothing for it.
+// The container starts on the first database, so a run with no database test pays nothing for it.
 func NewClones(migrate func(connStr string) error) *Clones {
 	c := &Clones{migrate: migrate}
 	c.ready = sync.OnceValue(c.start)
@@ -100,9 +127,32 @@ func (c *Clones) Clone() (connStr string, drop func() error, err error) {
 	drop = func() error {
 		return c.adminExec(fmt.Sprintf("drop database %s", name))
 	}
-	// file_copy clones faster than the default wal_log under the suites' parallel load
+	// file_copy clones faster than the default wal_log under the tests' parallel load
 	err = c.adminExec(fmt.Sprintf("create database %s template %s strategy = file_copy", name, templateName))
 	return c.connStrFor(name), drop, err
+}
+
+// EmptyDatabase creates a database with nothing in it; drop removes it.
+func (c *Clones) EmptyDatabase() (connStr string, drop func() error, err error) {
+	if err = c.ready(); err != nil {
+		return "", nil, err
+	}
+	name := fmt.Sprintf("test_%d", c.counter.Add(1))
+	drop = func() error {
+		return c.adminExec(fmt.Sprintf("drop database %s", name))
+	}
+	// Not template1, which holds the extensions the image installed
+	err = c.adminExec(fmt.Sprintf("create database %s template template0", name))
+	return c.connStrFor(name), drop, err
+}
+
+// PgDump runs pg_dump on the database connStr points at
+func (c *Clones) PgDump(connStr string, args ...string) (string, error) {
+	u, err := url.Parse(connStr)
+	if err != nil {
+		return "", err
+	}
+	return PgDump(context.Background(), c.container, strings.TrimPrefix(u.Path, "/"), args...)
 }
 
 func (c *Clones) adminExec(sql string) error {
