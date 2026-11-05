@@ -614,10 +614,11 @@ func TestEnsureUser(t *testing.T) {
 				t.Errorf("id = %d, want the known %d", id, known)
 			}
 			user, found := db.UserByID(id)
+			createdAt := int64(userRow(db.Database, id)["created_at"].(float64))
 			if !found || user.ChatID != tt.chatID || user.MaxSubs != tt.wantMaxSubs ||
 				!reflect.DeepEqual(user.ChatType, tt.wantChatType) ||
-				user.CreatedAt < tt.minCreatedAt || user.CreatedAt > tt.maxCreatedAt {
-				t.Errorf("user = %s, found: %v", asJSON(user), found)
+				createdAt < tt.minCreatedAt || createdAt > tt.maxCreatedAt {
+				t.Errorf("user = %s, created_at = %d, found: %v", asJSON(user), createdAt, found)
 			}
 			if n := db.MustInt("select count(*) from users"); n != 2 {
 				t.Errorf("%d users, want 2", n)
@@ -742,9 +743,7 @@ func TestUserReadersReadEveryColumn(t *testing.T) {
 			Blacklist:            true,
 			OfflineNotifications: true,
 			SilentMessages:       true,
-			CreatedAt:            31,
 			ChatType:             new("private"),
-			MemberCount:          new(41),
 			AffiliateParams:      map[string]string{"campaign": "a"},
 			Timezone:             new("Europe/Berlin"),
 		},
@@ -754,9 +753,7 @@ func TestUserReadersReadEveryColumn(t *testing.T) {
 			Reports:              22,
 			ShowImages:           true,
 			OfflineNotifications: true,
-			CreatedAt:            32,
 			ChatType:             new("group"),
-			MemberCount:          new(42),
 			AffiliateParams:      map[string]string{"campaign": "b"},
 			MemberSubscriptions:  true,
 			Timezone:             new("Asia/Tokyo"),
@@ -768,7 +765,6 @@ func TestUserReadersReadEveryColumn(t *testing.T) {
 			Reports:             23,
 			ShowSubject:         true,
 			SilentMessages:      true,
-			CreatedAt:           33,
 			MemberSubscriptions: true,
 		},
 	}
@@ -783,13 +779,11 @@ func TestUserReadersReadEveryColumn(t *testing.T) {
 				offline_notifications,
 				show_subject,
 				silent_messages,
-				created_at,
 				chat_type,
-				member_count,
 				affiliate_params,
 				member_subscriptions,
 				timezone)
-			values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+			values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 			returning id`,
 			u.ChatID,
 			u.MaxSubs,
@@ -799,9 +793,7 @@ func TestUserReadersReadEveryColumn(t *testing.T) {
 			u.OfflineNotifications,
 			u.ShowSubject,
 			u.SilentMessages,
-			u.CreatedAt,
 			u.ChatType,
-			u.MemberCount,
 			u.AffiliateParams,
 			u.MemberSubscriptions,
 			u.Timezone))

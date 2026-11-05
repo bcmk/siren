@@ -131,9 +131,7 @@ type User struct {
 	OfflineNotifications bool
 	ShowSubject          bool
 	SilentMessages       bool
-	CreatedAt            int64
 	ChatType             *string
-	MemberCount          *int
 	AffiliateParams      map[string]string
 
 	// MemberSubscriptions lets any group member add and remove streamers.

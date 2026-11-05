@@ -244,7 +244,6 @@ func (m *mockDB) insertPendingSubscription(p mockPendingSubscription) {
 func userCopy(u *mockUser) db.User {
 	row := u.User
 	row.ChatType = clonePtr(u.ChatType)
-	row.MemberCount = clonePtr(u.MemberCount)
 	row.Timezone = clonePtr(u.Timezone)
 	row.AffiliateParams = maps.Clone(u.AffiliateParams)
 	return row
@@ -326,7 +325,7 @@ func (m *mockDB) AddSubscription(userID db.UserID, streamerID int, endpoint stri
 	m.subscriptions = append(m.subscriptions, sub)
 }
 
-func (m *mockDB) AddUser(chatID int64, maxSubs int, now int, chatType string) (id db.UserID, created bool) {
+func (m *mockDB) AddUser(chatID int64, maxSubs int, _ int, chatType string) (id db.UserID, created bool) {
 	m.checkGID()
 	if u := m.liveUser(m.userByChat(chatID)); u != nil {
 		if u.ChatType == nil && chatType != "" {
@@ -342,7 +341,6 @@ func (m *mockDB) AddUser(chatID int64, maxSubs int, now int, chatType string) (i
 		ShowImages:           true,
 		OfflineNotifications: true,
 		ShowSubject:          true,
-		CreatedAt:            int64(now),
 	}}
 	if chatType != "" {
 		u.ChatType = &chatType
