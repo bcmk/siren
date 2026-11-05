@@ -832,7 +832,8 @@ func (w *worker) enqueueNotifications(nots []db.Notification) {
 				img = &image{key: p.ImageURL, fallbackURL: p.ProfileImageURL}
 				images[urls] = img
 			}
-		case p.MissingImage:
+		// An endpoint gone from the config has no translation and no w.tr entry
+		case p.MissingImage && p.translation != nil:
 			img = shippedImage(w.tr[p.Endpoint].ImageUnavailable)
 		}
 		w.notifyOfStatus(p, img)

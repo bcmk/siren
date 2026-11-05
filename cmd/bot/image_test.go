@@ -601,6 +601,32 @@ func TestBuildNotificationsMarksMissingImage(t *testing.T) {
 	}
 }
 
+// An alert missing its image on an endpoint gone from the config is cleared, not a panic.
+func TestMissingImageForUnknownEndpointIsDropped(t *testing.T) {
+	t.Parallel()
+	w := newTestWorker()
+	w.initCache()
+	cfg := testConfig
+	cfg.ShowImages = true
+	w.cfg = &cfg
+
+	id := w.mockDB.insertStreamer(db.Streamer{Nickname: "s1"}).ID
+	w.db.StoreNotifications([]db.Notification{{
+		Endpoint:     "removed_from_config",
+		UserID:       w.db.EnsureUser(1),
+		StreamerID:   &id,
+		Nickname:     "s1",
+		Status:       cmdlib.StatusOnline,
+		Kind:         db.NotificationPacket,
+		MissingImage: true,
+	}})
+	w.enqueueNotifications(w.db.NewNotifications())
+
+	if n := len(w.mockDB.notifications); n != 0 {
+		t.Errorf("%d alerts left queued, want the alert cleared", n)
+	}
+}
+
 // A batch's notifications of one URL and profile URL share an image,
 // so the queue holds the URL once.
 // Streamers that share an image URL keep their own profile images.
