@@ -144,6 +144,8 @@
 - Run `go test ./...` to ensure changes work
 - Ask before modifying tests — explain what needs changing and why
 - Use table-driven tests with `t.Run` subtests
+- Think about speeding up a test that takes more than 0.5 s, and report it if no idea comes
+- Don't fix something that can only happen if someone skips the tests
 
 ## Build
 
@@ -213,6 +215,7 @@
 - Answer as briefly as the question allows.
   Give the short answer first, and only then the reasoning if needed.
 - Answer each question sent mid-turn in that turn's final message
+- While a question to or from the user stays open, end the reply with `Unanswered questions: N`
 - When asked to "remember" or "write somewhere",
   save to CLAUDE.md or docs/\* files, not memory files,
   unless specifically asked for memory files
