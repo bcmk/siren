@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v6.8.1 — 2026-11-05
+
+### Fixed
+
+- A polled model shows their image
+  on CAM4, Flirt4Free, Streamate, BongaCams, LiveJasmin and Stripchat
+- A polled LiveJasmin model shows their topic
+- A model `adapter-mfc` looks up shows their images
+- A large image is scaled down to 2560 px a side before its upload
+- An image Telegram refuses falls back to the profile image
+- Cached images hold no spare memory
+
 ## v6.8.0 — 2026-11-01
 
 ### Added
