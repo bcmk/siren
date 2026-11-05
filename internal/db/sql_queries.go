@@ -589,11 +589,14 @@ type ChatMigration struct {
 // and every chat follows by its user_id.
 //
 // If the destination already exists (the same user recorded twice), the source merges into it:
-//   - Each source chat merges into the destination's chat on its endpoint, copied if there is none.
-//     A merge takes the larger limit, either side's member subscriptions and greeting,
-//     and the source's affiliate params and referral id if the destination has none;
-//     the destination's other settings and counts stay.
-//   - Subscriptions, pending subscriptions and idle notifications are dropped
+//   - Each source chat merges into the destination's chat on its endpoint, copied if there is none,
+//     and the limit rises to fit what the chat then holds.
+//     A merge takes the larger limit, the non-default value of each flag,
+//     and the source's affiliate params and referral id if the destination has none.
+//     The destination's counts stay.
+//   - Subscriptions, pending subscriptions and queued notifications move;
+//     those the destination's chat already has are dropped,
+//     and so are idle alerts for streamers it subscribes to
 //   - Feedback, payments and referral events move
 //   - The timezone moves if the destination has none
 //
@@ -671,29 +674,34 @@ func (d *Database) MigrateChat(fromID, toID int64) *ChatMigration {
 		dstID, srcID)
 	checkErr(err)
 	referrals += tag.RowsAffected()
+	// Drop what the destination's chat duplicates, and move the rest to it below.
+	// An idle alert is dropped where the destination's chat subscribes to its streamer:
+	// that subscription and the chat's settings decide the chat's own alerts.
+	// An in-flight one (sending = 1) is kept, as its resend carries its id:
+	// dropped, a crash or an overflowed resend would have nothing to re-arm.
 	_, err = tx.Exec(ctx, `
 		delete from subscriptions sub
-		using chats s
-		where sub.chat_id = s.id and s.user_id = $1
-		/*name='migrate_chat_delete_subscriptions'*/`,
-		srcID)
+		using chats s, chats d, subscriptions dsub
+		where sub.chat_id = s.id and s.user_id = $2 and d.user_id = $1 and d.endpoint = s.endpoint
+		and dsub.chat_id = d.id and dsub.streamer_id = sub.streamer_id
+		/*name='migrate_chat_delete_duplicate_subscriptions'*/`,
+		dstID, srcID)
 	checkErr(err)
 	_, err = tx.Exec(ctx, `
 		delete from pending_subscriptions ps
-		using chats s
-		where ps.chat_id = s.id and s.user_id = $1
-		/*name='migrate_chat_delete_pending_subscriptions'*/`,
-		srcID)
+		using chats s, chats d, pending_subscriptions dps
+		where ps.chat_id = s.id and s.user_id = $2 and d.user_id = $1 and d.endpoint = s.endpoint
+		and dps.chat_id = d.id and dps.nickname = ps.nickname
+		/*name='migrate_chat_delete_duplicate_pending_subscriptions'*/`,
+		dstID, srcID)
 	checkErr(err)
-	// An in-flight notification (sending = 1) stays, as its resend carries its id:
-	// dropped, a crash or an overflowed resend would have nothing to re-arm.
-	// The tombstone still resolves to the destination chat, so a re-armed row redelivers there.
 	_, err = tx.Exec(ctx, `
 		delete from notification_queue n
-		using chats s
-		where n.chat_id = s.id and s.user_id = $1 and n.sending = 0
-		/*name='migrate_chat_delete_notifications'*/`,
-		srcID)
+		using chats s, chats d, subscriptions dsub
+		where n.chat_id = s.id and s.user_id = $2 and d.user_id = $1 and d.endpoint = s.endpoint
+		and dsub.chat_id = d.id and dsub.streamer_id = n.streamer_id and n.sending = 0 and n.kind = $3
+		/*name='migrate_chat_delete_duplicate_notifications'*/`,
+		dstID, srcID, NotificationPacket)
 	checkErr(err)
 	// The source's chats stay with the tombstone, so the bounce of a send to the old id still logs
 	_, err = tx.Exec(ctx, `
@@ -709,7 +717,11 @@ func (d *Database) MigrateChat(fromID, toID int64) *ChatMigration {
 		max_subs = greatest(d.max_subs, excluded.max_subs),
 		affiliate_params = coalesce(d.affiliate_params, excluded.affiliate_params),
 		member_subscriptions = d.member_subscriptions or excluded.member_subscriptions,
-		greeted = d.greeted or excluded.greeted
+		greeted = d.greeted or excluded.greeted,
+		show_images = d.show_images and excluded.show_images,
+		offline_notifications = d.offline_notifications and excluded.offline_notifications,
+		show_subject = d.show_subject and excluded.show_subject,
+		silent_messages = d.silent_messages or excluded.silent_messages
 		/*name='migrate_chat_merge_chats'*/`,
 		dstID, srcID)
 	checkErr(err)
@@ -727,6 +739,39 @@ func (d *Database) MigrateChat(fromID, toID int64) *ChatMigration {
 		from taken t
 		where d.user_id = $1 and d.endpoint = t.endpoint and d.referral_id is null
 		/*name='migrate_chat_move_referral_ids'*/`,
+		dstID, srcID)
+	checkErr(err)
+	_, err = tx.Exec(ctx, `
+		update subscriptions sub set chat_id = d.id
+		from chats s, chats d
+		where sub.chat_id = s.id and s.user_id = $2 and d.user_id = $1 and d.endpoint = s.endpoint
+		/*name='migrate_chat_move_subscriptions'*/`,
+		dstID, srcID)
+	checkErr(err)
+	_, err = tx.Exec(ctx, `
+		update pending_subscriptions ps set chat_id = d.id
+		from chats s, chats d
+		where ps.chat_id = s.id and s.user_id = $2 and d.user_id = $1 and d.endpoint = s.endpoint
+		/*name='migrate_chat_move_pending_subscriptions'*/`,
+		dstID, srcID)
+	checkErr(err)
+	_, err = tx.Exec(ctx, `
+		update notification_queue n set chat_id = d.id
+		from chats s, chats d
+		where n.chat_id = s.id and s.user_id = $2 and d.user_id = $1 and d.endpoint = s.endpoint
+		/*name='migrate_chat_move_notifications'*/`,
+		dstID, srcID)
+	checkErr(err)
+	// Each merged chat keeps every subscription both had, so its limit rises to fit them
+	_, err = tx.Exec(ctx, `
+		update chats d set max_subs = greatest(
+			d.max_subs,
+			(select count(*) from subscriptions where chat_id = d.id)
+			+ (select count(*) from pending_subscriptions where chat_id = d.id)
+		)
+		from chats s
+		where d.user_id = $1 and s.user_id = $2 and s.endpoint = d.endpoint
+		/*name='migrate_chat_fit_limit'*/`,
 		dstID, srcID)
 	checkErr(err)
 	tag, err = tx.Exec(ctx, `
@@ -1493,10 +1538,13 @@ func (d *Database) AddSubscription(userID UserID, streamerID int, endpoint strin
 	d.addSubscription(d.db, userID, streamerID, endpoint)
 }
 
+// addSubscription does nothing for a streamer the chat subscribes to,
+// as a merge can leave a chat both subscribed and pending on one.
 func (d *Database) addSubscription(q querier, userID UserID, streamerID int, endpoint string) {
 	_, err := q.Exec(context.Background(), `
 		insert into subscriptions (chat_id, streamer_id)
 		values ((select id from chats where user_id = $1 and endpoint = $3), $2)
+		on conflict (chat_id, streamer_id) do nothing
 		/*name='add_subscription'*/`,
 		int64(userID), streamerID, endpoint)
 	checkErr(err)

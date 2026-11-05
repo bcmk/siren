@@ -204,6 +204,16 @@ func (d *Database) paymentCountOn(chatID int64, endpoint string) int {
 		chatID, endpoint)
 }
 
+// notificationCountOn counts the queued notifications on chatID's chat on endpoint
+func (d *Database) notificationCountOn(chatID int64, endpoint string) int {
+	return d.MustInt(`
+		select count(*) from notification_queue n
+		join chats c on c.id = n.chat_id
+		join users u on u.id = c.user_id
+		where u.tg_chat_id = $1 and c.endpoint = $2`,
+		chatID, endpoint)
+}
+
 // reportsOn reads the reports count of chatID's chat on endpoint
 func (d *Database) reportsOn(chatID int64, endpoint string) int {
 	return d.MustInt(`
@@ -289,7 +299,7 @@ func TestMigrateChat(t *testing.T) {
 		d := tdb.Database
 
 		const oldID, newID = int64(-200), int64(-200500)
-		// The source's subscriptions, pending ones and idle alerts are dropped.
+		// The source's rows join the destination's, dropping those both have.
 		// The destination's limit is larger on ep, the source's on ep3; the merge takes the larger.
 		d.insertUser(d.db, oldID, 1000, "group")
 		d.addTestChat(oldID, ep, 5)
@@ -345,11 +355,11 @@ func TestMigrateChat(t *testing.T) {
 			t.Error("blacklist = true, want false (destination's)")
 		}
 
-		if got, want := d.subNicknames(newID, ep), []string{"carol"}; !slices.Equal(got, want) {
-			t.Errorf("subscriptions = %v, want %v (the destination's)", got, want)
+		if got, want := d.subNicknames(newID, ep), []string{"alice", "carol"}; !slices.Equal(got, want) {
+			t.Errorf("subscriptions = %v, want %v (both chats')", got, want)
 		}
-		if got, want := d.pendingNicknames(newID, ep), []string{"pendingNew"}; !slices.Equal(got, want) {
-			t.Errorf("pending = %v, want %v (the destination's)", got, want)
+		if got, want := d.pendingNicknames(newID, ep), []string{"pendingNew", "pendingOld"}; !slices.Equal(got, want) {
+			t.Errorf("pending = %v, want %v (both chats')", got, want)
 		}
 
 		// The destination's block survives; a chat created for it takes the source's counts.
@@ -363,8 +373,9 @@ func TestMigrateChat(t *testing.T) {
 			t.Error("the source lost its ep2 chat, which holds its message logs")
 		}
 
-		if got := d.notificationCount(newID); got != 1 {
-			t.Errorf("notifications = %d, want 1 (the destination's)", got)
+		// The source's carol alert duplicates the destination's.
+		if got := d.notificationCount(newID); got != 2 {
+			t.Errorf("notifications = %d, want 2 (the source's alice and the destination's carol)", got)
 		}
 
 		// The destination's chat keeps its own referral id, and the source's is dropped.
@@ -379,7 +390,7 @@ func TestMigrateChat(t *testing.T) {
 			t.Errorf("destination referral id on ep2 = %s, want refOld2", asJSON(chat.ReferralID))
 		}
 
-		// The source's operational rows are gone; the tombstone keeps its chats.
+		// The source's operational rows have all moved or gone; the tombstone keeps its chats.
 		for _, endpoint := range []string{ep, "ep2", "ep3"} {
 			if chat, _ := d.chatOf(oldID, endpoint); chat.ReferralID != nil {
 				t.Errorf("source still has referral id %s on %s", *chat.ReferralID, endpoint)
@@ -434,7 +445,8 @@ func TestMigrateChat(t *testing.T) {
 				t.Errorf("greeted on %s = false, want true (the source's)", endpoint)
 			}
 		}
-		if chat, _ := d.chatOf(newID, ep); chat.AffiliateParams["campaign"] != "old" {
+		chat, _ := d.chatOf(newID, ep)
+		if chat.AffiliateParams["campaign"] != "old" {
 			t.Errorf("affiliate campaign = %q, want old (the source's)", chat.AffiliateParams["campaign"])
 		}
 		if user.Timezone == nil || *user.Timezone != "Europe/Berlin" {
@@ -475,6 +487,61 @@ func TestMigrateChat(t *testing.T) {
 		}
 	})
 
+	t.Run("destination present takes each flag's non-default value from either side", func(t *testing.T) {
+		t.Parallel()
+		tdb := newTestDB(t)
+		d := tdb.Database
+
+		const oldID, newID = int64(-240), int64(-240500)
+		d.insertUser(d.db, oldID, 1000, "group")
+		d.insertUser(d.db, newID, 2000, "supergroup")
+		src, dst := d.userID(oldID), d.userID(newID)
+		endpoints := []string{ep, "ep2", "ep3"}
+		// A pattern names, per endpoint, the chat holding the flag's non-default value:
+		// the source's (s), the destination's (d) or neither (-).
+		// Flags merged alike have distinct patterns, so swapping any two shows.
+		flags := []struct {
+			column     string
+			nonDefault bool
+			pattern    string
+			set        func(endpoint string, id UserID)
+		}{
+			{"show_images", false, "-sd", func(e string, id UserID) { d.SetShowImages(e, id, false) }},
+			{"offline_notifications", false, "d-s", func(e string, id UserID) { d.SetOfflineNotifications(e, id, false) }},
+			{"show_subject", false, "sd-", func(e string, id UserID) { d.SetShowSubject(e, id, false) }},
+			{"silent_messages", true, "-sd", func(e string, id UserID) { d.SetSilentMessages(e, id, true) }},
+			{"member_subscriptions", true, "d-s", func(e string, id UserID) { d.SetMemberSubscriptions(e, id, true) }},
+			{"greeted", true, "sd-", func(e string, id UserID) { d.MarkGreeted(e, id) }},
+		}
+		for i, endpoint := range endpoints {
+			d.addTestChat(oldID, endpoint, 3)
+			d.addTestChat(newID, endpoint, 3)
+			for _, f := range flags {
+				switch f.pattern[i] {
+				case 's':
+					f.set(endpoint, src)
+				case 'd':
+					f.set(endpoint, dst)
+				}
+			}
+		}
+
+		d.MigrateChat(oldID, newID)
+
+		for i, endpoint := range endpoints {
+			row := chatRow(d, endpoint, dst)
+			for _, f := range flags {
+				want := f.nonDefault
+				if f.pattern[i] == '-' {
+					want = !want
+				}
+				if row[f.column] != want {
+					t.Errorf("%s on %s = %v, want %v (pattern %s)", f.column, endpoint, row[f.column], want, f.pattern)
+				}
+			}
+		}
+	})
+
 	t.Run("destination present keeps an in-flight notification", func(t *testing.T) {
 		t.Parallel()
 		tdb := newTestDB(t)
@@ -493,14 +560,141 @@ func TestMigrateChat(t *testing.T) {
 
 		d.MigrateChat(oldID, newID)
 
-		// The in-flight row survives on the tombstone so a crash can re-arm it; the idle one is dropped.
-		if got := d.notificationCount(oldID); got != 1 {
-			t.Errorf("source notifications = %d, want 1 (alice's)", got)
+		// The in-flight row survives so a crash can re-arm it, and moves to the destination's chat;
+		// the idle one is dropped as a duplicate.
+		if got := d.notificationCount(newID); got != 1 {
+			t.Errorf("destination notifications = %d, want 1 (alice's)", got)
 		}
-		if got := d.notificationCount(newID); got != 0 {
-			t.Errorf("destination notifications = %d, want 0", got)
+		if got := d.notificationCount(oldID); got != 0 {
+			t.Errorf("source notifications = %d, want 0", got)
 		}
 	})
+
+	t.Run("destination present takes subscriptions it lacks", func(t *testing.T) {
+		t.Parallel()
+		tdb := newTestDB(t)
+		d := tdb.Database
+
+		const oldID, newID = int64(-260), int64(-260500)
+		d.insertUser(d.db, oldID, 1000, "group")
+		d.addSub(oldID, "alice", ep)
+		d.addSub(oldID, "bob", "ep2")
+		d.addPending(oldID, "pendingOld", "ep2")
+		d.addNotification(oldID, "bob", "ep2")
+		// The destination's chat on ep is empty, and it has none on ep2.
+		d.insertUser(d.db, newID, 2000, "supergroup")
+		d.addTestChat(newID, ep, 3)
+
+		d.MigrateChat(oldID, newID)
+
+		if got, want := d.subNicknames(newID, ep), []string{"alice"}; !slices.Equal(got, want) {
+			t.Errorf("destination subscriptions on %s = %v, want %v", ep, got, want)
+		}
+		if got, want := d.subNicknames(newID, "ep2"), []string{"bob"}; !slices.Equal(got, want) {
+			t.Errorf("destination subscriptions on ep2 = %v, want %v", got, want)
+		}
+		if got, want := d.pendingNicknames(newID, "ep2"), []string{"pendingOld"}; !slices.Equal(got, want) {
+			t.Errorf("destination pending on ep2 = %v, want %v", got, want)
+		}
+		if got := d.notificationCount(newID); got != 1 {
+			t.Errorf("destination notifications = %d, want 1 (bob's)", got)
+		}
+		if got := d.subNicknames(oldID, "ep2"); len(got) != 0 {
+			t.Errorf("source still has subscriptions %v", got)
+		}
+	})
+
+	t.Run("destination present raises a limit to fit the merged subscriptions", func(t *testing.T) {
+		t.Parallel()
+		tdb := newTestDB(t)
+		d := tdb.Database
+
+		const oldID, newID = int64(-265), int64(-265500)
+		d.insertUser(d.db, oldID, 1000, "group")
+		d.addTestChat(oldID, ep, 2)
+		d.addSub(oldID, "alice", ep)
+		d.addSub(oldID, "bob", ep)
+		d.addPending(oldID, "pendingOld", ep)
+		d.insertUser(d.db, newID, 2000, "supergroup")
+		d.addTestChat(newID, ep, 2)
+		d.addSub(newID, "carol", ep)
+		d.addSub(newID, "dave", ep)
+		// An over-limit chat on an endpoint the destination has none on
+		d.addTestChat(oldID, "ep2", 1)
+		d.addSub(oldID, "alice", "ep2")
+		d.addSub(oldID, "bob", "ep2")
+		d.addPending(oldID, "pendingOld", "ep2")
+
+		d.MigrateChat(oldID, newID)
+
+		if chat, _ := d.chatOf(newID, ep); chat.MaxSubs != 5 {
+			t.Errorf("max_subs = %d, want 5 to fit 4 subscriptions and 1 pending", chat.MaxSubs)
+		}
+		if chat, _ := d.chatOf(newID, "ep2"); chat.MaxSubs != 3 {
+			t.Errorf("max_subs of the created chat = %d, want 3 to fit 2 subscriptions and 1 pending", chat.MaxSubs)
+		}
+	})
+
+	t.Run("destination present moves a queued reply on a streamer it subscribes to", func(t *testing.T) {
+		t.Parallel()
+		tdb := newTestDB(t)
+		d := tdb.Database
+
+		const oldID, newID = int64(-270), int64(-270500)
+		d.insertUser(d.db, oldID, 1000, "group")
+		d.addNotification(oldID, "alice", ep)
+		d.addNotification(oldID, "alice", ep)
+		d.MustExec(`update notification_queue set kind = $1 where id = (select max(id) from notification_queue)`,
+			ReplyPacket)
+		d.insertUser(d.db, newID, 2000, "supergroup")
+		d.addSub(newID, "alice", ep)
+
+		d.MigrateChat(oldID, newID)
+
+		// The alert duplicates the destination's own, the reply nothing
+		kinds := d.MustStrings(`
+			select n.kind::text
+			from notification_queue n
+			join chats c on c.id = n.chat_id
+			join users u on u.id = c.user_id
+			where u.tg_chat_id = $1`,
+			newID)
+		if want := []string{"1"}; !slices.Equal(kinds, want) {
+			t.Errorf("destination notification kinds = %v, want %v (the reply)", kinds, want)
+		}
+	})
+
+	// A merge can leave a chat both subscribed and pending on one streamer,
+	// which the confirmation then settles
+	for _, tc := range []struct {
+		name                    string
+		subscribed, pendingFrom int64
+	}{
+		{"destination pending on a streamer the source subscribes to", -280, -280500},
+		{"source pending on a streamer the destination subscribes to", -280500, -280},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			tdb := newTestDB(t)
+			d := tdb.Database
+
+			const oldID, newID = int64(-280), int64(-280500)
+			d.insertUser(d.db, oldID, 1000, "group")
+			d.insertUser(d.db, newID, 2000, "supergroup")
+			d.addSub(tc.subscribed, "alice", ep)
+			d.addPending(tc.pendingFrom, "alice", ep)
+
+			d.MigrateChat(oldID, newID)
+			d.ConfirmSub(PendingSubscription{UserID: d.userID(newID), Nickname: "alice", Endpoint: ep})
+
+			if got, want := d.subNicknames(newID, ep), []string{"alice"}; !slices.Equal(got, want) {
+				t.Errorf("subscriptions = %v, want %v", got, want)
+			}
+			if got := d.pendingNicknames(newID, ep); len(got) != 0 {
+				t.Errorf("pending = %v, want none", got)
+			}
+		})
+	}
 
 	t.Run("destination present without a referral inherits the source's", func(t *testing.T) {
 		t.Parallel()
@@ -708,6 +902,12 @@ func TestMigrateChat(t *testing.T) {
 				// A merge not filtered by the destination would raise this user's limit
 				lowLimitUser, _ := d.insertUser(d.db, lowLimitChat, 1000, "group")
 				d.addTestChat(lowLimitChat, ep, 1)
+				// Over its limit and holding rows,
+				// so a fit or a move missing its user filter changes it
+				d.addSub(lowLimitChat, "alice", ep)
+				d.addSub(lowLimitChat, "bob", ep)
+				d.addPending(lowLimitChat, "pendingLow", ep)
+				d.addNotification(lowLimitChat, "alice", ep)
 				src, _ := d.insertUser(d.db, srcChat, 1000, "group")
 				d.addTestChat(srcChat, ep, 5)
 				if tt.dstExists {
@@ -735,6 +935,21 @@ func TestMigrateChat(t *testing.T) {
 						select 'payment ' || to_jsonb(p)::text
 						from star_payments p
 						join chats c on c.id = p.chat_id
+						where c.user_id = any($1)
+						union all
+						select 'subscription ' || to_jsonb(s)::text
+						from subscriptions s
+						join chats c on c.id = s.chat_id
+						where c.user_id = any($1)
+						union all
+						select 'pending ' || to_jsonb(p)::text
+						from pending_subscriptions p
+						join chats c on c.id = p.chat_id
+						where c.user_id = any($1)
+						union all
+						select 'notification ' || to_jsonb(n)::text
+						from notification_queue n
+						join chats c on c.id = n.chat_id
 						where c.user_id = any($1)
 						union all
 						select 'event ' || to_jsonb(e)::text
@@ -908,6 +1123,53 @@ func TestMigrateChat(t *testing.T) {
 		}
 		if got := d.followerEventCount(oldID) + d.referrerEventCount(oldID); got != 0 {
 			t.Errorf("source referral events = %d, want 0", got)
+		}
+	})
+
+	t.Run("destination present pairs subscriptions, notifications and limits by endpoint", func(t *testing.T) {
+		t.Parallel()
+		tdb := newTestDB(t)
+		d := tdb.Database
+
+		const oldID, newID = int64(-930), int64(-930500)
+		// Both subscribe to alice and wait on pending1, but on different endpoints
+		d.insertUser(d.db, oldID, 1000, "group")
+		d.addSub(oldID, "alice", ep)
+		d.addSub(oldID, "bob", "ep2")
+		d.addPending(oldID, "pending1", ep)
+		d.addPending(oldID, "pending2", "ep2")
+		d.addNotification(oldID, "alice", ep)
+		d.addNotification(oldID, "bob", "ep2")
+		d.insertUser(d.db, newID, 2000, "supergroup")
+		d.addTestChat(newID, ep, 3)
+		d.addSub(newID, "alice", "ep2")
+		d.addPending(newID, "pending1", "ep2")
+		// Over its limit on an endpoint the source has no chat on
+		d.addTestChat(newID, "ep3", 1)
+		d.addSub(newID, "carol", "ep3")
+		d.addSub(newID, "dave", "ep3")
+
+		d.MigrateChat(oldID, newID)
+
+		for _, tc := range []struct {
+			endpoint      string
+			subs, pending []string
+		}{
+			{ep, []string{"alice"}, []string{"pending1"}},
+			{"ep2", []string{"alice", "bob"}, []string{"pending1", "pending2"}},
+		} {
+			if got := d.subNicknames(newID, tc.endpoint); !slices.Equal(got, tc.subs) {
+				t.Errorf("destination subscriptions on %s = %v, want %v", tc.endpoint, got, tc.subs)
+			}
+			if got := d.pendingNicknames(newID, tc.endpoint); !slices.Equal(got, tc.pending) {
+				t.Errorf("destination pending on %s = %v, want %v", tc.endpoint, got, tc.pending)
+			}
+			if got := d.notificationCountOn(newID, tc.endpoint); got != 1 {
+				t.Errorf("destination notifications on %s = %d, want 1", tc.endpoint, got)
+			}
+		}
+		if chat, _ := d.chatOf(newID, "ep3"); chat.MaxSubs != 1 {
+			t.Errorf("max_subs on ep3 = %d, want 1 (no chat merged into it)", chat.MaxSubs)
 		}
 	})
 }

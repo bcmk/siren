@@ -374,8 +374,9 @@ func (m *mockDB) AddSubscription(userID db.UserID, streamerID int, endpoint stri
 	m.checkChat(endpoint, userID)
 	m.checkStreamer(streamerID)
 	sub := mockSubscription{userID: userID, streamerID: streamerID, endpoint: endpoint}
+	// add_subscription ignores a duplicate
 	if slices.Contains(m.subscriptions, sub) {
-		panic(fmt.Sprintf("duplicate subscription %+v", sub))
+		return
 	}
 	m.subscriptions = append(m.subscriptions, sub)
 }
