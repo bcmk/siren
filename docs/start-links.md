@@ -9,13 +9,15 @@ The bot treats the payload three ways.
 - **empty** — `/start` with no payload just sends the welcome message.
 - **referral code** — a payload that is not a model link
   is treated as a referrer.
-  When it is valid and not the user's own code the referral is applied,
-  so the inviter gets credit.
+  When it is valid, is not the user's own code,
+  and comes from a new user in a private chat,
+  the referral is applied, so the referrer gets credit.
 - **`m-<model>`** — a subscribe deep link.
   The bot strips the `m-` prefix, takes `<model>` as a nickname,
   and auto-subscribes the user to that streamer.
   In a group or channel only a group admin can use it;
   anyone else is refused, subscriptions being the chat's own setup.
+  Where the chat lets any member subscribe, any member can use it.
   On success it also records a referral event for the model.
 
 So `start=m-<model>` is the "subscribe to this model" link shown on the site

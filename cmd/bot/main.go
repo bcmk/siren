@@ -3453,7 +3453,7 @@ func (w *worker) commandGate(command, arguments string) commandSpec {
 		return knownCommands[command]
 	}
 	// The deep link adds a subscription, so it is gated as /add is,
-	// and a payload naming no streamer is left ungated, since start answers it with nothing.
+	// and a payload naming no streamer is left ungated, since it adds no subscription.
 	name, ok := strings.CutPrefix(arguments, modelPayloadPrefix)
 	if !ok || w.checker.NicknamePreprocessing(name) == "" {
 		return commandSpec{}
