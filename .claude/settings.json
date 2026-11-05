@@ -78,6 +78,11 @@
             "type": "command",
             "if": "Bash(git commit *)",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/tidy-docs-gate.sh"
+          },
+          {
+            "type": "command",
+            "if": "Bash(git -C * commit *)",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/tidy-docs-gate.sh"
           }
         ]
       }
