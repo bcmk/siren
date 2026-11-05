@@ -508,7 +508,6 @@ func TestStatusConfirmations(t *testing.T) {
 	if !reflect.DeepEqual(changes, want) {
 		t.Errorf("confirmed %+v, want %+v", changes, want)
 	}
-	// Nothing left to confirm, and no temp table left on the connection
 	if again := db.ConfirmStatusChanges(now, onlineSeconds, offlineSeconds); len(again) != 0 {
 		t.Errorf("confirmed %+v again, want none", again)
 	}

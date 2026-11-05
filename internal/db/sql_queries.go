@@ -2169,62 +2169,36 @@ func (d *Database) ConfirmStatusChanges(
 	onlineSeconds int,
 	offlineSeconds int,
 ) []ConfirmedStatusChange {
-	// PostgreSQL uses ix_streamers_status_mismatch partial index
-	// for select but not for update — we use a temp table to work around this.
-	done := d.Measure("db: confirm status changes")
-	defer done()
-
-	tx, err := d.begin()
-	checkErr(err)
-	defer func() { _ = tx.Rollback(context.Background()) }()
-
-	_, err = tx.Exec(
-		context.Background(),
-		`
-			create temp table to_confirm on commit drop as
-			select id, nickname, unconfirmed_status, confirmed_status
-			from streamers
-			where confirmed_status != unconfirmed_status
-			and (
-				(unconfirmed_status = 2 and $1 - unconfirmed_timestamp >= $2)
-				or (unconfirmed_status = 1 and $1 - unconfirmed_timestamp >= $3)
-				or unconfirmed_status = 0
-			)
-			/*name='confirm_status_changes_collect'*/
-		`,
-		now, onlineSeconds, offlineSeconds)
-	checkErr(err)
-
-	_, err = tx.Exec(
-		context.Background(),
-		`
-			update streamers c
-			set confirmed_status = tc.unconfirmed_status
-			from to_confirm tc
-			where c.id = tc.id
-			/*name='confirm_status_changes_update'*/
-		`)
-	checkErr(err)
-
-	rows, err := tx.Query(
-		context.Background(),
-		`
-			select id, nickname, unconfirmed_status, confirmed_status from to_confirm
-			/*name='confirm_status_changes_result'*/
-		`,
-	)
-	checkErr(err)
-	defer rows.Close()
-
+	// ix_streamers_status_mismatch serves the select but not an update, so the update goes by id
 	var result []ConfirmedStatusChange
-	for rows.Next() {
-		var change ConfirmedStatusChange
-		checkErr(rows.Scan(&change.StreamerID, &change.Nickname, &change.Status, &change.PrevStatus))
-		change.Timestamp = now
-		result = append(result, change)
+	var ids, statuses []int
+	var change ConfirmedStatusChange
+	d.MustQuery(`
+		select id, nickname, unconfirmed_status, confirmed_status
+		from streamers
+		where confirmed_status != unconfirmed_status
+		and (
+			(unconfirmed_status = 2 and $1 - unconfirmed_timestamp >= $2)
+			or (unconfirmed_status = 1 and $1 - unconfirmed_timestamp >= $3)
+			or unconfirmed_status = 0
+		)
+		/*name='confirm_status_changes_collect'*/`,
+		QueryParams{now, onlineSeconds, offlineSeconds},
+		ScanTo{&change.StreamerID, &change.Nickname, &change.Status, &change.PrevStatus},
+		func() {
+			change.Timestamp = now
+			result = append(result, change)
+			ids = append(ids, change.StreamerID)
+			statuses = append(statuses, int(change.Status))
+		})
+	if len(ids) > 0 {
+		d.MustExec(`
+			update streamers s
+			set confirmed_status = c.status
+			from unnest($1::int[], $2::int[]) as c(id, status)
+			where s.id = c.id
+			/*name='confirm_status_changes_update'*/`,
+			ids, statuses)
 	}
-	checkErr(rows.Err())
-
-	checkErr(tx.Commit(context.Background()))
 	return result
 }

@@ -16,6 +16,7 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 ### Fixed
 
 - Query stats are reset before migrations, not after
+- Confirming status changes no longer adds a `pg_stat_statements` entry every cycle
 
 ## v6.9.0 — 2026-11-10
 
