@@ -333,7 +333,8 @@ func TestUnconfirmedStatusConsistency(t *testing.T) {
 	}
 }
 
-// TestUpsertUnconfirmedStatusChangesBatch gives each streamer of a call its own status and row
+// TestUpsertUnconfirmedStatusChangesBatch gives each streamer of a call its own status and row,
+// and wastes no id on a known one
 func TestUpsertUnconfirmedStatusChangesBatch(t *testing.T) {
 	t.Parallel()
 	const (
@@ -349,6 +350,8 @@ func TestUpsertUnconfirmedStatusChangesBatch(t *testing.T) {
 			{Nickname: "c", Status: unknown},
 		},
 		100)
+	const lastID = `select pg_sequence_last_value(pg_get_serial_sequence('streamers', 'id'))::int`
+	before := db.MustInt(lastID)
 	db.UpsertUnconfirmedStatusChanges(
 		[]StatusChange{
 			{Nickname: "a", Status: offline},
@@ -356,6 +359,9 @@ func TestUpsertUnconfirmedStatusChangesBatch(t *testing.T) {
 			{Nickname: "d", Status: online},
 		},
 		200)
+	if taken := db.MustInt(lastID) - before; taken != 1 {
+		t.Errorf("ids taken = %d, want 1", taken)
+	}
 
 	tests := []struct {
 		nickname string

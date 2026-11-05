@@ -30,11 +30,9 @@ so a refused request appears in neither log.
 
 The GIN trigram index is the largest and most expensive index
 to maintain during writes.
-Every upsert into `streamers` pays the GIN maintenance cost —
-even when the nickname column doesn't change —
-because PostgreSQL may create new index entries for the new tuple version.
-The upsert path (`insert ... on conflict do update`)
-is the most expensive, roughly doubling write latency.
+A GIN on `streamers` would slow status updates by about 70%.
+Each changes columns that `ix_streamers_status_mismatch` covers,
+so none is a HOT update, and a GIN would index every new row version.
 
 The `nicknames` table holds just the `nickname` column and the search indexes
 (GIN trigram, `max_repeated_alnum_run`, `max_nonalnum_run`).

@@ -17,6 +17,7 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 - Query stats are reset before migrations, not after
 - Confirming status changes no longer adds a `pg_stat_statements` entry every cycle
+- A known streamer's status change no longer wastes a streamer id
 
 ## v6.9.0 — 2026-11-10
 

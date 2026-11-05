@@ -1338,27 +1338,35 @@ func (d *Database) UpsertUnconfirmedStatusChanges(
 		nicknames[i] = sc.Nickname
 		statuses[i] = int(sc.Status)
 	}
-	// greatest stamps a change after the streamer's previous one, even within the same second
+	// The update takes known streamers and the insert new ones,
+	// as insert ... on conflict would waste an id on every known streamer.
+	// greatest stamps a change after the streamer's previous one, even within the same second.
 	rows, err := tx.Query(
 		context.Background(),
 		`
-			with upserted as (
+			with updated as (
+				update streamers s set
+					prev_unconfirmed_status = s.unconfirmed_status,
+					prev_unconfirmed_timestamp = s.unconfirmed_timestamp,
+					unconfirmed_status = c.status,
+					unconfirmed_timestamp = greatest($3::int, s.unconfirmed_timestamp + 1)
+				from unnest($1::text[], $2::int[]) as c(nickname, status)
+				where s.nickname = c.nickname
+				returning s.id, s.unconfirmed_timestamp, s.unconfirmed_status, s.prev_unconfirmed_status
+			),
+			inserted as (
 				insert into streamers (nickname, unconfirmed_status, unconfirmed_timestamp)
-				select unnest($1::text[]), unnest($2::int[]), $3::int
-				on conflict(nickname) do update set
-					prev_unconfirmed_status = streamers.unconfirmed_status,
-					prev_unconfirmed_timestamp = streamers.unconfirmed_timestamp,
-					unconfirmed_status = excluded.unconfirmed_status,
-					unconfirmed_timestamp = greatest(
-						excluded.unconfirmed_timestamp, streamers.unconfirmed_timestamp + 1)
-				returning
-					id, nickname, unconfirmed_timestamp, unconfirmed_status, prev_unconfirmed_status,
-					(xmax = 0) as is_new
+				select c.nickname, c.status, $3::int
+				from unnest($1::text[], $2::int[]) as c(nickname, status)
+				where not exists (select from streamers s where s.nickname = c.nickname)
+				returning id, nickname, unconfirmed_timestamp, unconfirmed_status, prev_unconfirmed_status
 			),
 			new_nicknames as (
-				insert into nicknames (nickname) select nickname from upserted where is_new
+				insert into nicknames (nickname) select nickname from inserted
 			)
-			select id, unconfirmed_timestamp, unconfirmed_status, prev_unconfirmed_status from upserted
+			select id, unconfirmed_timestamp, unconfirmed_status, prev_unconfirmed_status from inserted
+			union all
+			select id, unconfirmed_timestamp, unconfirmed_status, prev_unconfirmed_status from updated
 			/*name='upsert_unconfirmed_statuses'*/
 		`,
 		nicknames, statuses, timestamp,
