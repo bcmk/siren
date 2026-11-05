@@ -14,6 +14,10 @@ Status changes are detected by comparing the in-memory cache of online streamers
 1. Was in cache but not in result → offline
 2. In result but not in cache → online
 
+A failed poll counts as not in result.
+Otherwise, if a site changes its API,
+polled streamers would stay online for as long as their polls fail.
+
 ## Fixed list checkers (e.g., Twitch)
 
 1. Was in cache, not in result, and was requested → offline
