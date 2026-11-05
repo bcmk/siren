@@ -142,7 +142,8 @@
   Never run it after merely eyeballing them: no skill run, no approval.
 - Run `go fmt ./...` after changes and before committing
 - Run `golangci-lint run ./...` before committing
-- Run `go test ./...` to ensure changes work
+- Run `scripts/with-test-lock time go test ./...` to ensure changes work.
+  Run every `go test` under `scripts/with-test-lock`, so the machine's test runs take turns.
 - Ask before modifying tests — explain what needs changing and why
 - Use table-driven tests with `t.Run` subtests
 - Think about speeding up a test that takes more than 0.5 s, and report it if no idea comes
@@ -258,7 +259,7 @@
 - During a code review, never touch the working tree or move HEAD.
   Run mutation tests and other experiments
   in a temporary worktree or copy created at the commit they need.
-  A subagent names the worktree in every command (`go -C <dir> test ./...`, `git -C <dir> log`):
+  A subagent names the worktree in every command (`go -C <dir> vet ./...`, `git -C <dir> log`):
   its `cd` lasts one Bash call, and the next command runs in the main checkout.
   A subagent stops every background command it started before it reports.
 - Write each finding to stand alone,
@@ -357,7 +358,8 @@
 - A release brings at most one prebuild group, with no ordinary migration ahead of it.
   `migrator --prebuild` refuses two unapplied prebuild groups.
 - Tests of an old migration or of the runner go behind the `migrations` build tag, and CI runs them.
-  Run them when changing a migration or the runner: `go test -tags migrations ./internal/db`.
+  Run them when changing a migration or the runner:
+  `scripts/with-test-lock go test -tags migrations ./internal/db`.
   `schema_snapshot_test.go` stays untagged,
   as it alone catches a schema snapshot stale in a way no query notices, such as a missing index.
 - The bot owns its tables, and the logins that run migrations do not,

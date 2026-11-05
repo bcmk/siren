@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Runs a command under a machine-wide lock, so test runs take turns.
+# Usage: scripts/with-test-lock go test ./...
+# Put time inside to leave the wait out: scripts/with-test-lock time go test ./...
+set -euo pipefail
+
+lock=/tmp/siren-tests.lock
+if command -v lockf >/dev/null; then
+	probe=(lockf -s -k -t 0 "$lock" true)
+	take=(lockf -k "$lock")
+else
+	probe=(flock -n "$lock" true)
+	take=(flock "$lock")
+fi
+
+"${probe[@]}" || echo "waiting for another test run to finish" >&2
+exec "${take[@]}" "$@"
