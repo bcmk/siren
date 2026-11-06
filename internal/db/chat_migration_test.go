@@ -1,9 +1,9 @@
 package db
 
 import (
+	"fmt"
 	"slices"
 	"testing"
-	"time"
 )
 
 func (d *Database) ensureStreamer(nickname string) {
@@ -148,18 +148,6 @@ func (d *Database) migratedToChat(chatID int64) (int64, bool) {
 	return c, found
 }
 
-func equalStrings(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
 func TestMigrateChat(t *testing.T) {
 	t.Parallel()
 	const ep = "ep"
@@ -167,7 +155,6 @@ func TestMigrateChat(t *testing.T) {
 	t.Run("destination absent renames the chat", func(t *testing.T) {
 		t.Parallel()
 		tdb := newTestDB(t)
-		defer tdb.terminate()
 		d := tdb.Database
 
 		const oldID, newID = int64(-100), int64(-100500)
@@ -196,14 +183,14 @@ func TestMigrateChat(t *testing.T) {
 			t.Errorf("chat_type = %v, want supergroup", user.ChatType)
 		}
 
-		if got, want := d.subNicknames(newID, ep), []string{"alice", "bob"}; !equalStrings(got, want) {
+		if got, want := d.subNicknames(newID, ep), []string{"alice", "bob"}; !slices.Equal(got, want) {
 			t.Errorf("destination subscriptions = %v, want %v", got, want)
 		}
 		if got := d.subNicknames(oldID, ep); len(got) != 0 {
 			t.Errorf("source still has subscriptions %v", got)
 		}
 
-		if got, want := d.pendingNicknames(newID, ep), []string{"pending1"}; !equalStrings(got, want) {
+		if got, want := d.pendingNicknames(newID, ep), []string{"pending1"}; !slices.Equal(got, want) {
 			t.Errorf("destination pending = %v, want %v", got, want)
 		}
 		if got := d.pendingNicknames(oldID, ep); len(got) != 0 {
@@ -242,7 +229,6 @@ func TestMigrateChat(t *testing.T) {
 	t.Run("destination present drops the source's operational rows", func(t *testing.T) {
 		t.Parallel()
 		tdb := newTestDB(t)
-		defer tdb.terminate()
 		d := tdb.Database
 
 		const oldID, newID = int64(-200), int64(-200500)
@@ -289,10 +275,10 @@ func TestMigrateChat(t *testing.T) {
 			t.Error("blacklist = true, want false (destination's)")
 		}
 
-		if got, want := d.subNicknames(newID, ep), []string{"carol"}; !equalStrings(got, want) {
+		if got, want := d.subNicknames(newID, ep), []string{"carol"}; !slices.Equal(got, want) {
 			t.Errorf("subscriptions = %v, want %v (destination's only)", got, want)
 		}
-		if got, want := d.pendingNicknames(newID, ep), []string{"pendingNew"}; !equalStrings(got, want) {
+		if got, want := d.pendingNicknames(newID, ep), []string{"pendingNew"}; !slices.Equal(got, want) {
 			t.Errorf("pending = %v, want %v (destination's only)", got, want)
 		}
 
@@ -340,7 +326,6 @@ func TestMigrateChat(t *testing.T) {
 	t.Run("destination present keeps the more permissive setup", func(t *testing.T) {
 		t.Parallel()
 		tdb := newTestDB(t)
-		defer tdb.terminate()
 		d := tdb.Database
 
 		const oldID, newID = int64(-220), int64(-220500)
@@ -371,7 +356,6 @@ func TestMigrateChat(t *testing.T) {
 	t.Run("destination present keeps an in-flight notification", func(t *testing.T) {
 		t.Parallel()
 		tdb := newTestDB(t)
-		defer tdb.terminate()
 		d := tdb.Database
 
 		const oldID, newID = int64(-250), int64(-250500)
@@ -394,7 +378,6 @@ func TestMigrateChat(t *testing.T) {
 	t.Run("destination present without a referral inherits the source's", func(t *testing.T) {
 		t.Parallel()
 		tdb := newTestDB(t)
-		defer tdb.terminate()
 		d := tdb.Database
 
 		const oldID, newID = int64(-400), int64(-400500)
@@ -423,7 +406,6 @@ func TestMigrateChat(t *testing.T) {
 	t.Run("redelivered or sourceless migration is harmless", func(t *testing.T) {
 		t.Parallel()
 		tdb := newTestDB(t)
-		defer tdb.terminate()
 		d := tdb.Database
 
 		const oldID, newID = int64(-300), int64(-300500)
@@ -447,7 +429,7 @@ func TestMigrateChat(t *testing.T) {
 		if user.MaxSubs != 5 {
 			t.Errorf("max_subs = %d, want 5", user.MaxSubs)
 		}
-		if got, want := d.subNicknames(newID, ep), []string{"alice"}; !equalStrings(got, want) {
+		if got, want := d.subNicknames(newID, ep), []string{"alice"}; !slices.Equal(got, want) {
 			t.Errorf("subscriptions = %v, want %v", got, want)
 		}
 		if _, found := d.UserByChatID(oldID); found {
@@ -458,7 +440,6 @@ func TestMigrateChat(t *testing.T) {
 	t.Run("zero is an ordinary id", func(t *testing.T) {
 		t.Parallel()
 		tdb := newTestDB(t)
-		defer tdb.terminate()
 		d := tdb.Database
 
 		const realID = int64(-500)
@@ -473,7 +454,7 @@ func TestMigrateChat(t *testing.T) {
 		if _, found := d.UserByChatID(0); !found {
 			t.Error("rows did not move to chat_id = 0")
 		}
-		if got, want := d.subNicknames(0, ep), []string{"alice"}; !equalStrings(got, want) {
+		if got, want := d.subNicknames(0, ep), []string{"alice"}; !slices.Equal(got, want) {
 			t.Errorf("subscriptions = %v, want %v", got, want)
 		}
 	})
@@ -481,7 +462,6 @@ func TestMigrateChat(t *testing.T) {
 	t.Run("destination present moves the source's history", func(t *testing.T) {
 		t.Parallel()
 		tdb := newTestDB(t)
-		defer tdb.terminate()
 		d := tdb.Database
 
 		const oldID, newID, followerID = int64(-700), int64(-700500), int64(900)
@@ -519,7 +499,6 @@ func TestMigrateChat(t *testing.T) {
 	t.Run("tombstoned source resolves to the live chat; redelivery is a no-op", func(t *testing.T) {
 		t.Parallel()
 		tdb := newTestDB(t)
-		defer tdb.terminate()
 		d := tdb.Database
 
 		const oldID, newID = int64(-800), int64(-800500)
@@ -564,10 +543,82 @@ func TestMigrateChat(t *testing.T) {
 		}
 	})
 
+	t.Run("leaves other users' rows alone", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name      string
+			dstExists bool
+		}{
+			{name: "a rename"},
+			{name: "a merge", dstExists: true},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				tdb := newTestDB(t)
+				d := tdb.Database
+
+				const highLimitChat, lowLimitChat, srcChat, dstChat = int64(-1), int64(-2), int64(-3), int64(-4)
+				// Updated before the others are added,
+				// so its row stays first and a merge not filtered by the source reads it
+				highLimitUser, _ := d.AddUser(highLimitChat, 99, 1000, "group")
+				d.SetTimezone(highLimitUser, "Asia/Tokyo")
+				d.SetAffiliateParams(highLimitUser, map[string]string{"campaign": "high"})
+				d.GrantStarPaymentSubs(highLimitChat, ep, "charge-high", 100, "subs", 1, "payload", 1000)
+				// A merge not filtered by the destination would raise this user's limit
+				lowLimitUser, _ := d.AddUser(lowLimitChat, 1, 1000, "group")
+				src, _ := d.AddUser(srcChat, 5, 1000, "group")
+				if tt.dstExists {
+					d.AddUser(dstChat, 7, 1000, "supergroup")
+				}
+				for _, user := range []UserID{highLimitUser, src} {
+					d.AddFeedback(ep, user, "text", 1000)
+					d.AddReferral(user, fmt.Sprintf("referral-%d", user))
+				}
+				d.GrantStarPaymentSubs(srcChat, ep, "charge-src", 100, "subs", 1, "payload", 1000)
+				d.AddReferralEvent(1000, &highLimitUser, lowLimitUser, nil)
+
+				others := func() []string {
+					return d.MustStrings(`
+						select 'users ' || to_jsonb(u)::text from users u where id = any($1)
+						union all
+						select 'feedback ' || to_jsonb(f)::text from feedback f where user_id = any($1)
+						union all
+						select 'payment ' || to_jsonb(p)::text from star_payments p where user_id = any($1)
+						union all
+						select 'referral ' || to_jsonb(r)::text from referrals r where user_id = any($1)
+						union all
+						select 'event ' || to_jsonb(e)::text
+						from referral_events e
+						where referrer_user_id = any($1) or follower_user_id = any($1)
+						order by 1`,
+						[]int64{int64(highLimitUser), int64(lowLimitUser)})
+				}
+				before := others()
+
+				d.MigrateChat(srcChat, dstChat)
+
+				if after := others(); !slices.Equal(after, before) {
+					t.Errorf("other users' rows changed from %q to %q", before, after)
+				}
+				if !tt.dstExists {
+					return
+				}
+				user, _ := d.UserByChatID(dstChat)
+				if user.MaxSubs != 7 || user.Timezone != nil || user.AffiliateParams != nil {
+					t.Errorf(
+						"destination = (%d, %s, %v), want its own limit and the source's empty settings",
+						user.MaxSubs,
+						asJSON(user.Timezone),
+						user.AffiliateParams)
+				}
+			})
+		}
+	})
+
 	t.Run("same id changes nothing", func(t *testing.T) {
 		t.Parallel()
 		tdb := newTestDB(t)
-		defer tdb.terminate()
 		d := tdb.Database
 
 		const chat = int64(-300)
@@ -589,7 +640,6 @@ func TestMigrateChat(t *testing.T) {
 	t.Run("ChatIDForUser breaks a migrated_to cycle instead of hanging", func(t *testing.T) {
 		t.Parallel()
 		tdb := newTestDB(t)
-		defer tdb.terminate()
 		d := tdb.Database
 
 		aID, _ := d.AddUser(-810, 5, 1000, "group")
@@ -599,19 +649,12 @@ func TestMigrateChat(t *testing.T) {
 		d.MustExec("update users set migrated_to = $1 where id = $2", int64(bID), int64(aID))
 		d.MustExec("update users set migrated_to = $1 where id = $2", int64(aID), int64(bID))
 
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			// No node in a cycle has migrated_to null, so the walk finds no live
-			// chat and drops the send rather than resolving one.
-			if _, ok := d.ChatIDForUser(aID); ok {
-				t.Error("cycle resolved to a live chat, want the send dropped")
-			}
-		}()
-		select {
-		case <-done:
-		case <-time.After(10 * time.Second):
-			t.Fatal("ChatIDForUser hung on a migrated_to cycle")
+		// Fails rather than hangs should the walk loop
+		d.MustExec("set statement_timeout = '10s'")
+		// No node in a cycle has migrated_to null,
+		// so the walk finds no live chat and drops the send rather than resolving one.
+		if _, ok := d.ChatIDForUser(aID); ok {
+			t.Error("cycle resolved to a live chat, want the send dropped")
 		}
 	})
 }

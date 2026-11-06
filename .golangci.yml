@@ -1,5 +1,9 @@
 version: "2"
 
+run:
+    build-tags:
+        - migrations
+
 linters:
     enable:
         - revive

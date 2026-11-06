@@ -32,7 +32,7 @@ func TestOnlineTemplateComposesTheHint(t *testing.T) {
 	for _, lang := range realLangs {
 		t.Run(lang, func(t *testing.T) {
 			t.Parallel()
-			tpl := realTemplates(t, lang)
+			tpl := realTemplates(lang)
 			render := func(hint bool) string {
 				params := &renderParams{templates: tpl, key: "online", data: tplData{
 					"streamer_link": "alica_webcam",
@@ -60,7 +60,7 @@ func TestOnlineTemplateMarksAClippedSubject(t *testing.T) {
 	for _, lang := range realLangs {
 		t.Run(lang, func(t *testing.T) {
 			t.Parallel()
-			tpl := realTemplates(t, lang)
+			tpl := realTemplates(lang)
 			render := func(clipped bool) string {
 				params := &renderParams{templates: tpl, key: "online", data: tplData{
 					"streamer_link":   "alica_webcam",
@@ -94,7 +94,7 @@ func TestOnlineCaptionFitsTheTelegramLimit(t *testing.T) {
 			if !clipped {
 				t.Fatal("the subject under test was not clipped")
 			}
-			params := &renderParams{templates: realTemplates(t, lang), key: "online", data: tplData{
+			params := &renderParams{templates: realTemplates(lang), key: "online", data: tplData{
 				"streamer_link":   `<a href="https://example.com/in/?tour=LQps&amp;campaign=WIl8t">a_long_streamer_name</a>`,
 				"time_diff":       &timeDiff{Days: 9999, Hours: 23, Minutes: 59},
 				"viewers":         999999999,
@@ -121,11 +121,11 @@ func TestOnlinePicsClipALongSubject(t *testing.T) {
 	cfg := testConfig
 	cfg.ShowImages = true
 	w.cfg = &cfg
-	w.tpl["test"] = realTemplates(t, "en")
+	w.tpl["test"] = realTemplates("en")
 
 	const nickname = "online_model"
 	const url = "http://" + nickname + ".jpg"
-	insertStreamer(w.mockDB, db.Streamer{Nickname: nickname, UnconfirmedStatus: cmdlib.StatusOnline})
+	w.mockDB.insertStreamer(db.Streamer{Nickname: nickname, UnconfirmedStatus: cmdlib.StatusOnline})
 	insertSubscription(w.mockDB, "test", 1, nickname)
 	// Emoji, so the topic spends two units a character and overruns the limit twice over.
 	w.unconfirmedOnlineStreamers[nickname] = cmdlib.StreamerInfo{

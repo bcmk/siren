@@ -24,7 +24,6 @@ func TestUpsertStampsAfterPreviousChange(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			db := newTestDB(t)
-			defer db.terminate()
 
 			status := cmdlib.StatusOffline
 			for _, ts := range tc.rounds {
@@ -50,4 +49,20 @@ func TestUpsertStampsAfterPreviousChange(t *testing.T) {
 			}
 		})
 	}
+}
+
+// chk_status_changes_prev_status_differs rejects a change landing on the status it came from,
+// which is how a mis-ordered same-second flap would surface.
+func TestStatusChangesPrevStatusDiffers(t *testing.T) {
+	t.Parallel()
+	db := newTestDB(t)
+
+	defer func() {
+		if recover() == nil {
+			t.Error("a row with status equal to prev_status should be rejected")
+		}
+	}()
+	db.MustExec(`
+		insert into status_changes (timestamp, streamer_id, status, prev_status)
+		values (100, 1, 1, 1)`)
 }

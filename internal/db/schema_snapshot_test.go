@@ -22,7 +22,7 @@ func firstDifference(a, b string) string {
 // newEmptyDatabase returns a database with no tables, and its connection string
 func newEmptyDatabase(t *testing.T) (*Database, string) {
 	t.Helper()
-	connStr, drop, err := clones.EmptyDatabase()
+	connStr, drop, err := server.createEmptyDatabase()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,9 +41,8 @@ func newEmptyDatabase(t *testing.T) (*Database, string) {
 func TestSchemaSnapshotMatchesMigrations(t *testing.T) {
 	t.Parallel()
 	fromSnapshot := newTestDB(t)
-	defer fromSnapshot.terminate()
 
-	replayed, replayedConnStr := newEmptyDatabase(t)
+	replayed, _ := newEmptyDatabase(t)
 	replayed.ApplyMigrationsOneByOne()
 	// The schema snapshot records every migration at time 0
 	if n := replayed.MustInt(`select count(*) from schema_migrations where applied_at = 0`); n != 0 {
@@ -51,11 +50,11 @@ func TestSchemaSnapshotMatchesMigrations(t *testing.T) {
 	}
 
 	t.Run("schema", func(t *testing.T) {
-		got, err := clones.PgDump(fromSnapshot.connStr, "--schema-only")
+		got, err := server.pgDumpSchema(fromSnapshot.CurrentDatabase())
 		if err != nil {
 			t.Fatal(err)
 		}
-		want, err := clones.PgDump(replayedConnStr, "--schema-only")
+		want, err := server.pgDumpSchema(replayed.CurrentDatabase())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -64,18 +63,22 @@ func TestSchemaSnapshotMatchesMigrations(t *testing.T) {
 		}
 	})
 
-	// No migration inserts rows; one that does must compare them here instead
-	const tablesWithRows = `
-		select tablename
-		from pg_tables
-		where schemaname = 'public'
-			and tablename <> 'schema_migrations'
-			and (xpath('/row/n/text()', query_to_xml(
-				format('select count(*) as n from %I', tablename), false, true, '')))[1]::text::int > 0`
+	// No migration leaves a row outside schema_migrations; one that does must compare them here
 	for _, d := range []*Database{fromSnapshot.Database, replayed} {
-		if tables := d.MustStrings(tablesWithRows); len(tables) > 0 {
-			t.Errorf("rows in %q, want none", tables)
+		tables := d.MustStrings(`
+			select format('public.%I', tablename)
+			from pg_tables
+			where schemaname = 'public' and tablename <> 'schema_migrations'`)
+		for _, table := range tables {
+			if n := d.MustInt("select count(*) from " + table); n != 0 {
+				t.Errorf("%d rows in %s, want none", n, table)
+			}
 		}
+	}
+
+	// The schema snapshot names no owner, so the role running it owns everything
+	if strings.Contains(schemaSnapshot, "OWNER TO") {
+		t.Error("the schema snapshot names an owner")
 	}
 
 	queries := []struct {
@@ -83,6 +86,12 @@ func TestSchemaSnapshotMatchesMigrations(t *testing.T) {
 		sql  string
 	}{
 		{name: "applied migrations", sql: `select name from schema_migrations order by name`},
+		// Not in --schema-only
+		{name: "sequences", sql: `
+			select sequencename || ' ' || coalesce(last_value::text, 'unread')
+			from pg_sequences
+			where schemaname = 'public'
+			order by sequencename`},
 		// Not in --schema-only: TimescaleDB keeps these in catalog rows.
 		// A replay creates and drops hypertables, so their ids differ.
 		{name: "hypertables", sql: `
@@ -111,70 +120,6 @@ func TestSchemaSnapshotMatchesMigrations(t *testing.T) {
 			want := strings.Join(replayed.MustStrings(tc.sql), "\n")
 			if diff := firstDifference(got, want); diff != "" {
 				t.Errorf("the schema snapshot differs from the migrations: %s", diff)
-			}
-		})
-	}
-}
-
-func TestSchemaSnapshotStartsAnEmptyDatabase(t *testing.T) {
-	t.Parallel()
-	d, _ := newEmptyDatabase(t)
-	const sessionSettings = `
-		select coalesce(string_agg(name || ' = ' || setting, ', ' order by name), '')
-		from pg_settings
-		where source = 'session'`
-	before := d.MustStrings(sessionSettings)[0]
-
-	d.ApplyMigrations()
-
-	// The schema snapshot records every migration at time 0
-	if n := d.MustInt(`select count(*) from schema_migrations where applied_at <> 0`); n != 0 {
-		t.Errorf("%d migrations ran instead of the schema snapshot", n)
-	}
-	// The connection stays in use
-	if after := d.MustStrings(sessionSettings)[0]; after != before {
-		t.Errorf("session settings changed from %q to %q", before, after)
-	}
-}
-
-func TestMigratedDatabaseSkipsTheSchemaSnapshot(t *testing.T) {
-	t.Parallel()
-	d := newTestDB(t)
-	defer d.terminate()
-	// This migration, a vacuum analyze, replays safely
-	d.MustExec(`delete from schema_migrations where name = 'message_log_chat_id_indexes_rework_2'`)
-
-	d.ApplyMigrations()
-
-	if n := d.MustInt(`select count(*) from schema_migrations where applied_at <> 0`); n != 1 {
-		t.Errorf("%d migrations ran, want the 1 missing", n)
-	}
-}
-
-func TestNoTablesInPublic(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name    string
-		prepare string
-		want    bool
-	}{
-		{name: "no tables", want: true},
-		{name: "a table", prepare: "create table bystander (id integer)"},
-		{
-			name:    "a table in another schema",
-			prepare: "create schema other; create table other.bystander (id integer)",
-			want:    true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			d, _ := newEmptyDatabase(t)
-			if tt.prepare != "" {
-				d.MustExec(tt.prepare)
-			}
-			if got := d.noTablesInPublic(); got != tt.want {
-				t.Errorf("noTablesInPublic() = %v, want %v", got, tt.want)
 			}
 		})
 	}

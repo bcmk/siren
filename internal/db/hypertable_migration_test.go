@@ -1,3 +1,5 @@
+//go:build migrations
+
 package db
 
 import (
@@ -24,7 +26,6 @@ func rewindHypertableMigrations(db *testDB) {
 func TestPrebuiltStatusChangesHypertable(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 
 	rewindHypertableMigrations(db)
 
@@ -109,7 +110,6 @@ func TestPrebuiltStatusChangesHypertable(t *testing.T) {
 func TestHypertableCutoverRefusesRowBelowBoundary(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 
 	rewindHypertableMigrations(db)
 
@@ -141,7 +141,6 @@ func TestHypertableCutoverRefusesRowBelowBoundary(t *testing.T) {
 func TestPrebuiltPerformanceLogHypertable(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 
 	// Back to the 0027 shape
 	db.MustExec(`drop table performance_log`)
@@ -228,7 +227,6 @@ func TestPrebuiltPerformanceLogHypertable(t *testing.T) {
 func TestPrebuiltMessageLogsHypertable(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 
 	// Back to the shape before 0089
 	db.MustExec(`drop table sent_message_log`)

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/bcmk/siren/v6/internal/db"
@@ -503,25 +504,28 @@ func TestBotsShareADownload(t *testing.T) {
 func TestDownloadPoolCaps(t *testing.T) {
 	t.Parallel()
 	srv, free := gatedImageServer(t)
-	telegram := &mockTelegram{}
-	var chatIDs []int64
-	var imgs []*image
-	for i := range maxDownloads + 1 {
-		telegram.replies = append(telegram.replies, mockReply{body: photoSent})
-		chatIDs = append(chatIDs, int64(101+i))
-		imgs = append(imgs, &image{key: fmt.Sprintf("%s/%d.jpg", srv.URL, i)})
-	}
-	w, users := photoSendWorker(t, telegram, srv.Client(), chatIDs...)
-	queueImages(w, users, imgs)
-	d := w.imageDownloader.images[imgs[maxDownloads].key]
-	if w.imageDownloader.queue.running != maxDownloads || d == nil || d.started {
-		t.Errorf("%d downloading, want %d and the last image waiting", w.imageDownloader.queue.running, maxDownloads)
-	}
-	free()
-	completeSends(w, len(users))
-	if want := slices.Repeat([]string{"upload"}, len(users)); !slices.Equal(telegram.sent, want) {
-		t.Errorf("sent %v, want %v", telegram.sent, want)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		telegram := &mockTelegram{}
+		var chatIDs []int64
+		var imgs []*image
+		for i := range maxDownloads + 1 {
+			telegram.replies = append(telegram.replies, mockReply{body: photoSent})
+			chatIDs = append(chatIDs, int64(101+i))
+			imgs = append(imgs, &image{key: fmt.Sprintf("%s/%d.jpg", srv.URL, i)})
+		}
+		client := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+		w, users := photoSendWorker(t, telegram, client, chatIDs...)
+		queueImages(w, users, imgs)
+		d := w.imageDownloader.images[imgs[maxDownloads].key]
+		if w.imageDownloader.queue.running != maxDownloads || d == nil || d.started {
+			t.Errorf("%d downloading, want %d and the last image waiting", w.imageDownloader.queue.running, maxDownloads)
+		}
+		free()
+		completeSends(w, len(users))
+		if want := slices.Repeat([]string{"upload"}, len(users)); !slices.Equal(telegram.sent, want) {
+			t.Errorf("sent %v, want %v", telegram.sent, want)
+		}
+	})
 }
 
 // A held notification's latency counts from its entry to the send queue, not from its request.

@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"net/http"
 	"testing"
 	"text/template"
@@ -172,6 +173,9 @@ type testWorker struct {
 func TestMain(m *testing.M) {
 	// Set once here: parallel tests must not race on this global.
 	cmdlib.Verbosity = cmdlib.SilentVerbosity
+	// Many tests wait out send pacing rather than use a CPU, so more fit than one per CPU.
+	// An explicit -parallel still wins.
+	checkErr(flag.Set("test.parallel", "32"))
 	m.Run()
 }
 
@@ -220,7 +224,7 @@ func newTestWorker() *testWorker {
 	template.Must(tpl.New("buy_subs").Parse("BuySubs"))
 	template.Must(tpl.New("buy_subs_package_button").Parse("BuySubsPackageButton"))
 
-	mock := newMockDB(testConfig.MaxSubs)
+	mock := newMockDB()
 	w := &testWorker{
 		mockDB: mock,
 		worker: worker{
@@ -273,22 +277,18 @@ func webAppButtonURL(t *testing.T, w *testWorker) string {
 	return webApp.URL
 }
 
-func insertStreamer(mock *mockDB, s db.Streamer) int {
-	return mock.insertStreamer(s).ID
-}
-
 func insertSubscription(mock *mockDB, endpoint string, chatID int64, nickname string) {
 	mock.AddUser(chatID, 0, 0, "")
 	mock.AddSubscription(mock.userByChat(chatID).UserID, mock.streamerByNickname(nickname).ID, endpoint)
 }
 
-func insertPendingSubscription(mock *mockDB, endpoint string, chatID int64, nickname string, checking bool) {
+func insertPendingSubscriptionForChat(mock *mockDB, chatID int64, nickname string, checking bool) {
 	mock.AddUser(chatID, 0, 0, "")
 	mock.insertPendingSubscription(mockPendingSubscription{
 		PendingSubscription: db.PendingSubscription{
 			UserID:   mock.userByChat(chatID).UserID,
 			Nickname: nickname,
-			Endpoint: endpoint,
+			Endpoint: "test",
 		},
 		checking: checking,
 	})

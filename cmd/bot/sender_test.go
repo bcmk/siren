@@ -458,7 +458,7 @@ func TestTransientDelay(t *testing.T) {
 }
 
 // TestDeliverTiming runs a delivery on synctest's clock:
-// the result is reported after the global pacing gap,
+// the result is reported after the endpoint's pacing gap,
 // and the user is freed only after the full per-user cooldown.
 func TestDeliverTiming(t *testing.T) {
 	t.Parallel()
@@ -765,7 +765,7 @@ func TestDrainKeepsPostponedNotificationArmed(t *testing.T) {
 	w.shuttingDown.Store(true) // the drain runs only during shutdown
 
 	userID, _ := w.db.AddUser(100, 3, 0, "private")
-	streamerID := insertStreamer(w.mockDB, db.Streamer{Nickname: "s1"})
+	streamerID := w.mockDB.insertStreamer(db.Streamer{Nickname: "s1"}).ID
 	w.db.StoreNotifications([]db.Notification{
 		{Endpoint: "test", UserID: userID, StreamerID: &streamerID},
 		{Endpoint: "test", UserID: userID, StreamerID: &streamerID},

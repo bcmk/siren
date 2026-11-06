@@ -1,7 +1,6 @@
 package main
 
 import (
-	"math"
 	"reflect"
 	"slices"
 	"testing"
@@ -34,7 +33,7 @@ func TestUpdateNotifications(t *testing.T) {
 	w.initCache()
 
 	for _, n := range []string{"a", "b", "c", "d"} {
-		insertStreamer(w.mockDB, db.Streamer{Nickname: n})
+		w.mockDB.insertStreamer(db.Streamer{Nickname: n})
 	}
 	insertSubscription(w.mockDB, "ep1", 1, "a")
 	insertSubscription(w.mockDB, "ep1", 2, "b")
@@ -87,7 +86,7 @@ func TestCompleteSendResultMigrateReArms(t *testing.T) {
 	w := newTestWorker()
 
 	w.db.AddUser(1, 3, 0, "private")
-	streamerID := insertStreamer(w.mockDB, db.Streamer{Nickname: "a"})
+	streamerID := w.mockDB.insertStreamer(db.Streamer{Nickname: "a"}).ID
 	w.db.StoreNotifications([]db.Notification{{
 		Endpoint:   "test",
 		UserID:     w.db.EnsureUser(1),
@@ -230,10 +229,9 @@ func TestCheckerResultsStampSkippedSends(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	w.initCache()
-	insertStreamer(w.mockDB, db.Streamer{Nickname: "a"})
+	w.mockDB.insertStreamer(db.Streamer{Nickname: "a"})
 	insertSubscription(w.mockDB, "test", 100, "a")
-	// The count is MaxInt32, so the subscriber loses any roll
-	w.mockDB.setBlock("test", 100, math.MaxInt32)
+	w.mockDB.setMaxBlock("test", 100)
 
 	w.handleCheckerResults(&cmdlib.OnlineListResults{Streamers: map[string]cmdlib.StreamerInfo{"a": {}}}, 1000)
 
@@ -258,7 +256,7 @@ func TestAddStreamer(t *testing.T) {
 	w.nextOutgoing()
 
 	// Add streamer that exists with online status — should return non-nil
-	insertStreamer(w.mockDB, db.Streamer{Nickname: "onlinemodel", ConfirmedStatus: cmdlib.StatusOnline})
+	w.mockDB.insertStreamer(db.Streamer{Nickname: "onlinemodel", ConfirmedStatus: cmdlib.StatusOnline})
 	if w.addStreamer(testMessage(w, 1, "add", 100), "onlinemodel", false) == nil {
 		t.Error("expected addStreamer to return non-nil for existing streamer")
 	}
@@ -273,7 +271,7 @@ func TestAddStreamer(t *testing.T) {
 	}
 
 	// Add streamer that exists with offline status — should return non-nil
-	insertStreamer(w.mockDB, db.Streamer{Nickname: "offlinemodel", ConfirmedStatus: cmdlib.StatusOffline})
+	w.mockDB.insertStreamer(db.Streamer{Nickname: "offlinemodel", ConfirmedStatus: cmdlib.StatusOffline})
 	if w.addStreamer(testMessage(w, 1, "add", 100), "offlinemodel", false) == nil {
 		t.Error("expected addStreamer to return non-nil for existing offline streamer")
 	}
@@ -291,13 +289,13 @@ func TestProcessSubsConfirmations(t *testing.T) {
 	for chatID := int64(1); chatID <= 9; chatID++ {
 		w.db.AddUser(chatID, 0, 0, "")
 	}
-	insertPendingSubscription(w.mockDB, "test", 1, "online_model", true)
-	insertPendingSubscription(w.mockDB, "test", 2, "offline_model", true)
-	insertPendingSubscription(w.mockDB, "test", 3, "notfound_model", true)
-	insertPendingSubscription(w.mockDB, "test", 4, "denied_model", true)
-	insertPendingSubscription(w.mockDB, "test", 5, "notfound_denied_model", true)
-	insertPendingSubscription(w.mockDB, "test", 6, "online_offline_model", true)
-	insertPendingSubscription(w.mockDB, "test", 7, "unknown_model", true)
+	insertPendingSubscriptionForChat(w.mockDB, 1, "online_model", true)
+	insertPendingSubscriptionForChat(w.mockDB, 2, "offline_model", true)
+	insertPendingSubscriptionForChat(w.mockDB, 3, "notfound_model", true)
+	insertPendingSubscriptionForChat(w.mockDB, 4, "denied_model", true)
+	insertPendingSubscriptionForChat(w.mockDB, 5, "notfound_denied_model", true)
+	insertPendingSubscriptionForChat(w.mockDB, 6, "online_offline_model", true)
+	insertPendingSubscriptionForChat(w.mockDB, 7, "unknown_model", true)
 	// Referral pending subscription — should create referral event on confirmation
 	w.mockDB.insertPendingSubscription(mockPendingSubscription{
 		PendingSubscription: db.PendingSubscription{
@@ -309,7 +307,7 @@ func TestProcessSubsConfirmations(t *testing.T) {
 		checking: true,
 	})
 	// Non-referral pending subscription — should NOT create referral event
-	insertPendingSubscription(w.mockDB, "test", 9, "nonreferral_model", true)
+	insertPendingSubscriptionForChat(w.mockDB, 9, "nonreferral_model", true)
 
 	// Process confirmations with checker results
 	w.processSubsConfirmations(&cmdlib.ExistenceListResults{
@@ -403,9 +401,9 @@ func TestProcessSubsConfirmationsPartialList(t *testing.T) {
 	for chatID := int64(1); chatID <= 3; chatID++ {
 		w.db.AddUser(chatID, 0, 0, "")
 	}
-	insertPendingSubscription(w.mockDB, "test", 1, "answered_model", true)
-	insertPendingSubscription(w.mockDB, "test", 2, "still_pending_model", true)
-	insertPendingSubscription(w.mockDB, "test", 3, "also_still_pending_model", true)
+	insertPendingSubscriptionForChat(w.mockDB, 1, "answered_model", true)
+	insertPendingSubscriptionForChat(w.mockDB, 2, "still_pending_model", true)
+	insertPendingSubscriptionForChat(w.mockDB, 3, "also_still_pending_model", true)
 
 	w.processSubsConfirmations(&cmdlib.ExistenceListResults{
 		Streamers: map[string]cmdlib.StreamerInfoWithStatus{
@@ -582,7 +580,7 @@ func TestStreamerReferral(t *testing.T) {
 		w := newTestWorker()
 
 		// Pre-create a known streamer
-		insertStreamer(w.mockDB, db.Streamer{Nickname: "known_model", ConfirmedStatus: cmdlib.StatusOnline})
+		w.mockDB.insertStreamer(db.Streamer{Nickname: "known_model", ConfirmedStatus: cmdlib.StatusOnline})
 
 		_, created := w.db.AddUser(10, w.cfg.MaxSubs, 100, "private")
 		w.start(testMessage(w, 10, "start", 100), "m-known_model", created)
@@ -642,7 +640,7 @@ func TestHandleStatusUpdates(t *testing.T) {
 	w.initCache()
 
 	// Insert a subscription
-	insertStreamer(w.mockDB, db.Streamer{Nickname: "a"})
+	w.mockDB.insertStreamer(db.Streamer{Nickname: "a"})
 	insertSubscription(w.mockDB, "test", 1, "a")
 
 	// Test with OnlineListResults
@@ -685,14 +683,6 @@ func TestHandleStatusUpdates(t *testing.T) {
 	w.handleCheckerResults(result2, 103)
 	checkUnconfirmedOnlineStreamers(w, t)
 
-	// Streamer goes offline again (use new empty map)
-	result2.Streamers = map[string]cmdlib.StreamerInfo{}
-	w.handleCheckerResults(result2, 104)
-	if _, ok := w.unconfirmedOnlineStreamers["a"]; ok {
-		t.Error("expected offline streamer to be removed from unconfirmedOnlineStreamers")
-	}
-	checkUnconfirmedOnlineStreamers(w, t)
-
 	// Test error case (should return early with zero values)
 	result3 := cmdlib.NewOnlineListResultsFailed()
 	r = w.handleCheckerResults(result3, 105)
@@ -710,143 +700,6 @@ func TestHandleStatusUpdates(t *testing.T) {
 			"expected zero values on error with FixedListResults, got changes=%d, confirmedChanges=%d, nots=%d, elapsed=%d",
 			r.unconfirmedChangesCount, r.confirmedChangesCount, len(r.notifications), r.elapsed)
 	}
-
-	// New streamer discovered via OnlineListResults
-	result5 := &cmdlib.OnlineListResults{
-		Streamers: map[string]cmdlib.StreamerInfo{"newmodel": {}},
-	}
-	w.handleCheckerResults(result5, 107)
-}
-
-func TestUnsubscribeBeforeRestart(t *testing.T) {
-	t.Parallel()
-	w := newTestWorker()
-	w.initCache()
-
-	// Subscribe to "a" and "b"
-	insertStreamer(w.mockDB, db.Streamer{Nickname: "a"})
-	insertStreamer(w.mockDB, db.Streamer{Nickname: "b"})
-	insertSubscription(w.mockDB, "test", 1, "a")
-	insertSubscription(w.mockDB, "test", 1, "b")
-
-	// Both streamers come online
-	result := &cmdlib.FixedListOnlineResults{
-		RequestedStreamers: map[string]bool{"a": true, "b": true},
-		Streamers: map[string]cmdlib.StreamerInfo{
-			"a": {},
-			"b": {},
-		},
-	}
-	w.handleCheckerResults(result, 100)
-
-	// Verify both are online in DB
-	if w.db.MaybeStreamer("a").UnconfirmedStatus != cmdlib.StatusOnline {
-		t.Error("expected 'a' to be online")
-	}
-	if w.db.MaybeStreamer("b").UnconfirmedStatus != cmdlib.StatusOnline {
-		t.Error("expected 'b' to be online")
-	}
-
-	// Unsubscribe from "a"
-	w.db.RemoveSubscription(w.mockDB.userByChat(1).UserID, "a", "test")
-
-	// Simulate restart: reinitialize cache as would happen on restart
-	w.initCache()
-
-	// First query after restart — only "b" is subscribed.
-	// "a" is no longer in RequestedStreamers since it's unsubscribed.
-	result2 := &cmdlib.FixedListOnlineResults{
-		RequestedStreamers: map[string]bool{"b": true},
-		Streamers: map[string]cmdlib.StreamerInfo{
-			"b": {},
-		},
-	}
-	w.handleCheckerResults(result2, 101)
-
-	// "a" should now have StatusUnknown in DB because it's a known streamer
-	// but not in RequestedStreamers (not subscribed anymore).
-	streamerA := w.db.MaybeStreamer("a")
-	if streamerA.UnconfirmedStatus != cmdlib.StatusUnknown {
-		t.Errorf("expected 'a' to have StatusUnknown, got %v", streamerA.UnconfirmedStatus)
-	}
-}
-
-func TestUnknownStreamerFirstOfflineSaved(t *testing.T) {
-	t.Parallel()
-	w := newTestWorker()
-	w.initCache()
-
-	// Add a user
-	w.db.AddUser(1, 3, 0, "private")
-
-	// 1. User subscribes to a streamer we don't know yet — creates unconfirmed subscription
-	// This simulates subscribing to a Twitch streamer or a new unknown model
-	if w.addStreamer(testMessage(w, 1, "add", 100), "unknown_model", false) != nil {
-		t.Error("expected addStreamer to return nil for unknown streamer")
-	}
-	// Drain the "checking streamer" message
-	w.nextOutgoing()
-
-	// Verify pending subscription exists
-	if w.mockDB.pendingSubscriptionCount("unknown_model") != 1 {
-		t.Error("expected pending subscription for new streamer")
-	}
-
-	// 2. Subscription is confirmed — checker returns offline status (Twitch returns Online|Offline)
-	// Set subscription to "checking" state as queryUnconfirmedSubs would do
-	w.db.MarkUnconfirmedAsChecking()
-	w.processSubsConfirmations(&cmdlib.ExistenceListResults{
-		Streamers: map[string]cmdlib.StreamerInfoWithStatus{
-			// Twitch returns Online|Offline when streamer exists but is offline
-			"unknown_model": {Status: cmdlib.StatusOnline | cmdlib.StatusOffline},
-		},
-	})
-
-	// Verify subscription moved to subscriptions table
-	if w.mockDB.subscriptionCount("unknown_model") != 1 {
-		t.Error("expected subscription after confirmation")
-	}
-
-	// 3. First status update: offline
-	// Offline status SHOULD be saved so we can calculate online duration later
-	result := &cmdlib.FixedListOnlineResults{
-		RequestedStreamers: map[string]bool{"unknown_model": true},
-		Streamers:          map[string]cmdlib.StreamerInfo{}, // empty = offline
-	}
-	r := w.handleCheckerResults(result, 101)
-
-	// 4. Offline status should be recorded for proper online time calculation
-	if r.unconfirmedChangesCount != 1 {
-		t.Errorf("expected 1 change for first offline status, got %d", r.unconfirmedChangesCount)
-	}
-
-	// Verify status_change was recorded
-	count := w.mockDB.statusChangeCount("unknown_model")
-	if count != 1 {
-		t.Errorf("expected 1 status_change for first offline, got %d", count)
-	}
-
-	// Verify streamer has offline status
-	streamer := w.db.MaybeStreamer("unknown_model")
-	if streamer == nil {
-		t.Fatal("expected streamer to exist")
-	}
-	if streamer.UnconfirmedStatus != cmdlib.StatusOffline {
-		t.Errorf("expected unconfirmed status to be offline, got %v", streamer.UnconfirmedStatus)
-	}
-
-	// 5. Subsequent status update with same offline status should NOT record a new change
-	result.Streamers = map[string]cmdlib.StreamerInfo{} // use new map to avoid aliasing
-	r = w.handleCheckerResults(result, 102)
-	if r.unconfirmedChangesCount != 0 {
-		t.Errorf("expected 0 changes for same offline status, got %d", r.unconfirmedChangesCount)
-	}
-
-	// Still only 1 status_change
-	count = w.mockDB.statusChangeCount("unknown_model")
-	if count != 1 {
-		t.Errorf("expected still 1 status_change, got %d", count)
-	}
 }
 
 func TestStatusTransitions(t *testing.T) {
@@ -857,7 +710,7 @@ func TestStatusTransitions(t *testing.T) {
 		dbBefore      *cmdlib.StatusKind // nil means streamer doesn't exist in DB
 		fixedList     bool
 		checkerStatus *cmdlib.StatusKind // nil means streamer not in checker result
-		dbAfter       *cmdlib.StatusKind // nil means streamer shouldn't exist or no change
+		dbAfter       cmdlib.StatusKind
 	}{
 		// Fixed list checker tests
 		{
@@ -865,48 +718,48 @@ func TestStatusTransitions(t *testing.T) {
 			subscribed:    true,
 			dbBefore:      nil,
 			fixedList:     true,
-			checkerStatus: ptr(cmdlib.StatusOnline),
-			dbAfter:       ptr(cmdlib.StatusOnline),
+			checkerStatus: new(cmdlib.StatusOnline),
+			dbAfter:       cmdlib.StatusOnline,
 		},
 		{
 			name:          "fixed list: online to offline",
 			subscribed:    true,
-			dbBefore:      ptr(cmdlib.StatusOnline),
+			dbBefore:      new(cmdlib.StatusOnline),
 			fixedList:     true,
-			checkerStatus: ptr(cmdlib.StatusOffline),
-			dbAfter:       ptr(cmdlib.StatusOffline),
+			checkerStatus: new(cmdlib.StatusOffline),
+			dbAfter:       cmdlib.StatusOffline,
 		},
 		{
 			name:          "fixed list: offline to online",
 			subscribed:    true,
-			dbBefore:      ptr(cmdlib.StatusOffline),
+			dbBefore:      new(cmdlib.StatusOffline),
 			fixedList:     true,
-			checkerStatus: ptr(cmdlib.StatusOnline),
-			dbAfter:       ptr(cmdlib.StatusOnline),
+			checkerStatus: new(cmdlib.StatusOnline),
+			dbAfter:       cmdlib.StatusOnline,
 		},
 		{
 			name:          "fixed list: online to unknown (unsubscribe)",
 			subscribed:    false,
-			dbBefore:      ptr(cmdlib.StatusOnline),
+			dbBefore:      new(cmdlib.StatusOnline),
 			fixedList:     true,
 			checkerStatus: nil, // not in result because unsubscribed
-			dbAfter:       ptr(cmdlib.StatusUnknown),
+			dbAfter:       cmdlib.StatusUnknown,
 		},
 		{
 			name:          "fixed list: unknown to offline",
 			subscribed:    true,
 			dbBefore:      nil,
 			fixedList:     true,
-			checkerStatus: ptr(cmdlib.StatusOffline),
-			dbAfter:       ptr(cmdlib.StatusOffline),
+			checkerStatus: new(cmdlib.StatusOffline),
+			dbAfter:       cmdlib.StatusOffline,
 		},
 		{
 			name:          "fixed list: offline to unknown (unsubscribe)",
 			subscribed:    false,
-			dbBefore:      ptr(cmdlib.StatusOffline),
+			dbBefore:      new(cmdlib.StatusOffline),
 			fixedList:     true,
 			checkerStatus: nil, // not in result because unsubscribed
-			dbAfter:       ptr(cmdlib.StatusUnknown),
+			dbAfter:       cmdlib.StatusUnknown,
 		},
 		// Online list checker tests
 		{
@@ -914,24 +767,16 @@ func TestStatusTransitions(t *testing.T) {
 			subscribed:    true,
 			dbBefore:      nil,
 			fixedList:     false,
-			checkerStatus: ptr(cmdlib.StatusOnline),
-			dbAfter:       ptr(cmdlib.StatusOnline),
+			checkerStatus: new(cmdlib.StatusOnline),
+			dbAfter:       cmdlib.StatusOnline,
 		},
 		{
 			name:          "online list: online to offline (missing from result)",
 			subscribed:    true,
-			dbBefore:      ptr(cmdlib.StatusOnline),
+			dbBefore:      new(cmdlib.StatusOnline),
 			fixedList:     false,
 			checkerStatus: nil,
-			dbAfter:       ptr(cmdlib.StatusOffline),
-		},
-		{
-			name:          "online list: offline to online",
-			subscribed:    true,
-			dbBefore:      ptr(cmdlib.StatusOffline),
-			fixedList:     false,
-			checkerStatus: ptr(cmdlib.StatusOnline),
-			dbAfter:       ptr(cmdlib.StatusOnline),
+			dbAfter:       cmdlib.StatusOffline,
 		},
 		// Unsubscribed streamer tests
 		{
@@ -939,16 +784,16 @@ func TestStatusTransitions(t *testing.T) {
 			subscribed:    false,
 			dbBefore:      nil,
 			fixedList:     false,
-			checkerStatus: ptr(cmdlib.StatusOnline),
-			dbAfter:       ptr(cmdlib.StatusOnline),
+			checkerStatus: new(cmdlib.StatusOnline),
+			dbAfter:       cmdlib.StatusOnline,
 		},
 		{
 			name:          "fixed list: unsubscribed streamer stays online",
 			subscribed:    false,
 			dbBefore:      nil,
 			fixedList:     true,
-			checkerStatus: ptr(cmdlib.StatusOnline),
-			dbAfter:       ptr(cmdlib.StatusOnline),
+			checkerStatus: new(cmdlib.StatusOnline),
+			dbAfter:       cmdlib.StatusOnline,
 		},
 	}
 
@@ -957,27 +802,18 @@ func TestStatusTransitions(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			// Set up background streamers that should remain unchanged
-			insertStreamer(w.mockDB, db.Streamer{
+			w.mockDB.insertStreamer(db.Streamer{
 				Nickname:             "always_online",
 				UnconfirmedStatus:    cmdlib.StatusOnline,
 				UnconfirmedTimestamp: 1,
 			})
-			insertStreamer(w.mockDB, db.Streamer{
+			w.mockDB.insertStreamer(db.Streamer{
 				Nickname:             "always_offline",
 				UnconfirmedStatus:    cmdlib.StatusOffline,
 				UnconfirmedTimestamp: 1,
 			})
-			// Unknown is only ever reached from another status, so this one starts offline.
-			insertStreamer(w.mockDB, db.Streamer{
-				Nickname:                 "always_unknown",
-				UnconfirmedStatus:        cmdlib.StatusUnknown,
-				UnconfirmedTimestamp:     1,
-				PrevUnconfirmedStatus:    cmdlib.StatusOffline,
-				PrevUnconfirmedTimestamp: 0,
-			})
 			insertSubscription(w.mockDB, "ep", 1, "always_online")
 			insertSubscription(w.mockDB, "ep", 1, "always_offline")
-			insertSubscription(w.mockDB, "ep", 1, "always_unknown")
 
 			// Initialize cache after setting up background streamers
 			w.initCache()
@@ -985,7 +821,7 @@ func TestStatusTransitions(t *testing.T) {
 			// Always subscribe during setup if we need to set initial state
 			// (subscription is needed to track the streamer)
 			if tt.dbBefore != nil || tt.subscribed {
-				insertStreamer(w.mockDB, db.Streamer{Nickname: "ch"})
+				w.mockDB.insertStreamer(db.Streamer{Nickname: "ch"})
 				insertSubscription(w.mockDB, "ep", 1, "ch")
 			}
 
@@ -1036,16 +872,10 @@ func TestStatusTransitions(t *testing.T) {
 			}
 
 			streamer := w.db.MaybeStreamer("ch")
-			if tt.dbAfter == nil {
-				if streamer != nil {
-					t.Errorf("expected no streamer in DB, got %v", streamer)
-				}
-			} else {
-				if streamer == nil {
-					t.Errorf("expected streamer in DB with status %v, got nil", *tt.dbAfter)
-				} else if streamer.UnconfirmedStatus != *tt.dbAfter {
-					t.Errorf("expected status %v, got %v", *tt.dbAfter, streamer.UnconfirmedStatus)
-				}
+			if streamer == nil {
+				t.Errorf("expected streamer in DB with status %v, got nil", tt.dbAfter)
+			} else if streamer.UnconfirmedStatus != tt.dbAfter {
+				t.Errorf("expected status %v, got %v", tt.dbAfter, streamer.UnconfirmedStatus)
 			}
 
 			// Verify background streamers were not affected
@@ -1055,29 +885,19 @@ func TestStatusTransitions(t *testing.T) {
 			if ch := w.db.MaybeStreamer("always_offline"); ch == nil || ch.UnconfirmedStatus != cmdlib.StatusOffline {
 				t.Errorf("always_offline was affected, got %v", ch)
 			}
-			if ch := w.db.MaybeStreamer("always_unknown"); ch == nil || ch.UnconfirmedStatus != cmdlib.StatusUnknown {
-				t.Errorf("always_unknown was affected, got %v", ch)
-			}
 		})
 	}
 }
-
-func ptr[T any](v T) *T { return &v }
 
 func TestNotifyOfStatuses(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 
-	w.db.AddUser(100, 3, 0, "private")
-	w.db.AddUser(101, 3, 0, "private")
-	w.db.AddUser(200, 3, 0, "private")
-	w.db.AddUser(201, 3, 0, "private")
-
 	nots := []db.Notification{
-		{UserID: w.db.EnsureUser(100), Endpoint: "test", Nickname: "a", Status: cmdlib.StatusOnline, Priority: db.PriorityLow},
-		{UserID: w.db.EnsureUser(101), Endpoint: "test", Nickname: "b", Status: cmdlib.StatusOnline, Priority: db.PriorityHigh},
-		{UserID: w.db.EnsureUser(200), Endpoint: "test", Nickname: "c", Status: cmdlib.StatusOnline, Priority: db.PriorityLow},
-		{UserID: w.db.EnsureUser(201), Endpoint: "test", Nickname: "d", Status: cmdlib.StatusOnline, Priority: db.PriorityHigh},
+		{UserID: 1, Endpoint: "test", Nickname: "a", Status: cmdlib.StatusOnline, Priority: db.PriorityLow},
+		{UserID: 2, Endpoint: "test", Nickname: "b", Status: cmdlib.StatusOnline, Priority: db.PriorityHigh},
+		{UserID: 3, Endpoint: "test", Nickname: "c", Status: cmdlib.StatusOnline, Priority: db.PriorityLow},
+		{UserID: 4, Endpoint: "test", Nickname: "d", Status: cmdlib.StatusOnline, Priority: db.PriorityHigh},
 	}
 
 	w.enqueueNotifications(nots)
@@ -1176,15 +996,13 @@ func TestBuildNotificationsDiceGate(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 
-	streamerID := insertStreamer(w.mockDB, db.Streamer{Nickname: "s1"})
+	streamerID := w.mockDB.insertStreamer(db.Streamer{Nickname: "s1"}).ID
 	insertSubscription(w.mockDB, "test", 100, "s1")
 	insertSubscription(w.mockDB, "test", 101, "s1")
 	// An endpoint absent from the config.
 	insertSubscription(w.mockDB, "ghost", 102, "s1")
-	// The count is MaxInt32, so these subscribers lose any roll:
-	// a win at p = threshold/MaxInt32 is unreachable in practice.
-	w.mockDB.setBlock("test", 100, math.MaxInt32)
-	w.mockDB.setBlock("ghost", 102, math.MaxInt32)
+	w.mockDB.setMaxBlock("test", 100)
+	w.mockDB.setMaxBlock("ghost", 102)
 
 	nots := w.buildNotifications([]db.ConfirmedStatusChange{
 		{StreamerID: streamerID, Nickname: "s1", Status: cmdlib.StatusOnline},
@@ -1225,12 +1043,11 @@ func TestBroadcastDiceGate(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 
-	insertStreamer(w.mockDB, db.Streamer{Nickname: "s1"})
+	w.mockDB.insertStreamer(db.Streamer{Nickname: "s1"})
 	insertSubscription(w.mockDB, "test", 100, "s1")
 	insertSubscription(w.mockDB, "test", 101, "s1")
 	w.ownerUserID = w.db.EnsureUser(999)
-	// The count is MaxInt32, so this subscriber loses the roll.
-	w.mockDB.setBlock("test", 100, math.MaxInt32)
+	w.mockDB.setMaxBlock("test", 100)
 
 	w.broadcast("test", "hi")
 

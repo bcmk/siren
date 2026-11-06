@@ -8,7 +8,7 @@ Production runs the Apache-2 edition (`timescaledb.license = apache`).
 It has hypertables, chunk exclusion, `drop_chunks`, and `time_bucket`.
 Compression (columnstore), continuous aggregates,
 and policies are Timescale-License-only and error out there.
-Tests and `schema-dump` run on the matching `-oss` image, `pgtest.Image`,
+Tests and `schema-dump` run on the matching `-oss` image, `db.TimescaleImage`,
 so a feature outside the edition fails in tests first.
 Bump the image together with the extension version production installs.
 

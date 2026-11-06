@@ -2,17 +2,22 @@ package db
 
 import (
 	"cmp"
-	"context"
+	"encoding/json"
+	"math"
 	"reflect"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/bcmk/siren/v6/lib/cmdlib"
-	"github.com/jackc/pgx/v5"
 )
 
-func ptr[T any](v T) *T { return &v }
+// asJSON spells out what %v prints as a pointer's address
+func asJSON(v any) string {
+	b, err := json.Marshal(v)
+	checkErr(err)
+	return string(b)
+}
 
 func insertStreamerRow(d *Database, s Streamer) int {
 	d.MustExec("insert into nicknames (nickname) values ($1)", s.Nickname)
@@ -34,549 +39,487 @@ func insertStreamerRow(d *Database, s Streamer) int {
 		s.PrevUnconfirmedTimestamp)
 }
 
-func insertSubscription(d *Database, endpoint string, chatID int64, nickname string) {
-	d.AddUser(chatID, 0, 0, "")
-	d.MustExec(`
-		insert into subscriptions (endpoint, user_id, streamer_id)
-		select $1, u.id, s.id
-		from users u, streamers s
-		where u.chat_id = $2 and s.nickname = $3`,
-		endpoint, chatID, nickname)
-}
-
-func insertPendingSubscription(d *Database, endpoint string, chatID int64, nickname string, checking bool) {
-	d.AddUser(chatID, 0, 0, "")
-	d.MustExec(`
-		insert into pending_subscriptions (endpoint, user_id, nickname, checking)
-		select $1, u.id, $3, $4
-		from users u
-		where u.chat_id = $2`,
-		endpoint, chatID, nickname, checking)
-}
-
-func confirmedStatusesForChat(d *Database, endpoint string, chatID int64) (statuses []Streamer) {
-	var iter Streamer
-	d.MustQuery(`
-		select s.nickname, s.confirmed_status
-		from subscriptions sub
-		join streamers s on s.id = sub.streamer_id
-		join users u on u.id = sub.user_id
-		where u.chat_id = $1 and sub.endpoint = $2
-		order by s.nickname`,
-		QueryParams{chatID, endpoint},
-		ScanTo{&iter.Nickname, &iter.ConfirmedStatus},
-		func() { statuses = append(statuses, iter) })
-	return
-}
-
-func subscribedChats(d *Database, nickname string) (chats []int64, endpoints []string) {
-	var chatID int64
-	var endpoint string
-	d.MustQuery(`
-		select u.chat_id, sub.endpoint
-		from subscriptions sub
-		join streamers s on s.id = sub.streamer_id
-		join users u on u.id = sub.user_id
-		where s.nickname = $1
-		order by u.chat_id`,
-		QueryParams{nickname},
-		ScanTo{&chatID, &endpoint},
-		func() {
-			chats = append(chats, chatID)
-			endpoints = append(endpoints, endpoint)
-		})
-	return
-}
-
-// broadcastUserIDs projects broadcast recipients to their ids.
-func broadcastUserIDs(users []User) (ids []UserID) {
-	for _, u := range users {
-		ids = append(ids, u.UserID)
-	}
-	return
-}
-
-func TestSql(t *testing.T) {
+func TestBroadcastUsers(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
-	for _, n := range []string{"a", "b", "c", "c2", "c3", "d", "e", "f", "g"} {
-		insertStreamerRow(db.Database, Streamer{Nickname: n})
+	for chatID := int64(1); chatID <= 8; chatID++ {
+		db.AddUser(chatID, 0, 0, "")
 	}
-	insertSubscription(db.Database, "ep1", 1, "a")
-	insertSubscription(db.Database, "ep1", 2, "b")
-	insertSubscription(db.Database, "ep1", 3, "c")
-	insertSubscription(db.Database, "ep1", 3, "c2")
-	insertSubscription(db.Database, "ep1", 3, "c3")
-	insertSubscription(db.Database, "ep1", 4, "d")
-	insertSubscription(db.Database, "ep1", 5, "d")
-	insertSubscription(db.Database, "ep1", 6, "e")
-	insertSubscription(db.Database, "ep1", 7, "f")
-	insertSubscription(db.Database, "ep2", 6, "e")
-	insertSubscription(db.Database, "ep2", 7, "f")
-	insertSubscription(db.Database, "ep2", 8, "g")
-	db.MustExec("insert into block (endpoint, user_id, block) select $1, u.id, $3 from users u where u.chat_id = $2", "ep1", 2, 0)
-	db.MustExec("insert into block (endpoint, user_id, block) select $1, u.id, $3 from users u where u.chat_id = $2", "ep1", 3, 5)
-	db.MustExec("update streamers set confirmed_status = $2 where nickname = $1", "a", cmdlib.StatusOnline)
-	db.MustExec("update streamers set confirmed_status = $2 where nickname = $1", "b", cmdlib.StatusOnline)
-	db.MustExec("update streamers set confirmed_status = $2 where nickname = $1", "c", cmdlib.StatusOnline)
-	db.MustExec("update streamers set confirmed_status = $2 where nickname = $1", "c2", cmdlib.StatusOnline)
-	broadcast1 := db.BroadcastUsers("ep1")
-	if !reflect.DeepEqual(broadcastUserIDs(broadcast1), []UserID{1, 2, 3, 4, 5, 6, 7}) {
-		t.Error("unexpected broadcast users result", broadcast1)
+	db.addSub(1, "a", "ep1")
+	db.addSub(2, "b", "ep1")
+	db.addSub(3, "c", "ep1")
+	db.addSub(3, "c2", "ep1")
+	db.addSub(3, "c3", "ep1")
+	db.addSub(4, "d", "ep1")
+	db.addSub(5, "d", "ep1")
+	db.addSub(6, "e", "ep1")
+	db.addSub(7, "f", "ep1")
+	db.addSub(6, "e", "ep2")
+	db.addSub(7, "f", "ep2")
+	db.addSub(8, "g", "ep2")
+	db.addBlock(2, "ep1", 0)
+	db.addBlock(3, "ep1", 5)
+	// A count on another endpoint, and a group, which a broadcast skips
+	db.addBlock(1, "ep2", 7)
+	db.AddUser(-9, 0, 0, "group")
+	db.addSub(-9, "h", "ep1")
+
+	tests := []struct {
+		endpoint string
+		want     []User
+	}{
+		{
+			endpoint: "ep1",
+			want: []User{
+				{UserID: 1},
+				{UserID: 2},
+				{UserID: 3, Blocked: 5},
+				{UserID: 4},
+				{UserID: 5},
+				{UserID: 6},
+				{UserID: 7},
+			},
+		},
+		{endpoint: "ep2", want: []User{{UserID: 6}, {UserID: 7}, {UserID: 8}}},
 	}
-	// Only user 3 has a nonzero block row; a broken join or coalesce would zero it.
-	for _, u := range broadcast1 {
-		want := 0
-		if u.UserID == 3 {
-			want = 5
-		}
-		if u.Blocked != want {
-			t.Errorf("broadcast user %d blocked = %d, want %d", u.UserID, u.Blocked, want)
-		}
+	for _, tt := range tests {
+		t.Run(tt.endpoint, func(t *testing.T) {
+			if got := db.BroadcastUsers(tt.endpoint); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("BroadcastUsers = %s, want %s", asJSON(got), asJSON(tt.want))
+			}
+		})
 	}
-	broadcastUsers := broadcastUserIDs(db.BroadcastUsers("ep2"))
-	if !reflect.DeepEqual(broadcastUsers, []UserID{6, 7, 8}) {
-		t.Error("unexpected broadcast users result", broadcastUsers)
+}
+
+func TestBlockCounts(t *testing.T) {
+	t.Parallel()
+	db := newTestDB(t)
+	increment := db.IncrementBlock
+	reset := db.ResetBlock
+	alice, _ := db.AddUser(1, 0, 0, "")
+	bob, _ := db.AddUser(2, 0, 0, "")
+
+	type key struct {
+		endpoint string
+		user     UserID
 	}
-	chatsForStreamer, endpoints := subscribedChats(db.Database, "a")
-	if !reflect.DeepEqual(endpoints, []string{"ep1"}) {
-		t.Error("unexpected chats for streamer result", chatsForStreamer)
+	// Each step acts on what the steps before it left
+	steps := []struct {
+		name     string
+		act      func(endpoint string, user UserID)
+		endpoint string
+		user     UserID
+		want     map[key]int
+	}{
+		{"first block", increment, "ep1", bob, map[key]int{{"ep1", bob}: 1}},
+		{"second block", increment, "ep1", bob, map[key]int{{"ep1", bob}: 2}},
+		{
+			"another endpoint counts apart",
+			increment,
+			"ep2",
+			bob,
+			map[key]int{{"ep1", bob}: 2, {"ep2", bob}: 1},
+		},
+		{
+			"another user counts apart",
+			increment,
+			"ep1",
+			alice,
+			map[key]int{{"ep1", alice}: 1, {"ep1", bob}: 2, {"ep2", bob}: 1},
+		},
+		{
+			"reset leaves another endpoint and another user",
+			reset,
+			"ep1",
+			bob,
+			map[key]int{{"ep1", alice}: 1, {"ep1", bob}: 0, {"ep2", bob}: 1},
+		},
 	}
-	if !reflect.DeepEqual(chatsForStreamer, []int64{1}) {
-		t.Error("unexpected chats for streamer result", chatsForStreamer)
-	}
-	chatsForStreamer, _ = subscribedChats(db.Database, "b")
-	if !reflect.DeepEqual(chatsForStreamer, []int64{2}) {
-		t.Error("unexpected chats for streamer result", chatsForStreamer)
-	}
-	chatsForStreamer, _ = subscribedChats(db.Database, "c")
-	if !reflect.DeepEqual(chatsForStreamer, []int64{3}) {
-		t.Error("unexpected chats for streamer result", chatsForStreamer)
-	}
-	chatsForStreamer, _ = subscribedChats(db.Database, "d")
-	if !reflect.DeepEqual(chatsForStreamer, []int64{4, 5}) {
-		t.Error("unexpected chats for streamer result", chatsForStreamer)
-	}
-	chatsForStreamer, _ = subscribedChats(db.Database, "e")
-	if !reflect.DeepEqual(chatsForStreamer, []int64{6, 6}) {
-		t.Error("unexpected chats for streamer result", chatsForStreamer)
-	}
-	chatsForStreamer, _ = subscribedChats(db.Database, "f")
-	if !reflect.DeepEqual(chatsForStreamer, []int64{7, 7}) {
-		t.Error("unexpected chats for streamer result", chatsForStreamer)
-	}
-	db.IncrementBlock("ep1", 2)
-	db.IncrementBlock("ep1", 2)
-	if db.MustInt("select b.block from block b join users u on u.id = b.user_id where u.chat_id = $1 and b.endpoint = $2", 2, "ep1") != 2 {
-		t.Error("unexpected block for streamer result", chatsForStreamer)
-	}
-	db.IncrementBlock("ep2", 2)
-	if db.MustInt("select b.block from block b join users u on u.id = b.user_id where u.chat_id = $1 and b.endpoint = $2", 2, "ep2") != 1 {
-		t.Error("unexpected block for streamer result", chatsForStreamer)
-	}
-	db.ResetBlock("ep1", 2)
-	if db.MustInt("select b.block from block b join users u on u.id = b.user_id where u.chat_id = $1 and b.endpoint = $2", 2, "ep1") != 0 {
-		t.Error("unexpected block for streamer result", chatsForStreamer)
-	}
-	if db.MustInt("select b.block from block b join users u on u.id = b.user_id where u.chat_id = $1 and b.endpoint = $2", 2, "ep2") != 1 {
-		t.Error("unexpected block for streamer result", chatsForStreamer)
-	}
-	db.IncrementBlock("ep1", 1)
-	db.IncrementBlock("ep1", 1)
-	if db.MustInt("select b.block from block b join users u on u.id = b.user_id where u.chat_id = $1", 1) != 2 {
-		t.Error("unexpected block for streamer result", chatsForStreamer)
-	}
-	statuses := confirmedStatusesForChat(db.Database, "ep1", 3)
-	if !reflect.DeepEqual(statuses, []Streamer{
-		{Nickname: "c", ConfirmedStatus: cmdlib.StatusOnline},
-		{Nickname: "c2", ConfirmedStatus: cmdlib.StatusOnline},
-		{Nickname: "c3"}}) {
-		t.Error("unexpected statuses", statuses)
+	for _, tt := range steps {
+		tt.act(tt.endpoint, tt.user)
+		t.Run(tt.name, func(t *testing.T) {
+			got := map[key]int{}
+			var k key
+			var block int
+			db.MustQuery(
+				"select endpoint, user_id, block from block",
+				nil,
+				ScanTo{&k.endpoint, &k.user, &block},
+				func() { got[k] = block })
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("block counts = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
 func TestNotificationsStorage(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 
 	db.AddUser(1, 3, 0, "private")
-	db.AddUser(2, 3, 0, "private")
-	db.AddUser(3, 3, 0, "private")
+	db.AddUser(2, 3, 0, "group")
+	db.AddUser(3, 3, 0, "supergroup")
+	db.AddUser(4, 3, 0, "")
+	db.setReports(1, 7)
+	db.setReports(2, 8)
+	db.setReports(3, 9)
+	db.SetSilentMessages(1, true)
+	db.SetAffiliateParams(1, map[string]string{"campaign": "a"})
+	db.SetAffiliateParams(2, map[string]string{"campaign": "b"})
+	db.SetAffiliateParams(3, map[string]string{"campaign": "c"})
 
 	idA := insertStreamerRow(db.Database, Streamer{Nickname: "a"})
 	idB := insertStreamerRow(db.Database, Streamer{Nickname: "b"})
 	idC := insertStreamerRow(db.Database, Streamer{Nickname: "c"})
+	idD := insertStreamerRow(db.Database, Streamer{Nickname: "d"})
 
-	timeDiff := 2
-	nots := []Notification{
+	// Each batch fetches only what it stored.
+	// Each flag has its own pattern across the rows, so swapping any two shows.
+	tests := []struct {
+		name string
+		want []Notification
+	}{
 		{
-			Endpoint:   "endpoint_a",
-			UserID:     db.EnsureUser(1),
-			StreamerID: &idA,
-			Nickname:   "a",
-			Status:     cmdlib.StatusUnknown,
-			TimeDiff:   nil,
-			ImageURL:   "image_a",
-			Social:     false,
-			Priority:   PriorityHigh,
-			Sound:      false,
-			Kind:       NotificationPacket,
+			name: "first batch",
+			want: []Notification{
+				{
+					ID:              1,
+					Endpoint:        "endpoint_a",
+					UserID:          1,
+					StreamerID:      &idA,
+					Nickname:        "a",
+					Status:          cmdlib.StatusOnline,
+					TimeDiff:        new(2),
+					ImageURL:        "image_a",
+					ProfileImageURL: "profile_a",
+					Viewers:         new(10),
+					ShowKind:        cmdlib.ShowPublic,
+					Social:          true,
+					Priority:        PriorityLow,
+					Kind:            ReplyPacket,
+					Command:         "add",
+					ReplySeq:        4,
+					FieldsHint:      true,
+					Subject:         "subject_a",
+					SilentMessages:  true,
+					ChatID:          1,
+					ChatType:        new("private"),
+					AffiliateParams: map[string]string{"campaign": "a"},
+					Reports:         7,
+				},
+				{
+					ID:              2,
+					Endpoint:        "endpoint_b",
+					UserID:          2,
+					StreamerID:      &idB,
+					Nickname:        "b",
+					Status:          cmdlib.StatusOffline,
+					TimeDiff:        new(3),
+					ImageURL:        "image_b",
+					ProfileImageURL: "profile_b",
+					MissingImage:    true,
+					Viewers:         new(20),
+					ShowKind:        cmdlib.ShowPrivate,
+					Sound:           true,
+					Priority:        PriorityHigh,
+					Kind:            AdPacket,
+					Command:         "pics",
+					ReplySeq:        5,
+					FieldsHint:      true,
+					Subject:         "subject_b",
+					ChatID:          2,
+					ChatType:        new("group"),
+					AffiliateParams: map[string]string{"campaign": "b"},
+					Reports:         8,
+				},
+			},
 		},
 		{
-			Endpoint:   "endpoint_b",
-			UserID:     db.EnsureUser(2),
-			StreamerID: &idB,
-			Nickname:   "b",
-			Status:     cmdlib.StatusOffline,
-			TimeDiff:   &timeDiff,
-			ImageURL:   "image_b",
-			Social:     true,
-			Priority:   PriorityLow,
-			Sound:      true,
-			Kind:       ReplyPacket,
+			name: "second batch",
+			want: []Notification{
+				{
+					ID:              3,
+					Endpoint:        "endpoint_c",
+					UserID:          3,
+					StreamerID:      &idC,
+					Nickname:        "c",
+					Status:          cmdlib.StatusOnline,
+					TimeDiff:        new(6),
+					ImageURL:        "image_c",
+					ProfileImageURL: "profile_c",
+					Viewers:         new(30),
+					ShowKind:        cmdlib.ShowGroup,
+					Social:          true,
+					Sound:           true,
+					Priority:        PriorityLow,
+					Kind:            MessagePacket,
+					Command:         "online",
+					ReplySeq:        1,
+					Subject:         "subject_c",
+					ChatID:          3,
+					ChatType:        new("supergroup"),
+					AffiliateParams: map[string]string{"campaign": "c"},
+					Reports:         9,
+				},
+				// Nothing optional: a null time, viewers and command, and no chat type
+				{
+					ID:         4,
+					Endpoint:   "endpoint_d",
+					UserID:     4,
+					StreamerID: &idD,
+					Nickname:   "d",
+					ChatID:     4,
+				},
+			},
 		},
 	}
-
-	db.StoreNotifications(nots)
-	newNots := db.NewNotifications()
-	nots[0].ID = 1
-	nots[1].ID = 2
-	// The read joins the recipient's chat, which the stored literal does not carry.
-	nots[0].ChatID = 1
-	nots[1].ChatID = 2
-	nots[0].ChatType = ptr("private")
-	nots[1].ChatType = ptr("private")
-	if !reflect.DeepEqual(nots, newNots) {
-		t.Errorf("unexpected notifications, expocted: %v, got: %v", nots, newNots)
+	for _, tt := range tests {
+		// The queue assigns the id, and the read joins the recipient's chat
+		stored := slices.Clone(tt.want)
+		for i := range stored {
+			stored[i].ID, stored[i].ChatID, stored[i].ChatType = 0, 0, nil
+			stored[i].SilentMessages, stored[i].AffiliateParams, stored[i].Reports = false, nil, 0
+		}
+		db.StoreNotifications(stored)
+		got := db.NewNotifications()
+		t.Run(tt.name, func(t *testing.T) {
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewNotifications = %s, want %s", asJSON(got), asJSON(tt.want))
+			}
+		})
 	}
-	nots = []Notification{
-		{
-			Endpoint:   "endpoint_c",
-			UserID:     db.EnsureUser(3),
-			StreamerID: &idC,
-			Nickname:   "c",
-			Status:     cmdlib.StatusOnline,
-			TimeDiff:   nil,
-			ImageURL:   "image_c",
-			Social:     true,
-			Priority:   PriorityLow,
-		},
-	}
-	db.StoreNotifications(nots)
-	newNots = db.NewNotifications()
-	nots[0].ID = 3
-	nots[0].ChatID = 3
-	nots[0].ChatType = ptr("private")
-	if !reflect.DeepEqual(nots, newNots) {
-		t.Errorf("unexpected notifications, expocted: %v, got: %v", nots, newNots)
-	}
-	count := db.MustInt("select count(*) from notification_queue")
-	if count != 3 {
+	if count := db.MustInt("select count(*) from notification_queue"); count != 4 {
 		t.Errorf("unexpected notifications count %d", count)
 	}
-}
-
-func TestStreamers(t *testing.T) {
-	t.Parallel()
-	db := newTestDB(t)
-	defer db.terminate()
-	insertStreamerRow(db.Database, Streamer{Nickname: "a", ConfirmedStatus: cmdlib.StatusOffline})
-	if db.MaybeStreamer("a") == nil {
-		t.Error("unexpected result")
-	}
-	if db.MaybeStreamer("b") != nil {
-		t.Error("unexpected result")
-	}
-}
-
-func TestCopyFromAndBatchInTransaction(t *testing.T) {
-	t.Parallel()
-	db := newTestDB(t)
-	defer db.terminate()
-
-	// Test that CopyFrom and SendBatch are in the same transaction
-	// by making SendBatch fail and verifying CopyFrom data is rolled back
-
-	// Insert a streamer to get an integer ID for the CopyFrom test
-	streamerIntID := insertStreamerRow(db.Database, Streamer{Nickname: "a"})
-
-	tx, err := db.begin()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = tx.Rollback(context.Background()) }()
-
-	// CopyFrom should succeed
-	rows := [][]interface{}{
-		{streamerIntID, 100, int16(cmdlib.StatusOnline), int16(cmdlib.StatusUnknown)},
-	}
-	_, err = tx.CopyFrom(
-		context.Background(),
-		pgx.Identifier{"status_changes"},
-		[]string{"streamer_id", "timestamp", "status", "prev_status"},
-		pgx.CopyFromRows(rows),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// SendBatch with invalid status (violates check constraint) should fail
-	batch := &pgx.Batch{}
-	batch.Queue(`
-		insert into streamers (nickname, unconfirmed_status)
-		values ($1, $2)`,
-		"test_streamer", 999) // 999 violates check constraint
-	br := tx.SendBatch(context.Background(), batch)
-	err = br.Close()
-
-	// Batch should have failed
-	if err == nil {
-		t.Fatal("expected batch to fail due to constraint violation")
-	}
-
-	// Explicitly rollback the failed transaction
-	_ = tx.Rollback(context.Background())
-
-	// Verify status_changes has NO data (CopyFrom was rolled back)
-	// Query using a new connection, not the failed transaction
-	count := db.MustInt(
-		"select count(*) from status_changes where streamer_id = $1",
-		streamerIntID,
-	)
-	if count != 0 {
-		t.Errorf("expected 0 status_changes after rollback, got %d", count)
+	if count := db.MustInt("select count(*) from notification_queue where command is null"); count != 1 {
+		t.Errorf("%d notifications store a null command, want the 1 with none", count)
 	}
 }
 
 func TestUnconfirmedStatusConsistency(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 
-	// Insert first status change for streamer "a"
-	db.UpsertUnconfirmedStatusChanges([]StatusChange{
-		{Nickname: "a", Status: cmdlib.StatusOnline},
-	}, 100)
-
-	streamer := db.MaybeStreamer("a")
-	if streamer == nil {
-		t.Fatal("streamer not found")
+	// Each step changes the status the step before it left
+	steps := []struct {
+		name       string
+		status     cmdlib.StatusKind
+		timestamp  int
+		wantPrev   cmdlib.StatusKind
+		wantPrevAt int
+	}{
+		{"first change has no previous", cmdlib.StatusOnline, 100, cmdlib.StatusUnknown, 0},
+		{"second change keeps the first", cmdlib.StatusOffline, 200, cmdlib.StatusOnline, 100},
+		{"third change shifts them", cmdlib.StatusOnline, 300, cmdlib.StatusOffline, 200},
 	}
-	if streamer.UnconfirmedStatus != cmdlib.StatusOnline || streamer.UnconfirmedTimestamp != 100 {
-		t.Errorf("unexpected unconfirmed status: %+v", streamer)
-	}
-	if streamer.PrevUnconfirmedStatus != cmdlib.StatusUnknown || streamer.PrevUnconfirmedTimestamp != 0 {
-		t.Errorf("unexpected prev unconfirmed status: %+v", streamer)
-	}
-
-	// Insert second status change — prev should be updated
-	db.UpsertUnconfirmedStatusChanges([]StatusChange{
-		{Nickname: "a", Status: cmdlib.StatusOffline},
-	}, 200)
-
-	streamer = db.MaybeStreamer("a")
-	if streamer.UnconfirmedStatus != cmdlib.StatusOffline || streamer.UnconfirmedTimestamp != 200 {
-		t.Errorf("unexpected unconfirmed status: %+v", streamer)
-	}
-	if streamer.PrevUnconfirmedStatus != cmdlib.StatusOnline || streamer.PrevUnconfirmedTimestamp != 100 {
-		t.Errorf("unexpected prev unconfirmed status: %+v", streamer)
-	}
-
-	// Insert third status change — prev should shift
-	db.UpsertUnconfirmedStatusChanges([]StatusChange{
-		{Nickname: "a", Status: cmdlib.StatusOnline},
-	}, 300)
-
-	streamer = db.MaybeStreamer("a")
-	if streamer.UnconfirmedStatus != cmdlib.StatusOnline || streamer.UnconfirmedTimestamp != 300 {
-		t.Errorf("unexpected unconfirmed status: %+v", streamer)
-	}
-	if streamer.PrevUnconfirmedStatus != cmdlib.StatusOffline || streamer.PrevUnconfirmedTimestamp != 200 {
-		t.Errorf("unexpected prev unconfirmed status: %+v", streamer)
+	for _, tt := range steps {
+		db.UpsertUnconfirmedStatusChanges([]StatusChange{{Nickname: "a", Status: tt.status}}, tt.timestamp)
+		t.Run(tt.name, func(t *testing.T) {
+			s := db.MaybeStreamer("a")
+			if s == nil {
+				t.Fatal("streamer not found")
+			}
+			if s.UnconfirmedStatus != tt.status || s.UnconfirmedTimestamp != tt.timestamp {
+				t.Errorf("unexpected unconfirmed status: %+v", s)
+			}
+			if s.PrevUnconfirmedStatus != tt.wantPrev || s.PrevUnconfirmedTimestamp != tt.wantPrevAt {
+				t.Errorf("unexpected prev unconfirmed status: %+v", s)
+			}
+			if n := db.MustInt("select count(*) from nicknames where nickname = $1", "a"); n != 1 {
+				t.Errorf("%d nicknames rows, want 1", n)
+			}
+		})
 	}
 }
 
-func TestConfirmSub(t *testing.T) {
+// TestUpsertUnconfirmedStatusChangesBatch gives each streamer of a call its own status and row
+func TestUpsertUnconfirmedStatusChangesBatch(t *testing.T) {
 	t.Parallel()
+	const (
+		unknown = cmdlib.StatusUnknown
+		offline = cmdlib.StatusOffline
+		online  = cmdlib.StatusOnline
+	)
 	db := newTestDB(t)
-	defer db.terminate()
+	db.UpsertUnconfirmedStatusChanges(
+		[]StatusChange{
+			{Nickname: "a", Status: online},
+			{Nickname: "b", Status: offline},
+			{Nickname: "c", Status: unknown},
+		},
+		100)
+	db.UpsertUnconfirmedStatusChanges(
+		[]StatusChange{
+			{Nickname: "a", Status: offline},
+			{Nickname: "b", Status: online},
+			{Nickname: "d", Status: online},
+		},
+		200)
 
-	// Insert pending subscription
-	db.AddUser(1, 0, 0, "")
-	insertPendingSubscription(db.Database, "test", 1, "a", false)
-
-	// Confirm the subscription
-	streamerID := db.ConfirmSub(PendingSubscription{Endpoint: "test", UserID: 1, Nickname: "a"})
-
-	// Check returned streamer ID is valid
-	if streamerID == 0 {
-		t.Error("expected non-zero streamer ID from ConfirmSub")
+	tests := []struct {
+		nickname string
+		want     []statusChangeRow
+	}{
+		{"a", []statusChangeRow{{100, online, unknown}, {200, offline, online}}},
+		{"b", []statusChangeRow{{100, offline, unknown}, {200, online, offline}}},
+		{"c", []statusChangeRow{{100, unknown, unknown}}},
+		{"d", []statusChangeRow{{200, online, unknown}}},
 	}
-
-	// Check subscription was moved to subscriptions table
-	if db.MustInt(`
-		select count(*) from subscriptions
-		where streamer_id = $1`, streamerID) != 1 {
-		t.Error("expected subscription after ConfirmSub")
-	}
-
-	// Check pending subscription was deleted
-	if db.MustInt("select count(*) from pending_subscriptions where nickname = $1", "a") != 0 {
-		t.Error("expected pending subscription to be deleted after ConfirmSub")
-	}
-
-	// Check streamer was created
-	if db.MaybeStreamer("a") == nil {
-		t.Error("expected streamer to exist after ConfirmSub")
-	}
-
-	if db.MustInt("select count(*) from nicknames where nickname = $1", "a") != 1 {
-		t.Error("expected the new streamer in nicknames")
+	for _, tt := range tests {
+		t.Run(tt.nickname, func(t *testing.T) {
+			got := streamerChanges(db.Database, streamerID(t, db.Database, tt.nickname))
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("status_changes rows = %+v, want %+v", got, tt.want)
+			}
+			checkStatusChangesConsistent(t, db.Database, tt.nickname)
+			if n := db.MustInt("select count(*) from nicknames where nickname = $1", tt.nickname); n != 1 {
+				t.Errorf("%d nicknames rows, want 1", n)
+			}
+		})
 	}
 }
 
-func TestDenySub(t *testing.T) {
+func TestConfirmAndDenySub(t *testing.T) {
 	t.Parallel()
-	db := newTestDB(t)
-	defer db.terminate()
+	tests := []struct {
+		name           string
+		streamerExists bool
+		// act returns the streamer id a confirmation gives, 0 for a denial
+		act          func(d *Database, sub PendingSubscription) int
+		wantStreamer bool
+	}{
+		{
+			name:         "confirm",
+			act:          func(d *Database, sub PendingSubscription) int { return d.ConfirmSub(sub) },
+			wantStreamer: true,
+		},
+		{
+			name:           "confirm a known streamer",
+			streamerExists: true,
+			act:            func(d *Database, sub PendingSubscription) int { return d.ConfirmSub(sub) },
+			wantStreamer:   true,
+		},
+		{
+			name: "deny",
+			act: func(d *Database, sub PendingSubscription) int {
+				d.DenySub(sub)
+				return 0
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			db := newTestDB(t)
+			userID, _ := db.AddUser(1, 0, 0, "")
+			db.AddUser(2, 0, 0, "")
+			db.addPending(1, "a", "test")
+			// Each differs from the one acted on in a single column
+			db.addPending(2, "a", "test")
+			db.addPending(1, "b", "test")
+			db.addPending(1, "a", "other")
+			if tt.streamerExists {
+				// First, so a fallback not filtered by nickname returns this streamer
+				insertStreamerRow(db.Database, Streamer{Nickname: "other"})
+				insertStreamerRow(db.Database, Streamer{Nickname: "a"})
+			}
 
-	// Insert pending subscription
-	db.AddUser(1, 0, 0, "")
-	insertPendingSubscription(db.Database, "test", 1, "b", false)
+			id := tt.act(db.Database, PendingSubscription{Endpoint: "test", UserID: userID, Nickname: "a"})
 
-	// Deny the subscription
-	db.DenySub(PendingSubscription{Endpoint: "test", UserID: 1, Nickname: "b"})
-
-	// Check pending subscription is deleted
-	if db.MustInt("select count(*) from pending_subscriptions where nickname = $1", "b") != 0 {
-		t.Error("expected pending subscription to be deleted after DenySub")
+			pending := db.MustStrings(`
+				select u.chat_id || ' ' || ps.endpoint || ' ' || ps.nickname
+				from pending_subscriptions ps
+				join users u on u.id = ps.user_id
+				order by 1`)
+			if want := []string{"1 other a", "1 test b", "2 test a"}; !slices.Equal(pending, want) {
+				t.Errorf("pending subscriptions = %q, want %q", pending, want)
+			}
+			streamer := db.MaybeStreamer("a")
+			if (streamer != nil) != tt.wantStreamer {
+				t.Fatalf("streamer = %+v, want one: %v", streamer, tt.wantStreamer)
+			}
+			wantRows := 0
+			if tt.wantStreamer {
+				wantRows = 1
+				if id != streamer.ID {
+					t.Errorf("returned id = %d, want the streamer's %d", id, streamer.ID)
+				}
+			}
+			if n := db.MustInt("select count(*) from subscriptions"); n != wantRows {
+				t.Errorf("%d subscriptions, want %d", n, wantRows)
+			}
+			if n := db.MustInt("select count(*) from nicknames where nickname = $1", "a"); n != wantRows {
+				t.Errorf("%d nicknames, want %d", n, wantRows)
+			}
+		})
 	}
 }
 
 func TestStatusConfirmations(t *testing.T) {
 	t.Parallel()
+	const now, onlineSeconds, offlineSeconds = 105, 3, 5
+	const (
+		unknown = cmdlib.StatusUnknown
+		offline = cmdlib.StatusOffline
+		online  = cmdlib.StatusOnline
+	)
 	tests := []struct {
 		name        string
 		confirmed   cmdlib.StatusKind
 		unconfirmed cmdlib.StatusKind
 		timestamp   int
-		now         int
-		expect      *cmdlib.StatusKind // nil means no confirmation expected
+		wantChange  bool
 	}{
-		{
-			name:        "offline to online confirms immediately",
-			confirmed:   cmdlib.StatusOffline,
-			unconfirmed: cmdlib.StatusOnline,
-			timestamp:   100,
-			now:         100,
-			expect:      ptr(cmdlib.StatusOnline),
-		},
-		{
-			name:        "online to offline confirms when timing met",
-			confirmed:   cmdlib.StatusOnline,
-			unconfirmed: cmdlib.StatusOffline,
-			timestamp:   100,
-			now:         105,
-			expect:      ptr(cmdlib.StatusOffline),
-		},
-		{
-			name:        "online to offline not confirmed when timing not met",
-			confirmed:   cmdlib.StatusOnline,
-			unconfirmed: cmdlib.StatusOffline,
-			timestamp:   103,
-			now:         105,
-			expect:      nil,
-		},
-		{
-			name:        "online to unknown confirms immediately",
-			confirmed:   cmdlib.StatusOnline,
-			unconfirmed: cmdlib.StatusUnknown,
-			timestamp:   100,
-			now:         100,
-			expect:      ptr(cmdlib.StatusUnknown),
-		},
-		{
-			name:        "offline to unknown confirms immediately",
-			confirmed:   cmdlib.StatusOffline,
-			unconfirmed: cmdlib.StatusUnknown,
-			timestamp:   100,
-			now:         100,
-			expect:      ptr(cmdlib.StatusUnknown),
-		},
-		{
-			name:        "same status online no change",
-			confirmed:   cmdlib.StatusOnline,
-			unconfirmed: cmdlib.StatusOnline,
-			timestamp:   100,
-			now:         105,
-			expect:      nil,
-		},
-		{
-			name:        "same status offline no change",
-			confirmed:   cmdlib.StatusOffline,
-			unconfirmed: cmdlib.StatusOffline,
-			timestamp:   100,
-			now:         105,
-			expect:      nil,
-		},
+		{"offline to online confirms at its threshold", offline, online, now - onlineSeconds, true},
+		{"offline to online waits under its threshold", offline, online, now - onlineSeconds + 1, false},
+		{"online to offline confirms at its threshold", online, offline, now - offlineSeconds, true},
+		{"online to offline waits under its threshold", online, offline, now - offlineSeconds + 1, false},
+		{"online to unknown confirms immediately", online, unknown, now, true},
+		{"offline to unknown confirms immediately", offline, unknown, now, true},
+		{"same status online no change", online, online, 100, false},
+		{"same status offline no change", offline, offline, 100, false},
+		{"same status unknown no change", unknown, unknown, 100, false},
+	}
+	db := newTestDB(t)
+	var want []ConfirmedStatusChange
+	for _, tt := range tests {
+		id := insertStreamerRow(db.Database, Streamer{
+			Nickname:             tt.name,
+			ConfirmedStatus:      tt.confirmed,
+			UnconfirmedStatus:    tt.unconfirmed,
+			UnconfirmedTimestamp: tt.timestamp,
+		})
+		if tt.wantChange {
+			want = append(want, ConfirmedStatusChange{
+				StreamerID: id,
+				Nickname:   tt.name,
+				Status:     tt.unconfirmed,
+				PrevStatus: tt.confirmed,
+				Timestamp:  now,
+			})
+		}
 	}
 
+	changes := db.ConfirmStatusChanges(now, onlineSeconds, offlineSeconds)
+
+	// The statement sets no order, and ids ascend with the rows
+	slices.SortFunc(changes, func(x, y ConfirmedStatusChange) int { return cmp.Compare(x.StreamerID, y.StreamerID) })
+	if !reflect.DeepEqual(changes, want) {
+		t.Errorf("confirmed %+v, want %+v", changes, want)
+	}
+	// Nothing left to confirm, and no temp table left on the connection
+	if again := db.ConfirmStatusChanges(now, onlineSeconds, offlineSeconds); len(again) != 0 {
+		t.Errorf("confirmed %+v again, want none", again)
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			db := newTestDB(t)
-			defer db.terminate()
-
-			// Set up background streamers that should remain unchanged
-			insertStreamerRow(db.Database, Streamer{
-				Nickname:             "always_online",
-				ConfirmedStatus:      cmdlib.StatusOnline,
-				UnconfirmedStatus:    cmdlib.StatusOnline,
-				UnconfirmedTimestamp: 100,
-			})
-			insertStreamerRow(db.Database, Streamer{
-				Nickname:             "always_offline",
-				ConfirmedStatus:      cmdlib.StatusOffline,
-				UnconfirmedStatus:    cmdlib.StatusOffline,
-				UnconfirmedTimestamp: 100,
-			})
-			insertStreamerRow(db.Database, Streamer{
-				Nickname:             "always_unknown",
-				ConfirmedStatus:      cmdlib.StatusUnknown,
-				UnconfirmedStatus:    cmdlib.StatusUnknown,
-				UnconfirmedTimestamp: 100,
-			})
-			insertStreamerRow(db.Database, Streamer{
-				Nickname:             "ch",
-				ConfirmedStatus:      tt.confirmed,
-				UnconfirmedStatus:    tt.unconfirmed,
-				UnconfirmedTimestamp: tt.timestamp,
-			})
-
-			// Online confirms at once, offline after 5 seconds
-			changes := db.ConfirmStatusChanges(tt.now, 0, 5)
-
-			if tt.expect == nil {
-				if len(changes) != 0 {
-					t.Errorf("expected no confirmation, got %v", changes)
-				}
-			} else {
-				if len(changes) != 1 || changes[0].Status != *tt.expect {
-					t.Errorf("expected %v confirmation, got %v", *tt.expect, changes)
-				}
+			wantConfirmed := tt.confirmed
+			if tt.wantChange {
+				wantConfirmed = tt.unconfirmed
 			}
-
-			// Verify background streamers were not affected
-			if s := db.MustInt("select confirmed_status from streamers where nickname = $1", "always_online"); s != int(cmdlib.StatusOnline) {
-				t.Errorf("always_online confirmed_status was affected, got %v", s)
-			}
-			if s := db.MustInt("select confirmed_status from streamers where nickname = $1", "always_offline"); s != int(cmdlib.StatusOffline) {
-				t.Errorf("always_offline confirmed_status was affected, got %v", s)
-			}
-			if s := db.MustInt("select confirmed_status from streamers where nickname = $1", "always_unknown"); s != int(cmdlib.StatusUnknown) {
-				t.Errorf("always_unknown confirmed_status was affected, got %v", s)
+			if got := db.MaybeStreamer(tt.name).ConfirmedStatus; got != wantConfirmed {
+				t.Errorf("confirmed_status = %v, want %v", got, wantConfirmed)
 			}
 		})
 	}
@@ -587,7 +530,6 @@ func TestStatusConfirmations(t *testing.T) {
 func TestAddUserReportsCreation(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 
 	// Each step acts on what the steps before it left
 	steps := []struct {
@@ -607,15 +549,16 @@ func TestAddUserReportsCreation(t *testing.T) {
 	}
 	ids := map[int64]UserID{}
 	for _, tt := range steps {
+		id, created := db.AddUser(tt.chatID, tt.maxSubs, tt.now, tt.chatType)
+		known, wasKnown := ids[tt.chatID]
+		ids[tt.chatID] = id
 		t.Run(tt.name, func(t *testing.T) {
-			id, created := db.AddUser(tt.chatID, tt.maxSubs, tt.now, tt.chatType)
 			if created != tt.wantCreated {
 				t.Errorf("created = %v, want %v", created, tt.wantCreated)
 			}
-			if known, ok := ids[tt.chatID]; ok && id != known {
+			if wasKnown && id != known {
 				t.Errorf("id = %d, want the known %d", id, known)
 			}
-			ids[tt.chatID] = id
 			var maxSubs, createdAt int
 			var chatType string
 			db.MaybeRecord(
@@ -625,8 +568,12 @@ func TestAddUserReportsCreation(t *testing.T) {
 			if maxSubs != tt.wantMaxSubs || createdAt != tt.wantCreatedAt || chatType != tt.wantChatType {
 				t.Errorf(
 					"stored (%d, %d, %q), want (%d, %d, %q)",
-					maxSubs, createdAt, chatType,
-					tt.wantMaxSubs, tt.wantCreatedAt, tt.wantChatType)
+					maxSubs,
+					createdAt,
+					chatType,
+					tt.wantMaxSubs,
+					tt.wantCreatedAt,
+					tt.wantChatType)
 			}
 		})
 	}
@@ -635,26 +582,42 @@ func TestAddUserReportsCreation(t *testing.T) {
 func TestEnsureUser(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 
 	before := time.Now().Unix()
-	created := db.EnsureUser(1)
-	user, found := db.UserByID(created)
-	if !found || user.ChatID != 1 || user.MaxSubs != 5 || user.ChatType != nil || user.CreatedAt < before {
-		t.Errorf("created %+v, found: %v, want chat 1 at the default limit, untyped, stamped now", user, found)
-	}
-	if id := db.EnsureUser(1); id != created {
-		t.Errorf("EnsureUser of a created chat = %d, want %d", id, created)
-	}
 	known, _ := db.AddUser(2, 9, 1000, "group")
-	if id := db.EnsureUser(2); id != known {
-		t.Errorf("EnsureUser of a known chat = %d, want %d", id, known)
+
+	// Each step acts on what the steps before it left
+	steps := []struct {
+		name         string
+		chatID       int64
+		wantMaxSubs  int
+		wantChatType *string
+		minCreatedAt int64
+		maxCreatedAt int64
+	}{
+		{"a new chat gets the default limit, no type and the time", 1, 5, nil, before, math.MaxInt64},
+		{"the chat it created keeps its row", 1, 5, nil, before, math.MaxInt64},
+		{"a known chat keeps its row", 2, 9, new("group"), 1000, 1000},
 	}
-	if limit := db.MustInt("select max_subs from users where id = $1", int64(known)); limit != 9 {
-		t.Errorf("a known chat's limit = %d, want its own 9", limit)
-	}
-	if n := db.MustInt("select count(*) from users"); n != 2 {
-		t.Errorf("%d users, want 2", n)
+	ids := map[int64]UserID{2: known}
+	for _, tt := range steps {
+		id := db.EnsureUser(tt.chatID)
+		known, wasKnown := ids[tt.chatID]
+		ids[tt.chatID] = id
+		t.Run(tt.name, func(t *testing.T) {
+			if wasKnown && id != known {
+				t.Errorf("id = %d, want the known %d", id, known)
+			}
+			user, found := db.UserByID(id)
+			if !found || user.ChatID != tt.chatID || user.MaxSubs != tt.wantMaxSubs ||
+				!reflect.DeepEqual(user.ChatType, tt.wantChatType) ||
+				user.CreatedAt < tt.minCreatedAt || user.CreatedAt > tt.maxCreatedAt {
+				t.Errorf("user = %s, found: %v", asJSON(user), found)
+			}
+			if n := db.MustInt("select count(*) from users"); n != 2 {
+				t.Errorf("%d users, want 2", n)
+			}
+		})
 	}
 }
 
@@ -669,9 +632,11 @@ func userRow(d *Database, id UserID) map[string]any {
 func TestUserSettersWriteTheirColumn(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 	target, _ := db.AddUser(1, 5, 1000, "private")
 	bystander, _ := db.AddUser(2, 5, 1000, "private")
+	// So a step clearing these on every user shows
+	db.SetTimezone(bystander, "Asia/Tokyo")
+	db.SetAffiliateParams(bystander, map[string]string{"campaign": "b"})
 
 	// Each step acts on what the steps before it left
 	steps := []struct {
@@ -723,18 +688,12 @@ func TestUserSettersWriteTheirColumn(t *testing.T) {
 		},
 		{"SetAffiliateParams clears on empty", func() { db.SetAffiliateParams(target, nil) }, "affiliate_params", nil},
 		{"UpdateMemberCount", func() { db.UpdateMemberCount(target, 7) }, "member_count", 7.0},
-		{
-			"IncrementReports counts duplicates",
-			func() { db.IncrementReports([]UserID{target, target}) },
-			"reports",
-			2.0,
-		},
 	}
 	for _, tt := range steps {
+		wantTarget, wantBystander := userRow(db.Database, target), userRow(db.Database, bystander)
+		wantTarget[tt.column] = tt.want
+		tt.set()
 		t.Run(tt.name, func(t *testing.T) {
-			wantTarget, wantBystander := userRow(db.Database, target), userRow(db.Database, bystander)
-			wantTarget[tt.column] = tt.want
-			tt.set()
 			if got := userRow(db.Database, target); !reflect.DeepEqual(got, wantTarget) {
 				t.Errorf("target = %v, want %v", got, wantTarget)
 			}
@@ -748,7 +707,6 @@ func TestUserSettersWriteTheirColumn(t *testing.T) {
 func TestIncrementReportsPerUser(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 	a, _ := db.AddUser(1, 5, 0, "")
 	b, _ := db.AddUser(2, 5, 0, "")
 	c, _ := db.AddUser(3, 5, 0, "")
@@ -769,7 +727,6 @@ func TestIncrementReportsPerUser(t *testing.T) {
 func TestUserReadersReadEveryColumn(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 
 	// Each flag has its own pattern across the rows, so swapping any two shows
 	users := []User{
@@ -781,10 +738,10 @@ func TestUserReadersReadEveryColumn(t *testing.T) {
 			OfflineNotifications: true,
 			SilentMessages:       true,
 			CreatedAt:            31,
-			ChatType:             ptr("private"),
-			MemberCount:          ptr(41),
+			ChatType:             new("private"),
+			MemberCount:          new(41),
 			AffiliateParams:      map[string]string{"campaign": "a"},
-			Timezone:             ptr("Europe/Berlin"),
+			Timezone:             new("Europe/Berlin"),
 		},
 		{
 			ChatID:               2,
@@ -793,11 +750,11 @@ func TestUserReadersReadEveryColumn(t *testing.T) {
 			ShowImages:           true,
 			OfflineNotifications: true,
 			CreatedAt:            32,
-			ChatType:             ptr("group"),
-			MemberCount:          ptr(42),
+			ChatType:             new("group"),
+			MemberCount:          new(42),
 			AffiliateParams:      map[string]string{"campaign": "b"},
 			MemberSubscriptions:  true,
-			Timezone:             ptr("Asia/Tokyo"),
+			Timezone:             new("Asia/Tokyo"),
 		},
 		// No nullable column set
 		{
@@ -856,11 +813,11 @@ func TestUserReadersReadEveryColumn(t *testing.T) {
 		t.Run(reader.name, func(t *testing.T) {
 			for _, want := range users {
 				if got, found := reader.read(want); !found || !reflect.DeepEqual(got, want) {
-					t.Errorf("read %+v, found: %v, want %+v", got, found, want)
+					t.Errorf("read %s, found: %v, want %s", asJSON(got), found, asJSON(want))
 				}
 			}
 			if got, found := reader.read(User{UserID: 999, ChatID: 999}); found {
-				t.Errorf("read %+v of an absent user", got)
+				t.Errorf("read %s of an absent user", asJSON(got))
 			}
 		})
 	}
@@ -869,7 +826,6 @@ func TestUserReadersReadEveryColumn(t *testing.T) {
 func TestSubscriptionReads(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 	alice, _ := db.AddUser(1, 5, 0, "private")
 	bob, _ := db.AddUser(2, 5, 0, "private")
 	a := Streamer{
@@ -893,9 +849,10 @@ func TestSubscriptionReads(t *testing.T) {
 		PrevUnconfirmedStatus:    cmdlib.StatusOffline,
 		PrevUnconfirmedTimestamp: 700,
 	}
-	a.ID = insertStreamerRow(db.Database, a)
-	b.ID = insertStreamerRow(db.Database, b)
+	// Out of nickname order, so the rows' stored order can't stand in for a sort
 	c.ID = insertStreamerRow(db.Database, c)
+	b.ID = insertStreamerRow(db.Database, b)
+	a.ID = insertStreamerRow(db.Database, a)
 	insertStreamerRow(db.Database, Streamer{Nickname: "nobody's", UnconfirmedStatus: cmdlib.StatusOnline})
 	// Added out of order, and with a nickname both subscribed and pending
 	db.AddSubscription(alice, b.ID, "ep1")
@@ -911,7 +868,7 @@ func TestSubscriptionReads(t *testing.T) {
 		name          string
 		endpoint      string
 		user          UserID
-		wantStreamers []Streamer
+		wantStatuses  []Streamer
 		wantNicknames []string
 		wantCount     int
 	}{
@@ -920,17 +877,19 @@ func TestSubscriptionReads(t *testing.T) {
 		{"bob on ep1", "ep1", bob, []Streamer{c}, []string{"c", "r"}, 2},
 		{"bob on ep2", "ep2", bob, nil, nil, 0},
 	}
+	// So a union hashes, as its own sort could stand in for the order by
+	db.MustExec("set enable_sort = off")
 	for _, tt := range lists {
 		t.Run(tt.name, func(t *testing.T) {
-			var wantIDs []Streamer
-			for _, s := range tt.wantStreamers {
-				wantIDs = append(wantIDs, Streamer{ID: s.ID, Nickname: s.Nickname})
+			var wantStreamers []Streamer
+			for _, s := range tt.wantStatuses {
+				wantStreamers = append(wantStreamers, Streamer{ID: s.ID, Nickname: s.Nickname})
 			}
-			if got := db.StreamersForUser(tt.endpoint, tt.user); !reflect.DeepEqual(got, wantIDs) {
-				t.Errorf("StreamersForUser = %+v, want %+v", got, wantIDs)
+			if got := db.StreamersForUser(tt.endpoint, tt.user); !reflect.DeepEqual(got, wantStreamers) {
+				t.Errorf("StreamersForUser = %+v, want %+v", got, wantStreamers)
 			}
-			if got := db.UnconfirmedStatusesForUser(tt.endpoint, tt.user); !reflect.DeepEqual(got, tt.wantStreamers) {
-				t.Errorf("UnconfirmedStatusesForUser = %+v, want %+v", got, tt.wantStreamers)
+			if got := db.UnconfirmedStatusesForUser(tt.endpoint, tt.user); !reflect.DeepEqual(got, tt.wantStatuses) {
+				t.Errorf("UnconfirmedStatusesForUser = %+v, want %+v", got, tt.wantStatuses)
 			}
 			if got := db.SubscribedOrPendingNicknames(tt.endpoint, tt.user); !reflect.DeepEqual(got, tt.wantNicknames) {
 				t.Errorf("SubscribedOrPendingNicknames = %v, want %v", got, tt.wantNicknames)
@@ -973,16 +932,18 @@ func TestSubscriptionReads(t *testing.T) {
 func TestRemoveSubscriptions(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 	alice, _ := db.AddUser(1, 5, 0, "private")
 	db.AddUser(2, 5, 0, "private")
 	db.addSub(1, "a", "ep1")
 	db.addSub(1, "b", "ep1")
 	db.addSub(1, "a", "ep2")
 	db.addSub(2, "a", "ep1")
+	db.addSub(2, "a", "ep2")
 	db.addPending(1, "p", "ep1")
+	db.addPending(1, "q", "ep1")
 	db.addPending(1, "p", "ep2")
 	db.addPending(2, "p", "ep1")
+	db.addPending(2, "p", "ep2")
 
 	subs := func() []string {
 		return db.MustStrings(`
@@ -1010,25 +971,25 @@ func TestRemoveSubscriptions(t *testing.T) {
 		{
 			"RemoveSubscription takes a subscription",
 			func() { db.RemoveSubscription(alice, "a", "ep1") },
-			[]string{"1 ep1 b", "1 ep2 a", "2 ep1 a"},
-			[]string{"1 ep1 p", "1 ep2 p", "2 ep1 p"},
+			[]string{"1 ep1 b", "1 ep2 a", "2 ep1 a", "2 ep2 a"},
+			[]string{"1 ep1 p", "1 ep1 q", "1 ep2 p", "2 ep1 p", "2 ep2 p"},
 		},
 		{
 			"RemoveSubscription takes a pending one",
 			func() { db.RemoveSubscription(alice, "p", "ep1") },
-			[]string{"1 ep1 b", "1 ep2 a", "2 ep1 a"},
-			[]string{"1 ep2 p", "2 ep1 p"},
+			[]string{"1 ep1 b", "1 ep2 a", "2 ep1 a", "2 ep2 a"},
+			[]string{"1 ep1 q", "1 ep2 p", "2 ep1 p", "2 ep2 p"},
 		},
 		{
 			"RemoveAllSubscriptions takes one endpoint of one user",
 			func() { db.RemoveAllSubscriptions(alice, "ep2") },
-			[]string{"1 ep1 b", "2 ep1 a"},
-			[]string{"2 ep1 p"},
+			[]string{"1 ep1 b", "2 ep1 a", "2 ep2 a"},
+			[]string{"1 ep1 q", "2 ep1 p", "2 ep2 p"},
 		},
 	}
 	for _, tt := range steps {
+		tt.act()
 		t.Run(tt.name, func(t *testing.T) {
-			tt.act()
 			if got := subs(); !reflect.DeepEqual(got, tt.wantSubs) {
 				t.Errorf("subscriptions = %q, want %q", got, tt.wantSubs)
 			}
@@ -1043,7 +1004,6 @@ func TestRemoveSubscriptions(t *testing.T) {
 func TestPendingSubscriptionChecks(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 	alice, _ := db.AddUser(1, 5, 0, "private")
 	bob, _ := db.AddUser(-2, 5, 0, "group")
 	aliceOnA := PendingSubscription{
@@ -1106,8 +1066,8 @@ func TestPendingSubscriptionChecks(t *testing.T) {
 		return subs
 	}
 	for _, tt := range steps {
+		tt.act()
 		t.Run(tt.name, func(t *testing.T) {
-			tt.act()
 			if got := db.UnconfirmedSubs(); !reflect.DeepEqual(got, tt.wantUnconfirmed) {
 				t.Errorf("UnconfirmedSubs = %v, want %v", got, tt.wantUnconfirmed)
 			}
@@ -1130,7 +1090,6 @@ func TestPendingSubscriptionChecks(t *testing.T) {
 func TestStreamerReads(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 
 	// The confirmed status differs from the unconfirmed one, which alone decides these reads
 	a := Streamer{
@@ -1192,7 +1151,6 @@ func TestStreamerReads(t *testing.T) {
 func TestIncrementPollErrors(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 	for _, nickname := range []string{"a", "b", "c"} {
 		db.ensureStreamer(nickname)
 	}
@@ -1216,7 +1174,6 @@ func TestIncrementPollErrors(t *testing.T) {
 func TestUsersForStreamers(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 
 	// Each flag has its own pattern across the users, so swapping any two shows
 	users := []User{
@@ -1242,7 +1199,7 @@ func TestUsersForStreamers(t *testing.T) {
 
 	type recipient struct {
 		User
-		endpoint string
+		Endpoint string
 	}
 	blockedOnEP1 := users[0]
 	blockedOnEP1.Blocked = 3
@@ -1259,11 +1216,11 @@ func TestUsersForStreamers(t *testing.T) {
 			got[id] = append(got[id], recipient{u, gotEndpoints[id][i]})
 		}
 		slices.SortFunc(got[id], func(x, y recipient) int {
-			return cmp.Or(cmp.Compare(x.ChatID, y.ChatID), cmp.Compare(x.endpoint, y.endpoint))
+			return cmp.Or(cmp.Compare(x.ChatID, y.ChatID), cmp.Compare(x.Endpoint, y.Endpoint))
 		})
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("recipients = %+v, want %+v", got, want)
+		t.Errorf("recipients = %s, want %s", asJSON(got), asJSON(want))
 	}
 }
 
@@ -1271,13 +1228,12 @@ func TestUsersForStreamers(t *testing.T) {
 func TestNotificationQueueStates(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
-	user, _ := db.AddUser(1, 5, 0, "private")
-	streamer := insertStreamerRow(db.Database, Streamer{Nickname: "a"})
+	userID, _ := db.AddUser(1, 5, 0, "private")
+	streamerID := insertStreamerRow(db.Database, Streamer{Nickname: "a"})
 	db.StoreNotifications([]Notification{
-		{Endpoint: "ep", UserID: user, StreamerID: &streamer},
-		{Endpoint: "ep", UserID: user, StreamerID: &streamer},
-		{Endpoint: "ep", UserID: user, StreamerID: &streamer},
+		{Endpoint: "ep", UserID: userID, StreamerID: &streamerID},
+		{Endpoint: "ep", UserID: userID, StreamerID: &streamerID},
+		{Endpoint: "ep", UserID: userID, StreamerID: &streamerID},
 	})
 	ids := db.MustInts("select id from notification_queue order by id")
 	first, second, third := ids[0], ids[1], ids[2]
@@ -1307,12 +1263,12 @@ func TestNotificationQueueStates(t *testing.T) {
 		},
 	}
 	for _, tt := range steps {
+		tt.act()
+		var fetched []int
+		for _, n := range db.NewNotifications() {
+			fetched = append(fetched, n.ID)
+		}
 		t.Run(tt.name, func(t *testing.T) {
-			tt.act()
-			var fetched []int
-			for _, n := range db.NewNotifications() {
-				fetched = append(fetched, n.ID)
-			}
 			if !reflect.DeepEqual(fetched, tt.wantFetched) {
 				t.Errorf("fetched %v, want %v", fetched, tt.wantFetched)
 			}
@@ -1327,7 +1283,6 @@ func TestNotificationQueueStates(t *testing.T) {
 func TestSentMessageLog(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 	a, _ := db.AddUser(1, 5, 0, "")
 	b, _ := db.AddUser(2, 5, 0, "")
 
@@ -1353,7 +1308,7 @@ func TestSentMessageLog(t *testing.T) {
 			name:      "a command is stored by name",
 			log:       func() { db.LogSentMessage(1000, a, 200, "ep", PriorityLow, 77, ReplyPacket, "add", 3, ImageUpload) },
 			timestamp: 1000,
-			want:      []row{{1000, a, 200, "ep", PriorityLow, 77, ReplyPacket, ptr("add"), 3, ImageUpload}},
+			want:      []row{{1000, a, 200, "ep", PriorityLow, 77, ReplyPacket, new("add"), 3, ImageUpload}},
 		},
 		{
 			name:      "no command is stored as null",
@@ -1399,7 +1354,7 @@ func TestSentMessageLog(t *testing.T) {
 				},
 				func() { got = append(got, r) })
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("sent_message_log = %+v, want %+v", got, tt.want)
+				t.Errorf("sent_message_log = %s, want %s", asJSON(got), asJSON(tt.want))
 			}
 		})
 	}
@@ -1408,7 +1363,6 @@ func TestSentMessageLog(t *testing.T) {
 func TestReceivedMessageLog(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 	user, _ := db.AddUser(1, 5, 0, "")
 
 	tests := []struct {
@@ -1417,7 +1371,7 @@ func TestReceivedMessageLog(t *testing.T) {
 		command   string
 		want      *string
 	}{
-		{"a command is stored by name", 1000, "start", ptr("start")},
+		{"a command is stored by name", 1000, "start", new("start")},
 		{"no command is stored as null", 2000, "", nil},
 	}
 	for _, tt := range tests {
@@ -1431,38 +1385,43 @@ func TestReceivedMessageLog(t *testing.T) {
 				QueryParams{tt.timestamp},
 				ScanTo{&endpoint, &userID, &command})
 			if !found || endpoint != "ep" || userID != user || !reflect.DeepEqual(command, tt.want) {
-				t.Errorf("stored (%q, %d, %v), found: %v, want command %v", endpoint, userID, command, found, tt.want)
+				t.Errorf(
+					"stored (%q, %d, %s), found: %v, want command %s",
+					endpoint,
+					userID,
+					asJSON(command),
+					found,
+					asJSON(tt.want))
 			}
 		})
 	}
 }
 
-func TestReferralCounts(t *testing.T) {
+func TestReferrals(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 	alice, _ := db.AddUser(1, 5, 0, "private")
 	bob, _ := db.AddUser(2, 5, 0, "private")
 
 	if db.ReferralIDExists("alices") {
-		t.Error("a key nobody took exists")
+		t.Error("a referral id nobody took exists")
 	}
 	db.AddReferral(alice, "alices")
 	db.AddReferral(bob, "bobs")
 	if !db.ReferralIDExists("alices") {
-		t.Error("a taken key does not exist")
+		t.Error("a taken referral id does not exist")
 	}
 	if db.ReferralIDExists("nobodys") {
-		t.Error("a key nobody took exists after others were taken")
+		t.Error("a referral id nobody took exists after others were taken")
 	}
 	if id := db.ReferralID(alice); id == nil || *id != "alices" {
-		t.Errorf("ReferralID = %v, want alices", id)
+		t.Errorf("ReferralID = %s, want alices", asJSON(id))
 	}
 	if owner := db.UserByReferralID("alices"); owner == nil || *owner != alice {
-		t.Errorf("UserByReferralID = %v, want %d", owner, alice)
+		t.Errorf("UserByReferralID = %s, want %d", asJSON(owner), alice)
 	}
 	if n, found := db.referredUsers(1); !found || n != 0 {
-		t.Errorf("a new key's referred users = (%d, %v), want 0", n, found)
+		t.Errorf("a new referral id's referred users = (%d, %v), want 0", n, found)
 	}
 
 	// Each step acts on what the steps before it left
@@ -1477,8 +1436,8 @@ func TestReferralCounts(t *testing.T) {
 		{"bob counts apart", bob, 2, 1},
 	}
 	for _, tt := range steps {
+		db.IncrementReferredUsers(tt.user)
 		t.Run(tt.name, func(t *testing.T) {
-			db.IncrementReferredUsers(tt.user)
 			if n, found := db.referredUsers(1); !found || n != tt.wantAlice {
 				t.Errorf("alice's referred users = (%d, %v), want %d", n, found, tt.wantAlice)
 			}
@@ -1492,11 +1451,11 @@ func TestReferralCounts(t *testing.T) {
 func TestAddReferralEvent(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 	referrer, _ := db.AddUser(1, 5, 0, "private")
 	follower, _ := db.AddUser(2, 5, 0, "private")
 	// Past the users' ids, so the columns can't pass for one another
-	streamer := db.MustInt("insert into streamers (id, nickname) overriding system value values (77, 'a') returning id")
+	streamerID := db.MustInt(
+		"insert into streamers (id, nickname) overriding system value values (77, 'a') returning id")
 
 	tests := []struct {
 		name      string
@@ -1504,7 +1463,7 @@ func TestAddReferralEvent(t *testing.T) {
 		referrer  *UserID
 		streamer  *int
 	}{
-		{"a referrer and a streamer", 1000, &referrer, &streamer},
+		{"a referrer and a streamer", 1000, &referrer, &streamerID},
 		{"neither", 2000, nil, nil},
 	}
 	for _, tt := range tests {
@@ -1521,13 +1480,13 @@ func TestAddReferralEvent(t *testing.T) {
 				t.Fatal("no event stored at this timestamp")
 			}
 			if !reflect.DeepEqual(gotReferrer, tt.referrer) {
-				t.Errorf("referrer_user_id = %v, want %v", gotReferrer, tt.referrer)
+				t.Errorf("referrer_user_id = %s, want %s", asJSON(gotReferrer), asJSON(tt.referrer))
 			}
 			if gotFollower != follower {
 				t.Errorf("follower_user_id = %d, want %d", gotFollower, follower)
 			}
 			if !reflect.DeepEqual(gotStreamer, tt.streamer) {
-				t.Errorf("streamer_id = %v, want %v", gotStreamer, tt.streamer)
+				t.Errorf("streamer_id = %s, want %s", asJSON(gotStreamer), asJSON(tt.streamer))
 			}
 		})
 	}
@@ -1536,7 +1495,6 @@ func TestAddReferralEvent(t *testing.T) {
 func TestAddFeedback(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 	user, _ := db.AddUser(1, 5, 0, "private")
 
 	db.AddFeedback("ep", user, "hello", 1000)
@@ -1556,7 +1514,6 @@ func TestAddFeedback(t *testing.T) {
 func TestProfilePhotoHashes(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 
 	type photo struct{ endpoint, hash string }
 	// Each step acts on what the steps before it left
@@ -1582,8 +1539,8 @@ func TestProfilePhotoHashes(t *testing.T) {
 		},
 	}
 	for _, tt := range steps {
+		db.SetProfilePhotoHash(tt.set.endpoint, tt.set.hash)
 		t.Run(tt.name, func(t *testing.T) {
-			db.SetProfilePhotoHash(tt.set.endpoint, tt.set.hash)
 			for p, want := range tt.want {
 				if got := db.ProfilePhotoUploaded(p.endpoint, p.hash); got != want {
 					t.Errorf("ProfilePhotoUploaded(%q, %q) = %v, want %v", p.endpoint, p.hash, got, want)
@@ -1674,7 +1631,6 @@ func TestSearchStreamers(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			db := newTestDB(t)
-			defer db.terminate()
 			for _, nickname := range tt.nicknames {
 				db.MustExec("insert into nicknames (nickname) values ($1)", nickname)
 			}

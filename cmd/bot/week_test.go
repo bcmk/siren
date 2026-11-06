@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	texttemplate "text/template"
 
@@ -30,12 +31,20 @@ func siteTranslations(site, lang string) map[string][]string {
 	}}
 }
 
-// realTemplates loads the translation set a chaturbate endpoint serves in one language.
-func realTemplates(t *testing.T, lang string) *texttemplate.Template {
-	t.Helper()
-	_, tpl := cmdlib.LoadAllTranslations(realTranslations(lang))
-	// The bot binds command_enabled at startup, and every command is enabled here.
-	return tpl["test"].Funcs(texttemplate.FuncMap{"command_enabled": func(string) bool { return true }})
+// loadedRealTemplates parses each language's set once, for tests to share.
+var loadedRealTemplates = sync.OnceValue(func() map[string]*texttemplate.Template {
+	templates := map[string]*texttemplate.Template{}
+	for _, lang := range realLangs {
+		_, tpl := cmdlib.LoadAllTranslations(realTranslations(lang))
+		// The bot binds command_enabled at startup, and every command is enabled here.
+		templates[lang] = tpl["test"].Funcs(texttemplate.FuncMap{"command_enabled": func(string) bool { return true }})
+	}
+	return templates
+})
+
+// realTemplates returns the translation set a chaturbate endpoint serves in one language.
+func realTemplates(lang string) *texttemplate.Template {
+	return loadedRealTemplates()[lang]
 }
 
 // TestWeekChunkSeparatesRows pins the fragment that replaced a Go-side join:
@@ -45,7 +54,7 @@ func TestWeekChunkSeparatesRows(t *testing.T) {
 	for _, lang := range realLangs {
 		t.Run(lang, func(t *testing.T) {
 			t.Parallel()
-			tpl := realTemplates(t, lang)
+			tpl := realTemplates(lang)
 			chunk := func(rows ...tplData) string {
 				params := &renderParams{templates: tpl, key: "week_chunk", data: tplData{"rows": rows}}
 				return params.render("")
@@ -83,7 +92,7 @@ func TestWeekChunkSeparatesRows(t *testing.T) {
 func TestWeekTemplateRowCount(t *testing.T) {
 	t.Parallel()
 	row := regexp.MustCompile(`(?m)^[A-Z][a-z]: `)
-	tpl := realTemplates(t, "en")
+	tpl := realTemplates("en")
 	for _, tc := range []struct {
 		cells int
 		rows  int
@@ -118,9 +127,9 @@ func TestShowWeekNeverOnline(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	w.initCache()
-	w.tpl["test"] = realTemplates(t, "en")
+	w.tpl["test"] = realTemplates("en")
 	m := testMessage(w, 10, "week", 100)
-	id := insertStreamer(w.mockDB, db.Streamer{Nickname: "ghost_model"})
+	id := w.mockDB.insertStreamer(db.Streamer{Nickname: "ghost_model"}).ID
 	w.db.AddSubscription(m.userID, id, "test")
 	w.showWeek(m, "")
 	if n := w.sendQueue.Len(); n != 1 {
@@ -173,7 +182,7 @@ func TestEntryTemplatesRender(t *testing.T) {
 		for _, tc := range tests {
 			t.Run(lang+" "+tc.name, func(t *testing.T) {
 				t.Parallel()
-				params := &renderParams{templates: realTemplates(t, lang), key: tc.key, data: tc.data}
+				params := &renderParams{templates: realTemplates(lang), key: tc.key, data: tc.data}
 				out := params.render("")
 				for _, want := range tc.want {
 					if !strings.Contains(out, want) {

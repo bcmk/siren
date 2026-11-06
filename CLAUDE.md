@@ -45,6 +45,7 @@
   Always verify line/column points to the right identifier
   before running, and check at least one occurrence after.
   Run `go fmt` after `gopls rename`
+- Set `GOFLAGS=-tags=migrations` for `gopls rename`, or it leaves the tagged test files
 - After any rename, check naming consistency
 
 ## Code Style
@@ -355,6 +356,10 @@
   Startup runs any that were not, so a prebuild only ever moves work out of the downtime.
 - A release brings at most one prebuild group, with no ordinary migration ahead of it.
   `migrator --prebuild` refuses two unapplied prebuild groups.
+- Tests of an old migration or of the runner go behind the `migrations` build tag, and CI runs them.
+  Run them when changing a migration or the runner: `go test -tags migrations ./internal/db`.
+  `schema_snapshot_test.go` stays untagged,
+  as it alone catches a schema snapshot stale in a way no query notices, such as a missing index.
 - The bot owns its tables, and the logins that run migrations do not,
   so the migrator config gives every bot the role to create them as, and requires it
 - `ApplyMigrations`, which plain `cmd/migrator` and bot startup call,

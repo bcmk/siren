@@ -9,7 +9,6 @@ import (
 func TestSearchRankIsNotJITCompiled(t *testing.T) {
 	t.Parallel()
 	d := newTestDB(t)
-	defer d.terminate()
 	d.MustExec("set pg_stat_statements.track = top")
 	d.SearchStreamers("alice")
 	got := d.MustInts(`

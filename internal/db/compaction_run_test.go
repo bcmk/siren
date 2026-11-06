@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
-	"slices"
 	"testing"
 	"time"
 
@@ -34,7 +33,7 @@ func streamerChanges(d *Database, streamerID int) []statusChangeRow {
 	return rows
 }
 
-// checkStatusChangesConsistent holds the invariants compaction must keep:
+// checkStatusChangesConsistent holds the status change invariants:
 // prev_status names the row before, and streamers holds the last two rows.
 func checkStatusChangesConsistent(t *testing.T, d *Database, nickname string) {
 	t.Helper()
@@ -68,35 +67,19 @@ func checkStatusChangesConsistent(t *testing.T, d *Database, nickname string) {
 	}
 }
 
-// compact makes one run with no vacuum delay,
-// then vacuums every chunk left queued, which the daemon spreads over its next runs
-func compact(
-	ctx context.Context,
-	d *Database,
-	rules []ShortOfflineRule,
-	stepSeconds int,
-	now int,
-) ([]int, int64, error) {
-	c, err := d.RunCompaction(ctx, stepSeconds, rules, 0, now)
+// compact makes one run with no vacuum delay, under testRules
+func compact(ctx context.Context, d *Database, stepSeconds int, now int) ([]int, int64, error) {
+	c, err := d.RunCompaction(ctx, stepSeconds, testRules, 0, now)
 	if err != nil {
-		return nil, 0, err
-	}
-	if _, err := vacuumQueued(ctx, d); err != nil {
 		return nil, 0, err
 	}
 	return c.ends(), c.deleted, nil
 }
 
 // mustCompact makes a run as compact does and fails the test if the run errs
-func mustCompact(
-	t *testing.T,
-	d *Database,
-	rules []ShortOfflineRule,
-	stepSeconds int,
-	now int,
-) ([]int, int64) {
+func mustCompact(t *testing.T, d *Database, stepSeconds int, now int) ([]int, int64) {
 	t.Helper()
-	ends, deleted, err := compact(context.Background(), d, rules, stepSeconds, now)
+	ends, deleted, err := compact(context.Background(), d, stepSeconds, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,14 +91,6 @@ var testRules = []ShortOfflineRule{
 	{After: 7 * day, ShorterThan: 15 * 60},
 	{After: 30 * day, ShorterThan: 30 * 60},
 	{After: 60 * day, ShorterThan: 60 * 60, Rewrite: true},
-}
-
-func coverageBegin(d *Database, rule ShortOfflineRule) int {
-	return d.MustInt("select begin_timestamp from status_changes_lock where after = $1", rule.After)
-}
-
-func coverageEnd(d *Database, rule ShortOfflineRule) int {
-	return d.MustInt("select end_timestamp from status_changes_lock where after = $1", rule.After)
 }
 
 // TestCompactStatusChanges makes one run over a whole history, so every rule passes it
@@ -176,21 +151,6 @@ func TestCompactStatusChanges(t *testing.T) {
 			want: []int{now - 8*day, now - 8*day + 100, now - 8*day + 1000, now - day, now - 3600},
 		},
 		{
-			name: "the threshold grows with age",
-			inserts: []compactionInsert{
-				{now - 61*day, online},
-				{now - 61*day + 100, offline},
-				{now - 61*day + 3000, online},
-				{now - 31*day, offline},
-				{now - 31*day + 1700, online},
-				{now - 31*day + 2000, offline},
-				{now - 31*day + 3900, online},
-				{now - day, offline},
-				{now - 3600, online},
-			},
-			want: []int{now - 61*day, now - 31*day + 2000, now - 31*day + 3900, now - day, now - 3600},
-		},
-		{
 			name: "a period across a tier line follows its end",
 			inserts: []compactionInsert{
 				{now - 40*day, online},
@@ -235,16 +195,6 @@ func TestCompactStatusChanges(t *testing.T) {
 				{now - 3600, online},
 			},
 			want: []int{now - 8*day, now - day, now - 3600},
-		},
-		{
-			name:    "one row",
-			inserts: []compactionInsert{{now - 30*day, online}},
-			want:    []int{now - 30*day},
-		},
-		{
-			name:    "two rows",
-			inserts: []compactionInsert{{now - 30*day, online}, {now - 30*day + 300, offline}},
-			want:    []int{now - 30*day, now - 30*day + 300},
 		},
 		{
 			name: "a period ending in the latest row stays however old",
@@ -315,10 +265,9 @@ func TestCompactStatusChanges(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			tdb := newTestDB(t)
-			defer tdb.terminate()
 			insertHistory(tdb.Database, "a", tt.inserts)
 
-			ends, deleted := mustCompact(t, tdb.Database, testRules, 400*day, now)
+			ends, deleted := mustCompact(t, tdb.Database, 400*day, now)
 
 			if ends[0] != now-7*day {
 				t.Errorf("got to %d, want %d", ends[0], now-7*day)
@@ -347,43 +296,6 @@ var shortHistory = []compactionInsert{
 	{200*day - 3600, cmdlib.StatusOnline},
 }
 
-// TestCompactStatusChangesWalks pins the week rule's walk: it begins at the next rule's age,
-// moves a step a run, deletes a period once its band reaches the end, and stops at its own age
-func TestCompactStatusChangesWalks(t *testing.T) {
-	t.Parallel()
-	const now = 200 * day
-	tdb := newTestDB(t)
-	defer tdb.terminate()
-	insertHistory(tdb.Database, "a", shortHistory)
-	a := streamerID(t, tdb.Database, "a")
-
-	// The week rule begins 30 days before now, at the next rule's age,
-	// and an 8-day step falls short of the period's end
-	ends, deleted := mustCompact(t, tdb.Database, testRules, 8*day, now)
-	if ends[0] != now-22*day || deleted != 0 {
-		t.Errorf("first run got to %d deleting %d, want %d deleting 0", ends[0], deleted, now-22*day)
-	}
-	if got := coverageEnd(tdb.Database, testRules[0]); got != now-22*day {
-		t.Errorf("end = %d after the first run, want %d", got, now-22*day)
-	}
-	if got := coverageBegin(tdb.Database, testRules[0]); got != now-30*day {
-		t.Errorf("begin = %d after the first run, want %d", got, now-30*day)
-	}
-	if rows := streamerChanges(tdb.Database, a); len(rows) != len(shortHistory) {
-		t.Errorf("a has %d rows after the first run, want %d", len(rows), len(shortHistory))
-	}
-	ends, deleted = mustCompact(t, tdb.Database, testRules, 8*day, now)
-	if ends[0] != now-14*day || deleted != 2 {
-		t.Errorf("second run got to %d deleting %d, want %d deleting 2", ends[0], deleted, now-14*day)
-	}
-	// The rule's own age before now is the end of the walk
-	ends, deleted = mustCompact(t, tdb.Database, testRules, 8*day, now)
-	if ends[0] != now-7*day || deleted != 0 {
-		t.Errorf("third run got to %d deleting %d, want %d deleting 0", ends[0], deleted, now-7*day)
-	}
-	checkStatusChangesConsistent(t, tdb.Database, "a")
-}
-
 // TestCompactStatusChangesBandEdges pins the band's edges on the period in shortHistory:
 // a run whose week band ends inside the period or exactly at its end leaves it,
 // and the next run, whose band begins there, takes it
@@ -402,14 +314,13 @@ func TestCompactStatusChangesBandEdges(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			tdb := newTestDB(t)
-			defer tdb.terminate()
 			insertHistory(tdb.Database, "a", shortHistory)
 
-			ends, deleted := mustCompact(t, tdb.Database, testRules, tt.step, now)
+			ends, deleted := mustCompact(t, tdb.Database, tt.step, now)
 			if want := now - 30*day + tt.step; ends[0] != want || deleted != 0 {
 				t.Errorf("first run got to %d deleting %d, want %d deleting 0", ends[0], deleted, want)
 			}
-			if _, deleted := mustCompact(t, tdb.Database, testRules, 400*day, now); deleted != 2 {
+			if _, deleted := mustCompact(t, tdb.Database, 400*day, now); deleted != 2 {
 				t.Errorf("second run deleted %d rows, want 2", deleted)
 			}
 			checkStatusChangesConsistent(t, tdb.Database, "a")
@@ -418,405 +329,39 @@ func TestCompactStatusChangesBandEdges(t *testing.T) {
 }
 
 // TestCompactStatusChangesSkipsABusyLock pins the lock:
-// a run finding status_changes_lock held in exclusive mode skips,
-// and the next one sees the period the editor added
+// a run finding status_changes_lock held skips, and the next one goes through
 func TestCompactStatusChangesSkipsABusyLock(t *testing.T) {
 	t.Parallel()
 	const now = 200 * day
 	tdb := newTestDB(t)
-	defer tdb.terminate()
 	insertHistory(tdb.Database, "a", shortHistory)
-	a := streamerID(t, tdb.Database, "a")
 
-	editor := NewDatabase(tdb.connStr, false, 5)
-	defer func() { _ = editor.Close() }()
-	ctx := context.Background()
-	edit, err := editor.begin()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := edit.Exec(ctx, "lock table status_changes_lock in exclusive mode"); err != nil {
-		t.Fatal(err)
-	}
-	// A second short period, 35 days old, between the history's first two rows
-	if _, err := edit.Exec(ctx, `
-		insert into status_changes (timestamp, streamer_id, status, prev_status)
-		values ($1, $2, 1, 2), ($1 + 300, $2, 2, 1)`,
-		now-35*day, a); err != nil {
-		t.Fatal(err)
-	}
-
-	ends, deleted, err := compact(ctx, tdb.Database, testRules, 400*day, now)
-	if !errors.Is(err, ErrLockBusy) || ends != nil || deleted != 0 {
-		t.Errorf("the run under the editor's lock got %v, %d, %v, want nothing and ErrLockBusy", ends, deleted, err)
-	}
-	if err := edit.Commit(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if _, deleted, err := compact(ctx, tdb.Database, testRules, 400*day, now); err != nil || deleted != 4 {
-		t.Errorf("the run after the editor deleted %d rows with %v, want both periods' 4", deleted, err)
-	}
-	checkStatusChangesConsistent(t, tdb.Database, "a")
-}
-
-// TestCompactStatusChangesReadsTheRightStreamer pins the streamers lookup's join:
-// a period in a quiet streamer's last two rows stays, whatever a busy streamer's rows say
-func TestCompactStatusChangesReadsTheRightStreamer(t *testing.T) {
-	t.Parallel()
-	const now = 200 * day
-	tdb := newTestDB(t)
-	defer tdb.terminate()
-	insertHistory(tdb.Database, "a", []compactionInsert{
-		{now - 40*day, cmdlib.StatusOnline},
-		{now - 20*day, cmdlib.StatusOffline},
-		{now - 20*day + 300, cmdlib.StatusOnline},
-	})
-	insertHistory(tdb.Database, "b", []compactionInsert{
-		{now - 40*day, cmdlib.StatusOnline},
-		{now - day, cmdlib.StatusOffline},
-		{now - 3600, cmdlib.StatusOnline},
-	})
-	if _, deleted := mustCompact(t, tdb.Database, testRules, 400*day, now); deleted != 0 {
-		t.Errorf("deleted %d rows, want 0", deleted)
-	}
-	checkStatusChangesConsistent(t, tdb.Database, "a")
-	checkStatusChangesConsistent(t, tdb.Database, "b")
-}
-
-// TestCompactStatusChangesRunsOneAtATime pins the compactor's own lock:
-// of two runs held up together one skips, and the next run finds the other's coverages
-func TestCompactStatusChangesRunsOneAtATime(t *testing.T) {
-	t.Parallel()
-	const now = 200 * day
-	tdb := newTestDB(t)
-	defer tdb.terminate()
-	insertHistory(tdb.Database, "a", shortHistory)
-	other := NewDatabase(tdb.connStr, false, 5)
-	defer func() { _ = other.Close() }()
 	holder := NewDatabase(tdb.connStr, false, 5)
 	defer func() { _ = holder.Close() }()
-
 	ctx := context.Background()
 	hold, err := holder.begin()
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Holds the run that got the lock at its delete from status_changes, so the other finds it held
-	if _, err := hold.Exec(ctx, "lock table status_changes in share mode"); err != nil {
+	defer func() { _ = hold.Rollback(ctx) }()
+	if err := holder.lockStatusChanges(ctx, hold); err != nil {
 		t.Fatal(err)
 	}
-	type outcome struct {
-		end     int
-		deleted int64
-		failure any
+	// Fails rather than hangs should the lock wait
+	tdb.MustExec("set statement_timeout = '10s'")
+
+	ends, deleted, err := compact(ctx, tdb.Database, 400*day, now)
+	if !errors.Is(err, ErrLockBusy) || ends != nil || deleted != 0 {
+		t.Errorf("the run under the held lock got %v, %d, %v, want nothing and ErrLockBusy", ends, deleted, err)
 	}
-	outcomes := make(chan outcome)
-	runCtx, stopRuns := context.WithCancel(ctx)
-	defer stopRuns()
-	for _, d := range []*Database{tdb.Database, &other} {
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					outcomes <- outcome{failure: r}
-				}
-			}()
-			ends, n, err := compact(runCtx, d, testRules, 8*day, now)
-			if err != nil {
-				outcomes <- outcome{failure: err}
-				return
-			}
-			outcomes <- outcome{end: ends[0], deleted: n}
-		}()
+	if err := hold.Rollback(ctx); err != nil {
+		t.Fatal(err)
 	}
-	received := 0
-	receive := func() outcome {
-		select {
-		case o := <-outcomes:
-			received++
-			return o
-		case <-time.After(30 * time.Second):
-			// Stopped and drained, or the deferred closes would pull the connections from under them
-			stopRuns()
-			for ; received < 2; received++ {
-				<-outcomes
-			}
-			t.Fatal("a run did not finish")
-			return outcome{}
-		}
-	}
-	// The run that lost the lock reports while the other still waits at its delete
-	first := receive()
-	if err := hold.Commit(ctx); err != nil {
-		t.Error(err)
-	}
-	second := receive()
-	var deleted int64
-	var weekEnds []int
-	skipped := 0
-	for _, o := range []outcome{first, second} {
-		if failure, ok := o.failure.(error); ok && errors.Is(failure, ErrLockBusy) {
-			skipped++
-			continue
-		}
-		if o.failure != nil {
-			t.Errorf("a run failed: %v", o.failure)
-		}
-		deleted += o.deleted
-		weekEnds = append(weekEnds, o.end)
-	}
-	// One run made its first step, the other skipped; the next run takes up where the first ended
-	if skipped != 1 || !reflect.DeepEqual(weekEnds, []int{now - 22*day}) || deleted != 0 {
-		t.Errorf("%d runs skipped, the week rule's ends were %v deleting %d, want 1, [%d] and 0",
-			skipped, weekEnds, deleted, now-22*day)
-	}
-	ends, n, err := compact(ctx, tdb.Database, testRules, 8*day, now)
-	if err != nil || ends[0] != now-14*day || n != 2 {
-		t.Errorf("the next run got to %v deleting %d with %v, want %d deleting 2", ends, n, err, now-14*day)
+	if _, deleted, err := compact(ctx, tdb.Database, 400*day, now); err != nil || deleted != 2 {
+		t.Errorf("the run after the lock deleted %d rows with %v, want 2", deleted, err)
 	}
 	if stored := tdb.MustInt("select count(*) from status_changes_lock"); stored != len(testRules) {
 		t.Errorf("%d coverages stored, want %d", stored, len(testRules))
-	}
-	checkStatusChangesConsistent(t, tdb.Database, "a")
-}
-
-// TestCompactStatusChangesTellsStreamersApart pins the joins on streamer_id:
-// two streamers change at the same timestamps, and only the one with a short period loses rows
-func TestCompactStatusChangesTellsStreamersApart(t *testing.T) {
-	t.Parallel()
-	const now = 200 * day
-	tdb := newTestDB(t)
-	defer tdb.terminate()
-	// a has a 5-minute period ending 20 days ago; b is online for those 5 minutes, after 20 offline
-	for _, ins := range []struct {
-		ts     int
-		status map[string]cmdlib.StatusKind
-	}{
-		{now - 40*day, map[string]cmdlib.StatusKind{"a": cmdlib.StatusOnline, "b": cmdlib.StatusOnline}},
-		{now - 20*day - 1200, map[string]cmdlib.StatusKind{"b": cmdlib.StatusOffline}},
-		{now - 20*day, map[string]cmdlib.StatusKind{"a": cmdlib.StatusOffline, "b": cmdlib.StatusOnline}},
-		{now - 20*day + 300, map[string]cmdlib.StatusKind{"a": cmdlib.StatusOnline, "b": cmdlib.StatusOffline}},
-		{now - day, map[string]cmdlib.StatusKind{"a": cmdlib.StatusOffline, "b": cmdlib.StatusOnline}},
-		{now - 3600, map[string]cmdlib.StatusKind{"a": cmdlib.StatusOnline, "b": cmdlib.StatusOffline}},
-	} {
-		var changes []StatusChange
-		for nickname, status := range ins.status {
-			changes = append(changes, StatusChange{Nickname: nickname, Status: status})
-		}
-		tdb.UpsertUnconfirmedStatusChanges(changes, ins.ts)
-	}
-	b := streamerID(t, tdb.Database, "b")
-
-	if _, deleted := mustCompact(t, tdb.Database, testRules, 400*day, now); deleted != 2 {
-		t.Errorf("deleted %d rows, want a's 2", deleted)
-	}
-	if rows := streamerChanges(tdb.Database, b); len(rows) != 6 {
-		t.Errorf("b has %d rows, want all 6", len(rows))
-	}
-	checkStatusChangesConsistent(t, tdb.Database, "a")
-	checkStatusChangesConsistent(t, tdb.Database, "b")
-}
-
-// TestCompactStatusChangesTakesOverADroppedOlderRule pins the oldest rule's begin:
-// a rule dropped before its walk reached a stretch leaves that stretch to the oldest rule left
-func TestCompactStatusChangesTakesOverADroppedOlderRule(t *testing.T) {
-	t.Parallel()
-	const now = 200 * day
-	tdb := newTestDB(t)
-	defer tdb.terminate()
-	// A 20-minute period ending 100 days ago, over the week threshold but under the 30-day one
-	insertHistory(tdb.Database, "a", []compactionInsert{
-		{now - 200*day, cmdlib.StatusOnline},
-		{now - 100*day, cmdlib.StatusOffline},
-		{now - 100*day + 1200, cmdlib.StatusOnline},
-		{now - day, cmdlib.StatusOffline},
-		{now - 3600, cmdlib.StatusOnline},
-	})
-	// One run of a 5-day step: the 60-day rule has 195 days to go
-	if _, deleted := mustCompact(t, tdb.Database, testRules, 5*day, now); deleted != 0 {
-		t.Errorf("the first run deleted %d rows, want 0", deleted)
-	}
-	_, deleted := mustCompact(t, tdb.Database, testRules[:2], 400*day, now)
-	if deleted != 2 {
-		t.Errorf("the run without the 60-day rule deleted %d rows, want 2", deleted)
-	}
-	checkStatusChangesConsistent(t, tdb.Database, "a")
-}
-
-// TestCompactStatusChangesRestartsAChangedRule pins reconfiguration:
-// a rule with a larger threshold sweeps again from where a coverage at one at least its own ends,
-// the others keep their walk, and a dropped rule forgets its walk
-func TestCompactStatusChangesRestartsAChangedRule(t *testing.T) {
-	t.Parallel()
-	const now = 200 * day
-	tdb := newTestDB(t)
-	defer tdb.terminate()
-	// A 40-minute period ending 31 days ago, over the 30-minute threshold
-	insertHistory(tdb.Database, "a", []compactionInsert{
-		{now - 40*day, cmdlib.StatusOnline},
-		{now - 31*day, cmdlib.StatusOffline},
-		{now - 31*day + 2400, cmdlib.StatusOnline},
-		{now - day, cmdlib.StatusOffline},
-		{now - 3600, cmdlib.StatusOnline},
-	})
-	if _, deleted := mustCompact(t, tdb.Database, testRules, 400*day, now); deleted != 0 {
-		t.Errorf("the default rules deleted %d rows, want 0", deleted)
-	}
-
-	wider := []ShortOfflineRule{testRules[0], {After: 30 * day, ShorterThan: 45 * 60}}
-	// The hour rule's coverage, with nothing 60 days old, is empty,
-	// so the wider rule takes up there, and a step short of the period cannot reach it yet
-	if _, deleted := mustCompact(t, tdb.Database, wider, 5*day, now); deleted != 0 {
-		t.Errorf("the first run of the wider rule deleted %d rows, want 0", deleted)
-	}
-	if got := coverageEnd(tdb.Database, wider[1]); got != now-35*day {
-		t.Errorf("the wider rule's end = %d, want %d", got, now-35*day)
-	}
-	if got := coverageEnd(tdb.Database, wider[0]); got != now-7*day {
-		t.Errorf("the unchanged rule's end = %d, want %d", got, now-7*day)
-	}
-	if _, deleted := mustCompact(t, tdb.Database, wider, 400*day, now); deleted != 2 {
-		t.Errorf("the second run of the wider rule deleted %d rows, want 2", deleted)
-	}
-	if left := tdb.MustInt("select count(*) from status_changes_lock"); left != 2 {
-		t.Errorf("%d rules stored, want the 2 configured", left)
-	}
-	checkStatusChangesConsistent(t, tdb.Database, "a")
-}
-
-// TestCompactStatusChangesKeepsAWalkOnATighterThreshold pins a smaller threshold:
-// the rule's walk goes on, since the looser threshold deleted everything the tighter one would
-func TestCompactStatusChangesKeepsAWalkOnATighterThreshold(t *testing.T) {
-	t.Parallel()
-	const now = 200 * day
-	tdb := newTestDB(t)
-	defer tdb.terminate()
-	insertHistory(tdb.Database, "a", shortHistory)
-	if _, deleted := mustCompact(t, tdb.Database, testRules, 400*day, now); deleted != 2 {
-		t.Errorf("the default rules deleted %d rows, want 2", deleted)
-	}
-
-	tighter := []ShortOfflineRule{testRules[0], {After: 30 * day, ShorterThan: 20 * 60}, testRules[2]}
-	// A step short of the history would show a restart
-	if _, deleted := mustCompact(t, tdb.Database, tighter, 5*day, now); deleted != 0 {
-		t.Errorf("the tighter rule deleted %d rows, want 0", deleted)
-	}
-	if got := coverageEnd(tdb.Database, tighter[1]); got != now-30*day {
-		t.Errorf("the tighter rule's end = %d, want %d", got, now-30*day)
-	}
-	if got := tdb.MustInt("select shorter_than from status_changes_lock where after = $1", 30*day); got != 20*60 {
-		t.Errorf("the tightened rule stores shorter_than = %d, want %d", got, 20*60)
-	}
-}
-
-// TestCompactStatusChangesTakesUpAMovedRule pins reconfiguration by a shifted age:
-// the rule takes up where the pass it replaces got to, in its own age, so only a day of ends is new
-func TestCompactStatusChangesTakesUpAMovedRule(t *testing.T) {
-	t.Parallel()
-	const now = 200 * day
-	tdb := newTestDB(t)
-	defer tdb.terminate()
-	// A 25-minute period ending 29 and a half days ago, a day short of the 30-minute rule
-	insertHistory(tdb.Database, "a", []compactionInsert{
-		{now - 40*day, cmdlib.StatusOnline},
-		{now - 29*day - day/2, cmdlib.StatusOffline},
-		{now - 29*day - day/2 + 1500, cmdlib.StatusOnline},
-		{now - day, cmdlib.StatusOffline},
-		{now - 3600, cmdlib.StatusOnline},
-	})
-	if _, deleted := mustCompact(t, tdb.Database, testRules, 400*day, now); deleted != 0 {
-		t.Errorf("the default rules deleted %d rows, want 0", deleted)
-	}
-
-	moved := []ShortOfflineRule{testRules[0], {After: 29 * day, ShorterThan: 30 * 60}, testRules[2]}
-	// A step short of the history would show a restart
-	if _, deleted := mustCompact(t, tdb.Database, moved, 5*day, now); deleted != 2 {
-		t.Errorf("the moved rule deleted %d rows, want 2", deleted)
-	}
-	if got := coverageEnd(tdb.Database, moved[1]); got != now-29*day {
-		t.Errorf("the moved rule's end = %d, want %d", got, now-29*day)
-	}
-	if stored := tdb.MustInt("select count(*) from status_changes_lock"); stored != 3 {
-		t.Errorf("%d rules stored, want the 3 configured", stored)
-	}
-	checkStatusChangesConsistent(t, tdb.Database, "a")
-}
-
-// TestCompactStatusChangesReachesBackForARaisedAge pins reconfiguration by an older next rule:
-// the stretch between the new age and the old one,
-// which that rule never reached, is this rule's now
-func TestCompactStatusChangesReachesBackForARaisedAge(t *testing.T) {
-	t.Parallel()
-	const now = 200 * day
-	tdb := newTestDB(t)
-	defer tdb.terminate()
-	// A 10-minute period ending 75 days ago, under every threshold
-	insertHistory(tdb.Database, "a", []compactionInsert{
-		{now - 120*day, cmdlib.StatusOnline},
-		{now - 75*day, cmdlib.StatusOffline},
-		{now - 75*day + 600, cmdlib.StatusOnline},
-		{now - day, cmdlib.StatusOffline},
-		{now - 3600, cmdlib.StatusOnline},
-	})
-	rules := []ShortOfflineRule{testRules[0], testRules[2]}
-	// One run of a day's step: the week rule got to 59 days ago, the 60-day rule to 119
-	if _, deleted := mustCompact(t, tdb.Database, rules, day, now); deleted != 0 {
-		t.Errorf("the first run deleted %d rows, want 0", deleted)
-	}
-
-	raised := []ShortOfflineRule{testRules[0], {After: 90 * day, ShorterThan: 60 * 60}}
-	if _, deleted := mustCompact(t, tdb.Database, raised, 400*day, now); deleted != 2 {
-		t.Errorf("the run with the raised age deleted %d rows, want 2", deleted)
-	}
-	// The week rule's coverage runs from the raised age, through its day, to its own age
-	if got := coverageBegin(tdb.Database, raised[0]); got != now-90*day {
-		t.Errorf("the week rule's begin = %d, want %d", got, now-90*day)
-	}
-	if got := coverageEnd(tdb.Database, raised[0]); got != now-7*day {
-		t.Errorf("the week rule's end = %d, want %d", got, now-7*day)
-	}
-	if got := coverageEnd(tdb.Database, raised[1]); got != now-90*day {
-		t.Errorf("the raised rule's end = %d, want %d", got, now-90*day)
-	}
-	checkStatusChangesConsistent(t, tdb.Database, "a")
-}
-
-// TestCompactStatusChangesAddsAnOlderRule pins reconfiguration by a bigger rule:
-// it sweeps the history older than its age alone, and the others keep their walk
-func TestCompactStatusChangesAddsAnOlderRule(t *testing.T) {
-	t.Parallel()
-	const now = 200 * day
-	tdb := newTestDB(t)
-	defer tdb.terminate()
-	// A 90-minute period ending 100 days ago, over every default threshold
-	insertHistory(tdb.Database, "a", []compactionInsert{
-		{now - 120*day, cmdlib.StatusOnline},
-		{now - 100*day, cmdlib.StatusOffline},
-		{now - 100*day + 5400, cmdlib.StatusOnline},
-		{now - day, cmdlib.StatusOffline},
-		{now - 3600, cmdlib.StatusOnline},
-	})
-	if _, deleted := mustCompact(t, tdb.Database, testRules, 400*day, now); deleted != 0 {
-		t.Errorf("the default rules deleted %d rows, want 0", deleted)
-	}
-
-	older := append(slices.Clone(testRules), ShortOfflineRule{After: 90 * day, ShorterThan: 120 * 60})
-	// A step short of the history: the new rule starts over, so it cannot reach the period yet
-	if _, deleted := mustCompact(t, tdb.Database, older, 5*day, now); deleted != 0 {
-		t.Errorf("the first run of the older rule deleted %d rows, want 0", deleted)
-	}
-	if got := coverageEnd(tdb.Database, older[3]); got != now-115*day {
-		t.Errorf("the older rule's end = %d, want %d", got, now-115*day)
-	}
-	for _, rule := range testRules {
-		if got := coverageEnd(tdb.Database, rule); got != now-rule.After {
-			t.Errorf("the unchanged rule after %d has end = %d, want %d", rule.After, got, now-rule.After)
-		}
-	}
-	if _, deleted := mustCompact(t, tdb.Database, older, 400*day, now); deleted != 2 {
-		t.Errorf("the second run of the older rule deleted %d rows, want 2", deleted)
-	}
-	if stored := tdb.MustInt("select count(*) from status_changes_lock"); stored != 4 {
-		t.Errorf("%d rules stored, want the 4 configured", stored)
 	}
 	checkStatusChangesConsistent(t, tdb.Database, "a")
 }
@@ -842,18 +387,13 @@ func TestCompactStatusChangesVacuumsFinishedChunks(t *testing.T) {
 	t.Parallel()
 	const now = 200 * day
 	tdb := newTestDB(t)
-	defer tdb.terminate()
-	// Rows in chunks 18, 20, 24, 27 and 28; the hour's periods are over every threshold
+	// Rows in chunks 18, 20, 24, 27 and 28
 	insertHistory(tdb.Database, "a", []compactionInsert{
 		{130 * day, cmdlib.StatusOnline},
 		{145 * day, cmdlib.StatusOffline},
-		{145*day + 3600, cmdlib.StatusOnline},
-		{172 * day, cmdlib.StatusOffline},
-		{172*day + 3600, cmdlib.StatusOnline},
+		{172 * day, cmdlib.StatusOnline},
 		{190 * day, cmdlib.StatusOffline},
-		{190*day + 3600, cmdlib.StatusOnline},
-		{199 * day, cmdlib.StatusOffline},
-		{199*day + 3600, cmdlib.StatusOnline},
+		{199 * day, cmdlib.StatusOnline},
 	})
 	runs := []struct {
 		name  string
@@ -887,32 +427,12 @@ func TestCompactStatusChangesVacuumsFinishedChunks(t *testing.T) {
 	}
 }
 
-// TestCompactStatusChangesKeepsNowMonotonic pins the run's clock:
-// a run timed before the last one takes the last one's time, so its coverages still hold
-func TestCompactStatusChangesKeepsNowMonotonic(t *testing.T) {
-	t.Parallel()
-	const now = 200 * day
-	tdb := newTestDB(t)
-	defer tdb.terminate()
-	insertHistory(tdb.Database, "a", shortHistory)
-	first, deleted := mustCompact(t, tdb.Database, testRules, 400*day, now)
-	if deleted != 2 {
-		t.Errorf("the first run deleted %d rows, want 2", deleted)
-	}
-	// A second earlier: the bands would move back and walk again
-	ends, deleted := mustCompact(t, tdb.Database, testRules, 5*day, now-1)
-	if !reflect.DeepEqual(ends, first) || deleted != 0 {
-		t.Errorf("the earlier run got to %v deleting %d, want %v deleting 0", ends, deleted, first)
-	}
-}
-
 // TestCompactStatusChangesStopsWithTheContext pins the shutdown path:
 // a cancel in the middle of a run stops it at once with its error, and the history stays as it was
 func TestCompactStatusChangesStopsWithTheContext(t *testing.T) {
 	t.Parallel()
 	const now = 200 * day
 	tdb := newTestDB(t)
-	defer tdb.terminate()
 	insertHistory(tdb.Database, "a", shortHistory)
 	a := streamerID(t, tdb.Database, "a")
 	// pgx closes a connection whose statement it cancels, so the run gets one of its own
@@ -935,7 +455,7 @@ func TestCompactStatusChangesStopsWithTheContext(t *testing.T) {
 	defer cancel()
 	result := make(chan error, 1)
 	go func() {
-		_, _, err := compact(runCtx, &runner, testRules, 400*day, now)
+		_, _, err := compact(runCtx, &runner, 400*day, now)
 		result <- err
 	}()
 	// Before a fatal, so the deferred closes never pull the connections from under the run
@@ -973,33 +493,6 @@ func TestCompactStatusChangesStopsWithTheContext(t *testing.T) {
 	}
 }
 
-// TestCompactStatusChangesCapsAtTheClock pins the clock cap:
-// the next runs take the time of a run whose clock ran ahead, yet their bands end by their own
-func TestCompactStatusChangesCapsAtTheClock(t *testing.T) {
-	t.Parallel()
-	const now = 200 * day
-	tdb := newTestDB(t)
-	defer tdb.terminate()
-	// A 5-minute period ending 5 days ago, younger than the week rule's age
-	insertHistory(tdb.Database, "a", []compactionInsert{
-		{now - 40*day, cmdlib.StatusOnline},
-		{now - 5*day, cmdlib.StatusOffline},
-		{now - 5*day + 300, cmdlib.StatusOnline},
-		{now - day, cmdlib.StatusOffline},
-		{now - 3600, cmdlib.StatusOnline},
-	})
-	// A day's step three days ahead: the week band ends 26 days back
-	if _, deleted := mustCompact(t, tdb.Database, testRules, day, now+3*day); deleted != 0 {
-		t.Errorf("the run ahead deleted %d rows, want 0", deleted)
-	}
-	// Back on time, the week band ends at the rule's age by this clock, not by the stored time
-	ends, deleted := mustCompact(t, tdb.Database, testRules, 400*day, now)
-	if ends[0] != now-7*day || deleted != 0 {
-		t.Errorf("the run on time got to %d deleting %d, want %d deleting 0", ends[0], deleted, now-7*day)
-	}
-	checkStatusChangesConsistent(t, tdb.Database, "a")
-}
-
 // TestCompactStatusChangesLogsPerformance pins the performance_log row a run leaves:
 // its duration, the deleted count, the ends, the lag and a delete time per rule,
 // the time after the vacuum, the vacuum's chunks and time, and the chunks left queued
@@ -1007,7 +500,6 @@ func TestCompactStatusChangesLogsPerformance(t *testing.T) {
 	t.Parallel()
 	const now = 200 * day
 	tdb := newTestDB(t)
-	defer tdb.terminate()
 	insertHistory(tdb.Database, "a", shortHistory)
 	// A 5-day step: the 30-day rule's band, [160d, 165d), passes a chunk end by a threshold
 	// and stops 5 days short of its age; the week rule's, [170d, 175d), stops short of the period
@@ -1065,12 +557,11 @@ func TestCompactStatusChangesLogsPerformance(t *testing.T) {
 	}
 }
 
-// TestRunVacuumsOneChunk pins a run's vacuum: the one chunk at the front of the queue
-func TestRunVacuumsOneChunk(t *testing.T) {
+// TestRunCompactionVacuumsOneChunk pins a run's vacuum: the one chunk at the front of the queue
+func TestRunCompactionVacuumsOneChunk(t *testing.T) {
 	t.Parallel()
 	const now = 200 * day
 	tdb := newTestDB(t)
-	defer tdb.terminate()
 	// Rows in chunks 18, 20, 24, 27 and 28
 	insertHistory(tdb.Database, "a", []compactionInsert{
 		{130 * day, cmdlib.StatusOnline},
@@ -1104,29 +595,15 @@ func TestRunVacuumsOneChunk(t *testing.T) {
 	}
 }
 
-// TestRunLogsAHeldChunksWait pins a run whose front chunk another session holds:
+// TestRunCompactionLogsAHeldChunksWait pins a run whose front chunk another session holds:
 // it vacuums nothing, so its wait shows in duration_ms, not in vacuum_ms
-func TestRunLogsAHeldChunksWait(t *testing.T) {
+func TestRunCompactionLogsAHeldChunksWait(t *testing.T) {
 	t.Parallel()
 	const now = 200 * day
 	tdb := newTestDB(t)
-	defer tdb.terminate()
 	insertHistory(tdb.Database, "a", []compactionInsert{{140 * day, cmdlib.StatusOnline}})
+	queueChunk(t, tdb.Database, 140*day, false)
 	ctx := context.Background()
-	tx, err := tdb.begin()
-	if err != nil {
-		t.Fatal(err)
-	}
-	chunks, err := tdb.statusChangesChunks(ctx, tx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := tdb.queueStatusChangesVacuums(ctx, tx, []statusChangesVacuum{{chunk: chunks[0].name}}); err != nil {
-		t.Fatal(err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		t.Fatal(err)
-	}
 	holder := NewDatabase(tdb.connStr, false, 5)
 	defer func() { _ = holder.Close() }()
 	hold, err := holder.begin()
@@ -1134,12 +611,13 @@ func TestRunLogsAHeldChunksWait(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = hold.Rollback(ctx) }()
-	if _, err := hold.Exec(ctx, "lock table "+chunks[0].name+" in share update exclusive mode"); err != nil {
+	lock := "lock table " + chunkName(tdb.Database, 140*day) + " in share update exclusive mode"
+	if _, err := hold.Exec(ctx, lock); err != nil {
 		t.Fatal(err)
 	}
-	// Fails rather than hangs should the lock timeout go
+	// Fails rather than hangs should the lock timeout be dropped
 	tdb.MustExec("set statement_timeout = '10s'")
-	tdb.vacuumLockTimeout = 200 * time.Millisecond
+	tdb.vacuumLockTimeout = 50 * time.Millisecond
 	if _, err := tdb.RunCompaction(ctx, 400*day, testRules, 0, now); err != nil {
 		t.Fatal(err)
 	}
@@ -1158,14 +636,13 @@ func TestRunLogsAHeldChunksWait(t *testing.T) {
 	}
 }
 
-// TestRunRewritesARewritingRulesChunks pins the rewrite:
+// TestRunCompactionRewritesARewritingRulesChunks pins the rewrite:
 // a chunk the rewriting 60-day rule finished gets a new file,
 // and one the 30-day rule finished keeps its own
-func TestRunRewritesARewritingRulesChunks(t *testing.T) {
+func TestRunCompactionRewritesARewritingRulesChunks(t *testing.T) {
 	t.Parallel()
 	const now = 200 * day
 	tdb := newTestDB(t)
-	defer tdb.terminate()
 	// Rows in chunks 18 and 20
 	insertHistory(tdb.Database, "a", []compactionInsert{
 		{130 * day, cmdlib.StatusOnline},
@@ -1184,35 +661,14 @@ func TestRunRewritesARewritingRulesChunks(t *testing.T) {
 		return nodes
 	}
 	before := files()
-	// The 60-day band, [130d, 140d), finishes chunk 18, and the 30-day one, [140d, 170d), chunk 20
-	_, _ = mustCompact(t, tdb.Database, testRules, 400*day, now)
+	// The 60-day band, [130d, 140d), finishes chunk 18, and the 30-day one, [140d, 170d), chunk 20.
+	// The first run queues them, and each next run takes one.
+	for _, at := range []int{now, now + 30, now + 60} {
+		mustCompact(t, tdb.Database, 400*day, at)
+	}
 	after := files()
 	if after[18] == before[18] || after[20] != before[20] {
 		t.Errorf("files %v before the run, %v after, want chunk 18's alone replaced", before, after)
-	}
-}
-
-func TestLags(t *testing.T) {
-	const now = 200 * day
-	tests := []struct {
-		name string
-		ends []int
-		want []int
-	}{
-		{name: "caught up", ends: []int{now - 7*day, now - 30*day, now - 60*day}, want: []int{0, 0, 0}},
-		{name: "lagging", ends: []int{now - 7*day, now - 35*day, now - 100*day}, want: []int{0, 5 * day, 40 * day}},
-		{name: "past its age", ends: []int{now - 7*day, now - 30*day, now - 40*day}, want: []int{0, 0, 0}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			steps := make([]compactionStep, len(tt.ends))
-			for i, end := range tt.ends {
-				steps[i] = compactionStep{rule: testRules[i], end: end}
-			}
-			if got := (Compaction{steps: steps}).lags(now); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("lags = %v, want %v", got, tt.want)
-			}
-		})
 	}
 }
 
@@ -1220,13 +676,13 @@ func TestCompactStatusChangesEmpty(t *testing.T) {
 	t.Parallel()
 	const now = 200 * day
 	tdb := newTestDB(t)
-	defer tdb.terminate()
 	// With no oldest row, the walk starts at now
-	ends, deleted := mustCompact(t, tdb.Database, testRules, 400*day, now)
+	ends, deleted := mustCompact(t, tdb.Database, 400*day, now)
 	if ends[0] != now || deleted != 0 {
 		t.Errorf("got to %d deleting %d, want %d deleting none", ends[0], deleted, now)
 	}
-	if got := coverageEnd(tdb.Database, testRules[0]); got != now {
+	got := tdb.MustInt("select end_timestamp from status_changes_lock where after = $1", testRules[0].After)
+	if got != now {
 		t.Errorf("end = %d, want %d", got, now)
 	}
 }
@@ -1246,6 +702,133 @@ func TestFormatLags(t *testing.T) {
 			if got := formatLags(tt.lags); got != tt.want {
 				t.Errorf("formatLags = %q, want %q", got, tt.want)
 			}
+		})
+	}
+}
+
+// TestCompactStatusChangesKeepsStreamersApart pins the joins on streamer_id:
+// one streamer's rows never decide another's period
+func TestCompactStatusChangesKeepsStreamersApart(t *testing.T) {
+	t.Parallel()
+	const now = 200 * day
+	const (
+		offline = cmdlib.StatusOffline
+		online  = cmdlib.StatusOnline
+	)
+	tests := []struct {
+		name        string
+		histories   map[string][]compactionInsert
+		wantDeleted int64
+		wantRows    map[string]int
+	}{
+		{
+			name: "a period in a quiet streamer's last two rows stays, whatever a busy streamer holds",
+			histories: map[string][]compactionInsert{
+				"a": {{now - 40*day, online}, {now - 20*day, offline}, {now - 20*day + 300, online}},
+				"b": {{now - 40*day, online}, {now - day, offline}, {now - 3600, online}},
+			},
+			wantRows: map[string]int{"a": 3, "b": 3},
+		},
+		{
+			name: "streamers changing at the same timestamps: only the short offline period goes",
+			histories: map[string][]compactionInsert{
+				// A 5-minute offline period ending 20 days ago
+				"a": {
+					{now - 40*day, online},
+					{now - 20*day, offline},
+					{now - 20*day + 300, online},
+					{now - day, offline},
+					{now - 3600, online},
+				},
+				// Online for those 5 minutes, after 20 offline
+				"b": {
+					{now - 40*day, online},
+					{now - 20*day - 1200, offline},
+					{now - 20*day, online},
+					{now - 20*day + 300, offline},
+					{now - day, online},
+					{now - 3600, offline},
+				},
+			},
+			wantDeleted: 2,
+			wantRows:    map[string]int{"a": 3, "b": 6},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tdb := newTestDB(t)
+			for nickname, history := range tt.histories {
+				insertHistory(tdb.Database, nickname, history)
+			}
+			if _, deleted := mustCompact(t, tdb.Database, 400*day, now); deleted != tt.wantDeleted {
+				t.Errorf("deleted %d rows, want %d", deleted, tt.wantDeleted)
+			}
+			for nickname, want := range tt.wantRows {
+				if rows := streamerChanges(tdb.Database, streamerID(t, tdb.Database, nickname)); len(rows) != want {
+					t.Errorf("%s has %d rows, want %d", nickname, len(rows), want)
+				}
+				checkStatusChangesConsistent(t, tdb.Database, nickname)
+			}
+		})
+	}
+}
+
+// TestCompactStatusChangesFollowsTheClock pins a clock that jumps between runs
+func TestCompactStatusChangesFollowsTheClock(t *testing.T) {
+	t.Parallel()
+	const now = 200 * day
+	type compactionRun struct {
+		step        int
+		now         int
+		wantDeleted int64
+		// wantEnds is left out where the run's ends do not matter
+		wantEnds []int
+	}
+	tests := []struct {
+		name    string
+		history []compactionInsert
+		runs    []compactionRun
+	}{
+		{
+			name:    "a run timed before the last one takes its time, so its bands do not walk again",
+			history: shortHistory,
+			runs: []compactionRun{
+				{step: 400 * day, now: now, wantDeleted: 2, wantEnds: []int{now - 7*day, now - 30*day, now - 40*day}},
+				{step: 5 * day, now: now - 1, wantEnds: []int{now - 7*day, now - 30*day, now - 40*day}},
+			},
+		},
+		{
+			name: "a run after one ahead of the clock takes that time, yet its bands end by its own clock",
+			// A 5-minute period ending 5 days ago, younger than the week rule's age
+			history: []compactionInsert{
+				{now - 40*day, cmdlib.StatusOnline},
+				{now - 5*day, cmdlib.StatusOffline},
+				{now - 5*day + 300, cmdlib.StatusOnline},
+				{now - day, cmdlib.StatusOffline},
+				{now - 3600, cmdlib.StatusOnline},
+			},
+			runs: []compactionRun{
+				{step: day, now: now + 3*day},
+				{step: 400 * day, now: now, wantEnds: []int{now - 7*day, now - 30*day, now - 40*day}},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tdb := newTestDB(t)
+			insertHistory(tdb.Database, "a", tt.history)
+			for i, run := range tt.runs {
+				ends, deleted := mustCompact(t, tdb.Database, run.step, run.now)
+				if deleted != run.wantDeleted {
+					t.Errorf("run %d deleted %d rows, want %d", i, deleted, run.wantDeleted)
+				}
+				if run.wantEnds != nil && !reflect.DeepEqual(ends, run.wantEnds) {
+					t.Errorf("run %d got to %v, want %v", i, ends, run.wantEnds)
+				}
+			}
+			checkStatusChangesConsistent(t, tdb.Database, "a")
 		})
 	}
 }

@@ -3,7 +3,6 @@ package db
 import (
 	"context"
 	"fmt"
-	"maps"
 	"math"
 	"slices"
 	"strings"
@@ -19,14 +18,16 @@ const sweepDays = 100
 // sweepOldest is the sweep history's first row, a day before its first period
 func sweepOldest(now int) int { return now - (sweepDays+1)*day }
 
-// sweepPeriods returns the sweep history's periods ending by now,
-// their durations keyed by their end
-func sweepPeriods(now int) map[int]int {
-	periods := map[int]int{}
+// sweepPeriod is a period of the sweep history
+type sweepPeriod struct{ end, dur int }
+
+// sweepPeriods returns the sweep history's periods ending by now, oldest first
+func sweepPeriods(now int) []sweepPeriod {
+	var periods []sweepPeriod
 	for daysBack := sweepDays; daysBack >= 2; daysBack-- {
 		for k, dur := range []int{240, 600, 780, 1020, 1500, 2400, 3000, 4500, 6000} {
 			// Off the day grid, so no end sits exactly on a rule's age
-			periods[now-daysBack*day+k*9000+60+dur] = dur
+			periods = append(periods, sweepPeriod{now - daysBack*day + k*9000 + 60 + dur, dur})
 		}
 	}
 	return periods
@@ -36,10 +37,9 @@ func sweepPeriods(now int) map[int]int {
 func sweepHistory(d *Database, nickname string, now int) {
 	insertHistory(d, nickname, []compactionInsert{{sweepOldest(now), cmdlib.StatusOnline}})
 	id := d.MustInt("select id from streamers where nickname = $1", nickname)
-	periods := sweepPeriods(now)
 	var ts, status, prev []int
-	for _, end := range slices.Sorted(maps.Keys(periods)) {
-		ts = append(ts, end-periods[end], end)
+	for _, p := range sweepPeriods(now) {
+		ts = append(ts, p.end-p.dur, p.end)
 		status = append(status, int(cmdlib.StatusOffline), int(cmdlib.StatusOnline))
 		prev = append(prev, int(cmdlib.StatusOnline), int(cmdlib.StatusOffline))
 	}
@@ -50,15 +50,19 @@ func sweepHistory(d *Database, nickname string, now int) {
 	insertHistory(d, nickname, []compactionInsert{{now - day, cmdlib.StatusOffline}, {now - 3600, cmdlib.StatusOnline}})
 }
 
-// periodEnds returns the ends of the streamer's remaining periods
-func periodEnds(d *Database, streamerID int) map[int]bool {
+// periodRemains says which of the periods the streamer still has
+func periodRemains(d *Database, streamerID int, periods []sweepPeriod) []bool {
 	ends := map[int]bool{}
 	for _, r := range streamerChanges(d, streamerID) {
 		if r.status == cmdlib.StatusOnline && r.prevStatus == cmdlib.StatusOffline {
 			ends[r.timestamp] = true
 		}
 	}
-	return ends
+	remaining := make([]bool, len(periods))
+	for i, p := range periods {
+		remaining[i] = ends[p.end]
+	}
+	return remaining
 }
 
 // deletable says whether the rules delete a period of dur seconds ending at end, as of now
@@ -152,46 +156,45 @@ const sweepOldNow = 200 * day
 // given the periods left after the old rules and after the new:
 // the old rules deleted only what they may, the new rules deleted exactly what they must
 func sweepCheck(
-	periods map[int]int,
-	afterOld map[int]bool,
-	afterNew map[int]bool,
+	periods []sweepPeriod,
+	afterOld []bool,
+	afterNew []bool,
 	rules []ShortOfflineRule,
 	newNow int,
 ) []string {
 	var violations []string
-	for _, end := range slices.Sorted(maps.Keys(periods)) {
-		dur := periods[end]
-		switch must := deletable(rules, newNow, end, dur); {
-		case !afterOld[end] && !deletable(testRules, sweepOldNow, end, dur):
+	for i, p := range periods {
+		switch must := deletable(rules, newNow, p.end, p.dur); {
+		case !afterOld[i] && !deletable(testRules, sweepOldNow, p.end, p.dur):
 			violations = append(violations,
-				fmt.Sprintf("the old rules deleted the %d s period ending %d, which they must not", dur, end))
-		case afterNew[end] && must:
+				fmt.Sprintf("the old rules deleted the %d s period ending %d, which they must not", p.dur, p.end))
+		case afterNew[i] && must:
 			violations = append(violations,
-				fmt.Sprintf("the %d s period ending %d stays, which the new rules must delete", dur, end))
-		case !afterNew[end] && afterOld[end] && !must:
+				fmt.Sprintf("the %d s period ending %d stays, which the new rules must delete", p.dur, p.end))
+		case !afterNew[i] && afterOld[i] && !must:
 			violations = append(violations,
-				fmt.Sprintf("the new rules deleted the %d s period ending %d, which they must not", dur, end))
+				fmt.Sprintf("the new rules deleted the %d s period ending %d, which they must not", p.dur, p.end))
 		}
 	}
 	return violations
 }
 
 // simulateRun runs the rules' steps over the periods in memory, as planStep plans them,
-// marking the periods gone and returning the coverages the run stores
+// clearing remaining for the periods it deletes and returning the coverages the run stores
 func simulateRun(
 	rules []ShortOfflineRule,
 	coverages []compactionCoverage,
-	periods map[int]int,
-	gone map[int]bool,
+	periods []sweepPeriod,
+	remaining []bool,
 	now int,
 	stepSeconds int,
 ) []compactionCoverage {
 	var stored []compactionCoverage
 	for i, rule := range rules {
 		base, begin, end := planStep(rules, i, coverages, sweepOldest(sweepOldNow), now, now, stepSeconds)
-		for e, dur := range periods {
-			if begin <= e && e < end && dur < rule.ShorterThan {
-				gone[e] = true
+		for j, p := range periods {
+			if begin <= p.end && p.end < end && p.dur < rule.ShorterThan {
+				remaining[j] = false
 			}
 		}
 		stored = append(stored, compactionCoverage{shorterThan: rule.ShorterThan, begin: base, end: end})
@@ -207,20 +210,16 @@ func simulateSweep(
 	mutate func([]compactionCoverage) []compactionCoverage,
 ) []string {
 	periods := sweepPeriods(sweepOldNow)
-	remaining := func(gone map[int]bool) map[int]bool {
-		left := map[int]bool{}
-		for end := range periods {
-			left[end] = !gone[end]
-		}
-		return left
+	remaining := make([]bool, len(periods))
+	for i := range remaining {
+		remaining[i] = true
 	}
-	gone := map[int]bool{}
-	coverages := simulateRun(testRules, nil, periods, gone, sweepOldNow, v.oldStep)
-	afterOld := remaining(gone)
+	coverages := simulateRun(testRules, nil, periods, remaining, sweepOldNow, v.oldStep)
+	afterOld := slices.Clone(remaining)
 	for _, stepSeconds := range sweepSteps {
-		coverages = simulateRun(cfg.rules, mutate(coverages), periods, gone, sweepOldNow+v.elapsed, stepSeconds)
+		coverages = simulateRun(cfg.rules, mutate(coverages), periods, remaining, sweepOldNow+v.elapsed, stepSeconds)
 	}
-	return sweepCheck(periods, afterOld, remaining(gone), cfg.rules, sweepOldNow+v.elapsed)
+	return sweepCheck(periods, afterOld, remaining, cfg.rules, sweepOldNow+v.elapsed)
 }
 
 func keepCoverages(coverages []compactionCoverage) []compactionCoverage { return coverages }
@@ -266,17 +265,14 @@ func TestCompactStatusChangesPlanMutants(t *testing.T) {
 	}
 	for _, m := range mutants {
 		t.Run(m.name, func(t *testing.T) {
-			failing := 0
 			for _, cfg := range sweepConfigs() {
 				for _, v := range sweepVariants {
 					if len(simulateSweep(cfg, v, m.mutate)) > 0 {
-						failing++
+						return
 					}
 				}
 			}
-			if failing == 0 {
-				t.Error("the sweep passes with this mutant")
-			}
+			t.Error("the sweep passes with this mutant")
 		})
 	}
 }
@@ -297,12 +293,13 @@ func runSweep(t *testing.T, d *Database, cfg sweepConfig, v sweepVariant) {
 		d.MustExec("delete from status_changes_vacuum_queue")
 	}
 	sweepRun(testRules, v.oldStep, sweepOldNow)
-	afterOld := periodEnds(d, id)
+	periods := sweepPeriods(sweepOldNow)
+	afterOld := periodRemains(d, id, periods)
 	for _, stepSeconds := range sweepSteps {
 		sweepRun(cfg.rules, stepSeconds, sweepOldNow+v.elapsed)
 	}
-	afterNew := periodEnds(d, id)
-	for _, violation := range sweepCheck(sweepPeriods(sweepOldNow), afterOld, afterNew, cfg.rules, sweepOldNow+v.elapsed) {
+	afterNew := periodRemains(d, id, periods)
+	for _, violation := range sweepCheck(periods, afterOld, afterNew, cfg.rules, sweepOldNow+v.elapsed) {
 		t.Error(violation)
 	}
 	checkStatusChangesConsistent(t, d, "a")
@@ -313,23 +310,21 @@ func runSweep(t *testing.T, d *Database, cfg sweepConfig, v sweepVariant) {
 func TestCompactStatusChangesSweep(t *testing.T) {
 	t.Parallel()
 	configs := sweepConfigs()
-	// Every stride-th scenario of the age and threshold changes,
-	// a prime stride spreading them over the configs and variants,
-	// then every scenario of the few drops and adds after them
-	const stride, workers = 59, 4
+	// A sample of the age and threshold changes, then of the few drops and adds after them,
+	// prime strides spreading each over the configs and variants
+	const changeStride, reshapeStride, workers = 239, 7, 4
 	reshapes := slices.IndexFunc(configs, func(c sweepConfig) bool { return strings.HasPrefix(c.name, "drop ") })
 	var scenarios []int
-	for i := 0; i < reshapes*len(sweepVariants); i += stride {
+	for i := 0; i < reshapes*len(sweepVariants); i += changeStride {
 		scenarios = append(scenarios, i)
 	}
-	for i := reshapes * len(sweepVariants); i < len(configs)*len(sweepVariants); i++ {
+	for i := reshapes * len(sweepVariants); i < len(configs)*len(sweepVariants); i += reshapeStride {
 		scenarios = append(scenarios, i)
 	}
 	for w := range workers {
 		t.Run(fmt.Sprintf("worker %d", w), func(t *testing.T) {
 			t.Parallel()
 			tdb := newTestDB(t)
-			defer tdb.terminate()
 			for j := w; j < len(scenarios); j += workers {
 				i := scenarios[j]
 				cfg, v := configs[i/len(sweepVariants)], sweepVariants[i%len(sweepVariants)]

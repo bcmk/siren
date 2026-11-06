@@ -3,23 +3,13 @@ package db
 import (
 	"reflect"
 	"testing"
-
-	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
-
-func insertStreamer(t *testing.T, d *Database, nickname string) {
-	t.Helper()
-	d.UpsertUnconfirmedStatusChanges(
-		[]StatusChange{{Nickname: nickname, Status: cmdlib.StatusOffline}},
-		1)
-}
 
 func TestSetPollAndStreamersToPoll(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 
-	insertStreamer(t, db.Database, "alice")
+	insertStreamerRow(db.Database, Streamer{Nickname: "alice"})
 
 	if got := db.StreamersToPoll(); len(got) != 0 {
 		t.Errorf("expected empty initial set, got %v", got)
@@ -31,6 +21,9 @@ func TestSetPollAndStreamersToPoll(t *testing.T) {
 	}
 	if got := db.StreamersToPoll(); !reflect.DeepEqual(got, []string{"alice"}) {
 		t.Errorf("after enabling alice, got %v", got)
+	}
+	if n := db.MustInt("select count(*) from nicknames where nickname = $1", "alice"); n != 1 {
+		t.Errorf("%d nicknames rows for a known streamer, want 1", n)
 	}
 
 	if !db.SetPoll("alice", false) {

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"maps"
+	"math"
 	"runtime"
 	"slices"
 	"strconv"
@@ -13,14 +14,14 @@ import (
 	"github.com/bcmk/siren/v6/lib/cmdlib"
 )
 
-// mockDB holds in memory the rows the bot's queries touch, answering them as db.Database does.
+// mockDB holds in memory the rows the bot's queries touch,
+// answering them as db.Database does on the inputs the tests use.
 // It panics where PostgreSQL would reject a write: a broken key, reference or check.
 type mockDB struct {
 	// A method no test reaches is left out, so calling it panics on this nil
 	database
 
-	mainGID        int
-	defaultMaxSubs int
+	mainGID int
 
 	users                []*mockUser
 	lastUserID           db.UserID
@@ -34,10 +35,10 @@ type mockDB struct {
 	referrals            []*mockReferral
 	referralEvents       []mockReferralEvent
 	starChargeIDs        []string
-	// receivedCommands holds each received message's command, empty for none
-	receivedCommands []string
-	sentMessageLog   []mockSentMessageLog
-	performanceLog   []mockPerformanceLog
+	// receivedMessageCommands holds each received message's command, empty for none
+	receivedMessageCommands []string
+	sentMessageLog          []mockSentMessageLog
+	performanceLog          []mockPerformanceLog
 }
 
 type mockUser struct {
@@ -106,11 +107,10 @@ type mockPerformanceLog struct {
 	data map[string]any
 }
 
-func newMockDB(defaultMaxSubs int) *mockDB {
+func newMockDB() *mockDB {
 	return &mockDB{
-		mainGID:        goroutineID(),
-		defaultMaxSubs: defaultMaxSubs,
-		block:          map[mockBlockKey]int{},
+		mainGID: goroutineID(),
+		block:   map[mockBlockKey]int{},
 	}
 }
 
@@ -254,8 +254,7 @@ func clonePtr[T any](p *T) *T {
 	if p == nil {
 		return nil
 	}
-	v := *p
-	return &v
+	return new(*p)
 }
 
 func (m *mockDB) AddFeedback(_ string, userID db.UserID, _ string, _ int) {
@@ -473,7 +472,7 @@ func (m *mockDB) DenySub(sub db.PendingSubscription) {
 
 func (m *mockDB) EnsureUser(chatID int64) db.UserID {
 	m.checkGID()
-	id, _ := m.AddUser(chatID, m.defaultMaxSubs, int(time.Now().Unix()), "")
+	id, _ := m.AddUser(chatID, testConfig.MaxSubs, int(time.Now().Unix()), "")
 	return id
 }
 
@@ -491,7 +490,7 @@ func (m *mockDB) GrantStarPaymentSubs(
 	if slices.Contains(m.starChargeIDs, chargeID) {
 		return false, 0, m.liveUser(m.userByChat(chatID)).UserID
 	}
-	userID, _ = m.AddUser(chatID, m.defaultMaxSubs, now, "")
+	userID, _ = m.AddUser(chatID, testConfig.MaxSubs, now, "")
 	m.starChargeIDs = append(m.starChargeIDs, chargeID)
 	u := m.user(userID)
 	u.MaxSubs += quantity
@@ -563,7 +562,7 @@ func (m *mockDB) LogPerformance(_ int, kind db.PerformanceLogKind, _ int, data m
 func (m *mockDB) LogReceivedMessage(_ int, _ string, userID db.UserID, command string) {
 	m.checkGID()
 	m.checkUser(userID)
-	m.receivedCommands = append(m.receivedCommands, command)
+	m.receivedMessageCommands = append(m.receivedMessageCommands, command)
 }
 
 func (m *mockDB) LogSentMessage(
@@ -606,8 +605,7 @@ func (m *mockDB) MaybeStreamer(nickname string) *db.Streamer {
 	if s == nil {
 		return nil
 	}
-	row := s.Streamer
-	return &row
+	return new(s.Streamer)
 }
 
 func (m *mockDB) MigrateChat(fromID, toID int64) *db.ChatMigration {
@@ -622,13 +620,11 @@ func (m *mockDB) MigrateChat(fromID, toID int64) *db.ChatMigration {
 	dst := m.userByChat(toID)
 	if dst == nil {
 		src.ChatID = toID
-		supergroup := "supergroup"
-		src.ChatType = &supergroup
+		src.ChatType = new("supergroup")
 		return &db.ChatMigration{Renamed: true}
 	}
 	// Only links the source: internal/db tests what a merge moves
-	dstID := dst.UserID
-	src.migratedTo = &dstID
+	src.migratedTo = new(dst.UserID)
 	return &db.ChatMigration{}
 }
 
@@ -683,7 +679,7 @@ func (m *mockDB) PolledStreamersWithStatus() []db.Streamer {
 // QueryDurations returns fixed statistics: the mock measures nothing
 func (m *mockDB) QueryDurations() map[string]db.QueryDurationsData {
 	return map[string]db.QueryDurationsData{
-		"a": {Avg: 1, Count: 2},
+		"a": {Avg: 3, Count: 1},
 		"b": {Avg: 2, Count: 3},
 	}
 }
@@ -692,8 +688,7 @@ func (m *mockDB) ReferralID(userID db.UserID) *string {
 	m.checkGID()
 	for _, r := range m.referrals {
 		if r.userID == userID {
-			id := r.referralID
-			return &id
+			return new(r.referralID)
 		}
 	}
 	return nil
@@ -818,15 +813,15 @@ func (m *mockDB) StoreNotifications(nots []db.Notification) {
 
 func (m *mockDB) StreamersForUser(endpoint string, userID db.UserID) (streamers []db.Streamer) {
 	m.checkGID()
-	for _, s := range m.subscribedStreamers(endpoint, userID) {
+	for _, s := range m.streamerRowsForUser(endpoint, userID) {
 		streamers = append(streamers, db.Streamer{ID: s.ID, Nickname: s.Nickname})
 	}
 	return
 }
 
-// subscribedStreamers returns the streamers a user is subscribed to on an endpoint,
+// streamerRowsForUser returns the streamers a user is subscribed to on an endpoint,
 // ordered by nickname
-func (m *mockDB) subscribedStreamers(endpoint string, userID db.UserID) (streamers []*mockStreamer) {
+func (m *mockDB) streamerRowsForUser(endpoint string, userID db.UserID) (streamers []*mockStreamer) {
 	for _, sub := range m.subscriptions {
 		if sub.userID == userID && sub.endpoint == endpoint {
 			streamers = append(streamers, m.streamer(sub.streamerID))
@@ -843,7 +838,7 @@ func (m *mockDB) SubscribedOrPending(endpoint string, userID db.UserID, nickname
 
 func (m *mockDB) SubscribedOrPendingCount(endpoint string, userID db.UserID) int {
 	m.checkGID()
-	count := len(m.subscribedStreamers(endpoint, userID))
+	count := len(m.streamerRowsForUser(endpoint, userID))
 	for _, p := range m.pendingSubscriptions {
 		if p.UserID == userID && p.Endpoint == endpoint {
 			count++
@@ -855,7 +850,7 @@ func (m *mockDB) SubscribedOrPendingCount(endpoint string, userID db.UserID) int
 func (m *mockDB) SubscribedOrPendingNicknames(endpoint string, userID db.UserID) []string {
 	m.checkGID()
 	nicknames := map[string]bool{}
-	for _, s := range m.subscribedStreamers(endpoint, userID) {
+	for _, s := range m.streamerRowsForUser(endpoint, userID) {
 		nicknames[s.Nickname] = true
 	}
 	for _, p := range m.pendingSubscriptions {
@@ -883,7 +878,7 @@ func (m *mockDB) UnconfirmedStatusesForStreamers(nicknames []string) map[string]
 
 func (m *mockDB) UnconfirmedStatusesForUser(endpoint string, userID db.UserID) (statuses []db.Streamer) {
 	m.checkGID()
-	for _, s := range m.subscribedStreamers(endpoint, userID) {
+	for _, s := range m.streamerRowsForUser(endpoint, userID) {
 		row := s.Streamer
 		row.ConfirmedStatus = cmdlib.StatusUnknown
 		statuses = append(statuses, row)
@@ -948,8 +943,7 @@ func (m *mockDB) UserByReferralID(referralID string) *db.UserID {
 	m.checkGID()
 	for _, r := range m.referrals {
 		if r.referralID == referralID {
-			id := r.userID
-			return &id
+			return new(r.userID)
 		}
 	}
 	return nil
@@ -997,10 +991,6 @@ func (m *mockDB) pendingSubscriptionCount(nickname string) int {
 	return count(m.pendingSubscriptions, func(p *mockPendingSubscription) bool { return p.Nickname == nickname })
 }
 
-func (m *mockDB) statusChangeCount(nickname string) int {
-	return count(m.statusChanges, func(c mockStatusChange) bool { return m.streamer(c.streamerID).Nickname == nickname })
-}
-
 // streamerReferralEventCount returns how many referral events
 // record the chat following the streamer
 func (m *mockDB) streamerReferralEventCount(nickname string, chatID int64) int {
@@ -1009,9 +999,10 @@ func (m *mockDB) streamerReferralEventCount(nickname string, chatID int64) int {
 	})
 }
 
-// setBlock stores a chat's blocked-send count on an endpoint
-func (m *mockDB) setBlock(endpoint string, chatID int64, block int) {
-	m.block[mockBlockKey{m.userByChat(chatID).UserID, endpoint}] = block
+// setMaxBlock stores the largest blocked-send count for a chat on an endpoint,
+// so the chat loses any roll of the dice: a win at threshold/MaxInt32 is unreachable in practice
+func (m *mockDB) setMaxBlock(endpoint string, chatID int64) {
+	m.block[mockBlockKey{m.userByChat(chatID).UserID, endpoint}] = math.MaxInt32
 }
 
 func (u *mockUser) inZone(zone string) bool { return u.Timezone != nil && *u.Timezone == zone }

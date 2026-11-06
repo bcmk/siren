@@ -60,13 +60,49 @@ func queueChunk(t *testing.T, d *Database, ts int, rewrite bool) {
 	}
 }
 
+// logVacuumState logs what a failed vacuum test needs to show why it failed
+func logVacuumState(t *testing.T, db *testDB, chunk string) {
+	t.Helper()
+	states := []struct {
+		name  string
+		query string
+		args  []any
+	}{
+		{"time", "select clock_timestamp()::text", nil},
+		{"chunk stats", "select to_jsonb(s)::text from pg_stat_all_tables s where relid = to_regclass($1)", []any{chunk}},
+		{
+			"chunk pages",
+			`
+				select to_jsonb(c)::text
+				from (select relpages, relallvisible, reltuples from pg_class where oid = to_regclass($1)) c
+			`,
+			[]any{chunk},
+		},
+		{"queue", "select to_jsonb(q)::text from status_changes_vacuum_queue q", nil},
+		{
+			"other sessions",
+			`
+				select to_jsonb(a)::text
+				from (
+					select pid, backend_type, state, backend_xmin, wait_event_type, wait_event, xact_start, query
+					from pg_stat_activity
+					where (datname = current_database() or datname is null) and pid <> pg_backend_pid()
+				) a
+			`,
+			nil,
+		},
+	}
+	for _, state := range states {
+		t.Logf("%s: %v", state.name, db.MustStrings(state.query, state.args...))
+	}
+}
+
 // TestVacuumStatusChangesChunkCleansIndexes pins the vacuum's index pass:
 // PostgreSQL skips it under 2% of pages with dead rows and leaves those pages not all-visible
 func TestVacuumStatusChangesChunkCleansIndexes(t *testing.T) {
 	t.Parallel()
 	const start = 140 * day
 	db := newTestDB(t)
-	defer db.terminate()
 	insertHistory(db.Database, "a", []compactionInsert{{start, cmdlib.StatusOnline}})
 	db.MustExec(`
 		insert into status_changes (timestamp, streamer_id, status, prev_status)
@@ -75,15 +111,15 @@ func TestVacuumStatusChangesChunkCleansIndexes(t *testing.T) {
 			$2,
 			case when s % 2 = 1 then $3::smallint else $4 end,
 			case when s % 2 = 1 then $4::smallint else $3 end
-		from generate_series(1, 300000) s`,
+		from generate_series(1, 20000) s`,
 		start, streamerID(t, db.Database, "a"), cmdlib.StatusOffline, cmdlib.StatusOnline)
 	ctx := context.Background()
 	queueChunk(t, db.Database, start, false)
 	if _, err := vacuumQueued(ctx, db.Database); err != nil {
 		t.Fatal(err)
 	}
-	// Dead rows on about a dozen of the chunk's pages, under 1%
-	db.MustExec("delete from status_changes where timestamp between $1 and $2", start+1000, start+3000)
+	// Dead rows on one of the chunk's pages, under 1%
+	db.MustExec("delete from status_changes where timestamp between $1 and $2", start+1000, start+1100)
 	queueChunk(t, db.Database, start, false)
 	if _, err := vacuumQueued(ctx, db.Database); err != nil {
 		t.Fatal(err)
@@ -100,17 +136,17 @@ func TestVacuumStatusChangesChunkCleansIndexes(t *testing.T) {
 		QueryParams{start},
 		ScanTo{&pages, &visible},
 		func() {})
-	if pages < 1000 || visible != pages {
-		t.Errorf("%d of %d pages all-visible, want all of over 1000", visible, pages)
+	if pages < 100 || visible != pages {
+		t.Errorf("%d of %d pages all-visible, want all of at least 100", visible, pages)
+		logVacuumState(t, db, chunkName(db.Database, start))
 	}
 }
 
-// TestVacuumQueue pins the vacuum queue: each chunk once, vacuumed in the order queued,
-// and kept while a migration holds the lock
+// TestVacuumQueue pins the vacuum queue: each chunk once, rewritten if any queueing asks,
+// vacuumed in the order queued, and kept while a migration holds the lock
 func TestVacuumQueue(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 	// Rows in chunks 19 and 24
 	insertHistory(db.Database, "a", []compactionInsert{
 		{136 * day, cmdlib.StatusOnline},
@@ -120,12 +156,28 @@ func TestVacuumQueue(t *testing.T) {
 	defer func() { _ = other.Close() }()
 	ctx := context.Background()
 
-	// Chunk 24, then 19, then 24 again
+	rewrites := func() []bool {
+		var all []bool
+		var rewrite bool
+		db.MustQuery(
+			"select rewrite from status_changes_vacuum_queue order by id",
+			nil,
+			ScanTo{&rewrite},
+			func() { all = append(all, rewrite) })
+		return all
+	}
+
+	// Chunk 24, then 19, then 24 again for a rewrite
 	queueChunk(t, db.Database, 171*day, false)
 	queueChunk(t, db.Database, 136*day, false)
+	queueChunk(t, db.Database, 171*day, true)
+	if got, rewritten := queuedChunks(db.Database), rewrites(); !slices.Equal(got, []int{24, 19}) ||
+		!slices.Equal(rewritten, []bool{true, false}) {
+		t.Fatalf("queued %v rewriting %v, want [24 19] rewriting [true false]", got, rewritten)
+	}
 	queueChunk(t, db.Database, 171*day, false)
-	if got := queuedChunks(db.Database); !slices.Equal(got, []int{24, 19}) {
-		t.Fatalf("queued %v, want [24 19]", got)
+	if rewritten := rewrites(); !slices.Equal(rewritten, []bool{true, false}) {
+		t.Errorf("rewriting %v after a vacuum queued again, want [true false]", rewritten)
 	}
 	db.MustExec("select pg_advisory_lock($1)", migrationLock)
 	if n, err := other.vacuumNextStatusChangesChunk(ctx, true); n != 0 || err != nil {
@@ -153,7 +205,6 @@ func TestVacuumQueue(t *testing.T) {
 func TestVacuumNextStatusChangesChunkDequeuesAGoneChunk(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 	insertHistory(db.Database, "a", []compactionInsert{{140 * day, cmdlib.StatusOnline}})
 	queueChunk(t, db.Database, 140*day, false)
 	db.MustExec("truncate status_changes")
@@ -166,40 +217,6 @@ func TestVacuumNextStatusChangesChunkDequeuesAGoneChunk(t *testing.T) {
 	}
 }
 
-// TestQueueStatusChangesVacuumsUpgradesToARewrite pins a chunk queued again:
-// it keeps its place, rewritten if either asks
-func TestQueueStatusChangesVacuumsUpgradesToARewrite(t *testing.T) {
-	t.Parallel()
-	db := newTestDB(t)
-	defer db.terminate()
-	// Rows in chunks 19 and 24
-	insertHistory(db.Database, "a", []compactionInsert{
-		{136 * day, cmdlib.StatusOnline},
-		{171 * day, cmdlib.StatusOffline},
-	})
-	rewrites := func() []bool {
-		var all []bool
-		var rewrite bool
-		db.MustQuery(
-			"select rewrite from status_changes_vacuum_queue order by id",
-			nil,
-			ScanTo{&rewrite},
-			func() { all = append(all, rewrite) })
-		return all
-	}
-	queueChunk(t, db.Database, 171*day, false)
-	queueChunk(t, db.Database, 136*day, false)
-	queueChunk(t, db.Database, 171*day, true)
-	if got, rewritten := queuedChunks(db.Database), rewrites(); !slices.Equal(got, []int{24, 19}) ||
-		!slices.Equal(rewritten, []bool{true, false}) {
-		t.Errorf("queued %v rewriting %v, want [24 19] rewriting [true false]", got, rewritten)
-	}
-	queueChunk(t, db.Database, 171*day, false)
-	if rewritten := rewrites(); !slices.Equal(rewritten, []bool{true, false}) {
-		t.Errorf("rewriting %v after a vacuum queued again, want [true false]", rewritten)
-	}
-}
-
 // TestVacuumNextStatusChangesChunkRewrites pins a rewrite:
 // it releases the space of rows deleted all over the chunk, which a vacuum leaves in place,
 // and the vacuum after it leaves every page all-visible
@@ -207,7 +224,6 @@ func TestVacuumNextStatusChangesChunkRewrites(t *testing.T) {
 	t.Parallel()
 	const start = 140 * day
 	db := newTestDB(t)
-	defer db.terminate()
 	insertHistory(db.Database, "a", []compactionInsert{{start, cmdlib.StatusOnline}})
 	db.MustExec(`
 		insert into status_changes (timestamp, streamer_id, status, prev_status)
@@ -216,7 +232,7 @@ func TestVacuumNextStatusChangesChunkRewrites(t *testing.T) {
 			$2,
 			case when s % 2 = 1 then $3::smallint else $4 end,
 			case when s % 2 = 1 then $4::smallint else $3 end
-		from generate_series(1, 100000) s`,
+		from generate_series(1, 3000) s`,
 		start, streamerID(t, db.Database, "a"), cmdlib.StatusOffline, cmdlib.StatusOnline)
 	ctx := context.Background()
 	chunkPages := func() (pages, visible int) {
@@ -269,7 +285,6 @@ func chunkName(d *Database, start int) string {
 func TestVacuumNextStatusChangesChunkSendsAHeldRewriteBack(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 	// Rows in chunks 20 and 24
 	insertHistory(db.Database, "a", []compactionInsert{
 		{140 * day, cmdlib.StatusOnline},
@@ -279,6 +294,8 @@ func TestVacuumNextStatusChangesChunkSendsAHeldRewriteBack(t *testing.T) {
 	queueChunk(t, db.Database, 171*day, false)
 	other := NewDatabase(db.connStr, false, 5)
 	defer func() { _ = other.Close() }()
+	// A rewrite that waits instead of giving up runs past the bound below
+	other.vacuumLockTimeout = 30 * time.Second
 	ctx := context.Background()
 
 	reader, err := db.begin()
@@ -290,8 +307,9 @@ func TestVacuumNextStatusChangesChunkSendsAHeldRewriteBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	start := time.Now()
-	if n, err := other.vacuumNextStatusChangesChunk(ctx, true); n != 0 || err != nil || time.Since(start) > 2*time.Second {
-		t.Errorf("under a reader: vacuumed %d with %v in %v, want 0 at once", n, err, time.Since(start))
+	n, err := other.vacuumNextStatusChangesChunk(ctx, true)
+	if elapsed := time.Since(start); n != 0 || err != nil || elapsed > 15*time.Second {
+		t.Errorf("under a reader: vacuumed %d with %v in %v, want 0 at once", n, err, elapsed)
 	}
 	if got := queuedChunks(db.Database); !slices.Equal(got, []int{24, 20}) {
 		t.Errorf("queued %v under a reader, want [24 20]", got)
@@ -313,7 +331,6 @@ func TestVacuumNextStatusChangesChunkSendsAHeldRewriteBack(t *testing.T) {
 func TestVacuumNextStatusChangesChunkSendsAHeldVacuumBack(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 	// Rows in chunks 20 and 24
 	insertHistory(db.Database, "a", []compactionInsert{
 		{140 * day, cmdlib.StatusOnline},
@@ -323,7 +340,7 @@ func TestVacuumNextStatusChangesChunkSendsAHeldVacuumBack(t *testing.T) {
 	queueChunk(t, db.Database, 171*day, false)
 	other := NewDatabase(db.connStr, false, 5)
 	defer func() { _ = other.Close() }()
-	other.vacuumLockTimeout = 200 * time.Millisecond
+	other.vacuumLockTimeout = time.Millisecond
 	ctx := context.Background()
 
 	holder, err := db.begin()
@@ -335,7 +352,7 @@ func TestVacuumNextStatusChangesChunkSendsAHeldVacuumBack(t *testing.T) {
 	if _, err := holder.Exec(ctx, lock); err != nil {
 		t.Fatal(err)
 	}
-	// Fails rather than hangs should the lock timeout go
+	// Fails rather than hangs should the lock timeout be dropped
 	other.MustExec("set statement_timeout = '10s'")
 	if n, err := other.vacuumNextStatusChangesChunk(ctx, true); n != 0 || err != nil {
 		t.Errorf("under a holder: vacuumed %d with %v, want 0", n, err)
@@ -355,7 +372,6 @@ func TestVacuumNextStatusChangesChunkSendsAHeldVacuumBack(t *testing.T) {
 func TestVacuumNextStatusChangesChunkRewritesOnlyWhileARuleDoes(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 	insertHistory(db.Database, "a", []compactionInsert{{140 * day, cmdlib.StatusOnline}})
 	queueChunk(t, db.Database, 140*day, true)
 	file := func() int {
@@ -376,7 +392,6 @@ func TestVacuumNextStatusChangesChunkRequeuesARewriteAsAVacuum(t *testing.T) {
 	t.Parallel()
 	const start = 140 * day
 	db := newTestDB(t)
-	defer db.terminate()
 	insertHistory(db.Database, "a", []compactionInsert{{start, cmdlib.StatusOnline}})
 	db.MustExec(`
 		insert into status_changes (timestamp, streamer_id, status, prev_status)
@@ -387,6 +402,8 @@ func TestVacuumNextStatusChangesChunkRequeuesARewriteAsAVacuum(t *testing.T) {
 			case when s % 2 = 1 then $4::smallint else $3 end
 		from generate_series(1, 3000) s`,
 		start, streamerID(t, db.Database, "a"), cmdlib.StatusOffline, cmdlib.StatusOnline)
+	// A rewrite queued behind it, in another chunk, stays a rewrite
+	insertHistory(db.Database, "b", []compactionInsert{{start + 14*day, cmdlib.StatusOnline}})
 	other := NewDatabase(db.connStr, false, 5)
 	defer func() { _ = other.Close() }()
 	ctx := context.Background()
@@ -404,16 +421,17 @@ func TestVacuumNextStatusChangesChunkRequeuesARewriteAsAVacuum(t *testing.T) {
 	}
 	db.MustExec("delete from status_changes where timestamp between $1 and $2", start+1000, start+2000)
 	queueChunk(t, db.Database, start, true)
+	queueChunk(t, db.Database, start+14*day, true)
 	if n, err := db.vacuumNextStatusChangesChunk(ctx, true); n != 1 || err != nil {
 		t.Fatalf("vacuumed %d with %v, want 1", n, err)
 	}
 	var rewrites []bool
 	var rewrite bool
-	db.MustQuery("select rewrite from status_changes_vacuum_queue", nil, ScanTo{&rewrite}, func() {
+	db.MustQuery("select rewrite from status_changes_vacuum_queue order by id", nil, ScanTo{&rewrite}, func() {
 		rewrites = append(rewrites, rewrite)
 	})
-	if !slices.Equal(rewrites, []bool{false}) {
-		t.Errorf("queued rewriting %v, want [false]", rewrites)
+	if !slices.Equal(rewrites, []bool{true, false}) {
+		t.Errorf("queued rewriting %v, want [true false]", rewrites)
 	}
 }
 
@@ -439,7 +457,6 @@ func TestVacuumNextStatusChangesChunkRequeuesRowsASnapshotSees(t *testing.T) {
 	t.Parallel()
 	const start = 140 * day
 	db := newTestDB(t)
-	defer db.terminate()
 	insertHistory(db.Database, "a", []compactionInsert{{start, cmdlib.StatusOnline}})
 	// Chunk 24 for the queue behind chunk 20
 	insertHistory(db.Database, "b", []compactionInsert{{171 * day, cmdlib.StatusOnline}})
@@ -450,7 +467,7 @@ func TestVacuumNextStatusChangesChunkRequeuesRowsASnapshotSees(t *testing.T) {
 			$2,
 			case when s % 2 = 1 then $3::smallint else $4 end,
 			case when s % 2 = 1 then $4::smallint else $3 end
-		from generate_series(1, 30000) s`,
+		from generate_series(1, 3000) s`,
 		start, streamerID(t, db.Database, "a"), cmdlib.StatusOffline, cmdlib.StatusOnline)
 	ctx := context.Background()
 	queueChunk(t, db.Database, start, false)
@@ -513,7 +530,6 @@ func TestVacuumNextStatusChangesChunkFlushesStatsFirst(t *testing.T) {
 	t.Parallel()
 	const start = 140 * day
 	db := newTestDB(t)
-	defer db.terminate()
 	insertHistory(db.Database, "a", []compactionInsert{{start, cmdlib.StatusOnline}})
 	db.MustExec(`
 		insert into status_changes (timestamp, streamer_id, status, prev_status)
@@ -522,23 +538,30 @@ func TestVacuumNextStatusChangesChunkFlushesStatsFirst(t *testing.T) {
 			$2,
 			case when s % 2 = 1 then $3::smallint else $4 end,
 			case when s % 2 = 1 then $4::smallint else $3 end
-		from generate_series(1, 30000) s`,
+		from generate_series(1, 100) s`,
 		start, streamerID(t, db.Database, "a"), cmdlib.StatusOffline, cmdlib.StatusOnline)
 	ctx := context.Background()
 	queueChunk(t, db.Database, start, false)
 	if _, err := vacuumQueued(ctx, db.Database); err != nil {
 		t.Fatal(err)
 	}
-	// A vacuum past the second a connection waits between its stats flushes
-	db.MustExec("set vacuum_cost_delay = '20ms'")
-	db.MustExec("set vacuum_cost_limit = 1")
-	db.MustExec("delete from status_changes where timestamp between $1 and $2", start+1000, start+1100)
+	// A connection flushes at most once a second, so these deletes stay pending
+	db.MustExec("select pg_stat_force_next_flush()")
+	db.MustExec("delete from status_changes where timestamp between $1 and $2", start+10, start+50)
 	queueChunk(t, db.Database, start, false)
-	if n, err := db.vacuumNextStatusChangesChunk(ctx, true); n != 1 || err != nil {
-		t.Fatalf("vacuumed %d with %v, want 1", n, err)
+	chunk := chunkName(db.Database, start)
+	// Until the queue empties: a checkpoint, which create database runs, pins each page it writes,
+	// and a vacuum leaves such a page's rows and requeues the chunk
+	n, err := vacuumQueued(ctx, db.Database)
+	if n < 1 || err != nil {
+		logVacuumState(t, db, chunk)
+		t.Fatalf("vacuumed %d with %v, want at least 1", n, err)
 	}
-	if n, err := db.queuedStatusChangesVacuums(ctx); n != 0 || err != nil {
-		t.Errorf("%d queued with %v after a clean vacuum, want 0", n, err)
+	db.MustExec("select pg_stat_force_next_flush()")
+	dead := db.MustInt("select n_dead_tup from pg_stat_all_tables where relid = to_regclass($1)", chunk)
+	if dead != 0 {
+		t.Errorf("%d dead rows counted, want 0: vacuums = %d", dead, n)
+		logVacuumState(t, db, chunk)
 	}
 }
 
@@ -547,7 +570,6 @@ func TestVacuumNextStatusChangesChunkFlushesStatsFirst(t *testing.T) {
 func TestLockStatusChangesSkipsAMigration(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 	migrator := NewDatabase(db.connStr, false, 5)
 	defer func() { _ = migrator.Close() }()
 	ctx := context.Background()

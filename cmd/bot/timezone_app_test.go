@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,6 +21,13 @@ var testZoneNames = map[string]*time.Location{
 	"europe/berlin": mustLoadZone("Europe/Berlin"),
 	"utc":           time.UTC,
 }
+
+// loadedZoneNames is what initTimezones loads, once, as loading every zone is slow.
+var loadedZoneNames = sync.OnceValue(func() map[string]*time.Location {
+	var w worker
+	w.initTimezones()
+	return w.zoneNames
+})
 
 func mustLoadZone(name string) *time.Location {
 	loc, err := time.LoadLocation(name)
@@ -244,7 +252,7 @@ func TestPerformWebAppTimezoneIsWhitelistGated(t *testing.T) {
 				t.Errorf("admitted = %v, want %v", got, c.admitted)
 			}
 
-			received := w.mockDB.receivedCommands
+			received := w.mockDB.receivedMessageCommands
 			users := len(w.mockDB.users)
 			if !c.admitted {
 				sent := drainSendQueueToLog(t, w)

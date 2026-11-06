@@ -14,6 +14,10 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// TimescaleImage is the Apache-2 TimescaleDB build, at the version production runs.
+// Tests and schema-dump run on it.
+const TimescaleImage = "timescale/timescaledb:2.22.1-pg17-oss"
+
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 

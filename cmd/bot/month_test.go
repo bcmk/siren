@@ -24,7 +24,7 @@ func TestMonthChunkSeparatesRows(t *testing.T) {
 	for _, lang := range realLangs {
 		t.Run(lang, func(t *testing.T) {
 			t.Parallel()
-			tpl := realTemplates(t, lang)
+			tpl := realTemplates(lang)
 			chunk := func(rows ...tplData) string {
 				params := &renderParams{templates: tpl, key: "month_chunk", data: tplData{"rows": rows}}
 				return params.render("")
@@ -65,7 +65,7 @@ func TestMonthTemplateGrid(t *testing.T) {
 	rows := monthTestRows()
 	rows[0]["cells"].([]bool)[0] = true
 	rows[2]["cells"].([]bool)[2] = true
-	params := &renderParams{templates: realTemplates(t, "en"), key: "month", data: tplData{
+	params := &renderParams{templates: realTemplates("en"), key: "month", data: tplData{
 		"rows":          rows,
 		"header":        monthHeader(time.Monday),
 		"timezone":      "UTC",
@@ -89,7 +89,7 @@ func TestMonthTemplateEmptyGrid(t *testing.T) {
 	for _, lang := range realLangs {
 		t.Run(lang, func(t *testing.T) {
 			t.Parallel()
-			params := &renderParams{templates: realTemplates(t, lang), key: "month", data: tplData{
+			params := &renderParams{templates: realTemplates(lang), key: "month", data: tplData{
 				"rows":          []tplData(nil),
 				"header":        monthHeader(time.Monday),
 				"timezone":      "UTC",
@@ -158,9 +158,9 @@ func TestShowMonthNeverOnline(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	w.initCache()
-	w.tpl["test"] = realTemplates(t, "en")
+	w.tpl["test"] = realTemplates("en")
 	m := testMessage(w, 10, "month", 100)
-	id := insertStreamer(w.mockDB, db.Streamer{Nickname: "ghost_model"})
+	id := w.mockDB.insertStreamer(db.Streamer{Nickname: "ghost_model"}).ID
 	w.db.AddSubscription(m.userID, id, "test")
 	w.showMonth(m, "")
 	if n := w.sendQueue.Len(); n != 1 {

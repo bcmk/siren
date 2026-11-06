@@ -1,6 +1,7 @@
 package main
 
 import (
+	"maps"
 	"strings"
 	"testing"
 	"time"
@@ -16,7 +17,7 @@ import (
 func TestParseTimezone(t *testing.T) {
 	t.Parallel()
 	var w worker
-	w.initTimezones()
+	w.zoneNames = loadedZoneNames()
 
 	tests := []struct {
 		name string
@@ -63,7 +64,7 @@ func TestParseTimezone(t *testing.T) {
 func TestParseTimezoneAgreesWithTheTable(t *testing.T) {
 	t.Parallel()
 	var w worker
-	w.initTimezones()
+	w.zoneNames = loadedZoneNames()
 
 	// setZoneNames drops what it cannot load, so the drift shows as a name the table
 	// offered and the map does not hold, rather than as a failure at resolution.
@@ -303,7 +304,7 @@ func TestTimezoneCommandGates(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			w.initCache()
-			w.initTimezones()
+			w.zoneNames = loadedZoneNames()
 			looked := false
 			w.chatMember = func(string, int64, int64) (*models.ChatMember, error) {
 				looked = true
@@ -336,7 +337,7 @@ func TestTimezoneCommandGates(t *testing.T) {
 			if looked != tc.wantLookup {
 				t.Errorf("member lookup made = %v, want %v", looked, tc.wantLookup)
 			}
-			// The reset passes an empty zone, which internal/db holds to storing a null.
+			// The reset passes an empty zone, which SetTimezone stores as null.
 			if tc.command == "reset_timezone" && !tc.wantStored {
 				if u == nil || u.Timezone != nil {
 					t.Error("the reset left the chat's zone set")
@@ -351,21 +352,15 @@ func TestTimezoneCommandGates(t *testing.T) {
 // and a chat that named it meant it, so the row survives and is honoured.
 func TestChatLocationKeepsAZoneTheTableDropped(t *testing.T) {
 	t.Parallel()
-	w := newTestWorker()
-	w.initCache()
-	w.initTimezones()
-	m := testMessage(w, 10, "timezone", 100)
+	w := &worker{zoneNames: maps.Clone(loadedZoneNames())}
 	// Loadable here, and withdrawn from the offered list as a refreshed table would withdraw it.
 	const dropped = "Europe/Berlin"
-	w.db.SetTimezone(m.userID, dropped)
 	delete(w.zoneNames, "europe/berlin")
 
-	loc, zone := w.chatLocation(w.mustUserByID(m.userID))
+	// A repair write would panic on the nil w.db.
+	loc, zone := w.chatLocation(db.User{Timezone: new(dropped)})
 	if zone != dropped || loc.String() != dropped {
 		t.Errorf("read as %q / %q, want %q", zone, loc, dropped)
-	}
-	if !w.mockDB.user(m.userID).inZone(dropped) {
-		t.Error("a zone the binary can still load was overwritten")
 	}
 }
 
@@ -375,18 +370,12 @@ func TestChatLocationKeepsAZoneTheTableDropped(t *testing.T) {
 // so a listing must not destroy a choice a rollback would make good again.
 func TestChatLocationKeepsADeadZone(t *testing.T) {
 	t.Parallel()
-	w := newTestWorker()
-	w.initCache()
-	w.initTimezones()
-	m := testMessage(w, 10, "timezone", 100)
+	w := &worker{zoneNames: loadedZoneNames()}
 	const dead = "Europe/Atlantis"
-	w.mockDB.user(m.userID).Timezone = ptr(dead)
 
-	if _, zone := w.chatLocation(w.mustUserByID(m.userID)); zone != utcZone {
+	// A repair write would panic on the nil w.db.
+	if _, zone := w.chatLocation(db.User{Timezone: new(dead)}); zone != utcZone {
 		t.Errorf("a dead zone read as %q, want %q", zone, utcZone)
-	}
-	if !w.mockDB.user(m.userID).inZone(dead) {
-		t.Error("a listing overwrote a zone the chat chose")
 	}
 }
 
@@ -410,7 +399,7 @@ func TestSettingsReportsTheZone(t *testing.T) {
 			t.Parallel()
 			w := newTestWorker()
 			w.initCache()
-			w.initTimezones()
+			w.zoneNames = loadedZoneNames()
 			// The real translations, so the render is the one a chat receives.
 			w.loadTranslations(realTranslations("en"))
 
@@ -494,7 +483,7 @@ func TestTimezoneTemplatesRender(t *testing.T) {
 		for _, tc := range tests {
 			t.Run(lang+" "+tc.name, func(t *testing.T) {
 				t.Parallel()
-				params := &renderParams{templates: realTemplates(t, lang), key: tc.key, data: tc.data}
+				params := &renderParams{templates: realTemplates(lang), key: tc.key, data: tc.data}
 				out := params.render("")
 				if out == "" {
 					t.Fatalf("%s rendered empty", tc.key)
@@ -517,7 +506,7 @@ func TestSetTimezone(t *testing.T) {
 	t.Parallel()
 	w := newTestWorker()
 	w.initCache()
-	w.initTimezones()
+	w.zoneNames = loadedZoneNames()
 	m := testMessage(w, 10, "timezone", 100)
 
 	reply := func() string {

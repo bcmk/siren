@@ -282,14 +282,14 @@ func TestPerformWebAppRemovalListIsWhitelistGated(t *testing.T) {
 	}
 
 	// The removable set is what /remove accepts: subscriptions and pending alike.
-	insertStreamer(w.mockDB, db.Streamer{Nickname: "b_model"})
+	w.mockDB.insertStreamer(db.Streamer{Nickname: "b_model"})
 	insertSubscription(w.mockDB, "test", 5, "b_model")
-	insertPendingSubscription(w.mockDB, "test", 5, "a_model", false)
+	insertPendingSubscriptionForChat(w.mockDB, 5, "a_model", false)
 	res = ask(5)
 	if !slices.Equal(res.nicknames, []string{"a_model", "b_model"}) {
 		t.Errorf("nicknames = %q, want [a_model b_model]", res.nicknames)
 	}
-	received := w.mockDB.receivedCommands
+	received := w.mockDB.receivedMessageCommands
 	if len(received) != 0 {
 		t.Errorf("a list read logged %q", received)
 	}
@@ -317,7 +317,7 @@ func TestPerformWebAppRemoveIsWhitelistGated(t *testing.T) {
 			cfg.WhitelistChats = c.whitelist
 			w.cfg = &cfg
 
-			insertStreamer(w.mockDB, db.Streamer{Nickname: "known_model"})
+			w.mockDB.insertStreamer(db.Streamer{Nickname: "known_model"})
 			insertSubscription(w.mockDB, "test", c.chatID, "known_model")
 
 			admitted := make(chan bool, 1)
@@ -331,7 +331,7 @@ func TestPerformWebAppRemoveIsWhitelistGated(t *testing.T) {
 				t.Errorf("admitted = %v, want %v", got, c.admitted)
 			}
 
-			received := w.mockDB.receivedCommands
+			received := w.mockDB.receivedMessageCommands
 			subs := len(w.mockDB.subscriptions)
 			if !c.admitted {
 				sent := drainSendQueueToLog(t, w)

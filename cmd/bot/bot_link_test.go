@@ -27,11 +27,11 @@ func TestChannelBotLinkGates(t *testing.T) {
 		period   int
 		want     []int
 	}{
-		{"a private chat carries none", ptr("private"), testBotLinkPeriod, nil},
-		{"a supergroup carries none", ptr("supergroup"), testBotLinkPeriod, nil},
+		{"a private chat carries none", new("private"), testBotLinkPeriod, nil},
+		{"a supergroup carries none", new("supergroup"), testBotLinkPeriod, nil},
 		{"a chat of unknown type carries none", nil, testBotLinkPeriod, nil},
-		{"a zero period carries none", ptr("channel"), 0, nil},
-		{"a channel carries every twelfth", ptr("channel"), testBotLinkPeriod, []int{12, 24, 36}},
+		{"a zero period carries none", new("channel"), 0, nil},
+		{"a channel carries every twelfth", new("channel"), testBotLinkPeriod, []int{12, 24, 36}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -66,7 +66,7 @@ func storeNotification(
 	status cmdlib.StatusKind,
 	nickname string,
 ) {
-	streamerID := insertStreamer(w.mockDB, db.Streamer{Nickname: nickname})
+	streamerID := w.mockDB.insertStreamer(db.Streamer{Nickname: nickname}).ID
 	w.storeNotifications([]db.Notification{{
 		Endpoint:   "test",
 		UserID:     userID,
@@ -150,7 +150,7 @@ func TestChannelNotificationReachesTheChatWithTheLink(t *testing.T) {
 	cfg := testConfig
 	cfg.BotLinkPeriod = testBotLinkPeriod
 	w.cfg = &cfg
-	w.tpl["test"] = realTemplates(t, "en")
+	w.tpl["test"] = realTemplates("en")
 
 	userID, _ := w.db.AddUser(-1001234567890, testBotLinkPeriod, 0, "channel")
 	nicknames := make([]string, testBotLinkPeriod)
@@ -226,7 +226,7 @@ func TestStatusTemplatesComposeTheBotLink(t *testing.T) {
 		for _, key := range []string{"online", "offline"} {
 			t.Run(lang+" "+key, func(t *testing.T) {
 				t.Parallel()
-				tpl := realTemplates(t, lang)
+				tpl := realTemplates(lang)
 				render := func(botLink string) string {
 					params := &renderParams{templates: tpl, key: key, data: tplData{
 						"streamer_link": "alica_webcam",

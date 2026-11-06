@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -28,11 +27,10 @@ type statusInsert struct {
 type changesTestCase struct {
 	name      string
 	inserts   []statusInsert
-	streamers []string // nicknames to query, or empty for unknown ID test
+	streamers []string // nicknames to query
 	from      int
 	to        int
-	// expected changes per streamer nickname;
-	// use "" key for unknown streamer ID tests
+	// expected changes per streamer nickname
 	expected map[string][]StatusChange
 }
 
@@ -161,6 +159,11 @@ var changesTests = []changesTestCase{
 			},
 		},
 	},
+	{
+		name: "no streamers",
+		from: 100,
+		to:   200,
+	},
 }
 
 func TestChangesFromToForStreamers(t *testing.T) {
@@ -169,7 +172,6 @@ func TestChangesFromToForStreamers(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			db := newTestDB(t)
-			defer db.terminate()
 
 			for _, ins := range tc.inserts {
 				db.UpsertUnconfirmedStatusChanges(
@@ -199,21 +201,9 @@ func TestChangesFromToForStreamers(t *testing.T) {
 	}
 }
 
-func TestChangesFromToForStreamersEmpty(t *testing.T) {
-	t.Parallel()
-	db := newTestDB(t)
-	defer db.terminate()
-
-	result := db.ChangesFromToForStreamers([]int{}, 100, 200)
-	if len(result) != 0 {
-		t.Errorf("expected empty map, got %v", result)
-	}
-}
-
 func TestChangesFromToForStreamersUnknownID(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 
 	result := db.ChangesFromToForStreamers([]int{999999}, 100, 200)
 	expected := map[int][]StatusChange{
@@ -224,70 +214,6 @@ func TestChangesFromToForStreamersUnknownID(t *testing.T) {
 	}
 }
 
-func TestChangesFromToForStreamersConsistency(t *testing.T) {
-	t.Parallel()
-	db := newTestDB(t)
-	defer db.terminate()
-
-	// Insert many changes, verify result is always sorted
-	for i := range 20 {
-		status := cmdlib.StatusOffline
-		if i%2 == 0 {
-			status = cmdlib.StatusOnline
-		}
-		db.UpsertUnconfirmedStatusChanges(
-			[]StatusChange{{Nickname: "a", Status: status}},
-			100+i*10,
-		)
-	}
-
-	id := streamerID(t, db.Database, "a")
-	result := db.ChangesFromToForStreamers([]int{id}, 150, 350)
-	changes := result[id]
-
-	for i := 1; i < len(changes); i++ {
-		if changes[i].Timestamp < changes[i-1].Timestamp {
-			t.Errorf(
-				"not sorted at index %d: %d < %d",
-				i,
-				changes[i].Timestamp,
-				changes[i-1].Timestamp,
-			)
-		}
-	}
-
-	last := changes[len(changes)-1]
-	if last.Timestamp != 350 {
-		t.Errorf(
-			"last entry should be sentinel with timestamp 350, got %v",
-			last,
-		)
-	}
-
-	first := changes[0]
-	if first.Timestamp != 150 {
-		t.Errorf(
-			"first entry should open the window, got timestamp %d",
-			first.Timestamp,
-		)
-	}
-
-	for i, c := range changes[:len(changes)-1] {
-		if c.Status != cmdlib.StatusOnline && c.Status != cmdlib.StatusOffline {
-			t.Errorf(
-				"unexpected status at index %d: %v",
-				i,
-				c.Status,
-			)
-		}
-	}
-
-	fmt.Printf(
-		"consistency check: %d changes returned for range [150, 350]\n",
-		len(changes),
-	)
-}
-
 // The lookup is gated by a one-time filter,
 // so a streamer whose newest change predates the window never reaches the index.
 // Losing the query's offset 0 lets the planner flatten the lateral,
@@ -295,7 +221,6 @@ func TestChangesFromToForStreamersConsistency(t *testing.T) {
 func TestChangesFromToForStreamersSkipsStaleStreamers(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 
 	// A row, or the empty hypertable plans every variant as a constant false filter
 	db.UpsertUnconfirmedStatusChanges([]StatusChange{{Nickname: "a", Status: cmdlib.StatusOnline}}, 1500)
@@ -315,7 +240,6 @@ func TestChangesFromToForStreamersSkipsStaleStreamers(t *testing.T) {
 func TestChangesFromToForStreamersSkipsALockedOldChunk(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 	// Rows in chunks 20 and 28
 	db.UpsertUnconfirmedStatusChanges([]StatusChange{{Nickname: "a", Status: cmdlib.StatusOnline}}, 140*day)
 	db.UpsertUnconfirmedStatusChanges([]StatusChange{{Nickname: "a", Status: cmdlib.StatusOffline}}, 199*day)

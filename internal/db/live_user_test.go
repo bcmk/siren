@@ -7,7 +7,6 @@ import "testing"
 func TestLiveUserID(t *testing.T) {
 	t.Parallel()
 	tdb := newTestDB(t)
-	defer tdb.terminate()
 	d := tdb.Database
 
 	const src, dst = int64(-100), int64(-100500)
@@ -25,5 +24,9 @@ func TestLiveUserID(t *testing.T) {
 	}
 	if got := d.LiveUserID(otherID); got != otherID {
 		t.Errorf("LiveUserID(live %d) = %d, want unchanged", otherID, got)
+	}
+	const unknown = UserID(999999)
+	if got := d.LiveUserID(unknown); got != unknown {
+		t.Errorf("LiveUserID(unknown %d) = %d, want unchanged", unknown, got)
 	}
 }

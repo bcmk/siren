@@ -1,3 +1,5 @@
+//go:build migrations
+
 package db
 
 import (
@@ -64,7 +66,6 @@ func panicText(f func()) (text string) {
 func TestPrebuiltStatusChangesUnique(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	defer db.terminate()
 
 	rewindUniqueTimestampMigrations(db)
 
@@ -176,7 +177,6 @@ func TestUniqueTimestampConversionRefuses(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			db := newTestDB(t)
-			defer db.terminate()
 
 			rewindUniqueTimestampMigrations(db)
 			now := dbNow(db)

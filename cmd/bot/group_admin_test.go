@@ -211,7 +211,7 @@ func TestRepliesNameNoDisabledCommand(t *testing.T) {
 				t.Parallel()
 				w := newTestWorker()
 				w.initCache()
-				w.initTimezones()
+				w.zoneNames = loadedZoneNames()
 				cfg := *w.cfg
 				cfg.OfflineNotifications = false
 				w.cfg = &cfg
