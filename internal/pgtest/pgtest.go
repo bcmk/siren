@@ -21,6 +21,8 @@ const Image = "timescale/timescaledb:2.22.1-pg17-oss"
 // Run starts a server whose first database is dbName.
 // TimescaleDB's job scheduler is off:
 // it sits on every database holding the extension and blocks create database ... template.
+// pg_stat_statements is loaded, as in production, for the tests that read it.
+// It tracks only the sessions that ask, as a full table would evict their entries.
 // NO_TS_TUNE keeps the image from sizing the server to the developer's VM:
 // a small one gets max_connections = 25, fewer than the bot tests open.
 // The data lives on tmpfs, where clones run faster than on the container's disk.
@@ -32,7 +34,10 @@ func Run(ctx context.Context, dbName string) (*postgres.PostgresContainer, error
 		postgres.WithUsername("test"),
 		postgres.WithPassword("test"),
 		postgres.BasicWaitStrategies(),
-		testcontainers.WithCmdArgs("-c", "timescaledb.max_background_workers=0"),
+		testcontainers.WithCmdArgs(
+			"-c", "timescaledb.max_background_workers=0",
+			"-c", "shared_preload_libraries=timescaledb,pg_stat_statements",
+			"-c", "pg_stat_statements.track=none"),
 		testcontainers.WithEnv(map[string]string{"NO_TS_TUNE": "true"}),
 		testcontainers.WithTmpfs(map[string]string{"/var/lib/postgresql/data": "rw"}),
 	)

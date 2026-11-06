@@ -1215,9 +1215,12 @@ func (d *Database) SearchStreamers(term string) []string {
 		checkErr(err)
 	}
 
+	// The legs' enable_seqscan = off would cost _search_results' seq scan past the JIT threshold.
+	_, err = tx.Exec(context.Background(), "set local enable_seqscan = on")
+	checkErr(err)
+
 	// Results are deduplicated and sorted by a weighted sum of
 	// trigram and Levenshtein distances.
-	// No planner reset needed — _search_results has no indexes.
 	rows, err := tx.Query(context.Background(),
 		`
 			select nickname from (
