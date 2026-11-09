@@ -391,6 +391,7 @@ Call the broadcaster a streamer and their name a nickname.
 "camname" is user-facing wording alone: it belongs in `res/translations/` and docs quoting them.
 
 Call what a message shows an image, and the Telegram message carrying one a photo.
+Call a Telegram profile photo a profile photo.
 "Picture" is user-facing wording alone, as in `/pics`.
 
 Call each entry in `res/translations/` a translation entry.
