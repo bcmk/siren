@@ -86,6 +86,20 @@ const (
 	MaintenancePacket PacketKind = 4
 )
 
+// ImageMode says how a message's image was sent, if it had one
+type ImageMode int
+
+const (
+	// NoImage marks a message without an image, or one the bot never tried to send
+	NoImage ImageMode = 0
+
+	// ImageFileID marks a photo send by file id
+	ImageFileID ImageMode = 1
+
+	// ImageUpload marks a photo upload
+	ImageUpload ImageMode = 2
+)
+
 // PerformanceLogKind represents a performance log entry kind
 type PerformanceLogKind int
 

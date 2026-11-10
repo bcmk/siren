@@ -132,7 +132,11 @@ A bot caches an id for `imageIDTTL`, an hour.
 
 - `sent_message_log.result` is -11 for a refused id, -12 for an ad dropped without a send attempt,
   and -14 for an image Telegram refused
-- `sent_message_log.file_upload` marks the sends that carried an image's bytes
+- `sent_message_log.image_mode` is 0 for a message without an image,
+  1 for a photo send by file id and 2 for a photo upload, whatever the result.
+  It is also 0 for any message the bot skipped or dropped without trying to send it.
+  Rows logged before v6.9.0 have 0 for a photo send by file id too,
+  and rows logged before v6.1.0, released 2026-10-20, have 0 for every photo.
 - `sent_message_log.latency` counts from when a message first enters the send queue,
   so it leaves out the first wait in the download step
 - `performance_log` times each download, kind 2, with `failed` in its data,

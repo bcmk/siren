@@ -82,8 +82,8 @@ type photoOutcome struct {
 	refused bool
 	// downloadedAt is when an image from a site was downloaded, the time its id ages from.
 	downloadedAt time.Time
-	// fileUpload marks a send that carried the image's bytes, whatever its result.
-	fileUpload bool
+	// imageMode is how the image was sent, whatever the result; a skipped send leaves db.NoImage.
+	imageMode db.ImageMode
 }
 
 // lookup returns the id to send img by in a message queued at queuedAt, empty to upload it,
@@ -711,7 +711,13 @@ func (w *worker) attempt(
 		timedOut:     p.fileID == "" && result == messageTimeout,
 		refused:      p.fileID == "" && result == messageImageRefused && p.sentImage.data == nil,
 		downloadedAt: p.downloadedAt,
-		fileUpload:   p.fileID == "" && result != messageSkipped,
+	}
+	switch {
+	case result == messageSkipped:
+	case p.fileID == "":
+		photo.imageMode = db.ImageUpload
+	default:
+		photo.imageMode = db.ImageFileID
 	}
 	if p.fileID == "" && sent != nil && len(sent.Photo) > 0 {
 		// Sizes come smallest first; the largest is the image as uploaded.

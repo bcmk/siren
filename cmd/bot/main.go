@@ -4311,7 +4311,7 @@ func (w *worker) handleSendResult(r msgSendResult) {
 	}
 	w.db.LogSentMessage(
 		r.timestamp, r.userID, r.result, r.endpoint, r.priority, r.latency, r.tag.kind, r.tag.command,
-		r.tag.replySeq, r.photo.fileUpload)
+		r.tag.replySeq, r.photo.imageMode)
 }
 
 // resolveResultUser resolves a non-maintenance result's user to the live one,

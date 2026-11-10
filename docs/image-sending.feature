@@ -213,7 +213,7 @@ Feature: Image sending
   Rule: sent_message_log records image sends
 
     Scenario: What sent_message_log records
-      Then file_upload marks the sends that carried an image's bytes
+      Then image_mode is 0 for no image, 1 for a photo send by file id and 2 for a photo upload
       And the result -11 marks a refused id
       And the result -12 marks an ad dropped without a send attempt
       And the result -14 marks an image Telegram refused
