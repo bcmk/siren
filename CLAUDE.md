@@ -102,6 +102,7 @@
   one justifying an edit, defending a line that was deleted,
   or restating the code beside it.
   Write for a reader who never saw the discussion.
+- Mark a choice made for simplicity with the words "for simplicity"
 - Multiline code goes in a code block
 - Keep an HTML, XML or SVG element on one line when it fits.
   Otherwise put each attribute on its own line, with `>` after the last one,
