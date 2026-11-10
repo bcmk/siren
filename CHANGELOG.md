@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v6.9.0 — 2026-11-10
+
+### Changed
+
+- `sent_message_log.image_mode` replaces `file_upload`: 0 for a message without an image,
+  1 for a photo send by file id, 2 for a photo upload
+
 ## v6.8.1 — 2026-11-05
 
 ### Fixed
