@@ -28,6 +28,7 @@ var (
 	omittedLineRegexp = regexp.MustCompile(
 		`(?m)^(CREATE TRIGGER ts_insert_blocker |SET |SELECT pg_catalog\.set_config\(|--|\\(un)?restrict ).*\n`)
 	blankLinesRegexp = regexp.MustCompile(`\n{3,}`)
+	appliedAtRegexp  = regexp.MustCompile(`(?m)^(INSERT INTO public\.schema_migrations VALUES \('[^']*', )\d+\);$`)
 )
 
 func main() {
@@ -85,10 +86,11 @@ func pgDump(ctx context.Context, pgContainer *postgres.PostgresContainer, args .
 // It names no owner, so the role running it owns everything,
 // and changes no session setting, as the connection stays in use.
 func printSchemaSnapshot(ctx context.Context, pgContainer *postgres.PostgresContainer, database db.Database) {
-	// So refreshing the schema snapshot changes nothing without a new migration
-	database.MustExec(`update schema_migrations set applied_at = 0`)
 	schema := pgDump(ctx, pgContainer, "--schema-only", "--no-owner", "--no-comments")
 	rows := pgDump(ctx, pgContainer, "--data-only", "--inserts", "--schema=public")
+	// Zero the times, so refreshing the schema snapshot changes nothing without a new migration.
+	// An update would move the rows, and pg_dump prints them in storage order.
+	rows = appliedAtRegexp.ReplaceAllString(rows, "${1}0);")
 	script := blankLinesRegexp.ReplaceAllString(omittedLineRegexp.ReplaceAllString(schema+rows, ""), "\n\n")
 	script = strings.TrimLeft(script, "\n")
 
