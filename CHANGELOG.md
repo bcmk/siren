@@ -3,11 +3,12 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
-## Unreleased
+## v6.10.0 — 2026-11-11
 
 ### Added
 
 - A migration logs its duration
+- A database with no tables starts from a schema snapshot instead of every migration
 
 ### Changed
 
@@ -18,6 +19,7 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 - Query stats are reset before migrations, not after
 - Confirming status changes no longer adds a `pg_stat_statements` entry every cycle
 - A known streamer's status change no longer wastes a streamer id
+- Streamer search no longer JIT-compiles its rank statement
 
 ## v6.9.0 — 2026-11-10
 
