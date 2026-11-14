@@ -1342,7 +1342,7 @@ func searchConfig(t *testing.T, botToken string, whitelist []int64) *botconfig.C
 		"website_link":                       "https://example.invalid",
 		"heavy_user_remainder":               1,
 		"referral_bonus":                     1,
-		"follower_bonus":                     1,
+		"referee_bonus":                      1,
 		"telegram_timeout_seconds":           10,
 		"max_subscriptions_for_pics":         10,
 		"subs_confirmation_period_seconds":   1,

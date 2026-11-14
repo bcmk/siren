@@ -62,7 +62,7 @@ type Config struct {
 	Endpoints                       map[string]endpoint       `mapstructure:"endpoints"`                          // the endpoints by simple name, used for the support of the bots in different languages accessing the same database
 	HeavyUserRemainder              int                       `mapstructure:"heavy_user_remainder"`               // the maximum remainder of subscriptions to treat a chat as heavy
 	ReferralBonus                   int                       `mapstructure:"referral_bonus"`                     // number of additional subscriptions for a referrer
-	FollowerBonus                   int                       `mapstructure:"follower_bonus"`                     // number of additional subscriptions for a new user registered by a referral link
+	RefereeBonus                    int                       `mapstructure:"referee_bonus"`                      // number of additional subscriptions for a new user registered by a referral link
 	StatusConfirmationSeconds       StatusConfirmationSeconds `mapstructure:"status_confirmation_seconds"`        // a status is confirmed only if it lasts for at least this number of seconds
 	OfflineNotifications            bool                      `mapstructure:"offline_notifications"`              // enable offline notifications
 	EnableWeek                      bool                      `mapstructure:"enable_week"`                        // enable week command
@@ -178,8 +178,8 @@ func checkConfig(cfg *Config) error {
 	if cfg.ReferralBonus == 0 {
 		return errors.New("configure referral_bonus")
 	}
-	if cfg.FollowerBonus == 0 {
-		return errors.New("configure follower_bonus")
+	if cfg.RefereeBonus == 0 {
+		return errors.New("configure referee_bonus")
 	}
 	if cfg.TelegramTimeoutSeconds == 0 {
 		return errors.New("configure telegram_timeout_seconds")

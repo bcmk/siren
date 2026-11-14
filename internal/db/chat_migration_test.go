@@ -176,10 +176,10 @@ func (d *Database) migratedToChat(chatID int64) (int64, bool) {
 	return c, found
 }
 
-func (d *Database) followerEventCount(chatID int64) int {
+func (d *Database) refereeEventCount(chatID int64) int {
 	return d.MustInt(`
 		select count(*) from referral_events r
-		join users u on u.id = r.follower_user_id
+		join users u on u.id = r.referee_user_id
 		where u.tg_chat_id = $1`,
 		chatID)
 }
@@ -784,16 +784,16 @@ func TestMigrateChat(t *testing.T) {
 		tdb := newTestDB(t)
 		d := tdb.Database
 
-		const oldID, newID, followerID = int64(-700), int64(-700500), int64(900)
+		const oldID, newID, refereeID = int64(-700), int64(-700500), int64(900)
 		d.insertUser(d.db, oldID, 1000, "group")
 		d.insertUser(d.db, newID, 2000, "supergroup")
-		d.insertUser(d.db, followerID, 1500, "private")
+		d.insertUser(d.db, refereeID, 1500, "private")
 		d.addTestChat(newID, ep, 3)
 
 		// The source referred a surviving user, left feedback,
 		// and paid on an endpoint both have and on one only it has.
 		ref := d.userID(oldID)
-		d.AddReferralEvent(2000, &ref, d.userID(followerID), nil)
+		d.AddReferralEvent(2000, &ref, d.userID(refereeID), nil)
 		d.GrantStarPaymentSubs(oldID, ep, "charge-shared", 100, "subs", 3, "payload", 2000)
 		d.GrantStarPaymentSubs(oldID, "ep2", "charge-own", 100, "subs", 3, "payload", 2000)
 		d.AddFeedback(ep, d.userID(oldID), "hi", 2000)
@@ -954,7 +954,7 @@ func TestMigrateChat(t *testing.T) {
 						union all
 						select 'event ' || to_jsonb(e)::text
 						from referral_events e
-						where referrer_user_id = any($1) or follower_user_id = any($1)
+						where referrer_user_id = any($1) or referee_user_id = any($1)
 						order by 1`,
 						[]int64{int64(highLimitUser), int64(lowLimitUser)})
 				}
@@ -1100,28 +1100,28 @@ func TestMigrateChat(t *testing.T) {
 		tdb := newTestDB(t)
 		d := tdb.Database
 
-		const oldID, newID, referrerID, followerID = int64(-920), int64(-920500), int64(921), int64(922)
+		const oldID, newID, referrerID, refereeID = int64(-920), int64(-920500), int64(921), int64(922)
 		d.insertUser(d.db, oldID, 1000, "group")
 		d.insertUser(d.db, newID, 2000, "supergroup")
 		d.insertUser(d.db, referrerID, 1000, "private")
-		d.insertUser(d.db, followerID, 1000, "private")
+		d.insertUser(d.db, refereeID, 1000, "private")
 		// The source followed one user's link and referred another
 		src, referrer := d.userID(oldID), d.userID(referrerID)
 		d.AddReferralEvent(1500, &referrer, src, nil)
-		d.AddReferralEvent(1500, &src, d.userID(followerID), nil)
+		d.AddReferralEvent(1500, &src, d.userID(refereeID), nil)
 
 		m := d.MigrateChat(oldID, newID)
 
 		if m == nil || m.Referrals != 2 {
 			t.Errorf("migration = %+v, want 2 referral events moved", m)
 		}
-		if got := d.followerEventCount(newID); got != 1 {
-			t.Errorf("destination follower events = %d, want 1", got)
+		if got := d.refereeEventCount(newID); got != 1 {
+			t.Errorf("destination referee events = %d, want 1", got)
 		}
 		if got := d.referrerEventCount(newID); got != 1 {
 			t.Errorf("destination referrer events = %d, want 1", got)
 		}
-		if got := d.followerEventCount(oldID) + d.referrerEventCount(oldID); got != 0 {
+		if got := d.refereeEventCount(oldID) + d.referrerEventCount(oldID); got != 0 {
 			t.Errorf("source referral events = %d, want 0", got)
 		}
 	})

@@ -1,0 +1,6 @@
+alter table referral_events rename column follower_user_id to referee_user_id;
+
+alter index ix_referral_events_follower_user_id rename to ix_referral_events_referee_user_id;
+
+alter table referral_events
+rename constraint fk_referral_events_follower_user_id to fk_referral_events_referee_user_id;

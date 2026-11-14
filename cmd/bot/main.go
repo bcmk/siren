@@ -200,7 +200,7 @@ type appliedKind int
 
 const (
 	invalidReferral appliedKind = iota
-	followerExists
+	refereeExists
 	referralApplied
 )
 
@@ -3277,15 +3277,15 @@ func (w *worker) refreshMemberCount(endpoint string, chatID int64, userID db.Use
 	}
 }
 
-func (w *worker) refer(m receivedMessage, referrer string, followerCreated bool) (applied appliedKind) {
+func (w *worker) refer(m receivedMessage, referrer string, refereeCreated bool) (applied appliedKind) {
 	referrerUserID := w.db.UserByReferralID(m.endpoint, referrer)
 	if referrerUserID == nil {
 		return invalidReferral
 	}
-	if !followerCreated {
-		return followerExists
+	if !refereeCreated {
+		return refereeExists
 	}
-	w.db.SetLimit(m.endpoint, m.userID, w.cfg.MaxSubs+w.cfg.FollowerBonus)
+	w.db.SetLimit(m.endpoint, m.userID, w.cfg.MaxSubs+w.cfg.RefereeBonus)
 	w.db.CreditReferrer(m.endpoint, *referrerUserID, w.cfg.ReferralBonus)
 	w.db.AddReferralEvent(m.timestamp, referrerUserID, m.userID, nil)
 	return referralApplied
@@ -3304,7 +3304,7 @@ func (w *worker) referralData(m receivedMessage) tplData {
 	return tplData{
 		"link":                referralLink,
 		"referral_bonus":      w.cfg.ReferralBonus,
-		"follower_bonus":      w.cfg.FollowerBonus,
+		"referee_bonus":       w.cfg.RefereeBonus,
 		"subscriptions_used":  subscriptionsNumber,
 		"total_subscriptions": chat.MaxSubs,
 	}
@@ -3343,8 +3343,8 @@ func (w *worker) start(m receivedMessage, referrer string, userCreated bool) {
 			w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].ReferralApplied, nil)
 		case invalidReferral:
 			w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].InvalidReferralLink, nil)
-		case followerExists:
-			w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].FollowerExists, nil)
+		case refereeExists:
+			w.replyTr(m, db.PriorityHigh, false, w.tr[m.endpoint].RefereeExists, nil)
 		}
 	}
 	if nickname != "" {
@@ -4518,7 +4518,7 @@ func (w *worker) handleSearchRequest(req searchRequest) {
 	now := int(time.Now().Unix())
 	// A search means the user found the bot on their own,
 	// so create the user now;
-	// a later referral /start then correctly earns no follower bonus.
+	// a later referral /start then correctly earns no referee bonus.
 	w.fuzzySearchDB.LogReceivedMessage(
 		now, req.endpoint,
 		w.fuzzySearchDB.EnsureUserAndChat(req.endpoint, req.chatID), searchCommand)

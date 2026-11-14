@@ -83,7 +83,7 @@ type Translations struct {
 	ReferralLink                *Translation `yaml:"referral_link"`
 	WantMore                    *Translation `yaml:"want_more"`
 	InvalidReferralLink         *Translation `yaml:"invalid_referral_link"`
-	FollowerExists              *Translation `yaml:"follower_exists"`
+	RefereeExists               *Translation `yaml:"referee_exists"`
 	ReferralApplied             *Translation `yaml:"referral_applied"`
 	OwnReferralLinkHit          *Translation `yaml:"own_referral_link_hit"`
 	SubscriptionUsage           *Translation `yaml:"subscription_usage"`

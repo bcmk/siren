@@ -43,7 +43,7 @@ denied:
 feedback:
   parse: raw
   str: Спасибо за отклик!
-follower_exists:
+referee_exists:
   parse: raw
   str: Реферальные ссылки работают только для новых пользователей
 raw_commands:
@@ -210,7 +210,7 @@ referral_link:
     {{ .link }}
 
     Вы получите по {{ .referral_bonus }} дополнительных подписок за каждого зарегистрировавшегося пользователя
-    Новый пользователь получит {{ .follower_bonus }} дополнительных подписок
+    Новый пользователь получит {{ .referee_bonus }} дополнительных подписок
 want_more:
   disable_preview: true
   parse: raw

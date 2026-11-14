@@ -94,7 +94,7 @@ func validConfig(e endpoint) *Config {
 		WebsiteLink:                     "https://example.invalid",
 		HeavyUserRemainder:              1,
 		ReferralBonus:                   1,
-		FollowerBonus:                   1,
+		RefereeBonus:                    1,
 		TelegramTimeoutSeconds:          10,
 		MaxSubscriptionsForPics:         10,
 		BlockedSendThreshold:            15,

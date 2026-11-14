@@ -120,7 +120,7 @@ CREATE TABLE public.received_message_log (
 
 CREATE TABLE public.referral_events (
     referrer_user_id bigint,
-    follower_user_id bigint,
+    referee_user_id bigint,
     "timestamp" integer NOT NULL,
     streamer_id integer
 );
@@ -312,7 +312,7 @@ CREATE INDEX ix_received_message_log_chat_id_timestamp ON public.received_messag
 
 CREATE INDEX ix_received_message_log_timestamp ON public.received_message_log USING btree ("timestamp");
 
-CREATE INDEX ix_referral_events_follower_user_id ON public.referral_events USING btree (follower_user_id);
+CREATE INDEX ix_referral_events_referee_user_id ON public.referral_events USING btree (referee_user_id);
 
 CREATE INDEX ix_referral_events_referrer_user_id ON public.referral_events USING btree (referrer_user_id);
 
@@ -367,7 +367,7 @@ ALTER TABLE ONLY public.received_message_log
     ADD CONSTRAINT fk_received_message_log_chat_id FOREIGN KEY (chat_id) REFERENCES public.chats(id) ON DELETE RESTRICT;
 
 ALTER TABLE ONLY public.referral_events
-    ADD CONSTRAINT fk_referral_events_follower_user_id FOREIGN KEY (follower_user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
+    ADD CONSTRAINT fk_referral_events_referee_user_id FOREIGN KEY (referee_user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
 
 ALTER TABLE ONLY public.referral_events
     ADD CONSTRAINT fk_referral_events_referrer_user_id FOREIGN KEY (referrer_user_id) REFERENCES public.users(id) ON DELETE RESTRICT;
@@ -497,6 +497,7 @@ INSERT INTO public.schema_migrations VALUES ('chats_4', 0);
 INSERT INTO public.schema_migrations VALUES ('chats_5', 0);
 INSERT INTO public.schema_migrations VALUES ('chats_6', 0);
 INSERT INTO public.schema_migrations VALUES ('chats_7', 0);
+INSERT INTO public.schema_migrations VALUES ('rename_follower_to_referee', 0);
 
 SELECT pg_catalog.setval('public.chats_id_seq', 1, false);
 

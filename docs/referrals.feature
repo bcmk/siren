@@ -1,6 +1,6 @@
 Feature: Referrals
   A referral link earns subscriptions for the user who shares it, the referrer,
-  and for the new user who follows it, the follower.
+  and for the new user who follows it, the referee.
   A new user is one the site's bots have never heard from.
   docs/start-links.md covers the start links that carry referral ids.
   A chat's limit is its max_subs, and a new chat starts at the config's max_subs.
@@ -11,7 +11,7 @@ Feature: Referrals
       Given a chat with no referral id
       When it types /referral or /want_more
       Then the bot makes it an id of five random lowercase letters, unique on that bot
-      And answers with the link t.me/<bot>?start=<id>, referral_bonus and follower_bonus
+      And answers with the link t.me/<bot>?start=<id>, referral_bonus and referee_bonus
 
     Scenario: A user on two bots
       Given a user has chats on bots X and Y
@@ -22,12 +22,12 @@ Feature: Referrals
 
     Scenario: A new user follows a referral link
       Given the referrer's chat on bot X has the referral id R
-      And the site's bots have never heard from the follower
-      When the follower sends /start R to X from a private chat
-      Then the follower's limit on X becomes the config's max_subs plus follower_bonus
+      And the site's bots have never heard from the referee
+      When the referee sends /start R to X from a private chat
+      Then the referee's limit on X becomes the config's max_subs plus referee_bonus
       And the referrer's limit on X grows by referral_bonus
-      And referral_events records the referrer and the follower
-      And the follower is told they got more subscriptions
+      And referral_events records the referrer and the referee
+      And the referee is told they got more subscriptions
 
     Scenario Outline: A referral link applies nothing
       Given the referrer's chat on bot X has the referral id R
@@ -46,7 +46,7 @@ Feature: Referrals
 
     Scenario: A start link names a known streamer
       When a user starts a bot with m-<nickname> and the subscription goes through
-      Then referral_events records the user as the follower and the streamer, with no referrer
+      Then referral_events records the user as the referee and the streamer, with no referrer
       And no limit changes
 
     Scenario: A start link names a streamer the bot does not know yet

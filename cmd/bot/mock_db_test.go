@@ -80,7 +80,7 @@ type mockStatusChange struct {
 
 type mockReferralEvent struct {
 	referrer   *db.UserID
-	follower   db.UserID
+	referee    db.UserID
 	streamerID *int
 }
 
@@ -353,18 +353,18 @@ func (m *mockDB) AddPendingSubscription(
 	}})
 }
 
-func (m *mockDB) AddReferralEvent(_ int, referrerUserID *db.UserID, followerUserID db.UserID, streamerID *int) {
+func (m *mockDB) AddReferralEvent(_ int, referrerUserID *db.UserID, refereeUserID db.UserID, streamerID *int) {
 	m.checkGID()
 	if referrerUserID != nil {
 		m.checkUser(*referrerUserID)
 	}
-	m.checkUser(followerUserID)
+	m.checkUser(refereeUserID)
 	if streamerID != nil {
 		m.checkStreamer(*streamerID)
 	}
 	m.referralEvents = append(m.referralEvents, mockReferralEvent{
 		referrer:   clonePtr(referrerUserID),
-		follower:   followerUserID,
+		referee:    refereeUserID,
 		streamerID: clonePtr(streamerID),
 	})
 }
@@ -1097,7 +1097,7 @@ func (m *mockDB) pendingSubscriptionCount(nickname string) int {
 // record the chat following the streamer
 func (m *mockDB) streamerReferralEventCount(nickname string, chatID int64) int {
 	return count(m.referralEvents, func(e mockReferralEvent) bool {
-		return e.streamerID != nil && m.streamer(*e.streamerID).Nickname == nickname && m.chatID(e.follower) == chatID
+		return e.streamerID != nil && m.streamer(*e.streamerID).Nickname == nickname && m.chatID(e.referee) == chatID
 	})
 }
 

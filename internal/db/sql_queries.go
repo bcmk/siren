@@ -371,7 +371,7 @@ func (d *Database) EnsureUser(chatID int64) UserID {
 }
 
 // AddUserAndChat ensures chatID's user and its chat on endpoint, with defaultMaxSubs if new.
-// userCreated reports whether the user was inserted now, which gates the referral follower bonus.
+// userCreated reports whether the user was inserted now, which gates the referee bonus.
 func (d *Database) AddUserAndChat(
 	endpoint string,
 	chatID int64,
@@ -669,8 +669,8 @@ func (d *Database) MigrateChat(fromID, toID int64) *ChatMigration {
 	checkErr(err)
 	referrals := tag.RowsAffected()
 	tag, err = tx.Exec(ctx, `
-		update referral_events set follower_user_id = $1 where follower_user_id = $2
-		/*name='migrate_chat_move_follower_events'*/`,
+		update referral_events set referee_user_id = $1 where referee_user_id = $2
+		/*name='migrate_chat_move_referee_events'*/`,
 		dstID, srcID)
 	checkErr(err)
 	referrals += tag.RowsAffected()
@@ -1725,19 +1725,19 @@ func (d *Database) CreditReferrer(endpoint string, userID UserID, bonus int) {
 }
 
 // AddReferralEvent adds a referral event
-func (d *Database) AddReferralEvent(timestamp int, referrerUserID *UserID, followerUserID UserID, streamerID *int) {
+func (d *Database) AddReferralEvent(timestamp int, referrerUserID *UserID, refereeUserID UserID, streamerID *int) {
 	var referrer *int64
 	if referrerUserID != nil {
 		r := int64(*referrerUserID)
 		referrer = &r
 	}
 	d.MustExec(`
-		insert into referral_events (timestamp, referrer_user_id, follower_user_id, streamer_id)
+		insert into referral_events (timestamp, referrer_user_id, referee_user_id, streamer_id)
 		values ($1, $2, $3, $4)
 		/*name='add_referral_event'*/`,
 		timestamp,
 		referrer,
-		int64(followerUserID),
+		int64(refereeUserID),
 		streamerID)
 }
 

@@ -43,7 +43,7 @@ denied:
 feedback:
   parse: raw
   str: Thank you for your feedback!
-follower_exists:
+referee_exists:
   parse: raw
   str: Referral links only work for new users
 raw_commands:
@@ -210,7 +210,7 @@ referral_link:
     {{ .link }}
 
     You will get {{ .referral_bonus }} additional subscriptions for every new registered user
-    New user will get {{ .follower_bonus }} additional subscriptions
+    New user will get {{ .referee_bonus }} additional subscriptions
 want_more:
   disable_preview: true
   parse: raw

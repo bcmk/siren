@@ -462,21 +462,21 @@ func TestUserReferral(t *testing.T) {
 
 		// Verify referral event was created with referrer
 		refCount := count(w.mockDB.referralEvents, func(e mockReferralEvent) bool {
-			return e.referrer != nil && w.mockDB.chatID(*e.referrer) == 20 && w.mockDB.chatID(e.follower) == 21
+			return e.referrer != nil && w.mockDB.chatID(*e.referrer) == 20 && w.mockDB.chatID(e.referee) == 21
 		})
 		if refCount != 1 {
 			t.Error("expected referral event")
 		}
 
-		// Verify follower got bonus subs
-		followerUser, exists := w.db.UserByChatID(21)
+		// Verify referee got bonus subs
+		refereeUser, exists := w.db.UserByChatID(21)
 		if !exists {
-			t.Fatal("expected follower user to exist")
+			t.Fatal("expected referee user to exist")
 		}
-		follower, _ := w.db.Chat("test", followerUser.UserID)
-		if follower.MaxSubs != w.cfg.MaxSubs+w.cfg.FollowerBonus {
-			t.Errorf("expected follower max_subs %d, got %d",
-				w.cfg.MaxSubs+w.cfg.FollowerBonus, follower.MaxSubs)
+		referee, _ := w.db.Chat("test", refereeUser.UserID)
+		if referee.MaxSubs != w.cfg.MaxSubs+w.cfg.RefereeBonus {
+			t.Errorf("expected referee max_subs %d, got %d",
+				w.cfg.MaxSubs+w.cfg.RefereeBonus, referee.MaxSubs)
 		}
 
 		// Verify referrer got bonus subs
@@ -554,7 +554,7 @@ func TestUserReferral(t *testing.T) {
 		w.addUserAndChat(40, 0, "private")
 		w.db.SetReferralID("test", w.db.EnsureUser(40), "ref-xyz")
 
-		// Create follower who already exists
+		// Create referee who already exists
 		w.addUserAndChat(41, 0, "private")
 
 		_, userCreated := w.addUserAndChat(41, 100, "private")
@@ -761,7 +761,7 @@ func TestStartGreeting(t *testing.T) {
 			chatOn:  "test",
 			greeted: true,
 			text:    "/start ref-abc",
-			replies: []string{"FollowerExists"},
+			replies: []string{"RefereeExists"},
 		},
 		{
 			name:    "greeted group chat gets the subscription alone",

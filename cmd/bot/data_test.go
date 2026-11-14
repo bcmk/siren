@@ -36,7 +36,7 @@ var testConfig = botconfig.Config{
 	OwnerID:              424242,
 	HeavyUserRemainder:   1,
 	ReferralBonus:        1,
-	FollowerBonus:        1,
+	RefereeBonus:         1,
 	OfflineNotifications: true,
 	BlockedSendThreshold: 15,
 	// Short, so pacing costs no real wait.
@@ -119,7 +119,7 @@ var testTranslations = cmdlib.Translations{
 	SubscriptionUsageAd:    &cmdlib.Translation{Key: "subscription_usage_ad", Str: "SubscriptionUsageAd", Parse: cmdlib.ParseRaw},
 	ReferralApplied:        &cmdlib.Translation{Key: "referral_applied", Str: "ReferralApplied", Parse: cmdlib.ParseRaw},
 	InvalidReferralLink:    &cmdlib.Translation{Key: "invalid_referral_link", Str: "InvalidReferralLink", Parse: cmdlib.ParseRaw},
-	FollowerExists:         &cmdlib.Translation{Key: "follower_exists", Str: "FollowerExists", Parse: cmdlib.ParseRaw},
+	RefereeExists:          &cmdlib.Translation{Key: "referee_exists", Str: "RefereeExists", Parse: cmdlib.ParseRaw},
 	OwnReferralLinkHit:     &cmdlib.Translation{Key: "own_referral_link_hit", Str: "OwnReferralLinkHit", Parse: cmdlib.ParseRaw},
 	List: &cmdlib.Translation{
 		Key:   "list",
@@ -206,7 +206,7 @@ func newTestWorker() *testWorker {
 	template.Must(tpl.New("add_error").Parse("AddError"))
 	template.Must(tpl.New("referral_applied").Parse("ReferralApplied"))
 	template.Must(tpl.New("invalid_referral_link").Parse("InvalidReferralLink"))
-	template.Must(tpl.New("follower_exists").Parse("FollowerExists"))
+	template.Must(tpl.New("referee_exists").Parse("RefereeExists"))
 	template.Must(tpl.New("own_referral_link_hit").Parse("OwnReferralLinkHit"))
 	template.Must(tpl.New("fields_customization_hint").Parse("FieldsCustomizationHint"))
 	template.Must(tpl.New("unknown_command").Parse("UnknownCommand"))

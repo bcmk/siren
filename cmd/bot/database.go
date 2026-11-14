@@ -6,7 +6,7 @@ import "github.com/bcmk/siren/v6/internal/db"
 type database interface {
 	AddFeedback(endpoint string, userID db.UserID, text string, timestamp int)
 	AddPendingSubscription(userID db.UserID, nickname string, endpoint string, referral bool, command string, replySeq int)
-	AddReferralEvent(timestamp int, referrerUserID *db.UserID, followerUserID db.UserID, streamerID *int)
+	AddReferralEvent(timestamp int, referrerUserID *db.UserID, refereeUserID db.UserID, streamerID *int)
 	AddSubscription(userID db.UserID, streamerID int, endpoint string)
 	AddUserAndChat(endpoint string, chatID int64, now int, chatType string) (id db.UserID, userCreated bool)
 	ApplyMigrations()

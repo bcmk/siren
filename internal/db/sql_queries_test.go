@@ -1582,7 +1582,7 @@ func TestAddReferralEvent(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
 	referrer := db.EnsureUser(1)
-	follower := db.EnsureUser(2)
+	referee := db.EnsureUser(2)
 	// Past the users' ids, so the columns can't pass for one another
 	streamerID := db.MustInt(
 		"insert into streamers (id, nickname) overriding system value values (77, 'a') returning id")
@@ -1598,22 +1598,22 @@ func TestAddReferralEvent(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db.AddReferralEvent(tt.timestamp, tt.referrer, follower, tt.streamer)
+			db.AddReferralEvent(tt.timestamp, tt.referrer, referee, tt.streamer)
 			var gotReferrer *UserID
-			var gotFollower UserID
+			var gotReferee UserID
 			var gotStreamer *int
 			found := db.MaybeRecord(
-				"select referrer_user_id, follower_user_id, streamer_id from referral_events where timestamp = $1",
+				"select referrer_user_id, referee_user_id, streamer_id from referral_events where timestamp = $1",
 				QueryParams{tt.timestamp},
-				ScanTo{&gotReferrer, &gotFollower, &gotStreamer})
+				ScanTo{&gotReferrer, &gotReferee, &gotStreamer})
 			if !found {
 				t.Fatal("no event stored at this timestamp")
 			}
 			if !reflect.DeepEqual(gotReferrer, tt.referrer) {
 				t.Errorf("referrer_user_id = %s, want %s", asJSON(gotReferrer), asJSON(tt.referrer))
 			}
-			if gotFollower != follower {
-				t.Errorf("follower_user_id = %d, want %d", gotFollower, follower)
+			if gotReferee != referee {
+				t.Errorf("referee_user_id = %d, want %d", gotReferee, referee)
 			}
 			if !reflect.DeepEqual(gotStreamer, tt.streamer) {
 				t.Errorf("streamer_id = %s, want %s", asJSON(gotStreamer), asJSON(tt.streamer))
