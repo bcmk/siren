@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bcmk/siren/v6/internal/botconfig"
-	"github.com/bcmk/siren/v6/lib/cmdlib"
+	"github.com/bcmk/siren/v7/internal/botconfig"
+	"github.com/bcmk/siren/v7/lib/cmdlib"
 	"github.com/go-telegram/bot/models"
 )
 

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bcmk/siren/v6/lib/cmdlib"
+	"github.com/bcmk/siren/v7/lib/cmdlib"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )

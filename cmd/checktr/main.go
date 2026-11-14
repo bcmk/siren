@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bcmk/siren/v6/lib/cmdlib"
+	"github.com/bcmk/siren/v7/lib/cmdlib"
 	"gopkg.in/yaml.v3"
 )
 

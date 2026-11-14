@@ -1,6 +1,6 @@
 package main
 
-import "github.com/bcmk/siren/v6/internal/db"
+import "github.com/bcmk/siren/v7/internal/db"
 
 // database is what the bot asks of db.Database, so tests can run it on a mock
 type database interface {

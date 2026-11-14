@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bcmk/siren/v6/lib/cmdlib"
+	"github.com/bcmk/siren/v7/lib/cmdlib"
 )
 
 const kickDefaultAvatar = "https://kick.com/img/default-profile-pictures/default-avatar-4.webp"

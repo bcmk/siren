@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/bcmk/siren/v6/lib/cmdlib"
+	"github.com/bcmk/siren/v7/lib/cmdlib"
 )
 
 // BaseCheckerConfig holds the HTTP/network settings every per-site

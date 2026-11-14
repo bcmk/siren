@@ -10,7 +10,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/bcmk/siren/v6/internal/db"
+	"github.com/bcmk/siren/v7/internal/db"
 )
 
 const (

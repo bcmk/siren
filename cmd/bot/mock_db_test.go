@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bcmk/siren/v6/internal/db"
-	"github.com/bcmk/siren/v6/lib/cmdlib"
+	"github.com/bcmk/siren/v7/internal/db"
+	"github.com/bcmk/siren/v7/lib/cmdlib"
 )
 
 // mockDB holds in memory the rows the bot's queries touch,

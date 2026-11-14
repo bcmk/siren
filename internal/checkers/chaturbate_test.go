@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bcmk/siren/v6/lib/cmdlib"
+	"github.com/bcmk/siren/v7/lib/cmdlib"
 )
 
 // TestChaturbateStatus pins the codes of a room Chaturbate refuses to show

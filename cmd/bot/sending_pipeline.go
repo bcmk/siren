@@ -7,7 +7,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/bcmk/siren/v6/internal/db"
+	"github.com/bcmk/siren/v7/internal/db"
 )
 
 // enqueueMessage adds a new message and tries to start a send.

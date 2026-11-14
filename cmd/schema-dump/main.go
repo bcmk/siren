@@ -13,8 +13,8 @@ import (
 	tcexec "github.com/testcontainers/testcontainers-go/exec"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
-	"github.com/bcmk/siren/v6/internal/db"
-	"github.com/bcmk/siren/v6/lib/cmdlib"
+	"github.com/bcmk/siren/v7/internal/db"
+	"github.com/bcmk/siren/v7/lib/cmdlib"
 )
 
 var (

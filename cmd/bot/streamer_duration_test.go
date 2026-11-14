@@ -3,8 +3,8 @@ package main
 import (
 	"testing"
 
-	"github.com/bcmk/siren/v6/internal/db"
-	"github.com/bcmk/siren/v6/lib/cmdlib"
+	"github.com/bcmk/siren/v7/internal/db"
+	"github.com/bcmk/siren/v7/lib/cmdlib"
 )
 
 func TestStreamerDuration(t *testing.T) {

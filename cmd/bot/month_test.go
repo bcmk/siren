@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bcmk/siren/v6/internal/db"
+	"github.com/bcmk/siren/v7/internal/db"
 )
 
 // monthTestRows is a grid of two full weeks and a started third, all cells offline.

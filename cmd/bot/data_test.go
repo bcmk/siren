@@ -9,10 +9,10 @@ import (
 
 	"github.com/go-telegram/bot/models"
 
-	"github.com/bcmk/siren/v6/internal/botconfig"
-	"github.com/bcmk/siren/v6/internal/checkers"
-	"github.com/bcmk/siren/v6/internal/db"
-	"github.com/bcmk/siren/v6/lib/cmdlib"
+	"github.com/bcmk/siren/v7/internal/botconfig"
+	"github.com/bcmk/siren/v7/internal/checkers"
+	"github.com/bcmk/siren/v7/internal/db"
+	"github.com/bcmk/siren/v7/lib/cmdlib"
 )
 
 // nextOutgoing pops the message the sender would send next.

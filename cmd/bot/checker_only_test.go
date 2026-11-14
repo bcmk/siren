@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/bcmk/siren/v6/internal/botconfig"
+	"github.com/bcmk/siren/v7/internal/botconfig"
 )
 
 // TestCheckerOnlyStoresAndSendsNothing pins two of the mode's guards:
