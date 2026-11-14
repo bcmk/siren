@@ -3,6 +3,30 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v7.0.0 — 2026-11-14
+
+### Upgrading
+
+- Rename `follower_bonus` to `referee_bonus` in bot configs with the image bump:
+  a config that sets `follower_bonus` refuses the start
+- The module path is `github.com/bcmk/siren/v7`
+- Prebuild migrations 0100–0104 copy both message logs, keyed by chat id,
+  and 0105–0106 swap them in;
+  the copy needs free disk for a second copy of both logs and their indexes until the cutover
+
+### Changed
+
+- Settings, limits, counters and referral ids are kept per chat, a user on one bot
+- A greeted chat gets no start message from a subscribe link,
+  or from a referral link in a private chat
+- `referral_events.follower_user_id` is now `referee_user_id`
+
+### Fixed
+
+- A group's subscriptions move to its supergroup, even one the bot already knew
+- An imageless alert for an endpoint gone from the config no longer panics
+- `schema-dump` keeps the schema snapshot's migration rows in apply order
+
 ## v6.10.0 — 2026-11-11
 
 ### Added
