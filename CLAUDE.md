@@ -358,6 +358,16 @@
   Startup runs any that were not, so a prebuild only ever moves work out of the downtime.
 - A release brings at most one prebuild group, with no ordinary migration ahead of it.
   `migrator --prebuild` refuses two unapplied prebuild groups.
+- Keep a prebuild gentle on the bots sharing a server:
+  copy a big table in short steps with pauses between them.
+  Consider creating the copy's indexes before copying its rows, so the steps build them.
+  Consider running its vacuum, which the migrator throttles, before anything else scans it:
+  otherwise the first scan rewrites every page at full speed,
+  recording in the hint bits of each row the fact that its insert committed.
+- The session writing a prebuild may measure how much it slows a bot's queries
+  running alongside it on the testing database, `$PGSERVICE`,
+  and state the numbers in the migration;
+  a review relies on them and measures nothing, but may ask for a measurement in a finding
 - Tests of an old migration or of the runner go behind the `migrations` build tag, and CI runs them.
   Run them when changing a migration or the runner:
   `scripts/with-test-lock go test -tags migrations ./internal/db`.
