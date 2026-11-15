@@ -199,7 +199,6 @@ ALTER TABLE public.status_changes_vacuum_queue ALTER COLUMN id ADD GENERATED ALW
 CREATE TABLE public.streamers (
     nickname text NOT NULL COLLATE pg_catalog."C",
     confirmed_status integer DEFAULT 0 NOT NULL,
-    referred_users integer DEFAULT 0 NOT NULL,
     unconfirmed_status integer DEFAULT 0 NOT NULL,
     unconfirmed_timestamp integer DEFAULT 0 NOT NULL,
     prev_unconfirmed_status integer DEFAULT 0 NOT NULL,
@@ -498,6 +497,7 @@ INSERT INTO public.schema_migrations VALUES ('chats_5', 0);
 INSERT INTO public.schema_migrations VALUES ('chats_6', 0);
 INSERT INTO public.schema_migrations VALUES ('chats_7', 0);
 INSERT INTO public.schema_migrations VALUES ('rename_follower_to_referee', 0);
+INSERT INTO public.schema_migrations VALUES ('drop_referred_users', 0);
 
 SELECT pg_catalog.setval('public.chats_id_seq', 1, false);
 
