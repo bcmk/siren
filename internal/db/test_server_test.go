@@ -7,11 +7,13 @@ import (
 	"net/url"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	tcexec "github.com/testcontainers/testcontainers-go/exec"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 // templateName is the database the schema goes into once per process.
@@ -24,24 +26,31 @@ const templateName = "test"
 // Autovacuum is off: it changes the stats and pages that the vacuum tests read.
 // pg_stat_statements is loaded, as in production, for the tests that read it.
 // It tracks only the sessions that ask, as a full table would evict their entries.
-// NO_TS_TUNE keeps the image from sizing the server to the developer's VM:
-// a small one gets max_connections = 25, fewer than the tests open.
 // The data lives on tmpfs, where clones run faster than on the container's disk.
+// An empty tmpfs hides the image's setup scripts: the schema snapshot installs TimescaleDB itself,
+// and timescaledb-tune would set max_connections = 25 on a small VM, fewer than the tests open.
+// The wait polls often and skips the port check inside the container, which the log line covers.
 func startServer(ctx context.Context) (*postgres.PostgresContainer, error) {
+	const poll = 10 * time.Millisecond
 	return postgres.Run(
 		ctx,
 		TimescaleImage,
 		postgres.WithDatabase(templateName),
 		postgres.WithUsername("test"),
 		postgres.WithPassword("test"),
-		postgres.BasicWaitStrategies(),
+		testcontainers.WithWaitStrategy(
+			// Twice, as the image restarts the server after setting it up
+			wait.ForLog("database system is ready to accept connections").WithOccurrence(2).WithPollInterval(poll),
+			wait.ForListeningPort("5432/tcp").WithPollInterval(poll).SkipInternalCheck()),
 		testcontainers.WithCmdArgs(
 			"-c", "timescaledb.max_background_workers=0",
 			"-c", "autovacuum=off",
 			"-c", "shared_preload_libraries=timescaledb,pg_stat_statements",
 			"-c", "pg_stat_statements.track=none"),
-		testcontainers.WithEnv(map[string]string{"NO_TS_TUNE": "true"}),
-		testcontainers.WithTmpfs(map[string]string{"/var/lib/postgresql/data": "rw"}))
+		testcontainers.WithTmpfs(map[string]string{
+			"/var/lib/postgresql/data":    "rw",
+			"/docker-entrypoint-initdb.d": "ro",
+		}))
 }
 
 // testServer gives each test a database of its own, cloned from a migrated template,
@@ -107,7 +116,6 @@ func (s *testServer) clone() (connStr string, drop func() error, err error) {
 
 // createEmptyDatabase creates a database with nothing in it
 func (s *testServer) createEmptyDatabase() (connStr string, drop func() error, err error) {
-	// Not template1, which holds the extensions the image installed
 	return s.create("template template0")
 }
 
