@@ -3,6 +3,19 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v7.1.0 — 2026-11-15
+
+### Changed
+
+- `/more_subs` replaces `/buy_subs`, `/referral` and `/want_more`, which still answer
+- In a group or channel only an admin can start a purchase
+- The successful payment log names the receipt's chat and the payer
+- Migration 0108 drops the unread `streamers.referred_users`
+
+### Fixed
+
+- A channel's members can buy subscriptions for it
+
 ## v7.0.0 — 2026-11-14
 
 ### Upgrading
