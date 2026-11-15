@@ -201,8 +201,6 @@
 - Create temporary worktrees under `.claude/worktrees/` and nowhere else.
   Outside the working directories the file tools prompt on their first read,
   and a bare `cd` is reset at once.
-- Drop a worktree you created once its branch is merged into `master`, and the branch with it;
-  drop a temporary one once its task is done
 
 ## Go Module Version
 
