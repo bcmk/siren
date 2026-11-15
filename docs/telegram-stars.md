@@ -8,6 +8,7 @@ Each tier is a count and a total price in Stars.
 `checkConfig` requires counts to ascend,
 and the per-subscription price (cost / count) not to rise as the count grows,
 so larger packages are cheaper per subscription and discounts stay non-negative.
+`docs/more-subs.feature` specifies `/more_subs` and buying as Gherkin scenarios.
 
 ## Payment flow
 

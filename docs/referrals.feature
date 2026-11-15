@@ -9,7 +9,7 @@ Feature: Referrals
 
     Scenario: A chat asks for its referral link
       Given a chat with no referral id
-      When it types /referral or /want_more
+      When it types /more_subs, /referral, /want_more or /buy_subs, which answer the same
       Then the bot makes it an id of five random lowercase letters, unique on that bot
       And answers with the link t.me/<bot>?start=<id>, referral_bonus and referee_bonus
 
