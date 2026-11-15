@@ -989,6 +989,8 @@ func TestSubscriptionReads(t *testing.T) {
 	}
 	// So a union hashes, as its own sort could stand in for the order by
 	db.MustExec("set enable_sort = off")
+	// A disabled sort's cost gets its query JIT-compiled, which takes far longer than the query
+	db.MustExec("set jit = off")
 	for _, tt := range lists {
 		t.Run(tt.name, func(t *testing.T) {
 			var wantStreamers []Streamer
