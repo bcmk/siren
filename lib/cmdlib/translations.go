@@ -119,6 +119,7 @@ type Translations struct {
 	BuyInvoiceFailed            *Translation `yaml:"buy_invoice_failed"`
 	BuyInvoiceExpired           *Translation `yaml:"buy_invoice_expired"`
 	BuyAlreadyCredited          *Translation `yaml:"buy_already_credited"`
+	BuyAdminsOnly               *Translation `yaml:"buy_admins_only"`
 	SubsPurchased               *Translation `yaml:"subs_purchased"`
 	AffiliateStatus             *Translation `yaml:"affiliate_status"`
 	AffiliateInvalid            *Translation `yaml:"affiliate_invalid"`

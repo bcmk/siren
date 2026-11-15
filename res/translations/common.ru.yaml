@@ -656,6 +656,9 @@ buy_invoice_expired:
 buy_already_credited:
   parse: raw
   str: Этот платёж уже зачислен.
+buy_admins_only:
+  parse: raw
+  str: Начать покупку здесь могут только администраторы чата.
 subs_purchased:
   parse: raw
   str: |-

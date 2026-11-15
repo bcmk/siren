@@ -14,6 +14,9 @@ so larger packages are cheaper per subscription and discounts stay non-negative.
 
 1. `/buy_subs` shows an inline keyboard of packages.
 2. Tapping a package sends an invoice (`sendInvoice`, currency `XTR`).
+   In a group or channel only an admin's tap sends one, since the invoice posts into the chat.
+   A non-admin, per Telegram, gets a notice only they see.
+   In a group or channel, a tap gets nothing if asking Telegram fails or the bot is shutting down.
 3. `pre_checkout_query` is validated and answered (10s deadline).
 4. `successful_payment` triggers `GrantStarPaymentSubs` (idempotent).
    It credits the chat the invoice is for, wherever the receipt arrives;

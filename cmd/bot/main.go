@@ -1457,7 +1457,7 @@ func (w *worker) sendSubsInvoice(m receivedMessage, tier botconfig.SubsTier) {
 		return
 	}
 	stars := tier.Cost
-	// Invoice fields reach no chat, so they must name no command: the unbound writer fails here.
+	// Invoice fields are rendered with no chat: command is unbound, and a mention fails here.
 	invoiceTpl := w.tpl[m.endpoint]
 	title := templateToString(
 		invoiceTpl, w.tr[m.endpoint].BuySubsInvoiceTitle.Key, tplData{"count": tier.Count})
@@ -1506,9 +1506,6 @@ func parseStarsPayload(payload string) (product string, chatID int64, count int,
 }
 
 func (w *worker) handleBuyCallback(endpoint string, chatID int64, data string) {
-	if !w.cfg.BuySubsEnabled() {
-		return
-	}
 	m, _ := w.newReceivedMessage(int(time.Now().Unix()), endpoint, chatID, "", "")
 	parts := strings.SplitN(data, ":", 3)
 	if len(parts) != 3 || parts[1] != "stars" {
@@ -1863,24 +1860,30 @@ func (w *worker) senderIsGroupAdmin(endpoint string, chatID int64, snd sender) b
 	if snd.from == nil {
 		return false
 	}
+	admin, _ := w.lookUpGroupAdmin(endpoint, chatID, snd.from.ID)
+	return admin
+}
+
+// lookUpGroupAdmin reports whether a user is a group admin; known is false when it cannot tell.
+func (w *worker) lookUpGroupAdmin(endpoint string, chatID, userID int64) (admin, known bool) {
 	if w.shuttingDown.Load() {
 		// The shutdown drain replays buffered updates on a fixed budget,
-		// which a member lookup would burn for replies that can no longer send.
-		return false
+		// which a member lookup would burn.
+		return false, false
 	}
-	member, err := w.chatMember(endpoint, chatID, snd.from.ID)
+	member, err := w.chatMember(endpoint, chatID, userID)
 	if err != nil {
-		lerr("cannot get chat member for the admin gate: chat = %d, @uid = %d, %v", chatID, snd.from.ID, err)
-		return false
+		lerr("cannot get chat member for the admin gate: chat = %d, @uid = %d, %v", chatID, userID, err)
+		return false, false
 	}
 	if member == nil {
-		return false // a null result decodes without error
+		return false, false // a null result decodes without error
 	}
 	switch member.Type {
 	case models.ChatMemberTypeOwner, models.ChatMemberTypeAdministrator:
-		return true
+		return true, true
 	}
-	return false
+	return false, true
 }
 
 // isGroupOrChannel reports whether a chat id belongs to a group or a channel.
@@ -4038,13 +4041,25 @@ func (w *worker) processTGUpdate(p incomingPacket) {
 		if !w.admitChat("callback_query", chatID) {
 			return
 		}
+		buy := strings.HasPrefix(q.Data, "buy:") && w.cfg.BuySubsEnabled()
+		answer := &bot.AnswerCallbackQueryParams{CallbackQueryID: q.ID}
+		// In a group or channel only an admin's tap sends an invoice, since it posts into the chat.
+		if buy && isGroupOrChannel(chatID) {
+			admin, known := w.lookUpGroupAdmin(p.endpoint, chatID, q.From.ID)
+			buy = admin
+			// Tell only someone the lookup found to be no admin: a failed lookup may hide an admin.
+			if known && !admin {
+				// A callback answer is rendered with no chat, so it must name no command.
+				answer.Text = templateToString(w.tpl[p.endpoint], w.tr[p.endpoint].BuyAdminsOnly.Key, nil)
+			}
+		}
 		// Always answer to clear the client's loading spinner,
 		// even for data we do not handle (e.g. a stale keyboard from an older build).
 		ctx := context.Background()
-		if _, err := w.bots[p.endpoint].AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: q.ID}); err != nil {
+		if _, err := w.bots[p.endpoint].AnswerCallbackQuery(ctx, answer); err != nil {
 			lerr("cannot answer callback query %s: %v", q.ID, err)
 		}
-		if strings.HasPrefix(q.Data, "buy:") {
+		if buy {
 			w.handleBuyCallback(p.endpoint, chatID, q.Data)
 		}
 		return

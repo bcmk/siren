@@ -47,7 +47,7 @@ func TestCommandRendersPerMention(t *testing.T) {
 // Add a key here when you render one with no chat.
 // One that slips the list is not silent: the render fails, naming the command.
 // Some render for an API that takes no chat: the command menu, an inline button label,
-// the invoice fields, a pre-checkout answer.
+// the invoice fields, a pre-checkout answer, a callback answer.
 // The search keys are not rendered at all, but read as raw Str into the web app,
 // where a mention would reach the user verbatim.
 var unaddressedKeys = map[string]bool{
@@ -57,6 +57,7 @@ var unaddressedKeys = map[string]bool{
 	"buy_subs_invoice_description": true,
 	"buy_subs_invoice_label":       true,
 	"buy_invoice_expired":          true,
+	"buy_admins_only":              true,
 	"affiliate_command":            true,
 	"search_button":                true,
 	"search_header":                true,

@@ -146,6 +146,11 @@ var testTranslations = cmdlib.Translations{
 		Str:   "BuyAlreadyCredited",
 		Parse: cmdlib.ParseRaw,
 	},
+	BuyAdminsOnly: &cmdlib.Translation{
+		Key:   "buy_admins_only",
+		Str:   "BuyAdminsOnly",
+		Parse: cmdlib.ParseRaw,
+	},
 	FieldsCustomizationHint: &cmdlib.Translation{
 		Key:   "fields_customization_hint",
 		Str:   "FieldsCustomizationHint",
@@ -213,6 +218,7 @@ func newTestWorker() *testWorker {
 	template.Must(tpl.New("feedback").Parse("Feedback"))
 	template.Must(tpl.New("subs_purchased").Parse("SubsPurchased"))
 	template.Must(tpl.New("buy_already_credited").Parse("BuyAlreadyCredited"))
+	template.Must(tpl.New("buy_admins_only").Parse("BuyAdminsOnly"))
 	template.Must(tpl.New("already_added").Parse("AlreadyAdded"))
 	template.Must(tpl.New("list").Parse("List"))
 	template.Must(tpl.New("week").Parse("Week"))

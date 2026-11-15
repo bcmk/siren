@@ -2,12 +2,17 @@ package main
 
 import (
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/bcmk/siren/v7/internal/botconfig"
 	"github.com/bcmk/siren/v7/lib/cmdlib"
+	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
 
@@ -110,6 +115,116 @@ func TestGroupAdminGate(t *testing.T) {
 			q.message.render("")
 			if got := q.message.(*messageParams).Text; got != want {
 				t.Errorf("reply = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestBuyTapNeedsAnAdminInAGroupOrChannel(t *testing.T) {
+	t.Parallel()
+	const channelID = int64(-1001234567890)
+	tests := []struct {
+		name         string
+		chatID       int64
+		member       models.ChatMemberType
+		memberErr    error
+		buyingOff    bool
+		shuttingDown bool
+		entersFunnel bool
+		refused      bool
+	}{
+		{name: "private chat", chatID: 10, member: models.ChatMemberTypeMember, entersFunnel: true},
+		{name: "group admin", chatID: -10, member: models.ChatMemberTypeAdministrator, entersFunnel: true},
+		{name: "group owner", chatID: -10, member: models.ChatMemberTypeOwner, entersFunnel: true},
+		{name: "group member", chatID: -10, member: models.ChatMemberTypeMember, refused: true},
+		{name: "channel admin", chatID: channelID, member: models.ChatMemberTypeAdministrator, entersFunnel: true},
+		{name: "channel subscriber", chatID: channelID, member: models.ChatMemberTypeMember, refused: true},
+		{
+			name:         "private chat during shutdown",
+			chatID:       10,
+			member:       models.ChatMemberTypeMember,
+			shuttingDown: true,
+			entersFunnel: true,
+		},
+		{
+			name:         "group admin during shutdown",
+			chatID:       -10,
+			member:       models.ChatMemberTypeAdministrator,
+			shuttingDown: true,
+		},
+		{name: "group member with buying off", chatID: -10, member: models.ChatMemberTypeMember, buyingOff: true},
+		{
+			name:      "group admin whose lookup fails",
+			chatID:    -10,
+			member:    models.ChatMemberTypeAdministrator,
+			memberErr: errors.New("timeout"),
+		},
+		{name: "group admin whose lookup returns null", chatID: -10},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := newTestWorker()
+			// Every worker shares &testConfig, so copy before enabling the tiers.
+			cfg := *w.cfg
+			if !tc.buyingOff {
+				cfg.SubsTiers = []botconfig.SubsTier{{Count: 5, Cost: 100}}
+			}
+			w.cfg = &cfg
+			w.shuttingDown.Store(tc.shuttingDown)
+			// Only the tapper in the tapped chat has a role, so a lookup of anyone else fails.
+			w.chatMember = func(_ string, chatID, userID int64) (*models.ChatMember, error) {
+				if chatID != tc.chatID || userID != 99 {
+					return nil, errors.New("not the tapper in the tapped chat")
+				}
+				if tc.member == "" {
+					return nil, tc.memberErr
+				}
+				return &models.ChatMember{Type: tc.member}, tc.memberErr
+			}
+			// A stub server takes the callback answer and hands over its text.
+			answers := make(chan string, 1)
+			srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+				if strings.HasSuffix(req.URL.Path, "/answerCallbackQuery") {
+					answers <- req.FormValue("text")
+				}
+				_, _ = rw.Write([]byte(`{"ok":true,"result":true}`))
+			}))
+			defer srv.Close()
+			stub, err := bot.New("token", bot.WithServerURL(srv.URL), bot.WithSkipGetMe())
+			if err != nil {
+				t.Fatalf("cannot build the stub bot: %v", err)
+			}
+			w.bots = map[string]*bot.Bot{"test": stub}
+			// A stale tier enters the funnel without sending an invoice.
+			w.processTGUpdate(incomingPacket{endpoint: "test", message: &models.Update{
+				CallbackQuery: &models.CallbackQuery{
+					Data: "buy:stars:999",
+					From: models.User{ID: 99},
+					Message: models.MaybeInaccessibleMessage{
+						Type:    models.MaybeInaccessibleMessageTypeMessage,
+						Message: &models.Message{Chat: models.Chat{ID: tc.chatID}},
+					},
+				},
+			}})
+			var wantFunnel []string
+			if tc.entersFunnel {
+				wantFunnel = []string{fmt.Sprintf("test %d", tc.chatID)}
+			}
+			if got := w.mockDB.receivedMessageChats(buyCallbackCommand); !slices.Equal(got, wantFunnel) {
+				t.Errorf("the tap entered the funnel for %q, want %q", got, wantFunnel)
+			}
+			want := ""
+			if tc.refused {
+				want = "BuyAdminsOnly"
+			}
+			select {
+			case got := <-answers:
+				if got != want {
+					t.Errorf("callback answer = %q, want %q", got, want)
+				}
+			default:
+				t.Error("the tap was not answered")
 			}
 		})
 	}
