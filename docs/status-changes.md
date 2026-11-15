@@ -105,7 +105,7 @@ An editor takes `status_changes_lock` before any lock on or write to `status_cha
 a run holds `status_changes_lock` while it waits on `status_changes`, so the other order deadlocks.
 A run takes the migration lock shared and skips while a migration holds it,
 so a migration waits for a run's commit.
-The compactor stays stopped from a staged copy's prebuild through its cutover:
+The compactor stays stopped from a prebuild copying `status_changes` until the copy replaces it:
 the copy spans transactions, and holds the lock only while its migrations run.
 An editor writing rows inside a coverage deletes the coverages too,
 or the compactor would never examine those rows.
