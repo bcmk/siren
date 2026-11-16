@@ -1288,8 +1288,8 @@ func TestSentBackPhotoKeepsItsPlace(t *testing.T) {
 			t.Fatal("no photo was logged as sent")
 		}
 		latency := w.mockDB.sentMessageLog[sent].latency
-		if wait := 3 * testConfig.UserCooldownMs; latency < wait {
-			t.Errorf("the photo's latency = %d ms, want at least %d", latency, wait)
+		if want := 3*testConfig.UserCooldownMs + int(endpointCooldown.Milliseconds()); latency != want {
+			t.Errorf("the photo's latency = %d ms, want %d", latency, want)
 		}
 	})
 }
