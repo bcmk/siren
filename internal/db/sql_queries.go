@@ -1146,12 +1146,7 @@ func (d *Database) KnownStreamers() map[string]bool {
 	return streamers
 }
 
-// SearchStreamers returns nicknames matching a search term.
-// Uses a temp table with multiple search strategies:
-// exact match, LIKE infix (GIN), word similarity
-// (%>, forced GIN bitmap), and functional index legs
-// for patterns with long non-alnum or repeated char runs.
-// Results are deduplicated and sorted by trigram distance.
+// SearchStreamers returns up to 7 nicknames matching a search term, closest first.
 func (d *Database) SearchStreamers(term string) []string {
 	done := d.Measure("db: search streamers")
 	defer done()
@@ -1205,8 +1200,8 @@ func (d *Database) SearchStreamers(term string) []string {
 	checkErr(err)
 	defer func() { _ = tx.Rollback(context.Background()) }()
 
-	// Exact match via pkey — guarantees the exact streamer
-	// appears in results even if other legs miss it
+	// Exact match via ix_streamers_nickname —
+	// guarantees the exact streamer appears in results even if other legs miss it
 	_, err = tx.Exec(context.Background(),
 		`
 			create temp table _search_results on commit drop as
@@ -1217,16 +1212,13 @@ func (d *Database) SearchStreamers(term string) []string {
 		pgx.QueryExecModeExec, term)
 	checkErr(err)
 
-	// GIN LIKE infix — substring search via GIN trigram index.
+	// Infix leg — substring search via the GIN trigram index.
 	// Needs longest alnum run >= 3 for selective trigrams —
-	// shorter inputs produce only space-padded trigrams
-	// ("  a", " aa", "aa ") that match over half the table
-	// (1.8M/3.3M), producing a huge bitmap of candidate
-	// rows that GIN must scan (8s vs 8ms).
-	// Long repeated-char runs are handled by the
-	// repeated-alnum-runs and nonalnum-runs legs instead.
-	// Forcing GIN bitmap prevents the planner from picking
-	// a slow btree index-only scan.
+	// shorter inputs produce only space-padded trigrams ("  a", " aa", "aa ")
+	// that match over half the table,
+	// producing a huge bitmap of candidate rows that GIN must scan (8s vs 8ms).
+	// Long repeated-char runs are handled by the repeated-alnum-runs and nonalnum-runs legs instead.
+	// Forcing GIN bitmap keeps the planner off a seq scan of nicknames.
 	if maxAlnumRun >= 3 && maxRepeatedAlnumRun < 5 {
 		_, err = tx.Exec(context.Background(),
 			`
@@ -1244,13 +1236,9 @@ func (d *Database) SearchStreamers(term string) []string {
 		checkErr(err)
 	}
 
-	// Word similarity via forced GIN bitmap —
-	// finds fuzzy matches (typos, partial names).
-	// Planner settings force GIN bitmap scan because
-	// the default planner picks pkey over GIN for %>.
-	// Needs 2+ alnum chars and 4+ total chars for
-	// meaningful similarity scores — single alnum chars
-	// produce non-selective trigrams.
+	// Word similarity via forced GIN bitmap — finds fuzzy matches (typos, partial names).
+	// Needs 2+ alnum chars and 4+ total chars for meaningful similarity scores —
+	// single alnum chars produce non-selective trigrams.
 	if alnumCount >= 2 && len(term) >= 4 {
 		_, err = tx.Exec(context.Background(),
 			`
@@ -1297,10 +1285,8 @@ func (d *Database) SearchStreamers(term string) []string {
 		checkErr(err)
 	}
 
-	// Nonalnum-runs leg — substring search for patterns
-	// with nonalnum runs (___, _____, __________).
-	// Partial covering index on max_nonalnum_run enables
-	// index-only scan without heap access.
+	// Nonalnum-runs leg — substring search for patterns with nonalnum runs (___, _____, __________).
+	// Partial covering index on max_nonalnum_run enables index-only scan without heap access.
 	// Disabling bitmap scan prevents GIN from being used.
 	if maxNonalnumRun >= 3 {
 		_, err = tx.Exec(context.Background(),
@@ -1322,10 +1308,9 @@ func (d *Database) SearchStreamers(term string) []string {
 	}
 
 	// Prefix match via btree collate "C" on streamers —
-	// fallback for patterns with short alnum runs
-	// (aa, ab, b__, _a_, __) where GIN trigrams are too
-	// non-selective for infix and the functional index
-	// isn't applicable (short runs).
+	// fallback for patterns with short alnum runs (aa, ab, b__, _a_, __)
+	// where GIN trigrams are too non-selective for infix
+	// and the functional index isn't applicable (short runs).
 	if maxAlnumRun < 3 && maxNonalnumRun < 3 {
 		_, err = tx.Exec(context.Background(),
 			`
