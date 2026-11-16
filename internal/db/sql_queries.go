@@ -1196,21 +1196,53 @@ func (d *Database) SearchStreamers(term string) []string {
 		prev = c
 	}
 
-	tx, err := d.begin()
-	checkErr(err)
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	// ginSettings allow only bitmap scans, the only scans of a GIN index.
+	// btreeSettings allow only index scans.
+	const (
+		ginSettings = `
+			select
+				set_config('enable_seqscan', 'off', true),
+				set_config('enable_indexscan', 'off', true),
+				set_config('enable_indexonlyscan', 'off', true),
+				set_config('enable_bitmapscan', 'on', true),
+				set_config('pg_trgm.word_similarity_threshold', '0.5', true)`
+		btreeSettings = `
+			select
+				set_config('enable_seqscan', 'off', true),
+				-- Avoids JIT compilation by lowering the cost of the index-only scans
+				-- of ix_nicknames_nickname_max_nonalnum_run and ix_streamers_nickname
+				set_config('enable_indexscan', 'on', true),
+				set_config('enable_indexonlyscan', 'on', true),
+				-- Keeps the nonalnum-runs leg off ix_nicknames_nickname_trgm_gin,
+				-- which only a bitmap scan reads
+				set_config('enable_bitmapscan', 'off', true)`
+	)
+	// The search goes as one batch, a single round trip.
+	// The batch is one transaction, and set_config's true ends each setting with it.
+	// pgconn's batch, unlike pgx's, sends unnamed statements, so each leg is planned for its term.
+	batch := &pgconn.Batch{}
+	// isLeg tells which of the batch's statements are legs, whose rows are the matches
+	var isLeg []bool
+	queueSettings := func(settings string) {
+		batch.ExecParams(settings, nil, nil, nil, nil)
+		isLeg = append(isLeg, false)
+	}
+	queueLeg := func(query string, args ...string) {
+		values := make([][]byte, len(args))
+		for i, arg := range args {
+			values[i] = []byte(arg)
+		}
+		batch.ExecParams(query, values, nil, nil, nil)
+		isLeg = append(isLeg, true)
+	}
 
 	// Exact match via ix_streamers_nickname —
 	// guarantees the exact streamer appears in results even if other legs miss it
-	_, err = tx.Exec(context.Background(),
-		`
-			create temp table _search_results on commit drop as
-			select nickname from streamers
-			where nickname = $1
-			/*name='search_streamers_exact'*/
-		`,
-		pgx.QueryExecModeExec, term)
-	checkErr(err)
+	queueLeg(`
+		select nickname from streamers
+		where nickname = $1
+		/*name='search_streamers_exact'*/`,
+		term)
 
 	// Infix leg — substring search via the GIN trigram index.
 	// Needs longest alnum run >= 3 for selective trigrams —
@@ -1220,41 +1252,27 @@ func (d *Database) SearchStreamers(term string) []string {
 	// Long repeated-char runs are handled by the repeated-alnum-runs and nonalnum-runs legs instead.
 	// Forcing GIN bitmap keeps the planner off a seq scan of nicknames.
 	if maxAlnumRun >= 3 && maxRepeatedAlnumRun < 5 {
-		_, err = tx.Exec(context.Background(),
-			`
-				set local enable_seqscan = off;
-				set local enable_indexscan = off;
-				set local enable_indexonlyscan = off;
-				set local enable_bitmapscan = on;
-				insert into _search_results
-				select nickname from nicknames
-				where nickname like '%' || $1 || '%'
-				limit 100
-				/*name='search_streamers_infix'*/
-			`,
-			pgx.QueryExecModeSimpleProtocol, escaped)
-		checkErr(err)
+		queueSettings(ginSettings)
+		queueLeg(`
+			select nickname from nicknames
+			where nickname like '%' || $1 || '%'
+			limit 100
+			/*name='search_streamers_infix'*/`,
+			escaped)
 	}
 
 	// Word similarity via forced GIN bitmap — finds fuzzy matches (typos, partial names).
+	// ginSettings sets the %> threshold.
 	// Needs 2+ alnum chars and 4+ total chars for meaningful similarity scores —
 	// single alnum chars produce non-selective trigrams.
 	if alnumCount >= 2 && len(term) >= 4 {
-		_, err = tx.Exec(context.Background(),
-			`
-				set local enable_seqscan = off;
-				set local enable_indexscan = off;
-				set local enable_indexonlyscan = off;
-				set local enable_bitmapscan = on;
-				set local pg_trgm.word_similarity_threshold = 0.5;
-				insert into _search_results
-				select nickname from nicknames
-				where nickname %> $1
-				limit 100
-				/*name='search_streamers_similarity'*/
-			`,
-			pgx.QueryExecModeSimpleProtocol, term)
-		checkErr(err)
+		queueSettings(ginSettings)
+		queueLeg(`
+			select nickname from nicknames
+			where nickname %> $1
+			limit 100
+			/*name='search_streamers_similarity'*/`,
+			term)
 	}
 
 	// Repeated-alnum-runs leg — substring search for patterns
@@ -1267,46 +1285,27 @@ func (d *Database) SearchStreamers(term string) []string {
 	// with the GIN trigram index very effectively,
 	// since alnum patterns have useful trigrams.
 	if maxRepeatedAlnumRun >= 5 {
-		_, err = tx.Exec(context.Background(),
-			`
-				set local enable_seqscan = off;
-				set local enable_indexscan = off;
-				set local enable_indexonlyscan = off;
-				set local enable_bitmapscan = on;
-				insert into _search_results
-				select nickname from nicknames
-				where max_repeated_alnum_run(nickname) >= $1
-				and nickname like '%' || $2 || '%'
-				limit 100
-				/*name='search_streamers_repeated_runs'*/
-			`,
-			pgx.QueryExecModeSimpleProtocol,
-			maxRepeatedAlnumRun, escaped)
-		checkErr(err)
+		queueSettings(ginSettings)
+		queueLeg(`
+			select nickname from nicknames
+			where max_repeated_alnum_run(nickname) >= $1
+			and nickname like '%' || $2 || '%'
+			limit 100
+			/*name='search_streamers_repeated_runs'*/`,
+			strconv.Itoa(maxRepeatedAlnumRun), escaped)
 	}
 
 	// Nonalnum-runs leg — substring search for patterns with nonalnum runs (___, _____, __________).
 	// Partial covering index on max_nonalnum_run enables index-only scan without heap access.
-	// Disabling bitmap scan prevents GIN from being used.
 	if maxNonalnumRun >= 3 {
-		_, err = tx.Exec(context.Background(),
-			`
-				set local enable_seqscan = off;
-				-- Avoids JIT compilation
-				-- by lowering the cost of the index-only scan of ix_nicknames_nickname_max_nonalnum_run
-				set local enable_indexscan = on;
-				set local enable_indexonlyscan = on;
-				set local enable_bitmapscan = off;
-				insert into _search_results
-				select nickname from nicknames
-				where max_nonalnum_run(nickname) >= $1
-				and nickname like '%' || $2 || '%'
-				limit 100
-				/*name='search_streamers_nonalnum_runs'*/
-			`,
-			pgx.QueryExecModeSimpleProtocol,
-			maxNonalnumRun, escaped)
-		checkErr(err)
+		queueSettings(btreeSettings)
+		queueLeg(`
+			select nickname from nicknames
+			where max_nonalnum_run(nickname) >= $1
+			and nickname like '%' || $2 || '%'
+			limit 100
+			/*name='search_streamers_nonalnum_runs'*/`,
+			strconv.Itoa(maxNonalnumRun), escaped)
 	}
 
 	// Prefix match via btree collate "C" on streamers —
@@ -1314,55 +1313,28 @@ func (d *Database) SearchStreamers(term string) []string {
 	// where GIN trigrams are too non-selective for infix
 	// and the functional index isn't applicable (short runs).
 	if maxAlnumRun < 3 && maxNonalnumRun < 3 {
-		_, err = tx.Exec(context.Background(),
-			`
-				set local enable_seqscan = off;
-				-- Avoids JIT compilation by lowering the cost of the index-only scan of ix_streamers_nickname
-				set local enable_indexscan = on;
-				set local enable_indexonlyscan = on;
-				set local enable_bitmapscan = off;
-				insert into _search_results
-				select nickname from streamers
-				where nickname like $1 || '%'
-				limit 100
-				/*name='search_streamers_prefix'*/
-			`,
-			pgx.QueryExecModeSimpleProtocol, escaped)
-		checkErr(err)
+		queueSettings(btreeSettings)
+		queueLeg(`
+			select nickname from streamers
+			where nickname like $1 || '%'
+			limit 100
+			/*name='search_streamers_prefix'*/`,
+			escaped)
 	}
 
-	// The legs' enable_seqscan = off would cost _search_results' seq scan past the JIT threshold.
-	_, err = tx.Exec(context.Background(), "set local enable_seqscan = on")
+	results, err := d.db.PgConn().ExecBatch(context.Background(), batch).ReadAll()
 	checkErr(err)
-
-	// Results are deduplicated and sorted by a weighted sum of
-	// trigram and Levenshtein distances.
-	rows, err := tx.Query(context.Background(),
-		`
-			select nickname from (
-				select distinct nickname from _search_results
-			) sub
-			order by
-				2 * (nickname <-> $1)
-				+ levenshtein(left(nickname, 255), left($1, 255))::float
-					/ greatest(length(nickname), length($1), 1)
-			limit 7
-			/*name='search_streamers_rank'*/
-		`,
-		pgx.QueryExecModeExec, term)
-	checkErr(err)
-	defer rows.Close()
-
-	var streamers []string
-	for rows.Next() {
-		var nickname string
-		checkErr(rows.Scan(&nickname))
-		streamers = append(streamers, nickname)
+	// The legs' matches, repeats included
+	var matches []string
+	for i, result := range results {
+		if !isLeg[i] {
+			continue
+		}
+		for _, row := range result.Rows {
+			matches = append(matches, string(row[0]))
+		}
 	}
-	checkErr(rows.Err())
-
-	checkErr(tx.Commit(context.Background()))
-	return streamers
+	return closestNicknames(term, matches)
 }
 
 // UserByReferralID returns the user whose chat on endpoint has this referral id

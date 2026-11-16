@@ -2,8 +2,6 @@
 -- TestSchemaSnapshotMatchesMigrations holds it to the migrations.
 CREATE EXTENSION IF NOT EXISTS timescaledb WITH SCHEMA public;
 
-CREATE EXTENSION IF NOT EXISTS fuzzystrmatch WITH SCHEMA public;
-
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements WITH SCHEMA public;
 
 CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
@@ -498,6 +496,7 @@ INSERT INTO public.schema_migrations VALUES ('chats_6', 0);
 INSERT INTO public.schema_migrations VALUES ('chats_7', 0);
 INSERT INTO public.schema_migrations VALUES ('rename_follower_to_referee', 0);
 INSERT INTO public.schema_migrations VALUES ('drop_referred_users', 0);
+INSERT INTO public.schema_migrations VALUES ('drop_fuzzystrmatch', 0);
 
 SELECT pg_catalog.setval('public.chats_id_seq', 1, false);
 
