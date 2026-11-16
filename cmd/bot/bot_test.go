@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/synctest"
 
 	"github.com/bcmk/siren/v7/internal/botconfig"
 	"github.com/bcmk/siren/v7/internal/db"
@@ -1211,27 +1212,29 @@ func TestNotifyOfStatuses(t *testing.T) {
 
 func TestDeliverOffMainGoroutine(t *testing.T) {
 	t.Parallel()
-	w := newTestWorker()
+	synctest.Test(t, func(t *testing.T) {
+		w := newTestWorker()
 
-	w.addUserAndChat(100, 0, "private")
-	userID := w.db.EnsureUser(100)
+		w.addUserAndChat(100, 0, "private")
+		userID := w.db.EnsureUser(100)
 
-	// deliver runs off the main goroutine and must not touch the database.
-	done := make(chan any, 1)
-	go func() {
-		defer func() { done <- recover() }()
-		msg := &migrateThenOK{id: 100, target: 200}
-		w.deliver(&queuedMessage{
-			userID:   userID,
-			endpoint: "test",
-			message:  msg,
-			order:    queueOrder{priority: db.PriorityHigh},
-			tag:      unprompted(db.MessagePacket),
-		}, msg)
-	}()
-	if r := <-done; r != nil {
-		t.Fatalf("deliver touched the database off the main goroutine: %v", r)
-	}
+		// deliver runs off the main goroutine and must not touch the database.
+		done := make(chan any, 1)
+		go func() {
+			defer func() { done <- recover() }()
+			msg := &migrateThenOK{id: 100, target: 200}
+			w.deliver(&queuedMessage{
+				userID:   userID,
+				endpoint: "test",
+				message:  msg,
+				order:    queueOrder{priority: db.PriorityHigh},
+				tag:      unprompted(db.MessagePacket),
+			}, msg)
+		}()
+		if r := <-done; r != nil {
+			t.Fatalf("deliver touched the database off the main goroutine: %v", r)
+		}
+	})
 }
 
 // TestAttemptBlockedSend checks the dice gate on sends to a blocking chat:

@@ -174,21 +174,23 @@ func noisyJPEG(t *testing.T) []byte {
 // and the bytes it caches hold no spare buffer.
 func TestScaledDownload(t *testing.T) {
 	t.Parallel()
-	telegram := &mockTelegram{replies: []mockReply{{body: photoSent}}}
-	w, users := photoSendWorker(t, telegram, 101)
-	w.imageTransport.data = noisyJPEG(t)
-	sendImages(w, users, []*image{{key: imagesURL + "/a.jpg"}}, 1)
-	scalings := count(w.mockDB.performanceLog, func(p mockPerformanceLog) bool {
-		_, scaled := p.data["scale_ms"]
-		return p.kind == db.PerformanceLogImageDownload && scaled
+	synctest.Test(t, func(t *testing.T) {
+		telegram := &mockTelegram{replies: []mockReply{{body: photoSent}}}
+		w, users := photoSendWorker(t, telegram, 101)
+		w.imageTransport.data = noisyJPEG(t)
+		sendImages(w, users, []*image{{key: imagesURL + "/a.jpg"}}, 1)
+		scalings := count(w.mockDB.performanceLog, func(p mockPerformanceLog) bool {
+			_, scaled := p.data["scale_ms"]
+			return p.kind == db.PerformanceLogImageDownload && scaled
+		})
+		if scalings != 1 {
+			t.Errorf("scalings logged = %d, want 1", scalings)
+		}
+		cached := w.imageDownloader.images[imagesURL+"/a.jpg"].data
+		if hasSpareRoom(cached) {
+			t.Errorf("the cache holds %d bytes for an image of %d", cap(cached), len(cached))
+		}
 	})
-	if scalings != 1 {
-		t.Errorf("scalings logged = %d, want 1", scalings)
-	}
-	cached := w.imageDownloader.images[imagesURL+"/a.jpg"].data
-	if hasSpareRoom(cached) {
-		t.Errorf("the cache holds %d bytes for an image of %d", cap(cached), len(cached))
-	}
 }
 
 // pngStart is a PNG's start up to its header, of a 16-bit RGBA image of the size.
@@ -215,14 +217,16 @@ func TestCachedDownloadHoldsNoSpareBuffer(t *testing.T) {
 	if err := png.Encode(&data, img); err != nil {
 		t.Fatal(err)
 	}
-	telegram := &mockTelegram{replies: []mockReply{{body: photoSent}}}
-	w, users := photoSendWorker(t, telegram, 101)
-	w.imageTransport.data = data.Bytes()
-	sendImages(w, users, []*image{{key: imagesURL + "/a.png"}}, 1)
-	cached := w.imageDownloader.images[imagesURL+"/a.png"].data
-	if hasSpareRoom(cached) {
-		t.Errorf("the cache holds %d bytes for an image of %d", cap(cached), len(cached))
-	}
+	synctest.Test(t, func(t *testing.T) {
+		telegram := &mockTelegram{replies: []mockReply{{body: photoSent}}}
+		w, users := photoSendWorker(t, telegram, 101)
+		w.imageTransport.data = data.Bytes()
+		sendImages(w, users, []*image{{key: imagesURL + "/a.png"}}, 1)
+		cached := w.imageDownloader.images[imagesURL+"/a.png"].data
+		if hasSpareRoom(cached) {
+			t.Errorf("the cache holds %d bytes for an image of %d", cap(cached), len(cached))
+		}
+	})
 }
 
 // imagesURL is where a photoSendWorker downloads images: any path under it gives an image,
@@ -731,6 +735,8 @@ func TestUnavailableTextRendersAfresh(t *testing.T) {
 // and downloads through its imageTransport, with users for the chat ids.
 func photoSendWorker(t *testing.T, telegram *mockTelegram, chatIDs ...int64) (*testWorker, []db.UserID) {
 	w := newTestWorker()
+	// Ends a send's pacing wait when the test ends, so a failing test's bubble exits
+	t.Cleanup(func() { close(w.shutdownCh) })
 	w.bots = map[string]*bot.Bot{"test": newBotOn(t, telegram)}
 	w.imageTransport = &imageTransport{data: pngImage(t)}
 	w.client = &http.Client{Transport: w.imageTransport}
@@ -802,50 +808,52 @@ func TestFanOutUploadsOnce(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			telegram := &mockTelegram{replies: tc.replies}
-			w, users := photoSendWorker(t, telegram, 101, 102, 103)
-			var imgs []*image
-			for range users {
-				imgs = append(imgs, &image{key: imagesURL + "/preview.jpg"})
-			}
-			sendImages(w, users, imgs, tc.results)
-			if !slices.Equal(telegram.sent, tc.wantSent) {
-				t.Errorf("sent %v, want %v", telegram.sent, tc.wantSent)
-			}
-			for _, upload := range telegram.uploads {
-				if upload != string(pngImage(t)) {
-					t.Errorf("uploaded %d bytes, want the downloaded image", len(upload))
+			synctest.Test(t, func(t *testing.T) {
+				telegram := &mockTelegram{replies: tc.replies}
+				w, users := photoSendWorker(t, telegram, 101, 102, 103)
+				var imgs []*image
+				for range users {
+					imgs = append(imgs, &image{key: imagesURL + "/preview.jpg"})
 				}
-			}
-			if got := int(w.imageTransport.hits.Load()); got != tc.wantDownloads {
-				t.Errorf("downloads = %d, want %d", got, tc.wantDownloads)
-			}
-			logged := count(w.mockDB.performanceLog, func(p mockPerformanceLog) bool {
-				return p.kind == db.PerformanceLogImageDownload
+				sendImages(w, users, imgs, tc.results)
+				if !slices.Equal(telegram.sent, tc.wantSent) {
+					t.Errorf("sent %v, want %v", telegram.sent, tc.wantSent)
+				}
+				for _, upload := range telegram.uploads {
+					if upload != string(pngImage(t)) {
+						t.Errorf("uploaded %d bytes, want the downloaded image", len(upload))
+					}
+				}
+				if got := int(w.imageTransport.hits.Load()); got != tc.wantDownloads {
+					t.Errorf("downloads = %d, want %d", got, tc.wantDownloads)
+				}
+				logged := count(w.mockDB.performanceLog, func(p mockPerformanceLog) bool {
+					return p.kind == db.PerformanceLogImageDownload
+				})
+				if logged != tc.wantDownloads {
+					t.Errorf("downloads logged = %d, want %d", logged, tc.wantDownloads)
+				}
+				refusals := count(w.mockDB.sentMessageLog, func(l mockSentMessageLog) bool {
+					return l.result == messageFileIDRejected
+				})
+				if refusals != tc.wantRefusals {
+					t.Errorf("refusals logged = %d, want %d", refusals, tc.wantRefusals)
+				}
+				uploads := count(w.mockDB.sentMessageLog, func(l mockSentMessageLog) bool { return l.imageMode == db.ImageUpload })
+				if uploads != tc.wantUploads {
+					t.Errorf("uploads logged = %d, want %d", uploads, tc.wantUploads)
+				}
+				fileIDSends := count(w.mockDB.sentMessageLog, func(l mockSentMessageLog) bool {
+					return l.imageMode == db.ImageFileID
+				})
+				if fileIDSends != tc.wantFileIDSends {
+					t.Errorf("sends by file id logged = %d, want %d", fileIDSends, tc.wantFileIDSends)
+				}
+				sent := count(w.mockDB.sentMessageLog, func(l mockSentMessageLog) bool { return l.result == messageSent })
+				if sent != len(users) {
+					t.Errorf("sends logged = %d, want %d", sent, len(users))
+				}
 			})
-			if logged != tc.wantDownloads {
-				t.Errorf("downloads logged = %d, want %d", logged, tc.wantDownloads)
-			}
-			refusals := count(w.mockDB.sentMessageLog, func(l mockSentMessageLog) bool {
-				return l.result == messageFileIDRejected
-			})
-			if refusals != tc.wantRefusals {
-				t.Errorf("refusals logged = %d, want %d", refusals, tc.wantRefusals)
-			}
-			uploads := count(w.mockDB.sentMessageLog, func(l mockSentMessageLog) bool { return l.imageMode == db.ImageUpload })
-			if uploads != tc.wantUploads {
-				t.Errorf("uploads logged = %d, want %d", uploads, tc.wantUploads)
-			}
-			fileIDSends := count(w.mockDB.sentMessageLog, func(l mockSentMessageLog) bool {
-				return l.imageMode == db.ImageFileID
-			})
-			if fileIDSends != tc.wantFileIDSends {
-				t.Errorf("sends by file id logged = %d, want %d", fileIDSends, tc.wantFileIDSends)
-			}
-			sent := count(w.mockDB.sentMessageLog, func(l mockSentMessageLog) bool { return l.result == messageSent })
-			if sent != len(users) {
-				t.Errorf("sends logged = %d, want %d", sent, len(users))
-			}
 		})
 	}
 }
@@ -915,60 +923,66 @@ func TestTimedOutUploadPostponesBriefly(t *testing.T) {
 // the timed-out chat's included.
 func TestUnsendableImageGoesAsText(t *testing.T) {
 	t.Parallel()
-	telegram := &mockTelegram{replies: []mockReply{
-		{err: os.ErrDeadlineExceeded}, {body: textSent}, {body: textSent}, {body: textSent},
-	}}
-	w, users := photoSendWorker(t, telegram, 101, 102, 103)
-	img := &image{key: imagesURL + "/a"}
-	sendImages(w, users, []*image{img, img, img}, 4)
-	if want := []string{"upload", "text", "text", "text"}; !slices.Equal(telegram.sent, want) {
-		t.Fatalf("sent %v, want %v", telegram.sent, want)
-	}
-	if got := w.imageTransport.hits.Load(); got != 1 {
-		t.Errorf("downloads = %d, want 1", got)
-	}
-	for i, text := range telegram.texts {
-		if !strings.HasPrefix(text, "[[ 🚫 image unavailable ]]\n\n🟢") {
-			t.Errorf("text %d = %q, want it to open with the image-unavailable line", i, text)
+	synctest.Test(t, func(t *testing.T) {
+		telegram := &mockTelegram{replies: []mockReply{
+			{err: os.ErrDeadlineExceeded}, {body: textSent}, {body: textSent}, {body: textSent},
+		}}
+		w, users := photoSendWorker(t, telegram, 101, 102, 103)
+		img := &image{key: imagesURL + "/a"}
+		sendImages(w, users, []*image{img, img, img}, 4)
+		if want := []string{"upload", "text", "text", "text"}; !slices.Equal(telegram.sent, want) {
+			t.Fatalf("sent %v, want %v", telegram.sent, want)
 		}
-	}
+		if got := w.imageTransport.hits.Load(); got != 1 {
+			t.Errorf("downloads = %d, want 1", got)
+		}
+		for i, text := range telegram.texts {
+			if !strings.HasPrefix(text, "[[ 🚫 image unavailable ]]\n\n🟢") {
+				t.Errorf("text %d = %q, want it to open with the image-unavailable line", i, text)
+			}
+		}
+	})
 }
 
 // A photo uploads the bytes downloaded for it, however long it waited since.
 func TestDownloadedBytesUploadHoweverOld(t *testing.T) {
 	t.Parallel()
-	telegram := &mockTelegram{replies: []mockReply{{body: photoSent}}}
-	w, users := photoSendWorker(t, telegram, 101)
-	p := &photoParams{
-		SendPhotoParams: &bot.SendPhotoParams{},
-		image:           &image{key: imagesURL + "/a.jpg"},
-		downloaded:      []byte("held"),
-		downloadedAt:    time.Now().Add(-2 * imageTTL),
-	}
-	w.enqueueMessage(db.PriorityLow, "test", p, unprompted(db.MessagePacket), users[0], 0)
-	completeSends(w, 1)
-	if got := w.imageTransport.hits.Load(); got != 0 {
-		t.Errorf("downloads = %d, want 0", got)
-	}
-	if !slices.Equal(telegram.uploads, []string{"held"}) {
-		t.Errorf("uploaded %q, want the held bytes", telegram.uploads)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		telegram := &mockTelegram{replies: []mockReply{{body: photoSent}}}
+		w, users := photoSendWorker(t, telegram, 101)
+		p := &photoParams{
+			SendPhotoParams: &bot.SendPhotoParams{},
+			image:           &image{key: imagesURL + "/a.jpg"},
+			downloaded:      []byte("held"),
+			downloadedAt:    time.Now().Add(-2 * imageTTL),
+		}
+		w.enqueueMessage(db.PriorityLow, "test", p, unprompted(db.MessagePacket), users[0], 0)
+		completeSends(w, 1)
+		if got := w.imageTransport.hits.Load(); got != 0 {
+			t.Errorf("downloads = %d, want 0", got)
+		}
+		if !slices.Equal(telegram.uploads, []string{"held"}) {
+			t.Errorf("uploaded %q, want the held bytes", telegram.uploads)
+		}
+	})
 }
 
 // A photo goes by an id serving it, though its image was given up.
 func TestGivenUpImageGoesByID(t *testing.T) {
 	t.Parallel()
-	telegram := &mockTelegram{replies: []mockReply{{body: photoSent}}}
-	w, users := photoSendWorker(t, telegram, 101)
-	img := &image{key: testImageURL}
-	s := w.sender("test")
-	now := time.Now()
-	s.images.learn(photoOutcome{key: img.key, uploadedID: "id", downloadedAt: now}, now)
-	s.images.learn(photoOutcome{key: img.key, timedOut: true}, now)
-	sendImages(w, users, []*image{img}, 1)
-	if !slices.Equal(telegram.sent, []string{"id"}) {
-		t.Errorf("sent %v, want the photo by its id", telegram.sent)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		telegram := &mockTelegram{replies: []mockReply{{body: photoSent}}}
+		w, users := photoSendWorker(t, telegram, 101)
+		img := &image{key: testImageURL}
+		s := w.sender("test")
+		now := time.Now()
+		s.images.learn(photoOutcome{key: img.key, uploadedID: "id", downloadedAt: now}, now)
+		s.images.learn(photoOutcome{key: img.key, timedOut: true}, now)
+		sendImages(w, users, []*image{img}, 1)
+		if !slices.Equal(telegram.sent, []string{"id"}) {
+			t.Errorf("sent %v, want the photo by its id", telegram.sent)
+		}
+	})
 }
 
 // A photo queued while its image's uploads are paused still takes the image's bytes,
@@ -990,31 +1004,33 @@ func TestPausedImageStillDownloads(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			telegram := &mockTelegram{replies: []mockReply{tc.reply}}
-			w, users := photoSendWorker(t, telegram, 101)
-			s := w.sender("test")
-			s.cooling = true
-			img := &image{key: imagesURL + "/a.jpg"}
-			s.images.learn(photoOutcome{key: img.key, timedOut: true}, time.Now())
-			if tc.placeholderID != "" {
-				placeholder := w.tr["test"].ImageUnavailable.Image
-				s.images.learn(photoOutcome{key: placeholder, uploadedID: tc.placeholderID}, time.Now())
-			}
-			queueImages(w, users, []*image{img})
-			w.completeDownload(<-w.imageDownloader.results)
-			if tc.lapsed {
-				e := s.images.images[img.key]
-				e.gaveUpUntil = time.Now()
-				s.images.images[img.key] = e
-			}
-			w.onSendDone("test")
-			completeSends(w, 1)
-			if !slices.Equal(telegram.sent, []string{tc.wantSent}) {
-				t.Errorf("sent %v, want %s", telegram.sent, tc.wantSent)
-			}
-			if got := w.imageTransport.hits.Load(); got != 1 {
-				t.Errorf("downloads = %d, want 1", got)
-			}
+			synctest.Test(t, func(t *testing.T) {
+				telegram := &mockTelegram{replies: []mockReply{tc.reply}}
+				w, users := photoSendWorker(t, telegram, 101)
+				s := w.sender("test")
+				s.cooling = true
+				img := &image{key: imagesURL + "/a.jpg"}
+				s.images.learn(photoOutcome{key: img.key, timedOut: true}, time.Now())
+				if tc.placeholderID != "" {
+					placeholder := w.tr["test"].ImageUnavailable.Image
+					s.images.learn(photoOutcome{key: placeholder, uploadedID: tc.placeholderID}, time.Now())
+				}
+				queueImages(w, users, []*image{img})
+				w.completeDownload(<-w.imageDownloader.results)
+				if tc.lapsed {
+					e := s.images.images[img.key]
+					e.gaveUpUntil = time.Now()
+					s.images.images[img.key] = e
+				}
+				w.onSendDone("test")
+				completeSends(w, 1)
+				if !slices.Equal(telegram.sent, []string{tc.wantSent}) {
+					t.Errorf("sent %v, want %s", telegram.sent, tc.wantSent)
+				}
+				if got := w.imageTransport.hits.Load(); got != 1 {
+					t.Errorf("downloads = %d, want 1", got)
+				}
+			})
 		})
 	}
 }
@@ -1034,24 +1050,26 @@ func TestFailedDownloadGoesByID(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			telegram := &mockTelegram{replies: []mockReply{{body: photoSent}}}
-			w, users := photoSendWorker(t, telegram, 101)
-			s := w.sender("test")
-			s.cooling = true
-			img := &image{key: imagesURL + "/missing"}
-			if tc.profile != "" {
-				img.fallbackURL = imagesURL + tc.profile
-			}
-			queueImages(w, users, []*image{img})
-			completeDownloads(w)
-			// Another chat's upload of a later download gives the bot an id.
-			s.images.learn(photoOutcome{key: img.key, uploadedID: "id", downloadedAt: time.Now()}, time.Now())
-			s.cooling = false
-			w.trySend("test")
-			completeSends(w, 1)
-			if !slices.Equal(telegram.sent, []string{"id"}) {
-				t.Errorf("sent %v, want the photo by its id", telegram.sent)
-			}
+			synctest.Test(t, func(t *testing.T) {
+				telegram := &mockTelegram{replies: []mockReply{{body: photoSent}}}
+				w, users := photoSendWorker(t, telegram, 101)
+				s := w.sender("test")
+				s.cooling = true
+				img := &image{key: imagesURL + "/missing"}
+				if tc.profile != "" {
+					img.fallbackURL = imagesURL + tc.profile
+				}
+				queueImages(w, users, []*image{img})
+				completeDownloads(w)
+				// Another chat's upload of a later download gives the bot an id.
+				s.images.learn(photoOutcome{key: img.key, uploadedID: "id", downloadedAt: time.Now()}, time.Now())
+				s.cooling = false
+				w.trySend("test")
+				completeSends(w, 1)
+				if !slices.Equal(telegram.sent, []string{"id"}) {
+					t.Errorf("sent %v, want the photo by its id", telegram.sent)
+				}
+			})
 		})
 	}
 }
@@ -1060,19 +1078,21 @@ func TestFailedDownloadGoesByID(t *testing.T) {
 // without downloading it, within a minute of the profile image's download.
 func TestFailedImageTakesProfileImageID(t *testing.T) {
 	t.Parallel()
-	telegram := &mockTelegram{replies: []mockReply{{body: photoSent}}}
-	w, users := photoSendWorker(t, telegram, 101)
-	profile := imagesURL + "/p.jpg"
-	w.sender("test").images.learn(
-		photoOutcome{key: profile, uploadedID: "profile-id", downloadedAt: time.Now()},
-		time.Now())
-	sendImages(w, users, []*image{{key: imagesURL + "/missing", fallbackURL: profile}}, 1)
-	if got := w.imageTransport.hits.Load(); got != 1 {
-		t.Errorf("downloads = %d, want 1", got)
-	}
-	if !slices.Equal(telegram.sent, []string{"profile-id"}) {
-		t.Errorf("sent %v, want the photo by the profile image's id", telegram.sent)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		telegram := &mockTelegram{replies: []mockReply{{body: photoSent}}}
+		w, users := photoSendWorker(t, telegram, 101)
+		profile := imagesURL + "/p.jpg"
+		w.sender("test").images.learn(
+			photoOutcome{key: profile, uploadedID: "profile-id", downloadedAt: time.Now()},
+			time.Now())
+		sendImages(w, users, []*image{{key: imagesURL + "/missing", fallbackURL: profile}}, 1)
+		if got := w.imageTransport.hits.Load(); got != 1 {
+			t.Errorf("downloads = %d, want 1", got)
+		}
+		if !slices.Equal(telegram.sent, []string{"profile-id"}) {
+			t.Errorf("sent %v, want the photo by the profile image's id", telegram.sent)
+		}
+	})
 }
 
 // A photo that reaches its turn with neither an id nor bytes goes with the placeholder.
@@ -1097,31 +1117,33 @@ func TestPhotoWithoutImageGoesWithPlaceholder(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			telegram := &mockTelegram{replies: tc.replies}
-			w, users := photoSendWorker(t, telegram, 101)
-			s := w.sender("test")
-			s.cooling = true
-			img := &image{key: imagesURL + "/a.jpg"}
-			now := time.Now()
-			o := tc.known
-			o.key, o.downloadedAt = img.key, now
-			s.images.learn(o, now)
-			queueImages(w, users, []*image{img})
-			if tc.atTurn != nil {
-				tc.atTurn(s, img.key)
-			}
-			s.cooling = false
-			w.trySend("test")
-			completeSends(w, len(tc.replies))
-			if !slices.Equal(telegram.sent, tc.wantSent) {
-				t.Errorf("sent %v, want %v", telegram.sent, tc.wantSent)
-			}
-			if !slices.Equal(telegram.uploads, []string{"placeholder"}) {
-				t.Errorf("uploaded %q, want the placeholder", telegram.uploads)
-			}
-			if got := w.imageTransport.hits.Load(); got != 0 {
-				t.Errorf("downloads = %d, want 0", got)
-			}
+			synctest.Test(t, func(t *testing.T) {
+				telegram := &mockTelegram{replies: tc.replies}
+				w, users := photoSendWorker(t, telegram, 101)
+				s := w.sender("test")
+				s.cooling = true
+				img := &image{key: imagesURL + "/a.jpg"}
+				now := time.Now()
+				o := tc.known
+				o.key, o.downloadedAt = img.key, now
+				s.images.learn(o, now)
+				queueImages(w, users, []*image{img})
+				if tc.atTurn != nil {
+					tc.atTurn(s, img.key)
+				}
+				s.cooling = false
+				w.trySend("test")
+				completeSends(w, len(tc.replies))
+				if !slices.Equal(telegram.sent, tc.wantSent) {
+					t.Errorf("sent %v, want %v", telegram.sent, tc.wantSent)
+				}
+				if !slices.Equal(telegram.uploads, []string{"placeholder"}) {
+					t.Errorf("uploaded %q, want the placeholder", telegram.uploads)
+				}
+				if got := w.imageTransport.hits.Load(); got != 0 {
+					t.Errorf("downloads = %d, want 0", got)
+				}
+			})
 		})
 	}
 }
@@ -1157,44 +1179,46 @@ func TestRefusedUploadFallsBack(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			telegram := &mockTelegram{replies: tc.replies}
-			w, users := photoSendWorker(t, telegram, 101, 102)
-			img := &image{key: imagesURL + "/a.jpg"}
-			if tc.profile != "" {
-				img.fallbackURL = imagesURL + tc.profile
-			}
-			if tc.firstSends == 0 {
-				sendImages(w, users, []*image{img, img}, len(tc.replies))
-			} else {
-				sendImages(w, users[:1], []*image{img}, tc.firstSends)
-				sendImages(w, users[1:], []*image{img}, len(tc.replies)-tc.firstSends)
-			}
-			if slices.Contains(telegram.uploads, "placeholder") != (tc.wantIDUnder == "") {
-				t.Errorf("uploaded %d files, the placeholder among them: %t, want %t",
-					len(telegram.uploads), slices.Contains(telegram.uploads, "placeholder"), tc.wantIDUnder == "")
-			}
-			if !slices.Equal(telegram.sent, tc.wantSent) {
-				t.Errorf("sent %v, want %v", telegram.sent, tc.wantSent)
-			}
-			fallbacks := count(w.mockDB.performanceLog, func(p mockPerformanceLog) bool {
-				return p.kind == db.PerformanceLogImageDownload && p.data["fallback_image"] == true
+			synctest.Test(t, func(t *testing.T) {
+				telegram := &mockTelegram{replies: tc.replies}
+				w, users := photoSendWorker(t, telegram, 101, 102)
+				img := &image{key: imagesURL + "/a.jpg"}
+				if tc.profile != "" {
+					img.fallbackURL = imagesURL + tc.profile
+				}
+				if tc.firstSends == 0 {
+					sendImages(w, users, []*image{img, img}, len(tc.replies))
+				} else {
+					sendImages(w, users[:1], []*image{img}, tc.firstSends)
+					sendImages(w, users[1:], []*image{img}, len(tc.replies)-tc.firstSends)
+				}
+				if slices.Contains(telegram.uploads, "placeholder") != (tc.wantIDUnder == "") {
+					t.Errorf("uploaded %d files, the placeholder among them: %t, want %t",
+						len(telegram.uploads), slices.Contains(telegram.uploads, "placeholder"), tc.wantIDUnder == "")
+				}
+				if !slices.Equal(telegram.sent, tc.wantSent) {
+					t.Errorf("sent %v, want %v", telegram.sent, tc.wantSent)
+				}
+				fallbacks := count(w.mockDB.performanceLog, func(p mockPerformanceLog) bool {
+					return p.kind == db.PerformanceLogImageDownload && p.data["fallback_image"] == true
+				})
+				// A refused image's profile image downloads once, for both photos
+				want := 0
+				if tc.wantIDUnder == "/p.jpg" {
+					want = 1
+				}
+				if fallbacks != want {
+					t.Errorf("fallback image downloads logged = %d, want %d", fallbacks, want)
+				}
+				key := w.tr["test"].ImageUnavailable.Image
+				if tc.wantIDUnder != "" {
+					key = imagesURL + tc.wantIDUnder
+				}
+				now := time.Now()
+				if id, _ := w.sender("test").images.lookup(&image{key: key}, now, now); id != "large" {
+					t.Errorf("the id under %s = %q, want %q", key, id, "large")
+				}
 			})
-			// A refused image's profile image downloads once, for both photos
-			want := 0
-			if tc.wantIDUnder == "/p.jpg" {
-				want = 1
-			}
-			if fallbacks != want {
-				t.Errorf("fallback image downloads logged = %d, want %d", fallbacks, want)
-			}
-			key := w.tr["test"].ImageUnavailable.Image
-			if tc.wantIDUnder != "" {
-				key = imagesURL + tc.wantIDUnder
-			}
-			now := time.Now()
-			if id, _ := w.sender("test").images.lookup(&image{key: key}, now, now); id != "large" {
-				t.Errorf("the id under %s = %q, want %q", key, id, "large")
-			}
 		})
 	}
 }
@@ -1204,66 +1228,70 @@ func TestRefusedUploadFallsBack(t *testing.T) {
 func TestSentBackPhotoRetriesNoDownload(t *testing.T) {
 	t.Parallel()
 	refused := mockReply{body: `{"ok":false,"error_code":400,"description":"Bad Request: IMAGE_PROCESS_FAILED"}`}
-	telegram := &mockTelegram{replies: []mockReply{refused, {body: photoSent}, {body: photoSent}, {body: photoSent}}}
-	w, users := photoSendWorker(t, telegram, 101, 102)
-	img := &image{key: imagesURL + "/a.jpg", fallbackURL: imagesURL + "/p.jpg"}
-	s := w.sender("test")
-	s.cooling = true
-	queueImages(w, []db.UserID{users[0], users[1], users[1]}, []*image{img, img, {key: imagesURL + "/missing"}})
-	for range 2 {
-		w.completeDownload(<-w.imageDownloader.results)
-	}
-	s.cooling = false
-	w.trySend("test")
-	completeSends(w, 4)
-	// The image, its profile image and the missing image, once each
-	if got := w.imageTransport.hits.Load(); got != 3 {
-		t.Errorf("downloads = %d, want 3", got)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		telegram := &mockTelegram{replies: []mockReply{refused, {body: photoSent}, {body: photoSent}, {body: photoSent}}}
+		w, users := photoSendWorker(t, telegram, 101, 102)
+		img := &image{key: imagesURL + "/a.jpg", fallbackURL: imagesURL + "/p.jpg"}
+		s := w.sender("test")
+		s.cooling = true
+		queueImages(w, []db.UserID{users[0], users[1], users[1]}, []*image{img, img, {key: imagesURL + "/missing"}})
+		for range 2 {
+			w.completeDownload(<-w.imageDownloader.results)
+		}
+		s.cooling = false
+		w.trySend("test")
+		completeSends(w, 4)
+		// The image, its profile image and the missing image, once each
+		if got := w.imageTransport.hits.Load(); got != 3 {
+			t.Errorf("downloads = %d, want 3", got)
+		}
+	})
 }
 
 // A photo sent back for its fallback image keeps its place: its user's ad waits until it is sent.
 // Their reply goes meanwhile. The photo's latency counts from its first entry to the send queue.
 func TestSentBackPhotoKeepsItsPlace(t *testing.T) {
 	t.Parallel()
-	refused := mockReply{body: `{"ok":false,"error_code":400,"description":"Bad Request: IMAGE_PROCESS_FAILED"}`}
-	telegram := &mockTelegram{replies: []mockReply{refused, {body: textSent}, {body: photoSent}, {body: photoSent}}}
-	w, users := photoSendWorker(t, telegram, 101)
-	ad := flagAd(w)
-	queueImages(w, users, []*image{{key: imagesURL + "/a.jpg", fallbackURL: imagesURL + "/p.jpg"}})
-	w.sendAdsTr(db.PriorityLow, "test", users[0], false, ad, "")
-	completeSends(w, 1)
-	tr := &cmdlib.Translation{Key: "online", Parse: cmdlib.ParseHTML}
-	w.enqueueTr(db.PriorityLow, "test", users[0], false, tr, tplData{}, nil, nil, reply("list"), 0)
-	// The ad would go once the user cools, unless the photo back in the download step holds it
-	deadline := time.After(3 * time.Duration(testConfig.UserCooldownMs) * time.Millisecond)
-	for waiting := true; waiting; {
-		select {
-		case u := <-w.cooledUsers:
-			w.onUserCooled(u)
-		case r := <-w.sendResults:
-			w.completeSendResult(r)
-		case <-deadline:
-			waiting = false
+	synctest.Test(t, func(t *testing.T) {
+		refused := mockReply{body: `{"ok":false,"error_code":400,"description":"Bad Request: IMAGE_PROCESS_FAILED"}`}
+		telegram := &mockTelegram{replies: []mockReply{refused, {body: textSent}, {body: photoSent}, {body: photoSent}}}
+		w, users := photoSendWorker(t, telegram, 101)
+		ad := flagAd(w)
+		queueImages(w, users, []*image{{key: imagesURL + "/a.jpg", fallbackURL: imagesURL + "/p.jpg"}})
+		w.sendAdsTr(db.PriorityLow, "test", users[0], false, ad, "")
+		completeSends(w, 1)
+		tr := &cmdlib.Translation{Key: "online", Parse: cmdlib.ParseHTML}
+		w.enqueueTr(db.PriorityLow, "test", users[0], false, tr, tplData{}, nil, nil, reply("list"), 0)
+		// The ad would go once the user cools, unless the photo back in the download step holds it
+		deadline := time.After(3 * time.Duration(testConfig.UserCooldownMs) * time.Millisecond)
+		for waiting := true; waiting; {
+			select {
+			case u := <-w.cooledUsers:
+				w.onUserCooled(u)
+			case r := <-w.sendResults:
+				w.completeSendResult(r)
+			case <-deadline:
+				waiting = false
+			}
 		}
-	}
-	if want := []string{"upload", "text"}; !slices.Equal(telegram.sent, want) {
-		t.Fatalf("sent %v while the photo was back in the download step, want %v", telegram.sent, want)
-	}
-	completeSends(w, 2)
-	if n := len(telegram.uploads); n != 3 || telegram.uploads[n-1] != "flag" {
-		t.Errorf("uploaded %d files, want the image, the profile image, then the ad", n)
-	}
-	sent := slices.IndexFunc(w.mockDB.sentMessageLog, func(l mockSentMessageLog) bool {
-		return l.kind == db.MessagePacket && l.result == messageSent
+		if want := []string{"upload", "text"}; !slices.Equal(telegram.sent, want) {
+			t.Fatalf("sent %v while the photo was back in the download step, want %v", telegram.sent, want)
+		}
+		completeSends(w, 2)
+		if n := len(telegram.uploads); n != 3 || telegram.uploads[n-1] != "flag" {
+			t.Errorf("uploaded %d files, want the image, the profile image, then the ad", n)
+		}
+		sent := slices.IndexFunc(w.mockDB.sentMessageLog, func(l mockSentMessageLog) bool {
+			return l.kind == db.MessagePacket && l.result == messageSent
+		})
+		if sent < 0 {
+			t.Fatal("no photo was logged as sent")
+		}
+		latency := w.mockDB.sentMessageLog[sent].latency
+		if wait := 3 * testConfig.UserCooldownMs; latency < wait {
+			t.Errorf("the photo's latency = %d ms, want at least %d", latency, wait)
+		}
 	})
-	if sent < 0 {
-		t.Fatal("no photo was logged as sent")
-	}
-	latency := w.mockDB.sentMessageLog[sent].latency
-	if wait := 3 * testConfig.UserCooldownMs; latency < wait {
-		t.Errorf("the photo's latency = %d ms, want at least %d", latency, wait)
-	}
 }
 
 // flagAd gives the test worker a flag ad and returns its translation.
@@ -1297,34 +1325,36 @@ func TestAdGoesWithItsImageOrNotAtAll(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			telegram := &mockTelegram{replies: tc.replies}
-			w, users := photoSendWorker(t, telegram, 101, 102, 103)
-			tr := flagAd(w)
-			s := w.sender("test")
-			if tc.givenUp {
-				s.images.learn(photoOutcome{key: tr.Image, timedOut: true}, time.Now())
-			}
-			// The placeholder has an id, which an ad never takes.
-			s.images.learn(photoOutcome{key: w.tr["test"].ImageUnavailable.Image, uploadedID: "pid"}, time.Now())
-			// Two ads and a text queue while a send is in flight, so a dropped ad has messages behind it.
-			s.cooling = true
-			for _, u := range users[:2] {
-				w.sendAdsTr(db.PriorityLow, "test", u, false, tr, "")
-			}
-			text := textMessage("next", true, true, cmdlib.ParseRaw)
-			w.enqueueMessage(db.PriorityLow, "test", text, unprompted(db.MessagePacket), users[2], 0)
-			w.onSendDone("test")
-			completeSends(w, len(tc.replies))
-			if !slices.Equal(telegram.sent, tc.wantSent) {
-				t.Errorf("sent %v, want %v", telegram.sent, tc.wantSent)
-			}
-			if n := s.queue.Len(); n != 0 || s.cooling {
-				t.Errorf("%d messages left to send and one in flight = %t, want none", n, s.cooling)
-			}
-			dropped := count(w.mockDB.sentMessageLog, func(l mockSentMessageLog) bool { return l.result == messageAdDropped })
-			if dropped != tc.wantDropped {
-				t.Errorf("logged %d ads dropped before sending, want %d", dropped, tc.wantDropped)
-			}
+			synctest.Test(t, func(t *testing.T) {
+				telegram := &mockTelegram{replies: tc.replies}
+				w, users := photoSendWorker(t, telegram, 101, 102, 103)
+				tr := flagAd(w)
+				s := w.sender("test")
+				if tc.givenUp {
+					s.images.learn(photoOutcome{key: tr.Image, timedOut: true}, time.Now())
+				}
+				// The placeholder has an id, which an ad never takes.
+				s.images.learn(photoOutcome{key: w.tr["test"].ImageUnavailable.Image, uploadedID: "pid"}, time.Now())
+				// Two ads and a text queue while a send is in flight, so a dropped ad has messages behind it.
+				s.cooling = true
+				for _, u := range users[:2] {
+					w.sendAdsTr(db.PriorityLow, "test", u, false, tr, "")
+				}
+				text := textMessage("next", true, true, cmdlib.ParseRaw)
+				w.enqueueMessage(db.PriorityLow, "test", text, unprompted(db.MessagePacket), users[2], 0)
+				w.onSendDone("test")
+				completeSends(w, len(tc.replies))
+				if !slices.Equal(telegram.sent, tc.wantSent) {
+					t.Errorf("sent %v, want %v", telegram.sent, tc.wantSent)
+				}
+				if n := s.queue.Len(); n != 0 || s.cooling {
+					t.Errorf("%d messages left to send and one in flight = %t, want none", n, s.cooling)
+				}
+				dropped := count(w.mockDB.sentMessageLog, func(l mockSentMessageLog) bool { return l.result == messageAdDropped })
+				if dropped != tc.wantDropped {
+					t.Errorf("logged %d ads dropped before sending, want %d", dropped, tc.wantDropped)
+				}
+			})
 		})
 	}
 }
@@ -1332,27 +1362,29 @@ func TestAdGoesWithItsImageOrNotAtAll(t *testing.T) {
 // A dropped ad is logged under its user's live id, with the time it waited in the send queue.
 func TestDroppedAdLogsLiveUserAndWait(t *testing.T) {
 	t.Parallel()
-	w, users := photoSendWorker(t, &mockTelegram{}, 101)
-	tr := flagAd(w)
-	s := w.sender("test")
-	s.images.learn(photoOutcome{key: tr.Image, timedOut: true}, time.Now())
-	s.cooling = true
-	w.sendAdsTr(db.PriorityLow, "test", users[0], false, tr, "")
-	// The ad's user merges into another while the ad waits.
-	live := w.db.EnsureUserAndChat("other", 201)
-	w.db.MigrateChat(101, 201)
-	const wait = 50 * time.Millisecond
-	time.Sleep(wait)
-	w.onSendDone("test")
-	dropped := w.mockDB.sentMessageLog[slices.IndexFunc(w.mockDB.sentMessageLog, func(l mockSentMessageLog) bool {
-		return l.result == messageAdDropped
-	})]
-	if dropped.userID != live {
-		t.Errorf("logged under user %d, want the live %d", dropped.userID, live)
-	}
-	if dropped.latency < int(wait.Milliseconds()) {
-		t.Errorf("latency = %d ms, want at least %d", dropped.latency, wait.Milliseconds())
-	}
+	synctest.Test(t, func(t *testing.T) {
+		w, users := photoSendWorker(t, &mockTelegram{}, 101)
+		tr := flagAd(w)
+		s := w.sender("test")
+		s.images.learn(photoOutcome{key: tr.Image, timedOut: true}, time.Now())
+		s.cooling = true
+		w.sendAdsTr(db.PriorityLow, "test", users[0], false, tr, "")
+		// The ad's user merges into another while the ad waits.
+		live := w.db.EnsureUserAndChat("other", 201)
+		w.db.MigrateChat(101, 201)
+		const wait = 50 * time.Millisecond
+		time.Sleep(wait)
+		w.onSendDone("test")
+		dropped := w.mockDB.sentMessageLog[slices.IndexFunc(w.mockDB.sentMessageLog, func(l mockSentMessageLog) bool {
+			return l.result == messageAdDropped
+		})]
+		if dropped.userID != live {
+			t.Errorf("logged under user %d, want the live %d", dropped.userID, live)
+		}
+		if dropped.latency < int(wait.Milliseconds()) {
+			t.Errorf("latency = %d ms, want at least %d", dropped.latency, wait.Milliseconds())
+		}
+	})
 }
 
 // An image that fails to download gives way to the placeholder,
@@ -1426,32 +1458,34 @@ func TestFailedImageFallsBackToProfileImage(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			telegram := &mockTelegram{replies: []mockReply{{body: photoSent}}}
-			w, users := photoSendWorker(t, telegram, 101)
-			sendImages(w, users, []*image{{key: imagesURL + tc.image, fallbackURL: imagesURL + tc.profile}}, 1)
-			if got := w.imageTransport.hits.Load(); got != tc.wantDownloads {
-				t.Errorf("downloads = %d, want %d", got, tc.wantDownloads)
-			}
-			// Every download after the image's is its profile image's.
-			fallbacks := count(w.mockDB.performanceLog, func(p mockPerformanceLog) bool {
-				return p.kind == db.PerformanceLogImageDownload && p.data["fallback_image"] == true
+			synctest.Test(t, func(t *testing.T) {
+				telegram := &mockTelegram{replies: []mockReply{{body: photoSent}}}
+				w, users := photoSendWorker(t, telegram, 101)
+				sendImages(w, users, []*image{{key: imagesURL + tc.image, fallbackURL: imagesURL + tc.profile}}, 1)
+				if got := w.imageTransport.hits.Load(); got != tc.wantDownloads {
+					t.Errorf("downloads = %d, want %d", got, tc.wantDownloads)
+				}
+				// Every download after the image's is its profile image's.
+				fallbacks := count(w.mockDB.performanceLog, func(p mockPerformanceLog) bool {
+					return p.kind == db.PerformanceLogImageDownload && p.data["fallback_image"] == true
+				})
+				if want := int(tc.wantDownloads) - 1; fallbacks != want {
+					t.Errorf("fallback image downloads logged = %d, want %d", fallbacks, want)
+				}
+				if placeholder := slices.Equal(telegram.uploads, []string{"placeholder"}); placeholder != (tc.want == "") {
+					t.Errorf("uploaded %q, want the placeholder: %t", telegram.uploads, tc.want == "")
+				}
+				now := time.Now()
+				for _, path := range []string{tc.image, tc.profile} {
+					var wantID string
+					if path == tc.want {
+						wantID = "large"
+					}
+					if id, _ := w.sender("test").images.lookup(&image{key: imagesURL + path}, now, now); id != wantID {
+						t.Errorf("the id of %s = %q, want %q", path, id, wantID)
+					}
+				}
 			})
-			if want := int(tc.wantDownloads) - 1; fallbacks != want {
-				t.Errorf("fallback image downloads logged = %d, want %d", fallbacks, want)
-			}
-			if placeholder := slices.Equal(telegram.uploads, []string{"placeholder"}); placeholder != (tc.want == "") {
-				t.Errorf("uploaded %q, want the placeholder: %t", telegram.uploads, tc.want == "")
-			}
-			now := time.Now()
-			for _, path := range []string{tc.image, tc.profile} {
-				var wantID string
-				if path == tc.want {
-					wantID = "large"
-				}
-				if id, _ := w.sender("test").images.lookup(&image{key: imagesURL + path}, now, now); id != wantID {
-					t.Errorf("the id of %s = %q, want %q", path, id, wantID)
-				}
-			}
 		})
 	}
 }
@@ -1459,13 +1493,15 @@ func TestFailedImageFallsBackToProfileImage(t *testing.T) {
 // A failed download goes as text when the translations ship no placeholder.
 func TestFailedDownloadWithoutPlaceholderGoesAsText(t *testing.T) {
 	t.Parallel()
-	telegram := &mockTelegram{replies: []mockReply{{body: textSent}}}
-	w, users := photoSendWorker(t, telegram, 101)
-	w.tr["test"].ImageUnavailable = &cmdlib.Translation{}
-	sendImages(w, users, []*image{{key: imagesURL + "/missing"}}, 1)
-	if !slices.Equal(telegram.sent, []string{"text"}) {
-		t.Errorf("sent %v, want text", telegram.sent)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		telegram := &mockTelegram{replies: []mockReply{{body: textSent}}}
+		w, users := photoSendWorker(t, telegram, 101)
+		w.tr["test"].ImageUnavailable = &cmdlib.Translation{}
+		sendImages(w, users, []*image{{key: imagesURL + "/missing"}}, 1)
+		if !slices.Equal(telegram.sent, []string{"text"}) {
+			t.Errorf("sent %v, want text", telegram.sent)
+		}
+	})
 }
 
 // Each dispatch chooses what a photo goes as, so a resend goes by an id the bot learned meanwhile,

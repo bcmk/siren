@@ -77,40 +77,44 @@ func TestSenderScheduling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			w := newTestWorker()
-			w.sender("test").cooling = false
+			synctest.Test(t, func(t *testing.T) {
+				w := newTestWorker()
+				// Ends a send's pacing wait when the test ends, so a failing test's bubble exits
+				t.Cleanup(func() { close(w.shutdownCh) })
+				w.sender("test").cooling = false
 
-			userIDs := make([]db.UserID, tt.users)
-			idxOf := map[db.UserID]int{}
-			for i := range userIDs {
-				userIDs[i], _ = w.addUserAndChat(int64(100+i), 0, "private")
-				idxOf[userIDs[i]] = i
-			}
-
-			var inflight, maxInflight int32
-			for _, e := range tt.enqueue {
-				w.enqueueMessage(e.pri, "test",
-					&countingMessage{inflight: &inflight, maxInflight: &maxInflight},
-					unprompted(db.MessagePacket), userIDs[e.userIdx], 0)
-			}
-
-			var order []int
-			for len(order) < len(tt.enqueue) {
-				select {
-				case r := <-w.sendResults:
-					order = append(order, idxOf[r.userID])
-					w.onSendDone(r.endpoint)
-				case u := <-w.cooledUsers:
-					w.onUserCooled(u)
+				userIDs := make([]db.UserID, tt.users)
+				idxOf := map[db.UserID]int{}
+				for i := range userIDs {
+					userIDs[i], _ = w.addUserAndChat(int64(100+i), 0, "private")
+					idxOf[userIDs[i]] = i
 				}
-			}
 
-			if !slices.Equal(order, tt.want) {
-				t.Errorf("delivery order = %v, want %v", order, tt.want)
-			}
-			if maxInflight != 1 {
-				t.Errorf("max concurrent sends = %d, want 1", maxInflight)
-			}
+				var inflight, maxInflight int32
+				for _, e := range tt.enqueue {
+					w.enqueueMessage(e.pri, "test",
+						&countingMessage{inflight: &inflight, maxInflight: &maxInflight},
+						unprompted(db.MessagePacket), userIDs[e.userIdx], 0)
+				}
+
+				var order []int
+				for len(order) < len(tt.enqueue) {
+					select {
+					case r := <-w.sendResults:
+						order = append(order, idxOf[r.userID])
+						w.onSendDone(r.endpoint)
+					case u := <-w.cooledUsers:
+						w.onUserCooled(u)
+					}
+				}
+
+				if !slices.Equal(order, tt.want) {
+					t.Errorf("delivery order = %v, want %v", order, tt.want)
+				}
+				if maxInflight != 1 {
+					t.Errorf("max concurrent sends = %d, want 1", maxInflight)
+				}
+			})
 		})
 	}
 }
@@ -145,21 +149,25 @@ func (m *barrierMessage) send(context.Context, *bot.Bot) (*models.Message, error
 // so neither the send slot nor the per-user cooldown spans endpoints.
 func TestEndpointsDeliverConcurrently(t *testing.T) {
 	t.Parallel()
-	w := newTestWorker()
+	synctest.Test(t, func(t *testing.T) {
+		w := newTestWorker()
+		// Ends a send's pacing wait when the test ends, so a failing test's bubble exits
+		t.Cleanup(func() { close(w.shutdownCh) })
 
-	userID, _ := w.addUserAndChat(100, 0, "private")
-	var arrived atomic.Int32
-	gate := make(chan struct{})
-	for _, endpoint := range []string{"e1", "e2"} {
-		w.enqueueMessage(db.PriorityHigh, endpoint,
-			&barrierMessage{arrived: &arrived, gate: gate, need: 2},
-			unprompted(db.MessagePacket), userID, 0)
-	}
-	for range 2 {
-		if r := <-w.sendResults; r.result != messageSent {
-			t.Fatalf("result = %d, want messageSent from two overlapping sends", r.result)
+		userID, _ := w.addUserAndChat(100, 0, "private")
+		var arrived atomic.Int32
+		gate := make(chan struct{})
+		for _, endpoint := range []string{"e1", "e2"} {
+			w.enqueueMessage(db.PriorityHigh, endpoint,
+				&barrierMessage{arrived: &arrived, gate: gate, need: 2},
+				unprompted(db.MessagePacket), userID, 0)
 		}
-	}
+		for range 2 {
+			if r := <-w.sendResults; r.result != messageSent {
+				t.Fatalf("result = %d, want messageSent from two overlapping sends", r.result)
+			}
+		}
+	})
 }
 
 // TestTooManyRequestsPausesOnlyItsEndpoint checks 429 isolation:

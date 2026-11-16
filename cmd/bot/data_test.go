@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"flag"
 	"net/http"
 	"testing"
 	"text/template"
@@ -39,9 +38,8 @@ var testConfig = botconfig.Config{
 	RefereeBonus:         1,
 	OfflineNotifications: true,
 	BlockedSendThreshold: 15,
-	// Short, so pacing costs no real wait.
-	UserCooldownMs:  100,
-	GroupCooldownMs: 30,
+	UserCooldownMs:       100,
+	GroupCooldownMs:      30,
 	// Longer than the user cooldown, as in production.
 	TimedOutUploadPostponeMs: 200,
 	// Certain, so the hint tests stay deterministic; the gate has a test of its own.
@@ -180,9 +178,6 @@ type testWorker struct {
 func TestMain(m *testing.M) {
 	// Set once here: parallel tests must not race on this global.
 	cmdlib.Verbosity = cmdlib.SilentVerbosity
-	// Many tests wait out send pacing rather than use a CPU, so more fit than one per CPU.
-	// An explicit -parallel still wins.
-	checkErr(flag.Set("test.parallel", "32"))
 	m.Run()
 }
 

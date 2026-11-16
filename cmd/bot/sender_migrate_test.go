@@ -160,39 +160,43 @@ func TestMigrateAppliesBeforeResendDispatch(t *testing.T) {
 func TestSenderRedeliversAcrossMigrate(t *testing.T) {
 	t.Parallel()
 	const oldID, newID = int64(-100), int64(-1001234)
-	w := newTestWorker()
-	w.sender("test").cooling = false
-	// Skip the member-count network lookup in the sent bookkeeping.
-	w.shuttingDown.Store(true)
+	synctest.Test(t, func(t *testing.T) {
+		w := newTestWorker()
+		// Ends a send's pacing wait when the test ends, so a failing test's bubble exits
+		t.Cleanup(func() { close(w.shutdownCh) })
+		w.sender("test").cooling = false
+		// Skip the member-count network lookup in the sent bookkeeping.
+		w.shuttingDown.Store(true)
 
-	userID, _ := w.addUserAndChat(oldID, 0, "group")
-	msg := &migrateThenOK{target: int(newID)}
-	w.enqueueMessage(db.PriorityHigh, "test", msg, unprompted(db.MessagePacket), userID, 0)
+		userID, _ := w.addUserAndChat(oldID, 0, "group")
+		msg := &migrateThenOK{target: int(newID)}
+		w.enqueueMessage(db.PriorityHigh, "test", msg, unprompted(db.MessagePacket), userID, 0)
 
-	// One timer for the whole wait:
-	// a per-iteration time.After would re-arm on every event,
-	// letting an endless re-queue loop spin forever.
-	deadline := time.NewTimer(30 * time.Second)
-	defer deadline.Stop()
-	for {
-		select {
-		case r := <-w.sendResults:
-			w.completeSendResult(r)
-			if r.result == messageMigrate {
-				continue
+		// One timer for the whole wait:
+		// a per-iteration time.After would re-arm on every event,
+		// letting an endless re-queue loop spin forever.
+		deadline := time.NewTimer(30 * time.Second)
+		defer deadline.Stop()
+		for {
+			select {
+			case r := <-w.sendResults:
+				w.completeSendResult(r)
+				if r.result == messageMigrate {
+					continue
+				}
+				if r.result != messageSent || r.chatID != newID {
+					t.Fatalf("delivery = {result %d, chat %d}, want {messageSent, %d}",
+						r.result, r.chatID, newID)
+				}
+				if got := msg.chatID(); got != newID {
+					t.Errorf("message not retargeted: chatID = %d, want %d", got, newID)
+				}
+				return
+			case u := <-w.cooledUsers:
+				w.onUserCooled(u)
+			case <-deadline.C:
+				t.Fatal("timed out waiting for the redelivery")
 			}
-			if r.result != messageSent || r.chatID != newID {
-				t.Fatalf("delivery = {result %d, chat %d}, want {messageSent, %d}",
-					r.result, r.chatID, newID)
-			}
-			if got := msg.chatID(); got != newID {
-				t.Errorf("message not retargeted: chatID = %d, want %d", got, newID)
-			}
-			return
-		case u := <-w.cooledUsers:
-			w.onUserCooled(u)
-		case <-deadline.C:
-			t.Fatal("timed out waiting for the redelivery")
 		}
-	}
+	})
 }
