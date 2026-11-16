@@ -173,6 +173,8 @@ type testWorker struct {
 	sendQueue *sendQueue
 	// mockDB is the worker's database, for tests to arrange and inspect its rows
 	mockDB *mockDB
+	// imageTransport serves a photoSendWorker's image downloads.
+	imageTransport *imageTransport
 }
 
 func TestMain(m *testing.M) {
