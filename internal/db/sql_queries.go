@@ -1292,7 +1292,9 @@ func (d *Database) SearchStreamers(term string) []string {
 		_, err = tx.Exec(context.Background(),
 			`
 				set local enable_seqscan = off;
-				set local enable_indexscan = off;
+				-- Avoids JIT compilation
+				-- by lowering the cost of the index-only scan of ix_nicknames_nickname_max_nonalnum_run
+				set local enable_indexscan = on;
 				set local enable_indexonlyscan = on;
 				set local enable_bitmapscan = off;
 				insert into _search_results
@@ -1315,7 +1317,8 @@ func (d *Database) SearchStreamers(term string) []string {
 		_, err = tx.Exec(context.Background(),
 			`
 				set local enable_seqscan = off;
-				set local enable_indexscan = off;
+				-- Avoids JIT compilation by lowering the cost of the index-only scan of ix_streamers_nickname
+				set local enable_indexscan = on;
 				set local enable_indexonlyscan = on;
 				set local enable_bitmapscan = off;
 				insert into _search_results
