@@ -446,6 +446,8 @@ Call one stretch online, from going online to going offline, a stream.
 - Read `docs/brin-maintenance.md` before adding or changing a BRIN index,
   or running operations that could affect physical row order on a BRIN-indexed table.
 - Read `docs/timescaledb.md` before changing a hypertable or using a TimescaleDB feature
+- Read `docs/postgres-extensions.md` before writing or reviewing a migration
+  that creates or drops a PostgreSQL extension
 - Read `docs/telegram-stars.md` before changing Telegram Stars payment handling
   (buying subscriptions, invoices, pre-checkout, refunds).
 - Read `docs/image-sending.md` before changing how photos are sent:
