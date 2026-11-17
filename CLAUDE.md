@@ -438,6 +438,7 @@ Call one stretch online, from going online to going offline, a stream.
 ## Documentation
 
 - Don't mention other projects in CLAUDE.md or docs; keep them about this repo.
+- This is an open-source project, so don't assume that others use the same providers
 - Read `docs/status-changes.md` before modifying status handling code
 - Read `docs/streamer-search.md` before modifying streamer fuzzy search
 - Read `docs/architecture-diagrams.md` before adding or regenerating
