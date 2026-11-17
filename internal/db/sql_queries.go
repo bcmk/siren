@@ -1209,8 +1209,7 @@ func (d *Database) SearchStreamers(term string) []string {
 		btreeSettings = `
 			select
 				set_config('enable_seqscan', 'off', true),
-				-- Avoids JIT compilation by lowering the cost of the index-only scans
-				-- of ix_nicknames_nickname_max_nonalnum_run and ix_streamers_nickname
+				-- An index-only scan is enabled only when both of these are on
 				set_config('enable_indexscan', 'on', true),
 				set_config('enable_indexonlyscan', 'on', true),
 				-- Keeps the nonalnum-runs leg off ix_nicknames_nickname_trgm_gin,
