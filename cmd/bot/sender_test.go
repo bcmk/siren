@@ -182,7 +182,10 @@ func TestTooManyRequestsPausesOnlyItsEndpoint(t *testing.T) {
 			senders:     map[string]*endpointSender{},
 			sendResults: make(chan msgSendResult, 16),
 			cooledUsers: make(chan cooledUser, 16),
+			shutdownCh:  make(chan struct{}),
 		}
+		// Ends a send's pacing wait when the test ends, so a failing test's bubble exits
+		t.Cleanup(func() { close(w.shutdownCh) })
 		start := time.Now()
 		// Maintenance sends skip the database, which this bare worker lacks.
 		w.enqueueMessage(db.PriorityHigh, "throttled",
