@@ -280,7 +280,9 @@ func TestCompactStatusChangesPlanMutants(t *testing.T) {
 // runSweep runs a reconfiguration on the database and reports what went wrong
 func runSweep(t *testing.T, d *Database, cfg sweepConfig, v sweepVariant) {
 	t.Helper()
-	d.MustExec("truncate status_changes, status_changes_lock")
+	// A delete keeps the chunks: a truncate drops them, and each history then creates them again
+	d.MustExec("delete from status_changes")
+	d.MustExec("truncate status_changes_lock")
 	d.MustExec("delete from streamers")
 	sweepHistory(d, "a", sweepOldNow)
 	id := streamerID(t, d, "a")
