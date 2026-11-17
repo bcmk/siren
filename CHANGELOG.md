@@ -3,6 +3,22 @@
 All notable changes to this project are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v7.2.0 — 2026-11-17
+
+### Upgrading
+
+- Migration 0109 drops the `fuzzystrmatch` extension,
+  which the role running migrations must be allowed to drop: see `docs/postgres-extensions.md`
+
+### Changed
+
+- A streamer search takes one database round trip and creates no temp table
+- Equally close search results come in alphabetical order
+
+### Fixed
+
+- The search's prefix and nonalnum-runs legs are no longer JIT-compiled
+
 ## v7.1.0 — 2026-11-15
 
 ### Changed
